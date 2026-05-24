@@ -1,3 +1,4 @@
+
 import { useState, useMemo } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -132,20 +133,7 @@ const USERS = [
 // ─────────────────────────────────────────────────────────────────────────────
 // PEKERJA SEED
 // ─────────────────────────────────────────────────────────────────────────────
-const PEKERJA_SEED=[
-  {id:101,nama:"Agus Santoso",   divisi:"mekanik"},
-  {id:102,nama:"Dedi Kurniawan", divisi:"mekanik"},
-  {id:103,nama:"Bambang Wahyu",  divisi:"mekanik"},
-  {id:104,nama:"Sari Dewi",      divisi:"painting"},
-  {id:105,nama:"Eka Pratiwi",    divisi:"painting"},
-  {id:106,nama:"Joko Susilo",    divisi:"assembling"},
-  {id:107,nama:"Rudi Hartono",   divisi:"assembling"},
-  {id:108,nama:"Tono Wibowo",    divisi:"wiring_ctrl"},
-  {id:109,nama:"Hadi Purnomo",   divisi:"wiring_ctrl"},
-  {id:110,nama:"Rudi Setiawan",  divisi:"wiring_pwr"},
-  {id:111,nama:"Dewi Rahayu",    divisi:"qc"},
-  {id:112,nama:"Fitri Handayani",divisi:"qc"},
-];
+const PEKERJA_SEED=[];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -225,68 +213,11 @@ let _id=8000; function uid(){ return ++_id; }
 // ─────────────────────────────────────────────────────────────────────────────
 // SEED DATA
 // ─────────────────────────────────────────────────────────────────────────────
-const WO_SEED=[
-  {id:1,wo:"016",proyek:"Bali Tennis Court",target:"2026-05-22",panels:[
-    {id:101,noPnl:1,nama:"SDP UPPER FLOOR (U.A) POLYESTER",tipe:"FS",qty:1,
-     checklist:(()=>{const c=initChecklist("FS",1);
-       c["FS.1"].qty=8;c["FS.2"].qty=8;c["FS.3"].qty=4;c["FS.4"].qty=8;c["FS.5"].qty=2;
-       c["FS.6"].qty=0;c["FS.7"].qty=3;c["FS.8"].qty=1;c["FS.9"].qty=16;c["FS.10"].qty=4;
-       c["FS.11"].qty=4;c["FS.12"].qty=2;c["FS.13"].qty=2;c["FS.14"].qty=1;c["FS.15"].qty=0;
-       c["FS.16"].qty=2;c["FS.17"].qty=2;c["FS.18"].qty=8;c["FS.19"].qty=6;c["FS.20"].qty=4;c["FS.21"].qty=4;
-       c["FS.22"].qty=12;c["FS.23"].qty=4;c["FS.24"].qty=0;
-       return c;})(),catatan:""},
-    {id:102,noPnl:2,nama:"PP.HOT KITCHEN ROOFTOP (POLYESTER)",tipe:"WM_POLY",qty:1,
-     checklist:(()=>{const c=initChecklist("WM_POLY",1);
-       c["WM.1"].qty=3;c["WM.2"].qty=9;c["WM.3"].qty=1;c["WM.4"].qty=2;
-       c["WM.5"].qty=4;c["WM.6"].qty=4;c["WM.7"].qty=4;c["WM.8"].qty=0;c["WM.9"].qty=2;c["WM.10"].qty=2;
-       return c;})(),catatan:""},
-  ]},
-  {id:2,wo:"087",proyek:"Sudamala",target:"2026-05-20",panels:[
-    {id:201,noPnl:1,nama:"PP-MAIN KITCHEN & RESTO (MILD STEEL)",tipe:"FS",qty:1,
-     checklist:(()=>{const c=initChecklist("FS",1);Object.keys(c).forEach(k=>{c[k].qty=3;});return c;})(),catatan:""},
-    {id:202,noPnl:2,nama:"PP-SWIMMING PANEL GV.1 (POLYESTER)",tipe:"WM_POLY",qty:1,
-     checklist:(()=>{const c=initChecklist("WM_POLY",1);Object.keys(c).forEach(k=>{c[k].qty=2;});return c;})(),catatan:""},
-  ]},
-  {id:3,wo:"084",proyek:"Oxo Nuanu",target:"2026-06-10",panels:[
-    {id:301,noPnl:1,nama:"PP-1ST FLOOR-CH",tipe:"WM_MS",qty:1,
-     checklist:(()=>{const c=initChecklist("WM_MS",1);
-       Object.keys(c).forEach(k=>{c[k].qty=4;ALL_PROSES.forEach(p=>{c[k].progress[p]=100;});});return c;})(),catatan:""},
-    {id:302,noPnl:2,nama:"SDP 1.1",tipe:"FS",qty:3,
-     checklist:(()=>{const c=initChecklist("FS",3);Object.keys(c).forEach(k=>{c[k].qty=3;});return c;})(),catatan:""},
-  ]},
-  {id:4,wo:"013",proyek:"CJI",target:"2026-05-31",panels:[
-    {id:401,noPnl:1,nama:"LVMDP-TR.4 REFLYSINE",tipe:"FS",qty:7,
-     checklist:(()=>{const c=initChecklist("FS",7);Object.keys(c).forEach(k=>{c[k].qty=7;});return c;})(),catatan:""},
-    {id:402,noPnl:2,nama:"MCC TR.4",tipe:"FS",qty:5,
-     checklist:(()=>{const c=initChecklist("FS",5);Object.keys(c).forEach(k=>{c[k].qty=5;});return c;})(),catatan:"Menunggu material"},
-  ]},
-];
+const WO_SEED=[];
 
-const RAW_SEED=[
-  {id:1,woId:1,panelId:101,proyek:"Bali Tennis Court",panel:"SDP UPPER FLOOR (U.A) POLYESTER",proses:"POTONG",prioritas:"Tinggi",
-   schedule:{"2026-05-18":[{wp:"WP1",komponen:["FS.1","FS.2","FS.4"]},{wp:"WP2",komponen:["FS.11","FS.12"]}]}},
-  {id:2,woId:1,panelId:101,proyek:"Bali Tennis Court",panel:"SDP UPPER FLOOR (U.A) POLYESTER",proses:"BENDING",prioritas:"Tinggi",
-   schedule:{"2026-05-19":[{wp:"WP1",komponen:["FS.1","FS.2"]},{wp:"WP2",komponen:["FS.12","FS.13"]}]}},
-  {id:3,woId:1,panelId:101,proyek:"Bali Tennis Court",panel:"SDP UPPER FLOOR (U.A) POLYESTER",proses:"STEL",prioritas:"Sedang",
-   schedule:{"2026-05-20":[{wp:"WP1",komponen:["FS.1","FS.3"]}]}},
-  {id:4,woId:2,panelId:201,proyek:"Sudamala",panel:"PP-MAIN KITCHEN & RESTO",proses:"POTONG",prioritas:"Tinggi",
-   schedule:{"2026-05-18":[{wp:"WP3",komponen:["FS.16","FS.17","FS.18"]}]}},
-  {id:5,woId:2,panelId:202,proyek:"Sudamala",panel:"PP-SWIMMING PANEL GV.1",proses:"POTONG",prioritas:"Sedang",
-   schedule:{"2026-05-18":[{wp:"WP1",komponen:["WM.1","WM.2"]}]}},
-  {id:6,woId:4,panelId:401,proyek:"CJI",panel:"LVMDP-TR.4 REFLYSINE",proses:"POTONG",prioritas:"Rendah",
-   schedule:{"2026-05-20":[{wp:"WP1",komponen:["FS.1","FS.2"]},{wp:"WP3",komponen:["FS.16","FS.17"]}]}},
-];
+const RAW_SEED=[];
 
-const RENHAR_SEED=[
-  {id:1,rawId:1,woId:1,panelId:101,proyek:"Bali Tennis Court",panel:"SDP UPPER FLOOR (U.A) POLYESTER",
-   proses:"POTONG",wp:"WP1",komponen:["FS.1","FS.2","FS.4"],tanggal:"2026-05-18",divisi:"mekanik",prioritas:"Tinggi"},
-  {id:2,rawId:1,woId:1,panelId:101,proyek:"Bali Tennis Court",panel:"SDP UPPER FLOOR (U.A) POLYESTER",
-   proses:"POTONG",wp:"WP2",komponen:["FS.11","FS.12"],tanggal:"2026-05-18",divisi:"mekanik",prioritas:"Tinggi"},
-  {id:3,rawId:4,woId:2,panelId:201,proyek:"Sudamala",panel:"PP-MAIN KITCHEN & RESTO",
-   proses:"POTONG",wp:"WP3",komponen:["FS.16","FS.17","FS.18"],tanggal:"2026-05-18",divisi:"mekanik",prioritas:"Tinggi"},
-  {id:4,rawId:5,woId:2,panelId:202,proyek:"Sudamala",panel:"PP-SWIMMING PANEL GV.1",
-   proses:"POTONG",wp:"WP1",komponen:["WM.1","WM.2"],tanggal:"2026-05-18",divisi:"mekanik",prioritas:"Sedang"},
-];
+const RENHAR_SEED=[];
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CSS
@@ -346,13 +277,12 @@ function STitle({children,style={}}){
 }
 function Modal({children,onClose,title,width=480}){
   return(
-    <div style={{position:"fixed",inset:0,background:"#00000060",display:"flex",alignItems:"center",
-      justifyContent:"center",zIndex:1000,padding:16}} onClick={onClose}>
-      <div style={{background:"#fff",borderRadius:16,width:`min(${width}px,96%)`,maxHeight:"90vh",
-        overflowY:"auto",boxShadow:"0 20px 60px #00000030"}} className="su"
-        onClick={e=>e.stopPropagation()}>
+    <div style={{position:"fixed",inset:0,background:"#00000060",
+      zIndex:1000,overflowY:"auto"}}>
+      <div style={{background:"#fff",borderRadius:16,width:`min(${width}px,96%)`,
+        boxShadow:"0 20px 60px #00000030",margin:"80px auto 40px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
-          padding:"16px 20px",borderBottom:"1px solid #f1f5f9",position:"sticky",top:0,background:"#fff",zIndex:1}}>
+          padding:"16px 20px",borderBottom:"1px solid #f1f5f9",borderRadius:"16px 16px 0 0",background:"#fff",zIndex:1}}>
           <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{title}</div>
           <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
         </div>
@@ -1383,6 +1313,13 @@ function Login({onLogin}){
 // DASHBOARD
 // ─────────────────────────────────────────────────────────────────────────────
 function Dashboard({woData}){
+  if(!woData.length) return(
+    <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
+      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
+    </div>
+  );
   const stats=[
     {v:woData.length,l:"Total WO",i:"📋"},
     {v:woData.reduce((a,w)=>a+w.panels.length,0),l:"Total Panel",i:"⚡"},
@@ -1458,6 +1395,13 @@ function Dashboard({woData}){
 // SUMMARY PROGRESS
 // ─────────────────────────────────────────────────────────────────────────────
 function SummaryProgress({woData}){
+  if(!woData.length) return(
+    <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
+      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
+    </div>
+  );
   const [search,setSearch]=useState("");
   const rows=useMemo(()=>
     woData.flatMap(wo=>wo.panels.map(p=>({
@@ -1599,6 +1543,14 @@ function DetailProgress({woData}){
   const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
     whiteSpace:"nowrap",letterSpacing:.3,borderRight:"1px solid #ffffff15",textAlign:"center",
     position:"sticky",top:0,zIndex:3};
+
+  if(!woData.length) return(
+    <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
+      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
+    </div>
+  );
 
   return(
     <div className="fi">
@@ -2467,6 +2419,13 @@ function ManajemenWO({woData,setWoData}){
         <STitle style={{marginBottom:0}}>Manajemen Work Order</STitle>
         <Btn color="#1d4ed8" onClick={()=>{setForm(blank);setPanels([{...blankPanel}]);setEditId(null);setOpen(true);}}>+ Tambah WO</Btn>
       </div>
+      {woData.length===0&&!open&&(
+        <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
+          <div style={{fontSize:12,marginTop:4}}>Klik tombol "+ Tambah WO" untuk membuat WO pertama</div>
+        </div>
+      )}
       {woData.map(wo=>{
         const pct=woOverall(wo);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
         return(
@@ -2576,15 +2535,19 @@ function ManajemenWO({woData,setWoData}){
         </Modal>
       )}
       {open&&(
-        <Modal title={editId?"Edit WO":"Tambah WO Baru"} onClose={()=>setOpen(false)} width={720}>
+        <Card style={{marginBottom:16,border:"2px solid #2563eb",background:"#f8faff"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{editId?"✏️ Edit WO":"📝 Tambah WO Baru"}</div>
+            <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
+          </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
             <div><Lbl>No WO</Lbl><Inp placeholder="016" value={form.wo} onChange={e=>setForm({...form,wo:e.target.value})}/></div>
             <div><Lbl>Nama Proyek</Lbl><Inp placeholder="Bali Tennis Court" value={form.proyek} onChange={e=>setForm({...form,proyek:e.target.value})}/></div>
             <div><Lbl>Target Tanggal</Lbl><Inp type="date" value={form.target} onChange={e=>setForm({...form,target:e.target.value})}/></div>
           </div>
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #f1f5f9",paddingTop:16}}>Panel</div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #e2e8f0",paddingTop:16}}>Panel</div>
           {panels.map((p,i)=>(
-            <div key={i} style={{background:"#f8fafc",borderRadius:10,padding:14,marginBottom:10,border:"1px solid #e2e8f0"}}>
+            <div key={i} style={{background:"#fff",borderRadius:10,padding:14,marginBottom:10,border:"1px solid #e2e8f0"}}>
               <div style={{display:"grid",gridTemplateColumns:"56px 1fr 180px 70px 32px",gap:8,alignItems:"end"}}>
                 <div><Lbl>No</Lbl><Inp value={p.noPnl} onChange={e=>{const n=[...panels];n[i]={...n[i],noPnl:e.target.value};setPanels(n);}} placeholder="1"/></div>
                 <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={e=>{const n=[...panels];n[i]={...n[i],nama:e.target.value};setPanels(n);}} placeholder="Nama panel..."/></div>
@@ -2610,7 +2573,7 @@ function ManajemenWO({woData,setWoData}){
             <Btn outline color="#64748b" onClick={()=>setOpen(false)}>Batal</Btn>
             <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah WO"}</Btn>
           </div>
-        </Modal>
+        </Card>
       )}
     </div>
   );
