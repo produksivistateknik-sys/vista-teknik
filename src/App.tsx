@@ -1,6 +1,10 @@
 
-import { useState, useMemo } from "react";
-
+import { useState, useMemo, useEffect } from "react";
+import { usePekerja } from './hooks/usePekerja'
+import { useRenhar } from './hooks/useRenhar'
+import { supabase } from './lib/supabase'
+import { useWorkOrders } from './hooks/useWorkOrders'
+import { useRawSchedule } from "./hooks/useRawSchedule";
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,7 +185,7 @@ function calcPanelProgress(panel){
   return prog;
 }
 function panelOverall(p){ const v=Object.values(calcPanelProgress(p)); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):0; }
-function woOverall(wo){ const a=wo.panels.flatMap(p=>Object.values(calcPanelProgress(p))); return a.length?Math.round(a.reduce((a,b)=>a+b,0)/a.length):0; }
+function woOverall(wo){ const a=(wo.panels??[]).flatMap(p=>Object.values(calcPanelProgress(p))); return a.length?Math.round(a.reduce((a,b)=>a+b,0)/a.length):0; }
 
 const TODAY="2026-05-18";
 function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
@@ -3250,13 +3254,31 @@ export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState("dashboard");
-  const [woData,setWoData]=useState(WO_SEED);
-  const [rawData,setRawData]=useState(RAW_SEED);
-  const [renhar,setRenhar]=useState(RENHAR_SEED);
-  const [pekerja,setPekerja]=useState(PEKERJA_SEED);
+const [woData, setWoData] = useState<any[]>([]);
+const [rawData, setRawData] = useState<any[]>([]);
+const [renhar, setRenhar] = useState<any[]>([]);
+const [pekerja, setPekerja] = useState<any[]>([]);
   const [kendalaLog,setKendalaLog]=useState([]); // {id,divisi,tanggal,proses,catatan,ts}
+const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
+  const { data: pekerjaList, loading: pekerjaLoading } = usePekerja()
+const { data: renharList, loading: renharLoading } = useRenhar()
+const { data: rawList, loading: rawLoading } = useRawSchedule()
+useEffect(() => {
+  if (!woLoading) setWoData(woList)
+}, [woList, woLoading])
 
-  if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
+useEffect(() => {
+  if (!pekerjaLoading) setPekerja(pekerjaList)
+}, [pekerjaList, pekerjaLoading])
+
+useEffect(() => {
+  if (!renharLoading) setRenhar(renharList)
+}, [renharList, renharLoading])
+
+useEffect(() => {
+  if (!rawLoading) setRawData(rawList)
+}, [rawList, rawLoading])
+if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login onLogin={u=>{
     setUser(u);
     setPage("app");
