@@ -1803,7 +1803,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const openCellModal=(rawId,date)=>{setCellModal({rawId,date});setModalWp("");setModalKomponen([]);};
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
-  const livePanelForCell=rawRow?woData.flatMap(w=>w.panels).find(p=>p.id===rawRow.panelId):null;
+  const livePanelForCell=rawRow?woData.flatMap(w=>w.panels).find(p=>p.id===(rawRow.panelId||rawRow.panel_id)):null;
   const panelCfg=livePanelForCell?PANEL_TYPES[livePanelForCell.tipe]:null;
   const wpItems=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
 
@@ -2372,7 +2372,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
         </Modal>
       )}
-      
+
     </div>
   );
 }

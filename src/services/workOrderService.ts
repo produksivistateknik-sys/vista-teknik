@@ -6,7 +6,7 @@ export const workOrderService = {
     const { data, error } = await supabase
       .from('work_orders')
       .select('*, panels(*)')
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
   },
