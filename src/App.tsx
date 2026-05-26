@@ -613,7 +613,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       const entries=row.schedule[selDate]||[];
       entries.forEach(e=>{
         tasks.push({
-          rawId:row.id, woId:row.woId, panelId:row.panelId,
+          rawId:row.id, woId:row.wo_id||row.woId, panelId:row.panel_id||row.panelId,
           proyek:row.proyek, panel:row.panel, proses:row.proses,
           prioritas:row.prioritas||"Sedang",
           wp:e.wp, komponen:e.komponen, tanggal:selDate,
@@ -649,6 +649,8 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   },[days,rawData]);
 
   const openAssign=(task)=>{
+    console.log('renhar data:', renhar[0]);
+    console.log('task data:', );
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
     setSelPekerja(existing?.pekerja||[]);
@@ -1880,6 +1882,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
+  const dateTasks=useMemo(()=>{
+    if(!selDate)return[];
+    return rawData.flatMap(r=>(r.schedule[selDate]||[]).map(e=>({
+      rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+      proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+      wp:e.wp,komponen:e.komponen,tanggal:selDate
+    })));
+  },[rawData,selDate]);
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
