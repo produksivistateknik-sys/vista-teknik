@@ -27,8 +27,8 @@ export const workOrderService = {
       .from('work_orders')
       .update({ ...payload, updated_at: new Date().toISOString() })
       .eq('id', id)
-      .select()
-      .single()
+.select('*, panels(*)')
+.single()
     if (error) throw new Error(error.message)
     return data
   },
