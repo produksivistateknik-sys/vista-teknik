@@ -2080,9 +2080,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
               <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
-              <Btn color="#1d4ed8" onClick={isExisting?"Simpan Perubahan":"Distribusi"}>
-                {existing?"Simpan Perubahan":"Distribusi"}
-              </Btn>
+              <Btn color="#1d4ed8" onClick={confirmDistribute}>
+  {isExisting?"Simpan Perubahan":"Distribusi"}
+</Btn>
             </div>
           </Modal>
         );
