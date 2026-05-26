@@ -2372,6 +2372,105 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
         </Modal>
       )}
+      {cellModal&&rawRow&&(
+        <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} · {rawRow.panel}</div>
+          {cellEntries.length>0&&(
+            <div style={{marginBottom:16}}>
+              <Lbl>WP & Komponen Terjadwal</Lbl>
+              {cellEntries.map(e=>{
+                const wc=WP_COLOR[e.wp]||"#64748b";
+                return(
+                  <div key={e.wp} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #e2e8f0"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 10px",fontSize:12,fontWeight:700}}>{e.wp}</span>
+                      <button onClick={()=>removeEntry(e.wp)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13}}>✕ Hapus</button>
+                    </div>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                      {e.komponen.map(k=>{
+                        const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
+                        return <span key={k} style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{item?.nama||k}</span>;
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <div style={{borderTop:"1px solid #f1f5f9",paddingTop:16}}>
+            <Lbl>Tambah WP</Lbl>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+              {WP_LIST.map(wp=>{
+                const added=cellEntries.some(e=>e.wp===wp);
+                const wpDone=isWpDone(livePanelForCell,wp,rawRow?.proses||"");
+                const disabled=added||wpDone;
+                const sel=modalWp===wp;const wc=WP_COLOR[wp];
+                return(
+                  <button key={wp} onClick={()=>{if(!disabled){setModalWp(sel?"":wp);setModalKomponen([]);}}} disabled={disabled}
+                    style={{padding:"8px",borderRadius:8,border:`2px solid ${wpDone?"#16a34a":sel?wc:disabled?"#e2e8f0":"#e2e8f0"}`,
+                      background:wpDone?"#f0fdf4":sel?wc+"18":disabled?"#f8fafc":"#f8fafc",
+                      cursor:disabled?"not-allowed":"pointer",
+                      color:wpDone?"#16a34a":sel?wc:disabled?"#cbd5e1":"#64748b",
+                      fontWeight:700,fontSize:12,
+                      display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>
+                    {wpDone?(<><span>✓</span>{wp}<span style={{fontSize:10,color:"#16a34a"}}>Selesai</span></>):(<><span style={{width:8,height:8,borderRadius:"50%",background:added?"#e2e8f0":wc}}/>{wp} {added?"(terjadwal)":sel?"✔":""}</>)}
+                  </button>
+                );
+              })}
+            </div>
+            {modalWp&&wpItems.length>0&&(
+              <>
+                <Lbl>Pilih Komponen {modalWp}</Lbl>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+                  {wpItems.map(it=>{
+                    const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
+                    return(
+                      <button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])}
+                        style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,
+                          background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>
+                        {sel?"✔ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
+                  + Tambah {modalWp} ({modalKomponen.length} komponen)
+                </Btn>
+              </>
+            )}
+          </div>
+          <div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}>
+            <Btn color="#16a34a" onClick={()=>setCellModal(null)}>Selesai</Btn>
+          </div>
+        </Modal>
+      )}
+      {assignModal&&(()=>{
+        const {task,divisi}=assignModal;
+        const dc=DIVISI_CONFIG[divisi];
+        const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
+        return(
+          <Modal title={`${assignModal.existing?"Edit":"Distribusi"} Pekerja — ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
+            <div style={{marginBottom:12,fontSize:13,color:"#475569"}}>{task.proyek} · {task.panel} · {task.wp}</div>
+            <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
+              {pekerjaDivisi.map(p=>{
+                const sel=selPekerja.includes(p.id);
+                return(
+                  <button key={p.id} onClick={()=>setSelPekerja(prev=>sel?prev.filter(x=>x!==p.id):[...prev,p.id])}
+                    style={{padding:"6px 14px",borderRadius:20,border:`1.5px solid ${sel?dc.color:"#e2e8f0"}`,
+                      background:sel?dc.color+"18":"#f8fafc",color:sel?dc.color:"#64748b",cursor:"pointer",fontSize:12,fontWeight:600}}>
+                    {sel?"✔ ":""}{p.nama}
+                  </button>
+                );
+              })}
+              {pekerjaDivisi.length===0&&<div style={{color:"#94a3b8",fontSize:13}}>Belum ada pekerja di divisi ini</div>}
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
+              <Btn color="#1d4ed8" onClick={confirmDistribute}>Simpan</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
     </div>
   );
 }
