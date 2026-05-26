@@ -2553,7 +2553,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
+              <Btn color="#dc2626" onClick={async()=>{await supabase.from('work_orders').delete().eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
             </div>
           </div>
         </Modal>
@@ -3415,4 +3415,5 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       )}
     </div>
   );
+}
 }
