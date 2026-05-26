@@ -172,20 +172,30 @@ function getLatestProgress(cl, proses){
   return cl?.progress?.[proses]||0;
 }
 
-function calcPanelProgress(panel){
+function calcPanelProgress(panel): Record<string, number> {
   const cfg=PANEL_TYPES[panel.tipe];
-  if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{});
+  if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
-  if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{});
-  const prog={};
+  if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const prog: Record<string, number> = {};
   ALL_PROSES.forEach(pr=>{
     const vals=active.map(it=>getLatestProgress(panel.checklist[it.kode],pr));
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });
   return prog;
 }
-function panelOverall(p){ const v=Object.values(calcPanelProgress(p)); return v.length?Math.round(v.reduce((a,b)=>a+b,0)/v.length):0; }
-function woOverall(wo){ const a=(wo.panels??[]).flatMap(p=>Object.values(calcPanelProgress(p))); return a.length?Math.round(a.reduce((a,b)=>a+b,0)/a.length):0; }
+function panelOverall(p){
+  const v=Object.values(calcPanelProgress(p));
+  if(!v.length) return 0;
+  const sum=v.reduce((acc,n)=>acc+n,0);
+  return Math.round(sum/v.length);
+}
+function woOverall(wo){
+  const vals=(wo.panels??[]).flatMap(p=>Object.values(calcPanelProgress(p)));
+  if(!vals.length) return 0;
+  const sum=vals.reduce((acc,n)=>acc+n,0);
+  return Math.round(sum/vals.length);
+}
 
 const TODAY="2026-05-18";
 function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
@@ -2386,7 +2396,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
 // ─────────────────────────────────────────────────────────────────────────────
 // MANAJEMEN WO
 // ─────────────────────────────────────────────────────────────────────────────
-function ManajemenWO({woData,setWoData}){
+function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
+  console.log('ManajemenWO rendered, createWO:', typeof createWO)
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
   const [form,setForm]=useState(blank);
@@ -2397,16 +2408,25 @@ function ManajemenWO({woData,setWoData}){
   const [expandedWo,setExpandedWo]=useState({});
   const [expandedPanel,setExpandedPanel]=useState({});
 
-  const save=()=>{
-    if(!form.wo||!form.proyek||!form.target)return;
-    const np=panels.filter(p=>p.nama).map((p,i)=>({
-      id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-      checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
-    }));
-    if(editId)setWoData(prev=>prev.map(w=>w.id!==editId?w:{...w,...form,panels:np}));
-    else setWoData(prev=>[...prev,{id:uid(),...form,panels:np}]);
-    setOpen(false);
-  };
+  const save=async()=>{
+  console.log('save called, editId:', editId, 'form:', form)
+  const np=panels.filter(p=>p.nama).map((p,i)=>({
+    id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+    checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+}));
+  if(editId){
+    console.log('updating WO id:', editId)
+    const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target})
+    console.log('update result:', result)
+    if(result.success) setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
+  } else {
+    console.log('creating WO')
+    const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target})
+    console.log('create result:', result)
+    if(result.success) setWoData(prev=>[...prev,{...result.data,panels:np}]);
+  }
+  setOpen(false);
+};
   const updateItemQty=(woId,panelId,kode,qty)=>{
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
@@ -2451,7 +2471,7 @@ function ManajemenWO({woData,setWoData}){
                   <div style={{marginTop:4,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                     <Badge label={st.label} color={st.color} bg={st.bg}/>
                     <span style={{fontWeight:800,color:pColor(pct),fontFamily:"'DM Mono',monospace"}}>{pct}%</span>
-                    <span style={{fontSize:11,color:"#94a3b8"}}>{wo.panels.length} panel</span>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{(wo.panels??[]).length} panel</span>
                   </div>
                 </div>
               </div>
@@ -2582,7 +2602,6 @@ function ManajemenWO({woData,setWoData}){
     </div>
   );
 }
-
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW — tabel besar per proses
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3247,6 +3266,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
   );
 }
 
+
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3386,7 +3406,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="detail"&&<DetailProgress woData={woData}/>}
             {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
             {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
-            {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData}/>}
+            {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
             {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} setKendalaLog={setKendalaLog}/>}
