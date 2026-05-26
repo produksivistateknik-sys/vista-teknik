@@ -4,6 +4,7 @@ import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
+import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
@@ -2408,19 +2409,25 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
   const [expandedPanel,setExpandedPanel]=useState({});
 
   const save=async()=>{
-  const np=panels.filter(p=>p.nama).map((p,i)=>({
-    id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-    checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
-}));
-  if(editId){
-    const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target})
-    if(result.success) setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
-  } else {
-    const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target})
-    if(result.success) setWoData(prev=>[...prev,{...result.data,panels:np}]);
-  }
-  setOpen(false);
-};
+    const np=panels.filter(p=>p.nama).map((p,i)=>({
+      id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+      checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+    }));
+    if(editId){
+      const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
+      if(result.success){
+        await workOrderService.savePanels(editId, np);
+        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
+      }
+    } else {
+      const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
+      if(result.success){
+        await workOrderService.savePanels(result.data.id, np);
+        setWoData(prev=>[...prev,{...result.data,panels:np}]);
+      }
+    }
+    setOpen(false);
+  };
   const updateItemQty=(woId,panelId,kode,qty)=>{
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
