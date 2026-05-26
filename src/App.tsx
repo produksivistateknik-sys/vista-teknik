@@ -344,13 +344,13 @@ function MasterPekerja({pekerja,setPekerja}){
     p.nama.toLowerCase().includes(search.toLowerCase())
   );
 
-  const save=()=>{
+  const save=async()=>{
     if(!form.nama.trim())return;
     if(editId){
-      setPekerja(prev=>prev.map(p=>p.id!==editId?p:{...p,...form}));
+      await updatePekerja(editId,{nama:form.nama.trim(),divisi:form.divisi});
       setEditId(null);
     } else {
-      setPekerja(prev=>[...prev,{id:uid(),nama:form.nama.trim(),divisi:form.divisi}]);
+      await createPekerja({nama:form.nama.trim(),divisi:form.divisi});
     }
     setForm({nama:"",divisi:"mekanik"});
   };
@@ -3281,9 +3281,9 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const [kendalaLog,setKendalaLog]=useState([]); // {id,divisi,tanggal,proses,catatan,ts}
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
-  const { data: pekerjaList, loading: pekerjaLoading } = usePekerja()
-const { data: renharList, loading: renharLoading } = useRenhar()
-const { data: rawList, loading: rawLoading } = useRawSchedule()
+const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
+const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
+const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw } = useRawSchedule()
 useEffect(() => {
   if (!woLoading) setWoData(woList)
 }, [woList, woLoading])
@@ -3408,7 +3408,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
             {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
-            {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja}/>}
+            {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
             {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} setKendalaLog={setKendalaLog}/>}
           </div>
