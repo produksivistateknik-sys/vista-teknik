@@ -5,9 +5,9 @@ import { useRenhar } from './hooks/useRenhar'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { useRawSchedule } from "./hooks/useRawSchedule";
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // PANEL TYPES
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PANEL_TYPES = {
   FS: {
     label:"FS", color:"#f59e0b",
@@ -106,20 +106,20 @@ const DIVISI_PROSES = {
   wiring_pwr: ["WIRING POWER"],
   qc:         ["QC TEST","PACKING"],
 };
-// reverse map: proses → array of proses in same divisi
+// reverse map: proses â†’ array of proses in same divisi
 const DIVISI_PROSES_MAP=Object.fromEntries(
   Object.entries(DIVISI_PROSES).flatMap(([,ps])=>ps.map(p=>[p,ps]))
 );
 const QTY_DIVISI = ["mekanik","painting"];
 
 const DIVISI_CONFIG = {
-  admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",password:"Admin123",   proses:null},
-  mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
-  painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",password:"painting123",proses:["PAINTING"]},
-  assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",password:"assembling123",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
-  wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
-  wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
-  qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
+  admin:      {label:"Admin",         icon:"âš™ï¸", color:"#dc2626",bg:"#fef2f2",password:"Admin123",   proses:null},
+  mekanik:    {label:"Mekanik",       icon:"ðŸ”§", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
+  painting:   {label:"Painting",      icon:"ðŸŽ¨", color:"#7c3aed",bg:"#f5f3ff",password:"painting123",proses:["PAINTING"]},
+  assembling: {label:"Assembling",    icon:"âš™ï¸", color:"#059669",bg:"#ecfdf5",password:"assembling123",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
+  wiring_ctrl:{label:"Wiring Control",icon:"âš¡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
+  wiring_pwr: {label:"Wiring Power",  icon:"ðŸ”Œ", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
+  qc:         {label:"QC",            icon:"ðŸ”", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
 };
 const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc"];
 
@@ -134,14 +134,14 @@ const USERS = [
   {id:11,name:"Dewi QC",         divisi:"qc"},
 ];
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // PEKERJA SEED
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const PEKERJA_SEED=[];
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // HELPERS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function initChecklist(tipe, qty=1){
   const cfg=PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};
@@ -224,18 +224,18 @@ function getDayLabel(s){ return new Date(s).toLocaleDateString("id-ID",{day:"num
 function fmtDateFull(s){ return new Date(s).toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long",year:"numeric"}); }
 let _id=8000; function uid(){ return ++_id; }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SEED DATA
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const WO_SEED=[];
 
 const RAW_SEED=[];
 
 const RENHAR_SEED=[];
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // CSS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 const GCss=`
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
@@ -252,9 +252,9 @@ input::placeholder,textarea::placeholder{color:#94a3b8}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
 `;
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SHARED UI
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Badge({label,color,bg}){
   return <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,
     fontSize:10,fontWeight:700,color,background:bg||color+"18",border:`1px solid ${color}30`,whiteSpace:"nowrap"}}>{label}</span>;
@@ -298,7 +298,7 @@ function Modal({children,onClose,title,width=480}){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
           padding:"16px 20px",borderBottom:"1px solid #f1f5f9",borderRadius:"16px 16px 0 0",background:"#fff",zIndex:1}}>
           <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{title}</div>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
+          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>âœ•</button>
         </div>
         <div style={{padding:20}}>{children}</div>
       </div>
@@ -324,9 +324,9 @@ const wpProgress=(panelData,wp,proses)=>{
   return Math.round((done/total)*100);
 };
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MASTER PEKERJA
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function MasterPekerja({pekerja,setPekerja}){
   const [form,setForm]=useState({nama:"",divisi:"mekanik"});
   const [editId,setEditId]=useState(null);
@@ -377,7 +377,7 @@ function MasterPekerja({pekerja,setPekerja}){
 
       <Card style={{marginBottom:18}}>
         <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
-          {editId?"✏️ Edit Pekerja":"➕ Tambah Pekerja Baru"}
+          {editId?"âœï¸ Edit Pekerja":"âž• Tambah Pekerja Baru"}
         </div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
           <div style={{flex:1,minWidth:200}}>
@@ -402,7 +402,7 @@ function MasterPekerja({pekerja,setPekerja}){
 
       <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="🔍 Cari nama pekerja..."
+          placeholder="ðŸ” Cari nama pekerja..."
           style={{padding:"8px 14px",borderRadius:9,border:"1.5px solid #e2e8f0",background:"#fff",
             fontSize:13,width:260,color:"#1e293b"}}/>
         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
@@ -436,10 +436,10 @@ function MasterPekerja({pekerja,setPekerja}){
               <div style={{display:"flex",gap:5}}>
                 <button onClick={()=>startEdit(p)}
                   style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:7,
-                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#475569"}}>✏️</button>
+                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#475569"}}>âœï¸</button>
                 <button onClick={()=>setDelId(p.id)}
                   style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:7,
-                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#dc2626"}}>🗑</button>
+                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#dc2626"}}>ðŸ—‘</button>
               </div>
             </div>
           );
@@ -466,9 +466,9 @@ function MasterPekerja({pekerja,setPekerja}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // TRACKING PEKERJA
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function TrackingPekerja({pekerja,renhar}){
   const [selPekerja,setSelPekerja]=useState(null);
   const [filterDiv,setFilterDiv]=useState("ALL");
@@ -593,9 +593,9 @@ function TrackingPekerja({pekerja,renhar}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // RENCANA HARIAN
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -692,14 +692,14 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
       <Card style={{marginBottom:14,padding:"12px 16px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}}
-            onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
+            onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"â—€"}</Btn>
           <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}}
             style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",
               fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}}
-            onClick={()=>setWeekStart(addDays(weekStart,7))}>{"▶"}</Btn>
+            onClick={()=>setWeekStart(addDays(weekStart,7))}>{"â–¶"}</Btn>
           <span style={{fontSize:13,fontWeight:700,color:"#1e293b",marginLeft:4}}>
-            {fmtShort(weekStart)} — {fmtShort(addDays(weekStart,6))}
+            {fmtShort(weekStart)} â€” {fmtShort(addDays(weekStart,6))}
           </span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
@@ -733,7 +733,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
       {/* TOOLBAR */}
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>
-          📅 {fmtDateFull(selDate)}
+          ðŸ“… {fmtDateFull(selDate)}
         </div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           {filteredTasks.length>0&&(
@@ -743,12 +743,12 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
           )}
           {!allDist&&filteredTasks.length>0&&(
             <Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>
-              ✓ Distribusi Semua
+              âœ“ Distribusi Semua
             </Btn>
           )}
           {allDist&&filteredTasks.length>0&&(
             <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",
-              borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Terdistribusi</span>
+              borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>âœ… Semua Terdistribusi</span>
           )}
         </div>
       </div>
@@ -779,7 +779,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
       {/* EMPTY STATE */}
       {filteredTasks.length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-          <div style={{fontSize:40,marginBottom:12}}>📭</div>
+          <div style={{fontSize:40,marginBottom:12}}>ðŸ“­</div>
           <div style={{fontSize:14,fontWeight:600}}>Tidak ada pekerjaan pada tanggal ini</div>
           <div style={{fontSize:12,marginTop:4}}>Tambahkan jadwal di Raw Schedule terlebih dahulu</div>
         </div>
@@ -875,7 +875,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
                               {workers.map(n=>(
                                 <span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",
                                   color:"#1d4ed8",borderRadius:20,padding:"2px 8px",
-                                  fontSize:10,fontWeight:700}}>👤 {n}</span>
+                                  fontSize:10,fontWeight:700}}>ðŸ‘¤ {n}</span>
                               ))}
                             </div>
                           ):(
@@ -885,16 +885,16 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
                         <td style={{...td,textAlign:"center"}}>
                           {dist?(
                             <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",
-                              borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Terdistribusi</span>
+                              borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>âœ… Terdistribusi</span>
                           ):(
                             <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",
-                              borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⏳ Belum</span>
+                              borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>â³ Belum</span>
                           )}
                         </td>
                         <td style={{...td,textAlign:"center"}}>
                           <Btn color={dist?"#0891b2":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}}
                             onClick={()=>openAssign(t)}>
-                            {dist?"👥 Edit":"👤 Distribusi"}
+                            {dist?"ðŸ‘¥ Edit":"ðŸ‘¤ Distribusi"}
                           </Btn>
                         </td>
                       </tr>
@@ -913,8 +913,8 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
         const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
         return(
-          <Modal title={(assignModal.existing?"Edit":"Distribusi")+" — "+task.proses} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
-            <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
+          <Modal title={(assignModal.existing?"Edit":"Distribusi")+" â€” "+task.proses} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} Â· {task.panel}</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
               <Badge label={task.proses} color={PROSES_COLOR[task.proses]||"#64748b"}/>
               <Badge label={task.wp} color={WP_COLOR[task.wp]||"#64748b"}/>
@@ -939,7 +939,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
                         background:isSel?(dc?.color||"#2563eb"):(dc?.bg||"#eff6ff"),
                         display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,
                         color:isSel?"#fff":(dc?.color||"#2563eb")}}>
-                        {isSel?"✓":(dc?.icon||"👤")}
+                        {isSel?"âœ“":(dc?.icon||"ðŸ‘¤")}
                       </div>
                       <span style={{fontWeight:isSel?700:500,fontSize:13,
                         color:isSel?(dc?.color||"#2563eb"):"#475569"}}>{p.nama}</span>
@@ -951,7 +951,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
             {selPekerja.length>0&&(
               <div style={{padding:"8px 12px",background:"#f0fdf4",borderRadius:8,marginBottom:14,
                 fontSize:12,color:"#16a34a",fontWeight:600}}>
-                ✓ {selPekerja.length} operator dipilih: {selPekerja.map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean).join(", ")}
+                âœ“ {selPekerja.length} operator dipilih: {selPekerja.map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean).join(", ")}
               </div>
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
@@ -968,9 +968,9 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // KENDALA INBOX
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function KendalaInbox({kendalaLog,setKendalaLog}){
   const [filterDiv,setFilterDiv]=useState("ALL");
   const [filterProses,setFilterProses]=useState("ALL");
@@ -1019,7 +1019,7 @@ function KendalaInbox({kendalaLog,setKendalaLog}){
 
       {filtered.length===0?(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-          <div style={{fontSize:40,marginBottom:12}}>📭</div>
+          <div style={{fontSize:40,marginBottom:12}}>ðŸ“­</div>
           <div style={{fontSize:14,fontWeight:600}}>Belum ada catatan kendala</div>
           <div style={{fontSize:12,marginTop:4}}>Catatan dari operator akan muncul di sini</div>
         </div>
@@ -1038,12 +1038,12 @@ function KendalaInbox({kendalaLog,setKendalaLog}){
                       {dc?.icon} {dc?.label}
                     </span>
                     <Badge label={k.proses} color={pc}/>
-                    <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>📅 {fmtDate(k.tanggal)}</span>
-                    <span style={{fontSize:11,color:"#94a3b8"}}>👤 {k.operator}</span>
+                    <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>ðŸ“… {fmtDate(k.tanggal)}</span>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>ðŸ‘¤ {k.operator}</span>
                   </div>
                   <button onClick={()=>setKendalaLog(prev=>prev.filter(x=>x.id!==k.id))}
                     style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13,flexShrink:0}}>
-                    🗑
+                    ðŸ—‘
                   </button>
                 </div>
                 <div style={{marginTop:10,fontSize:13,color:"#374151",lineHeight:1.6,
@@ -1062,9 +1062,9 @@ function KendalaInbox({kendalaLog,setKendalaLog}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // LANDING PAGE
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function LandingPage({onEnter}){
   return(
     <div style={{minHeight:"100vh",background:"#f8fafc",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
@@ -1135,12 +1135,12 @@ function LandingPage({onEnter}){
               style={{background:"#2563eb",color:"#fff",fontWeight:800,fontSize:15,padding:"14px 32px",
                 borderRadius:12,border:"none",cursor:"pointer",boxShadow:"0 4px 18px #2563eb33",
                 display:"flex",alignItems:"center",gap:8}}>
-              Masuk ke Aplikasi <span style={{fontSize:18}}>›</span>
+              Masuk ke Aplikasi <span style={{fontSize:18}}>â€º</span>
             </button>
           </div>
         </div>
 
-        {/* RIGHT — floating stats + panel illustration */}
+        {/* RIGHT â€” floating stats + panel illustration */}
         <div style={{position:"relative",height:420,display:"flex",alignItems:"center",justifyContent:"center"}}>
           {/* big blob bg */}
           <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",
@@ -1192,7 +1192,7 @@ function LandingPage({onEnter}){
             <div style={{margin:"8px 0 6px",height:5,background:"#e2e8f0",borderRadius:99}}>
               <div style={{width:"75%",height:"100%",background:"#2563eb",borderRadius:99}}/>
             </div>
-            <div style={{fontSize:10,color:"#22c55e",fontWeight:700}}>● On Progress</div>
+            <div style={{fontSize:10,color:"#22c55e",fontWeight:700}}>â— On Progress</div>
           </div>
 
           {/* floating card: Order Aktif */}
@@ -1200,7 +1200,7 @@ function LandingPage({onEnter}){
             background:"#fff",borderRadius:14,padding:"14px 18px",boxShadow:"0 8px 32px #00000018",
             minWidth:140,zIndex:2}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <div style={{width:28,height:28,background:"#eff6ff",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📋</div>
+              <div style={{width:28,height:28,background:"#eff6ff",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>ðŸ“‹</div>
               <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>Order Aktif</div>
             </div>
             <div style={{fontSize:32,fontWeight:900,color:"#1d4ed8",lineHeight:1}}>12</div>
@@ -1214,7 +1214,7 @@ function LandingPage({onEnter}){
             <div style={{fontSize:11,color:"#64748b",fontWeight:600,marginBottom:4}}>QC Pass Rate</div>
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
               <div style={{fontSize:28,fontWeight:900,color:"#1d4ed8",lineHeight:1}}>98%</div>
-              <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>↑ 4%</div>
+              <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>â†‘ 4%</div>
             </div>
             <svg width="100" height="28" viewBox="0 0 100 28" fill="none" style={{marginTop:6}}>
               <polyline points="0,22 20,18 40,20 60,12 80,8 100,4" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" fill="none"/>
@@ -1229,10 +1229,10 @@ function LandingPage({onEnter}){
         <div style={{maxWidth:1280,margin:"0 auto",display:"grid",
           gridTemplateColumns:"repeat(4,1fr)",gap:32}}>
           {[
-            {icon:"🔧",title:"Produksi",sub:"Kelola proses produksi"},
-            {icon:"📦",title:"Material",sub:"Stok & BOM"},
-            {icon:"🔍",title:"QC / Testing",sub:"Kontrol kualitas"},
-            {icon:"📊",title:"Laporan",sub:"Data & laporan"},
+            {icon:"ðŸ”§",title:"Produksi",sub:"Kelola proses produksi"},
+            {icon:"ðŸ“¦",title:"Material",sub:"Stok & BOM"},
+            {icon:"ðŸ”",title:"QC / Testing",sub:"Kontrol kualitas"},
+            {icon:"ðŸ“Š",title:"Laporan",sub:"Data & laporan"},
           ].map(f=>(
             <div key={f.title} className="feat-card" style={{display:"flex",alignItems:"center",gap:14,
               padding:"16px 20px",borderRadius:12,border:"1px solid #f1f5f9",cursor:"pointer"}}>
@@ -1249,15 +1249,15 @@ function LandingPage({onEnter}){
 
       {/* FOOTER */}
       <div style={{textAlign:"center",padding:"24px",fontSize:12,color:"#94a3b8"}}>
-        © 2025 <span style={{color:"#ea580c",fontWeight:700}}>Vista Teknik</span>. All rights reserved.
+        Â© 2025 <span style={{color:"#ea580c",fontWeight:700}}>Vista Teknik</span>. All rights reserved.
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // LOGIN
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Login({onLogin}){
   const [div,setDiv]=useState("admin");
   const [uid,setUid]=useState(1);
@@ -1274,20 +1274,20 @@ function Login({onLogin}){
       <style>{GCss}</style>
       <div style={{flex:1,background:"linear-gradient(145deg,#1e3a8a,#1d4ed8 60%,#3b82f6)",
         display:"flex",flexDirection:"column",justifyContent:"center",padding:"60px 72px",color:"#fff"}}>
-        <div style={{fontSize:44,marginBottom:10}}>⚡</div>
+        <div style={{fontSize:44,marginBottom:10}}>âš¡</div>
         <div style={{fontSize:32,fontWeight:800,lineHeight:1.2,marginBottom:14}}>Monitoring<br/>Proses Produksi</div>
         <div style={{fontSize:14,opacity:.75,lineHeight:1.8,maxWidth:320}}>Platform terpadu monitoring progress produksi panel listrik secara real-time.</div>
         <div style={{marginTop:36,display:"flex",flexDirection:"column",gap:10}}>
           {["Tabel produksi harian lengkap","Shift & PIC per komponen","Prioritas dari Raw Schedule","Status H-7 Mendesak"].map(f=>(
             <div key={f} style={{display:"flex",alignItems:"center",gap:10,fontSize:13,opacity:.85}}>
-              <span style={{width:18,height:18,borderRadius:"50%",background:"#ffffff25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>✓</span>{f}
+              <span style={{width:18,height:18,borderRadius:"50%",background:"#ffffff25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>âœ“</span>{f}
             </div>
           ))}
         </div>
       </div>
       <div style={{width:440,display:"flex",alignItems:"center",justifyContent:"center",padding:40,background:"#fff"}}>
         <div style={{width:"100%",maxWidth:340}} className="fi">
-          <div style={{fontWeight:800,fontSize:22,color:"#1e293b",marginBottom:4}}>Selamat Datang 👋</div>
+          <div style={{fontWeight:800,fontSize:22,color:"#1e293b",marginBottom:4}}>Selamat Datang ðŸ‘‹</div>
           <div style={{fontSize:13,color:"#64748b",marginBottom:28}}>Masuk ke akun Anda</div>
           <div style={{marginBottom:12}}><Lbl>Divisi</Lbl>
             <Sel value={div} onChange={e=>{setDiv(e.target.value);setUid(USERS.find(u=>u.divisi===e.target.value)?.id||1);setErr("");}}>
@@ -1308,14 +1308,14 @@ function Login({onLogin}){
                 style={{border:`1.5px solid ${err?"#fca5a5":"#e2e8f0"}`,paddingRight:40}}/>
               <button onClick={()=>setShow(!show)} style={{position:"absolute",right:10,top:"50%",
                 transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}>
-                {show?"🙈":"👁"}
+                {show?"ðŸ™ˆ":"ðŸ‘"}
               </button>
             </div>
             {err&&<div style={{fontSize:11,color:"#dc2626",marginTop:5}}>{err}</div>}
           </div>
-          <Btn color="#1d4ed8" style={{width:"100%",padding:13,fontSize:15,boxShadow:"0 4px 14px #2563eb33"}} onClick={go}>Masuk →</Btn>
+          <Btn color="#1d4ed8" style={{width:"100%",padding:13,fontSize:15,boxShadow:"0 4px 14px #2563eb33"}} onClick={go}>Masuk â†’</Btn>
           <div style={{marginTop:16,padding:"8px 12px",background:"#f8fafc",borderRadius:8,fontSize:11,color:"#94a3b8"}}>
-            💡 Demo: <span style={{fontFamily:"'DM Mono',monospace",color:"#475569"}}>{DIVISI_CONFIG[div].password}</span>
+            ðŸ’¡ Demo: <span style={{fontFamily:"'DM Mono',monospace",color:"#475569"}}>{DIVISI_CONFIG[div].password}</span>
           </div>
         </div>
       </div>
@@ -1323,25 +1323,25 @@ function Login({onLogin}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DASHBOARD
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function Dashboard({woData}){
   if(!woData.length) return(
     <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:40,marginBottom:12}}>ðŸ“‹</div>
       <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
       <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
     </div>
   );
   const stats=[
-    {v:woData.length,l:"Total WO",i:"📋"},
-    {v:woData.reduce((a,w)=>a+w.panels.length,0),l:"Total Panel",i:"⚡"},
-    {v:(Math.round(woData.reduce((a,w)=>a+woOverall(w),0)/woData.length||0))+"%",l:"Avg Progress",i:"📊"},
-    {v:woData.filter(w=>!isDelayed(w.target)&&!isUrgent(w.target)&&woOverall(w)<100).length,l:"On Track",i:"🟢"},
-    {v:woData.filter(w=>isUrgent(w.target)&&woOverall(w)<100).length,l:"Mendesak (H-7)",i:"🟠"},
-    {v:woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length,l:"Terlambat",i:"🔴"},
-    {v:woData.filter(w=>woOverall(w)===100).length,l:"Selesai",i:"✅"},
+    {v:woData.length,l:"Total WO",i:"ðŸ“‹"},
+    {v:woData.reduce((a,w)=>a+w.panels.length,0),l:"Total Panel",i:"âš¡"},
+    {v:(Math.round(woData.reduce((a,w)=>a+woOverall(w),0)/woData.length||0))+"%",l:"Avg Progress",i:"ðŸ“Š"},
+    {v:woData.filter(w=>!isDelayed(w.target)&&!isUrgent(w.target)&&woOverall(w)<100).length,l:"On Track",i:"ðŸŸ¢"},
+    {v:woData.filter(w=>isUrgent(w.target)&&woOverall(w)<100).length,l:"Mendesak (H-7)",i:"ðŸŸ "},
+    {v:woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length,l:"Terlambat",i:"ðŸ”´"},
+    {v:woData.filter(w=>woOverall(w)===100).length,l:"Selesai",i:"âœ…"},
   ];
   return(
     <div className="fi">
@@ -1352,10 +1352,10 @@ function Dashboard({woData}){
           <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,
             background:st.bg,border:`1px solid ${st.color}30`,borderRadius:10,
             padding:"9px 14px",marginBottom:8,fontSize:13}}>
-            <span>{isDelayed(w.target)?"🔴":isUrgent(w.target)?"🟠":"🟢"}</span>
-            <span style={{fontWeight:700,color:st.color,flex:1}}>WO {w.wo} — {w.proyek}</span>
+            <span>{isDelayed(w.target)?"ðŸ”´":isUrgent(w.target)?"ðŸŸ ":"ðŸŸ¢"}</span>
+            <span style={{fontWeight:700,color:st.color,flex:1}}>WO {w.wo} â€” {w.proyek}</span>
             <span style={{fontSize:11,color:"#64748b"}}>
-              {isDelayed(w.target)?`Terlambat ${Math.abs(d)} hari`:`H-${d}`} · Target: {w.target}
+              {isDelayed(w.target)?`Terlambat ${Math.abs(d)} hari`:`H-${d}`} Â· Target: {w.target}
             </span>
             <Badge label={st.label} color={st.color} bg={st.bg}/>
           </div>
@@ -1379,9 +1379,9 @@ function Dashboard({woData}){
               <div>
                 <span style={{fontWeight:800,color:"#1e293b",fontSize:15,fontFamily:"'DM Mono',monospace"}}>WO {wo.wo}</span>
                 <span style={{color:"#475569",fontWeight:600,marginLeft:10}}>{wo.proyek}</span>
-                <span style={{color:"#94a3b8",fontSize:12,marginLeft:8}}>📅 {wo.target}</span>
+                <span style={{color:"#94a3b8",fontSize:12,marginLeft:8}}>ðŸ“… {wo.target}</span>
                 {pct<100&&<span style={{fontSize:11,color:st.color,marginLeft:8,fontWeight:600}}>
-                  {isDelayed(wo.target)?`⚠️ Terlambat ${Math.abs(d)} hari`:`H-${d}`}
+                  {isDelayed(wo.target)?`âš ï¸ Terlambat ${Math.abs(d)} hari`:`H-${d}`}
                 </span>}
               </div>
               <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1405,13 +1405,13 @@ function Dashboard({woData}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // SUMMARY PROGRESS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function SummaryProgress({woData}){
   if(!woData.length) return(
     <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:40,marginBottom:12}}>ðŸ“‹</div>
       <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
       <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
     </div>
@@ -1452,12 +1452,12 @@ function SummaryProgress({woData}){
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="🔍 Cari WO / proyek / panel..."
+          placeholder="ðŸ” Cari WO / proyek / panel..."
           style={{padding:"8px 14px",borderRadius:9,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1e293b",fontSize:13,width:280}}/>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <Badge label="✅ SELESAI" color="#16a34a"/><Badge label="🟢 ON TRACK" color="#2563eb"/>
-          <Badge label="🟠 MENDESAK H-7" color="#ea580c"/><Badge label="🔴 TERLAMBAT" color="#dc2626"/>
-          <span style={{fontSize:11,color:"#94a3b8"}}>👁 Read-only</span>
+          <Badge label="âœ… SELESAI" color="#16a34a"/><Badge label="ðŸŸ¢ ON TRACK" color="#2563eb"/>
+          <Badge label="ðŸŸ  MENDESAK H-7" color="#ea580c"/><Badge label="ðŸ”´ TERLAMBAT" color="#dc2626"/>
+          <span style={{fontSize:11,color:"#94a3b8"}}>ðŸ‘ Read-only</span>
         </div>
       </div>
       <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
@@ -1541,9 +1541,9 @@ function SummaryProgress({woData}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // DETAIL PROGRESS
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function DetailProgress({woData}){
   const [selWoId,setSelWoId]=useState(woData[0]?.id);
   const wo=woData.find(w=>w.id===selWoId);
@@ -1560,7 +1560,7 @@ function DetailProgress({woData}){
 
   if(!woData.length) return(
     <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-      <div style={{fontSize:40,marginBottom:12}}>📋</div>
+      <div style={{fontSize:40,marginBottom:12}}>ðŸ“‹</div>
       <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
       <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
     </div>
@@ -1574,17 +1574,17 @@ function DetailProgress({woData}){
             const w=woData.find(x=>x.id===Number(e.target.value));
             setSelWoId(Number(e.target.value));setSelPanelId(w?.panels[0]?.id);setWpFilter("ALL");
           }}>
-            {woData.map(w=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
+            {woData.map(w=><option key={w.id} value={w.id}>WO {w.wo} â€” {w.proyek}</option>)}
           </Sel>
         </div>
         <div style={{flex:1,minWidth:200}}><Lbl>Panel</Lbl>
           <Sel value={selPanelId} onChange={e=>setSelPanelId(Number(e.target.value))}>
-            {wo?.panels.map(p=><option key={p.id} value={p.id}>#{p.noPnl} — {p.nama}</option>)}
+            {wo?.panels.map(p=><option key={p.id} value={p.id}>#{p.noPnl} â€” {p.nama}</option>)}
           </Sel>
         </div>
         <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,
           padding:"6px 14px",fontSize:11,color:"#92400e",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-          🔒 Hanya baca · arahkan kursor ke sel ber-🕐 untuk lihat riwayat progress
+          ðŸ”’ Hanya baca Â· arahkan kursor ke sel ber-ðŸ• untuk lihat riwayat progress
         </div>
       </div>
       {panel&&cfg&&(
@@ -1626,7 +1626,7 @@ function DetailProgress({woData}){
                   <th style={{...thS,textAlign:"left",minWidth:52,position:"sticky",left:0,zIndex:4}}>WP</th>
                   <th style={{...thS,textAlign:"left",minWidth:200,position:"sticky",left:52,zIndex:4}}>Komponen</th>
                   <th style={{...thS,minWidth:60}}>Kode</th>
-                  <th style={{...thS,minWidth:56}}>QTY 🔒</th>
+                  <th style={{...thS,minWidth:56}}>QTY ðŸ”’</th>
                   {ALL_PROSES.map(pr=>(
                     <th key={pr} style={{...thS,minWidth:110,borderBottom:`2px solid ${PROSES_COLOR[pr]}`}}>
                       {pr}
@@ -1646,35 +1646,35 @@ function DetailProgress({woData}){
                         {ii===0&&<span style={{background:wpDef.color+"18",border:`1px solid ${wpDef.color}33`,borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>{wpDef.wp}</span>}
                       </td>
                       <td style={{...td,position:"sticky",left:52,zIndex:1,fontWeight:600,color:isLocked?"#cbd5e1":"#374151",verticalAlign:"middle",whiteSpace:"nowrap"}}>
-                        {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#cbd5e1"}}>🔒</span>}
+                        {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#cbd5e1"}}>ðŸ”’</span>}
                       </td>
                       <td style={{...td,textAlign:"center",verticalAlign:"middle",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontSize:10}}>{item.kode}</td>
-                      {/* QTY — read only */}
+                      {/* QTY â€” read only */}
                       <td style={{...td,textAlign:"center",verticalAlign:"middle"}}>
                         <span style={{fontWeight:800,fontFamily:"'DM Mono',monospace",fontSize:12,
                           color:isLocked?"#fca5a5":"#1e293b",
                           background:isLocked?"#fef2f2":"#f1f5f9",
                           borderRadius:6,padding:"3px 10px",display:"inline-block"}}>
-                          {cl.qty} 🔒
+                          {cl.qty} ðŸ”’
                         </span>
                       </td>
-                      {/* PROGRESS — read only, dengan tooltip riwayat */}
+                      {/* PROGRESS â€” read only, dengan tooltip riwayat */}
                       {ALL_PROSES.map(pr=>{
                         const v=getLatestProgress(cl,pr);const isDone=v===100;
                         const hist=cl.history?.[pr]||[];
                         return(
                           <td key={pr} style={{...td,textAlign:"center",verticalAlign:"middle",padding:"4px 5px"}}>
                             {isLocked
-                              ?<div style={{height:28,borderRadius:6,background:"#f1f5f9",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#e2e8f0",fontSize:12}}>—</span></div>
+                              ?<div style={{height:28,borderRadius:6,background:"#f1f5f9",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#e2e8f0",fontSize:12}}>â€”</span></div>
                               :<div className={hist.length>0?"hist-cell":""} style={{height:28,borderRadius:6,
                                   cursor:hist.length>0?"help":"default",position:"relative",
                                   background:v===0?"transparent":pBg(v),
                                   border:v===0?"1px dashed #e2e8f0":`1px solid ${pColor(v)}30`,
                                   display:"flex",alignItems:"center",justifyContent:"center",minWidth:66,gap:3}}>
-                                {v===0?<span style={{color:"#cbd5e1",fontSize:12}}>—</span>
+                                {v===0?<span style={{color:"#cbd5e1",fontSize:12}}>â€”</span>
                                   :<>
                                     <span style={{fontWeight:700,fontSize:11,color:pColor(v),fontFamily:"'DM Mono',monospace"}}>{isDone?"Done":`${v}%`}</span>
-                                    {hist.length>0&&<span style={{fontSize:9,color:pColor(v),opacity:.6}}>🕐</span>}
+                                    {hist.length>0&&<span style={{fontSize:9,color:pColor(v),opacity:.6}}>ðŸ•</span>}
                                   </>}
                                 {hist.length>0&&(
                                   <div className="hist-tooltip" style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",
@@ -1688,7 +1688,7 @@ function DetailProgress({woData}){
                                         alignItems:"center",gap:10,padding:"3px 0",
                                         borderTop:hi>0?"1px solid #ffffff15":"none"}}>
                                         <span style={{fontSize:11,color:"#e2e8f0",whiteSpace:"nowrap"}}>
-                                          {fmtShort(h.tanggal)} · Shift {h.shift}
+                                          {fmtShort(h.tanggal)} Â· Shift {h.shift}
                                         </span>
                                         <span style={{fontSize:11,fontWeight:800,color:pColor(h.pct),
                                           fontFamily:"'DM Mono',monospace"}}>{h.pct}%</span>
@@ -1720,16 +1720,16 @@ function DetailProgress({woData}){
               </tfoot>
             </table>
           </div>
-          <div style={{marginTop:7,fontSize:11,color:"#94a3b8"}}>💡 Klik cell proses untuk update · 🔒 Qty=0 terkunci</div>
+          <div style={{marginTop:7,fontSize:11,color:"#94a3b8"}}>ðŸ’¡ Klik cell proses untuk update Â· ðŸ”’ Qty=0 terkunci</div>
         </Card>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // RAW SCHEDULE
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
@@ -1958,9 +1958,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <Btn outline color="#2563eb" style={{padding:"6px 14px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>‹ Minggu Lalu</Btn>
+          <Btn outline color="#2563eb" style={{padding:"6px 14px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>â€¹ Minggu Lalu</Btn>
           <button onClick={()=>setWeekStart(TODAY)} style={{padding:"6px 14px",borderRadius:8,border:"1.5px solid #e2e8f0",background:weekStart===TODAY?"#eff6ff":"#fff",color:"#2563eb",cursor:"pointer",fontSize:12,fontWeight:700}}>Hari Ini</button>
-          <Btn outline color="#2563eb" style={{padding:"6px 14px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>Minggu Depan ›</Btn>
+          <Btn outline color="#2563eb" style={{padding:"6px 14px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>Minggu Depan â€º</Btn>
         </div>
         <Btn color="#1d4ed8" onClick={()=>setAddModal(true)}>+ Tambah Panel</Btn>
       </div>
@@ -1985,7 +1985,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
           <button onClick={()=>{setFilterProyek("ALL");setFilterPanel("ALL");}}
             style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",
               background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>
-            ✕ Reset
+            âœ• Reset
           </button>
         )}
       </div>
@@ -2018,10 +2018,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
         ))}
         {PRIORITAS.map(p=><Badge key={p} label={p} color={PRIORITAS_COLOR[p]}/>)}
         {/* status legend */}
-        <span style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>✓ Finish</span>
-        <span style={{fontSize:11,color:"#f59e0b",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"2px 10px",fontWeight:700}}>● On Progress</span>
-        <span style={{fontSize:11,color:"#64748b",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>○ Belum Mulai</span>
-        <span style={{fontSize:11,color:"#94a3b8"}}>{"💡 Klik cell → WP & komponen · Drag → pindah/copy · Klik tanggal → review"}</span>
+        <span style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>âœ“ Finish</span>
+        <span style={{fontSize:11,color:"#f59e0b",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"2px 10px",fontWeight:700}}>â— On Progress</span>
+        <span style={{fontSize:11,color:"#64748b",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>â—‹ Belum Mulai</span>
+        <span style={{fontSize:11,color:"#94a3b8"}}>{"ðŸ’¡ Klik cell â†’ WP & komponen Â· Drag â†’ pindah/copy Â· Klik tanggal â†’ review"}</span>
       </div>
 
       <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
@@ -2039,10 +2039,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                     borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
-                  {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
+                  {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>â–¼ Review</div>}
                 </th>
               ))}
-              <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
+              <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>âœ•</th>
             </tr>
           </thead>
           <tbody>
@@ -2106,7 +2106,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                                 status==="finish"?{background:"#16a34a",opacity:.9}:
                                 status==="on_progress"?{background:"#f59e0b"}:
                                 {background:WP_COLOR[e.wp]||"#64748b"};
-                              const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
+                              const statusIcon=status==="finish"?"âœ“":status==="on_progress"?"â—":"";
                               return(
                                 <div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>
                                   {statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}
@@ -2126,7 +2126,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                     );
                   })}
                   <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                    <button onClick={()=>setRawData(prev=>prev.filter(r=>r.id!==row.id))} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                    <button onClick={()=>setRawData(prev=>prev.filter(r=>r.id!==row.id))} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>ðŸ—‘</button>
                   </td>
                 </tr>
               );
@@ -2140,10 +2140,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
         <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#f0f8ff"}} className="su">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
             <div>
-              <div style={{fontWeight:800,fontSize:15,color:"#1d4ed8"}}>📋 {fmtDateFull(selDate)}</div>
-              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{dateTasks.length} pekerjaan · Distribusi dilakukan di tab Rencana Harian</div>
+              <div style={{fontWeight:800,fontSize:15,color:"#1d4ed8"}}>ðŸ“‹ {fmtDateFull(selDate)}</div>
+              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{dateTasks.length} pekerjaan Â· Distribusi dilakukan di tab Rencana Harian</div>
             </div>
-            <button onClick={()=>setSelDate(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:20}}>✕</button>
+            <button onClick={()=>setSelDate(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:20}}>âœ•</button>
           </div>
           {dateTasks.map((t,i)=>{
             const pc=PROSES_COLOR[t.proses]||"#475569";
@@ -2153,11 +2153,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
             const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
             const status=getTaskStatus(t,t.tanggal,t.wp,t.komponen);
             const statusColor=status==="finish"?"#16a34a":status==="on_progress"?"#f59e0b":"#64748b";
-            const statusLabel=status==="finish"?"✓ Finish":status==="on_progress"?"● On Progress":"○ Belum Mulai";
+            const statusLabel=status==="finish"?"âœ“ Finish":status==="on_progress"?"â— On Progress":"â—‹ Belum Mulai";
             const taskKey=`${t.rawId}-${t.wp}-${t.tanggal}`;
             const isExpanded=expandedTasks[taskKey];
 
-            // Group komponen by status — 3 status saja
+            // Group komponen by status â€” 3 status saja
             const grouped={finish:[],on_progress:[],belum_mulai:[]};
             t.komponen.forEach(k=>{
               const s=getKomponenStatus(t.panelId,t.proses,k);
@@ -2166,9 +2166,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
             });
 
             const statusGroups=[
-              {key:"finish",label:"✓ Finish",color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
-              {key:"on_progress",label:"● On Progress",color:"#f59e0b",bg:"#fffbeb",border:"#fde68a"},
-              {key:"belum_mulai",label:"○ Belum Mulai",color:"#64748b",bg:"#f8fafc",border:"#e2e8f0"},
+              {key:"finish",label:"âœ“ Finish",color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
+              {key:"on_progress",label:"â— On Progress",color:"#f59e0b",bg:"#fffbeb",border:"#fde68a"},
+              {key:"belum_mulai",label:"â—‹ Belum Mulai",color:"#64748b",bg:"#f8fafc",border:"#e2e8f0"},
             ];
 
             return(
@@ -2196,7 +2196,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                     style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#475569",
                       borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,
                       display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
-                    {isExpanded?"▲ Tutup":"▼ Detail Status"}
+                    {isExpanded?"â–² Tutup":"â–¼ Detail Status"}
                   </button>
                 </div>
                 {isExpanded&&(
@@ -2226,8 +2226,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
       )}
 
       {cellModal&&rawRow&&(
-        <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
-          <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} · {rawRow.panel}</div>
+        <Modal title={`Jadwal ${getDayLabel(cellModal.date)} â€” ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} Â· {rawRow.panel}</div>
           {cellEntries.length>0&&(
             <div style={{marginBottom:16}}>
               <Lbl>{"WP & Komponen Terjadwal"}</Lbl>
@@ -2237,7 +2237,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                   <div key={e.wp} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #e2e8f0"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                       <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 10px",fontSize:12,fontWeight:700}}>{e.wp}</span>
-                      <button onClick={()=>removeEntry(e.wp)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13}}>✕ Hapus</button>
+                      <button onClick={()=>removeEntry(e.wp)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13}}>âœ• Hapus</button>
                     </div>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                       {e.komponen.map(k=>{
@@ -2267,9 +2267,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                       fontWeight:700,fontSize:12,opacity:1,
                       display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>
                     {wpDone?(
-                      <><span>✅</span>{wp}<span style={{fontSize:10,color:"#16a34a"}}>Selesai</span></>
+                      <><span>âœ…</span>{wp}<span style={{fontSize:10,color:"#16a34a"}}>Selesai</span></>
                     ):(
-                      <><span style={{width:8,height:8,borderRadius:"50%",background:added?"#e2e8f0":wc}}/>{wp} {added?"(terjadwal)":sel?"✓":""}</>
+                      <><span style={{width:8,height:8,borderRadius:"50%",background:added?"#e2e8f0":wc}}/>{wp} {added?"(terjadwal)":sel?"âœ“":""}</>
                     )}
                   </button>
                 );
@@ -2285,7 +2285,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                       <button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])}
                         style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,
                           background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>
-                        {sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
+                        {sel?"âœ“ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
                       </button>
                     );
                   })}
@@ -2307,8 +2307,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
         const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
         return(
-          <Modal title={`${existing?"Edit":"Distribusi"} Pekerja — ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
-            <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
+          <Modal title={`${existing?"Edit":"Distribusi"} Pekerja â€” ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} Â· {task.panel}</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
               <Badge label={task.proses} color={PROSES_COLOR[task.proses]||"#64748b"}/>
               <Badge label={`${task.wp}`} color={WP_COLOR[task.wp]||"#64748b"}/>
@@ -2329,7 +2329,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
                         border:`1.5px solid ${isSel?dc.color:"#e2e8f0"}`,background:isSel?dc.bg:"#f8fafc",transition:"all .15s"}}>
                       <div style={{width:28,height:28,borderRadius:8,background:isSel?dc.color:dc.bg,
                         display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>
-                        {isSel?"✓":dc.icon}
+                        {isSel?"âœ“":dc.icon}
                       </div>
                       <span style={{fontWeight:isSel?700:500,fontSize:13,color:isSel?dc.color:"#475569"}}>{p.nama}</span>
                     </div>
@@ -2339,7 +2339,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
             )}
             {selPekerja.length>0&&(
               <div style={{padding:"8px 12px",background:"#f0fdf4",borderRadius:8,marginBottom:14,fontSize:12,color:"#16a34a",fontWeight:600}}>
-                ✓ {selPekerja.length} pekerja dipilih: {selPekerja.map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean).join(", ")}
+                âœ“ {selPekerja.length} pekerja dipilih: {selPekerja.map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean).join(", ")}
               </div>
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
@@ -2356,8 +2356,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
         <Modal title="Pindah atau Copy?" onClose={()=>setDragMode(null)} width={360}>
           <div style={{fontSize:13,color:"#475569",marginBottom:16}}>Dari <strong>{getDayLabel(dragMode.fromDate)}</strong> ke <strong>{getDayLabel(dragMode.toDate)}</strong></div>
           <div style={{display:"flex",gap:10}}>
-            <Btn color="#dc2626" style={{flex:1}} onClick={()=>confirmDrag("move")}>📦 Pindah</Btn>
-            <Btn color="#2563eb" style={{flex:1}} onClick={()=>confirmDrag("copy")}>📋 Copy</Btn>
+            <Btn color="#dc2626" style={{flex:1}} onClick={()=>confirmDrag("move")}>ðŸ“¦ Pindah</Btn>
+            <Btn color="#2563eb" style={{flex:1}} onClick={()=>confirmDrag("copy")}>ðŸ“‹ Copy</Btn>
           </div>
         </Modal>
       )}
@@ -2368,13 +2368,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
             <div><Lbl>Work Order</Lbl>
               <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelId:""})}>
                 <option value="">-- Pilih WO --</option>
-                {woData.map(w=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
+                {woData.map(w=><option key={w.id} value={w.id}>WO {w.wo} â€” {w.proyek}</option>)}
               </Sel>
             </div>
             <div><Lbl>Panel</Lbl>
               <Sel value={addForm.panelId} onChange={e=>setAddForm({...addForm,panelId:e.target.value})}>
                 <option value="">-- Pilih Panel --</option>
-                {panelOpts.map(p=><option key={p.id} value={p.id}>#{p.noPnl} — {p.nama}</option>)}
+                {panelOpts.map(p=><option key={p.id} value={p.id}>#{p.noPnl} â€” {p.nama}</option>)}
               </Sel>
             </div>
             <div><Lbl>Prioritas</Lbl>
@@ -2393,11 +2393,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MANAJEMEN WO
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
-  console.log('ManajemenWO rendered, createWO:', typeof createWO)
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
   const [form,setForm]=useState(blank);
@@ -2409,20 +2408,15 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
   const [expandedPanel,setExpandedPanel]=useState({});
 
   const save=async()=>{
-  console.log('save called, editId:', editId, 'form:', form)
   const np=panels.filter(p=>p.nama).map((p,i)=>({
     id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
     checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
 }));
   if(editId){
-    console.log('updating WO id:', editId)
     const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target})
-    console.log('update result:', result)
     if(result.success) setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
   } else {
-    console.log('creating WO')
     const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target})
-    console.log('create result:', result)
     if(result.success) setWoData(prev=>[...prev,{...result.data,panels:np}]);
   }
   setOpen(false);
@@ -2445,7 +2439,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
       </div>
       {woData.length===0&&!open&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:40,marginBottom:12}}>ðŸ“‹</div>
           <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
           <div style={{fontSize:12,marginTop:4}}>Klik tombol "+ Tambah WO" untuk membuat WO pertama</div>
         </div>
@@ -2458,14 +2452,14 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
               cursor:"pointer",background:isExp?"#f8faff":"#fff",borderBottom:isExp?"1px solid #e2e8f0":"none"}}
               onClick={()=>setExpandedWo(p=>({...p,[wo.id]:!p[wo.id]}))}>
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
-                <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
+                <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"â–¼":"â–¶"}</span>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{fontWeight:800,fontSize:15,fontFamily:"'DM Mono',monospace",color:"#1d4ed8"}}>WO {wo.wo}</span>
                     <span style={{color:"#1e293b",fontWeight:700}}>{wo.proyek}</span>
-                    <span style={{color:"#94a3b8",fontSize:12}}>📅 {wo.target}</span>
+                    <span style={{color:"#94a3b8",fontSize:12}}>ðŸ“… {wo.target}</span>
                     {pct<100&&<span style={{fontSize:11,color:st.color,fontWeight:600}}>
-                      {isDelayed(wo.target)?`⚠️ -${Math.abs(d)}hr`:`H-${d}`}
+                      {isDelayed(wo.target)?`âš ï¸ -${Math.abs(d)}hr`:`H-${d}`}
                     </span>}
                   </div>
                   <div style={{marginTop:4,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
@@ -2477,9 +2471,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels(wo.panels.map(p=>({noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty})));setEditId(wo.id);setOpen(true);}}
-                  style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
+                  style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>âœï¸ Edit</button>
                 <button onClick={()=>setDelId(wo.id)}
-                  style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
+                  style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>ðŸ—‘</button>
               </div>
             </div>
             {isExp&&wo.panels.map(p=>{
@@ -2489,7 +2483,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
                   <div style={{padding:"10px 16px 10px 28px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
                     cursor:"pointer",background:isPExp?"#f8fafc":"#fff",borderBottom:isPExp?"1px solid #f1f5f9":"none"}}
                     onClick={()=>setExpandedPanel(prev=>({...prev,[p.id]:!prev[p.id]}))}>
-                    <span style={{fontSize:11,color:"#94a3b8"}}>{isPExp?"▼":"▶"}</span>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{isPExp?"â–¼":"â–¶"}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                         <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.noPnl}</span>
@@ -2520,7 +2514,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
                                   background:isLocked?"#fffbfb":ii%2===0?wpDef.bg+"66":"#fff",opacity:isLocked?.6:1}}>
                                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8",minWidth:44}}>{item.kode}</span>
                                   <span style={{fontSize:12,fontWeight:600,color:"#374151",flex:1}}>
-                                    {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#fca5a5"}}>🔒</span>}
+                                    {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#fca5a5"}}>ðŸ”’</span>}
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
@@ -2549,7 +2543,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
       {delId&&(
         <Modal title="Hapus WO?" onClose={()=>setDelId(null)} width={360}>
           <div style={{textAlign:"center"}}>
-            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
+            <div style={{fontSize:32,marginBottom:8}}>ðŸ—‘</div>
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
@@ -2561,8 +2555,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
       {open&&(
         <Card style={{marginBottom:16,border:"2px solid #2563eb",background:"#f8faff"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{editId?"✏️ Edit WO":"📝 Tambah WO Baru"}</div>
-            <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
+            <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{editId?"âœï¸ Edit WO":"ðŸ“ Tambah WO Baru"}</div>
+            <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>âœ•</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
             <div><Lbl>No WO</Lbl><Inp placeholder="016" value={form.wo} onChange={e=>setForm({...form,wo:e.target.value})}/></div>
@@ -2583,7 +2577,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
                 <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={e=>{const n=[...panels];n[i]={...n[i],qty:e.target.value};setPanels(n);}}/></div>
                 <div style={{paddingBottom:2}}>
                   <button onClick={()=>setPanels(panels.filter((_,j)=>j!==i))}
-                    style={{width:32,height:36,borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:14}}>✕</button>
+                    style={{width:32,height:36,borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:14}}>âœ•</button>
                 </div>
               </div>
             </div>
@@ -2602,9 +2596,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
     </div>
   );
 }
-// ─────────────────────────────────────────────────────────────────────────────
-// OPERATOR VIEW — tabel besar per proses
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// OPERATOR VIEW â€” tabel besar per proses
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendalaLog}){
   const [viewDate,setViewDate]=useState(TODAY);
   const [shift,setShift]=useState("1");
@@ -2612,7 +2606,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
   const [catatan,setCatatan]=useState({});
   const [savedNote,setSavedNote]=useState({});
   const [lockMsg,setLockMsg]=useState(false);
-  // lockedCells: key = `${panelId}_${kode}_${proses}_${tanggal}_${shift}` → true
+  // lockedCells: key = `${panelId}_${kode}_${proses}_${tanggal}_${shift}` â†’ true
   const [lockedCells,setLockedCells]=useState({});
   const [fProyek,setFProyek]=useState("ALL");
   const [fPanel,setFPanel]=useState("ALL");
@@ -2635,7 +2629,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
     return f[0]||null;
   },[renhar,user.divisi,viewDate,todayTasks]);
 
-  // Group tasks by proses — with filter applied
+  // Group tasks by proses â€” with filter applied
   const proyekList=[...new Set(todayTasks.map(t=>t.proyek))];
   const panelList=[...new Set(todayTasks.filter(t=>fProyek==="ALL"||t.proyek===fProyek).map(t=>t.panel))];
 
@@ -2653,7 +2647,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
     return g;
   },[filteredTasks]);
 
-  // ── Kunci progress hari ini → simpan riwayat + kunci cells ──
+  // â”€â”€ Kunci progress hari ini â†’ simpan riwayat + kunci cells â”€â”€
   const lockProgress=()=>{
     const newLocked={...lockedCells};
 
@@ -2720,7 +2714,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
     setTimeout(()=>setLockMsg(false),2500);
   };
 
-  // ── Carry-over: komponen belum selesai → masuk renhar hari berikutnya ──
+  // â”€â”€ Carry-over: komponen belum selesai â†’ masuk renhar hari berikutnya â”€â”€
   const carryOverUnfinished=(updatedWoData)=>{
     const nextDate=addDays(viewDate,1);
     setRenhar(prev=>{
@@ -2740,12 +2734,12 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
           r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===nextDate
         );
         if(existIdx>=0){
-          // sudah ada — merge komponen yg belum ada
+          // sudah ada â€” merge komponen yg belum ada
           const existing=updated[existIdx];
           const mergedKomp=[...new Set([...(existing.komponen||[]),...unfinishedKomp])];
           updated[existIdx]={...existing,komponen:mergedKomp,carryOver:true};
         } else {
-          // belum ada — buat baru
+          // belum ada â€” buat baru
           updated=[...updated,{
             ...task,
             id:uid(),
@@ -2826,7 +2820,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
     });
   };
 
-  // ── Shift & PIC setup screen ──
+  // â”€â”€ Shift & PIC setup screen â”€â”€
   if(!shiftSet){
     return(
       <div style={{padding:20,maxWidth:480,margin:"0 auto"}} className="fi">
@@ -2856,14 +2850,14 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
             </div>
           </div>
           <Btn color={cfg.color} style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
-            Mulai Kerja →
+            Mulai Kerja â†’
           </Btn>
         </Card>
       </div>
     );
   }
 
-  // ── No tasks ──
+  // â”€â”€ No tasks â”€â”€
   if(todayTasks.length===0){
     return(
       <div style={{padding:16,maxWidth:520,margin:"0 auto"}} className="fi">
@@ -2871,7 +2865,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <div style={{width:36,height:36,borderRadius:10,background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{cfg.icon}</div>
             <div>
-              <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{user.name} — Shift {shift}</div>
+              <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{user.name} â€” Shift {shift}</div>
               <div style={{fontSize:11,color:"#64748b"}}>{fmtDate(viewDate)}</div>
             </div>
           </div>
@@ -2882,15 +2876,15 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
         </div>
         {/* date nav */}
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0"}}>
-          <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
+          <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>â€¹</button>
           <div style={{flex:1,textAlign:"center"}}>
             <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{fmtDate(viewDate)}</div>
             {viewDate===TODAY&&<div style={{fontSize:11,color:"#2563eb",fontWeight:600}}>Hari Ini</div>}
           </div>
-          <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>›</button>
+          <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>â€º</button>
         </div>
         <div style={{textAlign:"center",padding:"40px 20px"}}>
-          <div style={{fontSize:40,marginBottom:10}}>📋</div>
+          <div style={{fontSize:40,marginBottom:10}}>ðŸ“‹</div>
           <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:6}}>Tidak ada jadwal</div>
           <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>Belum ada rencana kerja untuk tanggal ini</div>
           {nextDate&&(
@@ -2905,7 +2899,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
     );
   }
 
-  // ── Main: tabel per proses ──
+  // â”€â”€ Main: tabel per proses â”€â”€
   const thS={background:"#1e3a8a",color:"#fff",padding:"7px 8px",fontWeight:700,fontSize:10,
     whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
     position:"sticky",top:0,zIndex:3};
@@ -2917,16 +2911,16 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
         <div style={{display:"flex",alignItems:"center",gap:10}}>
           <div style={{width:40,height:40,borderRadius:10,background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{cfg.icon}</div>
           <div>
-            <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{cfg.label} — {fmtDate(viewDate)}</div>
-            <div style={{fontSize:12,color:"#64748b"}}>Shift {shift} · {todayTasks.length} tugas</div>
+            <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{cfg.label} â€” {fmtDate(viewDate)}</div>
+            <div style={{fontSize:12,color:"#64748b"}}>Shift {shift} Â· {todayTasks.length} tugas</div>
           </div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           {/* date nav compact */}
           <div style={{display:"flex",alignItems:"center",gap:4,background:"#fff",borderRadius:8,padding:"4px 8px",border:"1px solid #e2e8f0"}}>
-            <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>‹</button>
+            <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>â€¹</button>
             <span style={{fontSize:11,fontWeight:600,color:"#475569",padding:"0 4px"}}>{fmtShort(viewDate)}</span>
-            <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>›</button>
+            <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>â€º</button>
           </div>
           <button onClick={()=>setShiftSet(false)}
             style={{fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
@@ -2984,7 +2978,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
             <button onClick={()=>{setFProyek("ALL");setFPanel("ALL");}}
               style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",
                 background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>
-              ✕ Reset
+              âœ• Reset
             </button>
           )}
         </div>
@@ -3005,15 +2999,15 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
           if(!panel||!panelCfg)return;
           const allItems=panelCfg.wps.flatMap(w=>w.items);
           const priColor=PRIORITAS_COLOR[task.prioritas||"Sedang"]||"#64748b";
-          const st=wo?getStatus(wo.target,panelOverall(panel)):{label:"—",color:"#94a3b8",bg:"#f1f5f9"};
+          const st=wo?getStatus(wo.target,panelOverall(panel)):{label:"â€”",color:"#94a3b8",bg:"#f1f5f9"};
           (task.komponen||[]).forEach((kode,ki)=>{
             const item=allItems.find(it=>it.kode===kode);
             if(!item)return;
             const cl=panel.checklist[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
             const qtyKomp=cl.qty||0;
-            // baca qty HARI INI — tidak terpengaruh hari lain
+            // baca qty HARI INI â€” tidak terpengaruh hari lain
             const qtyProses=cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
-            // baca progress HARI INI (viewDate) — tidak terpengaruh hari lain
+            // baca progress HARI INI (viewDate) â€” tidak terpengaruh hari lain
             const pct=getProgressOnDate(cl,proses,viewDate);
             rows.push({task,panel,wo,item,kode,qtyKomp,qtyProses,pct,priColor,st,ki,
               isFirst:ki===0,rowCount:(task.komponen||[]).length});
@@ -3050,7 +3044,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                     {isQtyBased&&<th style={{...thS,minWidth:70}}>QTY PROSES</th>}
                     <th style={{...thS,minWidth:70}}>PROGRESS</th>
                     <th style={{...thS,textAlign:"left",minWidth:140}}>OPERATOR</th>
-                    {/* step columns — hanya untuk non qty-based (assembling, wiring, qc) */}
+                    {/* step columns â€” hanya untuk non qty-based (assembling, wiring, qc) */}
                     {!isQtyBased&&PCT_STEPS.map(s=>(
                       <th key={s} style={{...thS,minWidth:50,borderBottom:`2px solid ${pc}`}}>{s}%</th>
                     ))}
@@ -3072,7 +3066,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                           <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>#{r.panel.noPnl}</span>{r.panel.nama}
                           {r.task.carryOver&&r.isFirst&&(
                             <span style={{marginLeft:6,background:"#fef9c3",border:"1px solid #fde047",color:"#92400e",
-                              borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>↩ Lanjutan</span>
+                              borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>â†© Lanjutan</span>
                           )}
                         </td>
                         <td style={{...td,textAlign:"center"}}>
@@ -3087,7 +3081,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                         <td style={{...td,textAlign:"center"}}>
                           <span style={{fontWeight:800,fontFamily:"'DM Mono',monospace",color:r.qtyKomp===0?"#fca5a5":"#475569",
                             background:r.qtyKomp===0?"#fef2f2":"#f1f5f9",borderRadius:6,padding:"3px 8px",fontSize:12}}>
-                            {r.qtyKomp} 🔒
+                            {r.qtyKomp} ðŸ”’
                           </span>
                         </td>
                         {/* QTY PROSES - only qty-based divisi */}
@@ -3104,7 +3098,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                                     fontSize:12,textAlign:"center",fontWeight:700,
                                     fontFamily:"'DM Mono',monospace",color:"#16a34a",
                                     display:"inline-block"}}>
-                                    {r.qtyProses} 🔒
+                                    {r.qtyProses} ðŸ”’
                                   </span>
                                 </div>
                               ):(
@@ -3121,7 +3115,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                                       color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
                                   {floor>0&&(
                                     <span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>
-                                      min {floor} 🔒
+                                      min {floor} ðŸ”’
                                     </span>
                                   )}
                                 </div>
@@ -3161,16 +3155,16 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                                   ))}
                                 </div>
                               ):(
-                                <span style={{fontSize:10,color:"#cbd5e1",fontStyle:"italic"}}>—</span>
+                                <span style={{fontSize:10,color:"#cbd5e1",fontStyle:"italic"}}>â€”</span>
                               );
                             })()}
                           </td>
                         ):null}
-                        {/* STEP checkmarks — hanya untuk non qty-based (assembling, wiring, qc) */}
+                        {/* STEP checkmarks â€” hanya untuk non qty-based (assembling, wiring, qc) */}
                         {!isQtyBased&&PCT_STEPS.map(s=>{
                           const reached=r.pct>=s;
                           const isNext=!done&&s===PCT_STEPS.find(x=>x>r.pct);
-                          // uncheck: klik step yang sudah tercapai → set ke step sebelumnya (atau 0)
+                          // uncheck: klik step yang sudah tercapai â†’ set ke step sebelumnya (atau 0)
                           const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
                           return(
                             <td key={s} style={{...td,textAlign:"center",padding:"4px",
@@ -3192,9 +3186,9 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                                   outline:isNext?`2px solid ${pc}`:"none",
                                   transition:"all .12s"}}>
                                 {reached
-                                  ?<span style={{color:"#fff",fontSize:12,fontWeight:700}}>✓</span>
-                                  :isNext?<span style={{color:pc,fontSize:11,fontWeight:700}}>→</span>
-                                  :<span style={{color:"#e2e8f0",fontSize:11}}>·</span>
+                                  ?<span style={{color:"#fff",fontSize:12,fontWeight:700}}>âœ“</span>
+                                  :isNext?<span style={{color:pc,fontSize:11,fontWeight:700}}>â†’</span>
+                                  :<span style={{color:"#e2e8f0",fontSize:11}}>Â·</span>
                                 }
                               </button>
                             </td>
@@ -3218,7 +3212,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
 
             {/* catatan per proses */}
             <div style={{padding:"12px 16px",borderTop:"1px solid #f1f5f9",background:"#fafafa"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:6}}>📝 CATATAN {proses}</div>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:6}}>ðŸ“ CATATAN {proses}</div>
               <div style={{display:"flex",gap:8}}>
                 <input value={catatan[proses]||""} onChange={e=>setCatatan(prev=>({...prev,[proses]:e.target.value}))}
                   placeholder={`Catatan kendala untuk ${proses}...`}
@@ -3237,7 +3231,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                     setSavedNote(prev=>({...prev,[proses]:true}));
                     setTimeout(()=>setSavedNote(prev=>({...prev,[proses]:false})),2000);
                   }}>
-                  {savedNote[proses]?"✓ Terkirim":"Simpan"}
+                  {savedNote[proses]?"âœ“ Terkirim":"Simpan"}
                 </Btn>
               </div>
             </div>
@@ -3254,7 +3248,7 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
               background:lockMsg?"#16a34a":"#1d4ed8",color:"#fff",
               boxShadow:"0 4px 14px #2563eb33",transition:"all .2s",
               display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":"🔒 Kunci Progress Hari Ini"}
+            {lockMsg?"âœ… Progress hari ini berhasil dikunci & tersimpan!":"ðŸ”’ Kunci Progress Hari Ini"}
           </button>
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>
@@ -3267,9 +3261,9 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
 }
 
 
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // MAIN APP
-// ─────────────────────────────────────────────────────────────────────────────
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
@@ -3318,15 +3312,15 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
 
 
   const monitorTabs=[
-    {id:"dashboard",label:"📊 Dashboard"},
-    {id:"summary",  label:"📋 Summary"},
-    {id:"detail",   label:"🔍 Detail Progress"},
-    ...(canRaw?[{id:"raw",label:"📅 Raw Schedule"}]:[]),
-    ...(canRencana?[{id:"rencana",label:"📋 Rencana Harian"}]:[]),
-    ...(canWO?[{id:"wo",label:"📝 Manajemen WO"}]:[]),
-    ...(["admin"].includes(user.divisi)?[{id:"pekerja",label:"👥 Master Pekerja"}]:[]),
-    ...(canPekerja?[{id:"tracking",label:"📈 Tracking Pekerja"}]:[]),
-    ...(canKendala?[{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
+    {id:"dashboard",label:"ðŸ“Š Dashboard"},
+    {id:"summary",  label:"ðŸ“‹ Summary"},
+    {id:"detail",   label:"ðŸ” Detail Progress"},
+    ...(canRaw?[{id:"raw",label:"ðŸ“… Raw Schedule"}]:[]),
+    ...(canRencana?[{id:"rencana",label:"ðŸ“‹ Rencana Harian"}]:[]),
+    ...(canWO?[{id:"wo",label:"ðŸ“ Manajemen WO"}]:[]),
+    ...(["admin"].includes(user.divisi)?[{id:"pekerja",label:"ðŸ‘¥ Master Pekerja"}]:[]),
+    ...(canPekerja?[{id:"tracking",label:"ðŸ“ˆ Tracking Pekerja"}]:[]),
+    ...(canKendala?[{id:"kendala",label:"ðŸ“ Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
@@ -3340,7 +3334,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             height:52,display:"flex",alignItems:"center",justifyContent:"space-between",
             position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:18}}>⚡</span>
+              <span style={{fontSize:18}}>âš¡</span>
               <span style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>PROSES PRODUKSI</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3359,7 +3353,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             <button style={{flex:1,border:"none",background:"none",cursor:"pointer",
               display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
               gap:2,color:cfg.color}}>
-              <span style={{fontSize:18}}>📋</span>
+              <span style={{fontSize:18}}>ðŸ“‹</span>
               <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Tugas Saya</span>
             </button>
           </div>
@@ -3370,13 +3364,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             height:54,display:"flex",alignItems:"center",justifyContent:"space-between",
             position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
             <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <span style={{fontSize:20}}>⚡</span>
+              <span style={{fontSize:20}}>âš¡</span>
               <span style={{fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:.2}}>PROSES PRODUKSI</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
               {alerts>0&&(
                 <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",
-                  borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>🔔 {alerts} peringatan</span>
+                  borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>ðŸ”” {alerts} peringatan</span>
               )}
               <span style={{fontSize:12,color:"#475569",fontWeight:500}}>{user.name}</span>
               <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,
