@@ -655,32 +655,33 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     setAssignModal({task,divisi,existing:!!existing});
   };
 
-  const confirmDistribute=()=>{
+  const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi}=assignModal;
-    setRenhar(prev=>{
-      const exists=prev.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
-      if(exists)return prev.map(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal?{...r,pekerja:selPekerja}:r);
-      return[...prev,{
-        id:uid(),rawId:task.rawId,woId:task.woId,panelId:task.panelId,
+    const exists=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+    if(exists){
+      await updateRenhar(exists.id,{pekerja:selPekerja});
+    } else {
+      await createRenhar({
+        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
         proyek:task.proyek,panel:task.panel,proses:task.proses,prioritas:task.prioritas,
         wp:task.wp,komponen:task.komponen,tanggal:task.tanggal,divisi,pekerja:selPekerja,
-      }];
-    });
+      });
+    }
     setAssignModal(null);setSelPekerja([]);
   };
-
-  const distributeAll=()=>{
-    filteredTasks.forEach(task=>{
+  
+  const distributeAll=async()=>{
+    for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       if(!renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal)){
-        setRenhar(prev=>[...prev,{
-          id:uid(),rawId:task.rawId,woId:task.woId,panelId:task.panelId,
+        await createRenhar({
+          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,prioritas:task.prioritas,
           wp:task.wp,komponen:task.komponen,tanggal:task.tanggal,divisi,pekerja:[],
-        }]);
+        });
       }
-    });
+    }
   };
 
   const isDist=(task)=>renhar.some(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
@@ -1807,82 +1808,63 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const wpItems=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
 
   // Sync renhar ketika rawData berubah
-  const syncRenharKomp=(rawId,date,wp,newKomp)=>{
-    setRenhar(prev=>prev.map(r=>(r.rawId===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKomp}:r));
-  };
-  const syncRenharDel=(rawId,date,wp)=>{
-    setRenhar(prev=>prev.filter(r=>!(r.rawId===rawId&&r.wp===wp&&r.tanggal===date)));
-  };
-
-  const addEntry=()=>{
+  const addEntry=async()=>{
     if(!modalWp||!modalKomponen.length)return;
+    const r=rawData.find(x=>x.id===cellModal.rawId);
+    if(!r)return;
+    const newSch={...r.schedule};
+    const existing=newSch[cellModal.date]||[];
+    const wpEntry=existing.find(e=>e.wp===modalWp);
     let finalKomp=modalKomponen;
-    setRawData(prev=>prev.map(r=>{
-      if(r.id!==cellModal.rawId)return r;
-      const newSch={...r.schedule};
-      const existing=newSch[cellModal.date]||[];
-      const wpEntry=existing.find(e=>e.wp===modalWp);
-      let updated;
-      if(wpEntry){
-        finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
-      } else {
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen}];
-      }
-      newSch[cellModal.date]=updated;
-      return{...r,schedule:newSch};
-    }));
-    syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
+    let updated;
+    if(wpEntry){
+      finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+      updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
+    } else {
+      updated=[...existing,{wp:modalWp,komponen:modalKomponen}];
+    }
+    newSch[cellModal.date]=updated;
+    await updateRaw(r.id,{schedule:newSch});
     setModalWp("");setModalKomponen([]);
   };
-  const removeEntry=(wp)=>{
-    setRawData(prev=>prev.map(r=>{
-      if(r.id!==cellModal.rawId)return r;
-      const newSch={...r.schedule};
-      const updated=(newSch[cellModal.date]||[]).filter(e=>e.wp!==wp);
-      if(!updated.length)delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
-      return{...r,schedule:newSch};
-    }));
-    syncRenharDel(cellModal.rawId,cellModal.date,wp);
+  
+  const removeEntry=async(wp)=>{
+    const r=rawData.find(x=>x.id===cellModal.rawId);
+    if(!r)return;
+    const newSch={...r.schedule};
+    const updated=(newSch[cellModal.date]||[]).filter(e=>e.wp!==wp);
+    if(!updated.length)delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
+    await updateRaw(r.id,{schedule:newSch});
+    const renharEntry=renhar.find(x=>x.rawId===cellModal.rawId&&x.wp===wp&&x.tanggal===cellModal.date);
+    if(renharEntry) await removeRenhar(renharEntry.id);
   };
-
-  const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
-  const onDragOver=(e,rawId,date)=>{e.preventDefault();setDragOverCell({rawId,date});};
-  const onDrop=(e,rawId,toDate)=>{
-    e.preventDefault();
-    if(!dragInfo||dragInfo.fromDate===toDate){setDragOverCell(null);setDragInfo(null);return;}
-    setDragMode({...dragInfo,toDate});setDragOverCell(null);
-  };
-  const confirmDrag=(mode)=>{
+  
+  const confirmDrag=async(mode)=>{
     if(!dragMode)return;
     const{rawId,fromDate,entries,toDate}=dragMode;
-    setRawData(prev=>prev.map(r=>{
-      if(r.id!==rawId)return r;
-      const newSch={...r.schedule};
-      if(mode==="move")delete newSch[fromDate];
-      const existing=newSch[toDate]||[];
-      const merged=[...existing];
-      entries.forEach(e=>{
-        const found=merged.find(m=>m.wp===e.wp);
-        if(found)found.komponen=[...new Set([...found.komponen,...e.komponen])];
-        else merged.push({...e});
-      });
-      newSch[toDate]=merged;
-      return{...r,schedule:newSch};
-    }));
+    const r=rawData.find(x=>x.id===rawId);
+    if(!r)return;
+    const newSch={...r.schedule};
+    if(mode==="move")delete newSch[fromDate];
+    const existing=newSch[toDate]||[];
+    const merged=[...existing];
+    entries.forEach(e=>{
+      const found=merged.find(m=>m.wp===e.wp);
+      if(found)found.komponen=[...new Set([...found.komponen,...e.komponen])];
+      else merged.push({...e});
+    });
+    newSch[toDate]=merged;
+    await updateRaw(r.id,{schedule:newSch});
     if(mode==="move"){
-      setRenhar(prev=>prev.map(r=>{
-        if(r.rawId!==rawId||r.tanggal!==fromDate)return r;
-        const entry=entries.find(e=>e.wp===r.wp);
-        if(!entry)return r;
-        return{...r,tanggal:toDate,komponen:entry.komponen};
-      }));
+      for(const entry of entries){
+        const renharEntry=renhar.find(x=>x.rawId===rawId&&x.wp===entry.wp&&x.tanggal===fromDate);
+        if(renharEntry) await updateRenhar(renharEntry.id,{tanggal:toDate,komponen:entry.komponen});
+      }
     }
     setDragMode(null);setDragInfo(null);
   };
-
-  const panelOpts=addForm.woId?woData.find(w=>w.id===Number(addForm.woId))?.panels||[]:[]; 
-  const submitAdd=()=>{
+  
+  const submitAdd=async()=>{
     if(!addForm.woId||!addForm.panelId)return;
     const wo=woData.find(w=>w.id===Number(addForm.woId));
     const p=wo?.panels.find(x=>x.id===Number(addForm.panelId));
@@ -1890,21 +1872,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const existing=rawData.filter(r=>r.panelId===p.id).map(r=>r.proses);
     const toAdd=ALL_PROSES.filter(pr=>!existing.includes(pr));
     if(!toAdd.length){alert("Semua proses panel ini sudah ada!");return;}
-    setRawData(prev=>[...prev,...toAdd.map(proses=>({
-      id:uid(),woId:wo.id,panelId:p.id,proyek:wo.proyek,panel:p.nama,
-      proses,prioritas:addForm.prioritas,schedule:{}
-    }))]);
+    for(const proses of toAdd){
+      await createRaw({
+        wo_id:wo.id,panel_id:p.id,proyek:wo.proyek,panel:p.nama,
+        proses,prioritas:addForm.prioritas,schedule:{}
+      });
+    }
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
-
-  const dateTasks=useMemo(()=>{
-    if(!selDate)return[];
-    return rawData.flatMap(r=>(r.schedule[selDate]||[]).map(e=>({
-      rawId:r.id,woId:r.woId,panelId:r.panelId,proyek:r.proyek,panel:r.panel,
-      proses:r.proses,prioritas:r.prioritas,wp:e.wp,komponen:e.komponen,tanggal:selDate
-    })));
-  },[rawData,selDate]);
-
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
@@ -1912,43 +1887,48 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     setAssignModal({task,divisi,existing:!!existing});
   };
 
-  const confirmDistribute=()=>{
+  const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi}=assignModal;
-    setRenhar(prev=>{
-      const exists=prev.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
-      if(exists) return prev.map(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal
-        ?{...r,pekerja:selPekerja}:r);
-      return[...prev,{
-        id:uid(),rawId:task.rawId,woId:task.woId,panelId:task.panelId,
+    const exists=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+    if(exists){
+      await updateRenhar(exists.id,{pekerja:selPekerja});
+    } else {
+      await createRenhar({
+        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
         proyek:task.proyek,panel:task.panel,proses:task.proses,prioritas:task.prioritas||"Sedang",
         wp:task.wp,komponen:task.komponen,tanggal:task.tanggal,divisi,pekerja:selPekerja
-      }];
-    });
+      });
+    }
     setAssignModal(null);setSelPekerja([]);
   };
-
-  const distributeAll=()=>{
-    dateTasks.forEach(task=>{
+  
+  const distributeAll=async()=>{
+    for(const task of dateTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       if(!renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal)){
-        setRenhar(prev=>[...prev,{
-          id:uid(),rawId:task.rawId,woId:task.woId,panelId:task.panelId,
+        await createRenhar({
+          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,prioritas:task.prioritas||"Sedang",
           wp:task.wp,komponen:task.komponen,tanggal:task.tanggal,divisi,pekerja:[]
-        }]);
+        });
       }
-    });
+    }
   };
 
-  const updatePrioritas=(rawId,val)=>{
-    setRawData(prev=>prev.map(r=>r.id!==rawId?r:{...r,prioritas:val}));
+  const updatePrioritas=async(rawId,val)=>{
+    await updateRaw(rawId,{prioritas:val});
   };
-  // Poin 2: prioritas per panel - update semua proses dalam panel yg sama
-  const updatePrioritasPanel=(panelId,val)=>{
-    setRawData(prev=>prev.map(r=>r.panelId!==panelId?r:{...r,prioritas:val}));
-    // sync ke renhar juga
-    setRenhar(prev=>prev.map(r=>r.panelId!==panelId?r:{...r,prioritas:val}));
+  
+  const updatePrioritasPanel=async(panelId,val)=>{
+    const rows=rawData.filter(r=>r.panelId===panelId);
+    for(const r of rows){
+      await updateRaw(r.id,{prioritas:val});
+    }
+    const renharRows=renhar.filter(r=>r.panelId===panelId);
+    for(const r of renharRows){
+      await updateRenhar(r.id,{prioritas:val});
+    }
   };
 
   const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
