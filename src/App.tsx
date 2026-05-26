@@ -958,7 +958,6 @@ function LandingPage({onEnter}){
             background:"#fff",borderRadius:14,padding:"14px 18px",boxShadow:"0 8px 32px #00000018",
             minWidth:160,zIndex:2}}>
             <div style={{fontSize:11,color:"#64748b",fontWeight:600,marginBottom:4}}>QC Pass Rate</div>
-            {isExisting?"Simpan":"Distribusi"}
             <div style={{display:"flex",alignItems:"baseline",gap:8}}>
               <div style={{fontSize:28,fontWeight:900,color:"#1d4ed8",lineHeight:1}}>98%</div>
               <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>↑ 4%</div>
