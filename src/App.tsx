@@ -597,7 +597,7 @@ function TrackingPekerja({pekerja,renhar}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
 // ─────────────────────────────────────────────────────────────────────────────
-function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja}){
+function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selProses,setSelProses]=useState("ALL");
@@ -1731,7 +1731,7 @@ function DetailProgress({woData}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RAW SCHEDULE
 // ─────────────────────────────────────────────────────────────────────────────
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,createRenhar,updateRenhar,removeRenhar}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
   const [dragInfo,setDragInfo]=useState(null);
@@ -3405,8 +3405,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="dashboard"&&<Dashboard woData={woData}/>}
             {tab==="summary"&&<SummaryProgress woData={woData}/>}
             {tab==="detail"&&<DetailProgress woData={woData}/>}
-            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
-            {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja}/>}
+            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
+            {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
