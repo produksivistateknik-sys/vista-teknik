@@ -16,8 +16,8 @@ export const workOrderService = {
     const { data, error } = await supabase
       .from('work_orders')
       .insert(payload)
-      .select()
-      .single()
+.select('*, panels(*)')
+.single()
     if (error) throw new Error(error.message)
     return data
   },
