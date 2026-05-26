@@ -2397,7 +2397,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja}){
 // MANAJEMEN WO
 // ─────────────────────────────────────────────────────────────────────────────
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
-  console.log('ManajemenWO rendered, createWO:', typeof createWO)
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
   const [form,setForm]=useState(blank);
@@ -2409,20 +2408,15 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
   const [expandedPanel,setExpandedPanel]=useState({});
 
   const save=async()=>{
-  console.log('save called, editId:', editId, 'form:', form)
   const np=panels.filter(p=>p.nama).map((p,i)=>({
     id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
     checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
 }));
   if(editId){
-    console.log('updating WO id:', editId)
     const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target})
-    console.log('update result:', result)
     if(result.success) setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
   } else {
-    console.log('creating WO')
     const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target})
-    console.log('create result:', result)
     if(result.success) setWoData(prev=>[...prev,{...result.data,panels:np}]);
   }
   setOpen(false);
