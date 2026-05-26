@@ -328,7 +328,7 @@ const wpProgress=(panelData,wp,proses)=>{
 // ─────────────────────────────────────────────────────────────────────────────
 // MASTER PEKERJA
 // ─────────────────────────────────────────────────────────────────────────────
-function MasterPekerja({pekerja,setPekerja}){
+function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePekerja}){
   const [form,setForm]=useState({nama:"",divisi:"mekanik"});
   const [editId,setEditId]=useState(null);
   const [delId,setDelId]=useState(null);
