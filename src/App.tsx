@@ -1637,7 +1637,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=renhar.find(r=>r.rawId===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
     setSelPekerja(existing?.pekerja||[]);
-    setAssignModal({task,divisi,existing:!!existing});
+    setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };
 
   const confirmDistribute=async()=>{
