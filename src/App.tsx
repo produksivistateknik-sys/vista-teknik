@@ -1934,7 +1934,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
     whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
     position:"sticky",top:0,zIndex:3};
+    const panelOpts=addForm.woId?woData.find(w=>w.id===Number(addForm.woId))?.panels||[]:[];
 
+  
   return(
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
