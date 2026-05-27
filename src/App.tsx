@@ -1968,11 +1968,16 @@ const onDrop=(e,rawId,toDate)=>{
               // Poin 4: garis tebal pembatas per panel - cek apakah panel berbeda dari baris sebelumnya
               const prevRow=visibleRows[ri-1];
               const isNewPanel=!prevRow||prevRow.panelId!==row.panelId;
-              const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e3a8a":"1px solid #f1f5f9";
-              const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"6px 8px",verticalAlign:"middle",borderTop:panelTopBorder};
+              const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"6px 8px",verticalAlign:"middle"};
               // Poin 2: prioritas per panel - hanya tampil di baris pertama panel
               return(
-                <tr key={row.id} style={{borderTop:panelTopBorder}}>
+                <>
+                {isNewPanel&&ri>0&&(
+                  <tr key={`sep-${row.id}`}>
+                    <td colSpan={12} style={{padding:0,height:"3px",background:"#334155",border:"none"}}/>
+                  </tr>
+                )}
+                <tr key={row.id}>
                   <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap",borderTop:panelTopBorder}}>{row.proyek}</td>
                   <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260,borderTop:panelTopBorder}}>{row.panel}</td>
                   <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center",borderTop:panelTopBorder}}>
@@ -2028,7 +2033,8 @@ const onDrop=(e,rawId,toDate)=>{
                   <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
                     <button onClick={()=>setRawData(prev=>prev.filter(r=>r.id!==row.id))} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                   </td>
-                </tr>
+                  </tr>
+              </>
               );
             });
             })()}
