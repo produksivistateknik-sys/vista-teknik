@@ -661,11 +661,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };
 
-  const confirmDistribute=async()=>{
-    if(!assignModal)return;
-    const{task,divisi,existing}=assignModal;
-    console.log('existing:', existing);
-    console.log('selPekerja:', selPekerja);
+
   const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi,existing}=assignModal;
@@ -878,7 +874,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     </div>
   );
 }
-}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // KENDALA INBOX
 // ─────────────────────────────────────────────────────────────────────────────
