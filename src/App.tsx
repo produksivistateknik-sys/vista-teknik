@@ -1636,7 +1636,7 @@ function DetailProgress({woData}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RAW SCHEDULE
 // ─────────────────────────────────────────────────────────────────────────────
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,createRenhar,updateRenhar,removeRenhar}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
   const [dragInfo,setDragInfo]=useState(null);
@@ -1788,6 +1788,8 @@ const onDrop=(e,rawId,toDate)=>{
         proses,prioritas:addForm.prioritas,schedule:{}
       });
     }
+    await rawList.refetch?.();
+    await refetchRaw();
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
   const dateTasks=useMemo(()=>{
@@ -3181,7 +3183,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
-const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw } = useRawSchedule()
+const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
 useEffect(() => {
   if (!woLoading) setWoData(woList)
 }, [woList, woLoading])
@@ -3303,7 +3305,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="dashboard"&&<Dashboard woData={woData}/>}
             {tab==="summary"&&<SummaryProgress woData={woData}/>}
             {tab==="detail"&&<DetailProgress woData={woData}/>}
-            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
+            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
             {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
