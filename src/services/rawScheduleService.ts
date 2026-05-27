@@ -5,7 +5,7 @@ export const rawScheduleService = {
     const { data, error } = await supabase
       .from('raw_schedule')
       .select('*')
-      .order('created_at', { ascending: false })
+      .order('created_at', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
   },

@@ -690,29 +690,28 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const distributeAll=async()=>{
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
-      if(!getRenharEntry(task)){
-        await createRenhar({
-          raw_id:task.rawId,
-          wo_id:task.woId,
-          panel_id:task.panelId,
-          proyek:task.proyek,
-          panel:task.panel,
-          proses:task.proses,
-          prioritas:task.prioritas,
-          wp:task.wp,
-          komponen:task.komponen,
-          tanggal:task.tanggal,
-          divisi,
-          pekerja:[],
-        });
+      const existing=getRenharEntry(task);
+      if(existing){
+        continue;
       }
+      await createRenhar({
+        raw_id:task.rawId,
+        wo_id:task.woId,
+        panel_id:task.panelId,
+        proyek:task.proyek,
+        panel:task.panel,
+        proses:task.proses,
+        prioritas:task.prioritas,
+        wp:task.wp,
+        komponen:task.komponen,
+        tanggal:task.tanggal,
+        divisi,
+        pekerja:[],
+      });
     }
   };
 
-  const isDist=(task)=>{
-    const entry=getRenharEntry(task);
-    return !!(entry&&entry.pekerja&&entry.pekerja.length>0);
-  };
+  const isDist=(task)=>!!getRenharEntry(task);
   const distCount=filteredTasks.filter(isDist).length;
   const allDist=filteredTasks.length>0&&distCount===filteredTasks.length;
   return(
