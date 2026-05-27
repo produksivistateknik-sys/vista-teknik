@@ -1973,8 +1973,20 @@ const onDrop=(e,rawId,toDate)=>{
               // Poin 2: prioritas per panel - hanya tampil di baris pertama panel
               return(
                 <>
-                {null}
-                <tr key={row.id}>
+                {isNewPanel&&ri>0&&(
+  <tr key={`sep-${row.id}`} style={{lineHeight:0}}>
+    <td colSpan={99} style={{
+      padding:0,
+      height:0,
+      borderTop:"3px solid #94a3b8",
+      borderBottom:"none",
+      borderLeft:"none",
+      borderRight:"none",
+      background:"transparent"
+    }}/>
+  </tr>
+)}
+<tr key={row.id}>
                 <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
                 <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260}}>{row.panel}</td>
                 <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center"}}>
