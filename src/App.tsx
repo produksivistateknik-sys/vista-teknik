@@ -1978,9 +1978,9 @@ const onDrop=(e,rawId,toDate)=>{
                   </tr>
                 )}
                 <tr key={row.id}>
-                  <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap",borderTop:panelTopBorder}}>{row.proyek}</td>
-                  <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260,borderTop:panelTopBorder}}>{row.panel}</td>
-                  <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center",borderTop:panelTopBorder}}>
+                <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
+                <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260}}>{row.panel}</td>
+                <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center"}}>
                     <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"2px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{row.proses}</span>
                   </td>
                   <td style={{...td,position:"sticky",left:490,zIndex:2,textAlign:"center"}}>
