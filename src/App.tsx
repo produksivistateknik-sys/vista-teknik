@@ -1974,7 +1974,7 @@ const onDrop=(e,rawId,toDate)=>{
                 <>
                 {isNewPanel&&ri>0&&(
                   <tr key={`sep-${row.id}`}>
-                    <td colSpan={12} style={{padding:0,height:"3px",background:"#334155",border:"none"}}/>
+                    <td colSpan={12} style={{padding:0,height:"2px",background:"#cbd5e1",border:"none"}}/>
                   </tr>
                 )}
                 <tr key={row.id}>
