@@ -1967,7 +1967,7 @@ const onDrop=(e,rawId,toDate)=>{
               const rBg=ri%2===0?"#fff":"#f8fafc";
               // Poin 4: garis tebal pembatas per panel - cek apakah panel berbeda dari baris sebelumnya
               const prevRow=visibleRows[ri-1];
-              const isNewPanel=!prevRow||prevRow.panelId!==row.panelId;
+              const isNewPanel=!prevRow||((prevRow.panel_id||prevRow.panelId)!==(row.panel_id||row.panelId))||(prevRow.panel!==row.panel);
               const tdPadTop=isNewPanel&&ri>0?"16px":"6px";
               const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:`${tdPadTop} 8px 6px 8px`,verticalAlign:"middle"};
               // Poin 2: prioritas per panel - hanya tampil di baris pertama panel
