@@ -708,7 +708,10 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     }
   };
 
-  const isDist=(task)=>!!getRenharEntry(task);
+  const isDist=(task)=>{
+    const entry=getRenharEntry(task);
+    return !!(entry&&entry.pekerja&&entry.pekerja.length>0);
+  };
   const distCount=filteredTasks.filter(isDist).length;
   const allDist=filteredTasks.length>0&&distCount===filteredTasks.length;
   return(
