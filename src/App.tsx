@@ -1788,7 +1788,7 @@ const onDrop=(e,rawId,toDate)=>{
         proses,prioritas:addForm.prioritas,schedule:{}
       });
     }
-    await rawList.refetch?.();
+  
     await refetchRaw();
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
