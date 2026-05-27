@@ -1765,7 +1765,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
     setDragMode(null);setDragInfo(null);
   };
-  
+  const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
+const onDragOver=(e,rawId,date)=>{e.preventDefault();setDragOverCell({rawId,date});};
+const onDrop=(e,rawId,toDate)=>{
+  e.preventDefault();
+  if(!dragInfo||dragInfo.fromDate===toDate){setDragOverCell(null);setDragInfo(null);return;}
+  setDragMode({...dragInfo,toDate});setDragOverCell(null);
+};
   const submitAdd=async()=>{
     if(!addForm.woId||!addForm.panelId)return;
     const wo=woData.find(w=>w.id===Number(addForm.woId));
