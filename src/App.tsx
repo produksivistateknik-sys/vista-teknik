@@ -1968,15 +1968,12 @@ const onDrop=(e,rawId,toDate)=>{
               // Poin 4: garis tebal pembatas per panel - cek apakah panel berbeda dari baris sebelumnya
               const prevRow=visibleRows[ri-1];
               const isNewPanel=!prevRow||prevRow.panelId!==row.panelId;
-              const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"6px 8px",verticalAlign:"middle"};
+              const tdPadTop=isNewPanel&&ri>0?"16px":"6px";
+              const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:`${tdPadTop} 8px 6px 8px`,verticalAlign:"middle"};
               // Poin 2: prioritas per panel - hanya tampil di baris pertama panel
               return(
                 <>
-                {isNewPanel&&ri>0&&(
-                  <tr key={`sep-${row.id}`}>
-                    <td colSpan={12} style={{padding:0,height:"4px",background:"#1e293b",border:"none"}}/>
-                  </tr>
-                )}
+                {null}
                 <tr key={row.id}>
                 <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
                 <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260}}>{row.panel}</td>
