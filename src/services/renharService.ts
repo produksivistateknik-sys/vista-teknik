@@ -1,5 +1,5 @@
+cat > src/services/renharService.ts << 'EOF'
 import { supabase } from '../lib/supabase'
-
 export const renharService = {
   async getAll() {
     const { data, error } = await supabase
@@ -9,7 +9,6 @@ export const renharService = {
     if (error) throw new Error(error.message)
     return data ?? []
   },
-
   async getByTanggal(tanggal: string) {
     const { data, error } = await supabase
       .from('renhar')
@@ -18,7 +17,6 @@ export const renharService = {
     if (error) throw new Error(error.message)
     return data ?? []
   },
-
   async create(payload: any) {
     const { data, error } = await supabase
       .from('renhar')
@@ -28,7 +26,6 @@ export const renharService = {
     if (error) throw new Error(error.message)
     return data
   },
-
   async update(id: number, payload: any) {
     const { data, error } = await supabase
       .from('renhar')
@@ -39,7 +36,6 @@ export const renharService = {
     if (error) throw new Error(error.message)
     return data
   },
-
   async remove(id: number): Promise<void> {
     const { error } = await supabase
       .from('renhar')
@@ -48,3 +44,4 @@ export const renharService = {
     if (error) throw new Error(error.message)
   },
 }
+EOF

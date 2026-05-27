@@ -1,5 +1,4 @@
 import { useState, useEffect, useCallback } from 'react'
-import { useRawSchedule } from './hooks/useRawSchedule'
 import { rawScheduleService } from '../services/rawScheduleService'
 
 export function useRawSchedule() {
@@ -25,7 +24,7 @@ export function useRawSchedule() {
   const create = async (payload: any) => {
     try {
       const result = await rawScheduleService.create(payload)
-      setData(prev => [...prev, result])
+      await fetch()
       return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
@@ -35,7 +34,7 @@ export function useRawSchedule() {
   const update = async (id: number, payload: any) => {
     try {
       const result = await rawScheduleService.update(id, payload)
-      setData(prev => prev.map(r => r.id === id ? result : r))
+      await fetch()
       return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
@@ -45,7 +44,7 @@ export function useRawSchedule() {
   const remove = async (id: number) => {
     try {
       await rawScheduleService.remove(id)
-      setData(prev => prev.filter(r => r.id !== id))
+      await fetch()
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }

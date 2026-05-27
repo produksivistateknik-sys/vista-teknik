@@ -1954,13 +1954,10 @@ const onDrop=(e,rawId,toDate)=>{
                 (filterProyek==="ALL"||row.proyek===filterProyek)&&
                 (filterPanel==="ALL"||row.panel===filterPanel)
               ).sort((a,b)=>{
-                // sort by prioritas dulu, lalu grouping per panel tetap terjaga
+                if(a.panelId!==b.panelId)return a.panelId-b.panelId;
                 const pa=PRIO_ORDER[a.prioritas]??1;
                 const pb=PRIO_ORDER[b.prioritas]??1;
-                if(pa!==pb)return pa-pb;
-                // dalam prioritas sama: kelompokkan per panelId
-                if(a.panelId!==b.panelId)return a.panelId-b.panelId;
-                return 0;
+                return pa-pb;
               });
               return visibleRows.map((row,ri)=>{
               const pc=PROSES_COLOR[row.proses]||"#64748b";
@@ -1969,14 +1966,14 @@ const onDrop=(e,rawId,toDate)=>{
               // Poin 4: garis tebal pembatas per panel - cek apakah panel berbeda dari baris sebelumnya
               const prevRow=visibleRows[ri-1];
               const isNewPanel=!prevRow||prevRow.panelId!==row.panelId;
-              const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
+              const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e3a8a":"1px solid #f1f5f9";
               const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"6px 8px",verticalAlign:"middle",borderTop:panelTopBorder};
               // Poin 2: prioritas per panel - hanya tampil di baris pertama panel
               return(
-                <tr key={row.id}>
-                  <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
-                  <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260}}>{row.panel}</td>
-                  <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center"}}>
+                <tr key={row.id} style={{borderTop:panelTopBorder}}>
+                  <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap",borderTop:panelTopBorder}}>{row.proyek}</td>
+                  <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260,borderTop:panelTopBorder}}>{row.panel}</td>
+                  <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center",borderTop:panelTopBorder}}>
                     <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"2px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{row.proses}</span>
                   </td>
                   <td style={{...td,position:"sticky",left:490,zIndex:2,textAlign:"center"}}>
