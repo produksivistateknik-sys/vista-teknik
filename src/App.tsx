@@ -664,6 +664,11 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi,existing}=assignModal;
+    console.log('existing:', existing);
+    console.log('selPekerja:', selPekerja);
+  const confirmDistribute=async()=>{
+    if(!assignModal)return;
+    const{task,divisi,existing}=assignModal;
     if(existing){
       await updateRenhar(existing.id,{pekerja:selPekerja});
     } else {
@@ -769,7 +774,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
           const distTasks=tasks.filter(isDist).length;
           return(
             <div key={proses} style={{marginBottom:16}}>
-              <div style={{background:dc?.color||"#64748b",borderRadius:"10px 10px 0 0",padding:"10px 16px",display:"flex",alignItems:"center",gap:10}}>
+             <div style={{background:PROSES_COLOR[proses]||dc?.color||"#64748b",borderRadius:"10px 10px 0 0",padding:"10px 16px",display:"flex",alignItems:"center",gap:10}}>
                 <span style={{color:"#fff",fontWeight:800,fontSize:14}}>{proses}</span>
                 {dc&&<Badge label={dc.label} color="#fff" style={{background:"#ffffff30"}}/>}
                 <span style={{fontSize:11,color:"#ffffff90",marginLeft:"auto"}}>{distTasks}/{tasks.length} terdistribusi</span>
@@ -873,7 +878,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     </div>
   );
 }
-
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KENDALA INBOX
