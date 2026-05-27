@@ -711,6 +711,164 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const isDist=(task)=>!!getRenharEntry(task);
   const distCount=filteredTasks.filter(isDist).length;
   const allDist=filteredTasks.length>0&&distCount===filteredTasks.length;
+  return(
+    <div className="fi">
+      <Card style={{marginBottom:14,padding:"12px 16px"}}>
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+          <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
+          <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
+          <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>{"▶"}</Btn>
+          <span style={{fontSize:13,fontWeight:700,color:"#1e293b",marginLeft:4}}>{fmtShort(weekStart)} — {fmtShort(addDays(weekStart,6))}</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+          {days.map(d=>{
+            const isSel=d===selDate;
+            const isToday=d===TODAY;
+            const cnt=taskCountByDay[d]||0;
+            return(
+              <button key={d} onClick={()=>setSelDate(d)}
+                style={{padding:"8px 4px",borderRadius:10,border:`2px solid ${isSel?"#2563eb":isToday?"#93c5fd":"#e2e8f0"}`,
+                  background:isSel?"#2563eb":isToday?"#eff6ff":"#fff",cursor:"pointer",textAlign:"center",transition:"all .15s"}}>
+                <div style={{fontSize:10,fontWeight:600,color:isSel?"#fff":isToday?"#2563eb":"#94a3b8",marginBottom:2}}>{getDayLabel(d).split(" ")[0]}</div>
+                <div style={{fontSize:14,fontWeight:800,color:isSel?"#fff":isToday?"#1d4ed8":"#1e293b"}}>{getDayLabel(d).split(" ")[1]||d.slice(8)}</div>
+                {cnt>0&&<div style={{marginTop:4,background:isSel?"#ffffff33":"#2563eb",borderRadius:20,padding:"1px 6px",fontSize:9,fontWeight:700,color:"#fff",display:"inline-block"}}>{cnt}</div>}
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+        <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>📅 {fmtDateFull(selDate)}</div>
+        <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+          {filteredTasks.length>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{filteredTasks.length} terdistribusi</span>}
+          {!allDist&&filteredTasks.length>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>✓ Distribusi Semua</Btn>}
+          {allDist&&filteredTasks.length>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Terdistribusi</span>}
+        </div>
+      </div>
+      <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+        {["ALL",...ALL_PROSES].map(p=>(
+          <button key={p} onClick={()=>setSelProses(p)}
+            style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${selProses===p?(PROSES_COLOR[p]||"#2563eb"):"#e2e8f0"}`,
+              background:selProses===p?(PROSES_COLOR[p]||"#2563eb")+"18":"#fff",
+              color:selProses===p?(PROSES_COLOR[p]||"#2563eb"):"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>
+            {p==="ALL"?"Semua":p}
+          </button>
+        ))}
+      </div>
+      {filteredTasks.length===0?(
+        <div style={{textAlign:"center",padding:"40px",color:"#94a3b8",fontSize:13}}>
+          {allTasks.length===0?"Belum ada tugas dijadwalkan untuk hari ini.":"Tidak ada tugas untuk proses ini."}
+        </div>
+      ):(
+        prosesList.map(proses=>{
+          const tasks=byProses[proses]||[];
+          const dc=DIVISI_CONFIG[Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0]||"mekanik"];
+          const distTasks=tasks.filter(isDist).length;
+          return(
+            <div key={proses} style={{marginBottom:16}}>
+              <div style={{background:dc?.color||"#64748b",borderRadius:"10px 10px 0 0",padding:"10px 16px",display:"flex",alignItems:"center",gap:10}}>
+                <span style={{color:"#fff",fontWeight:800,fontSize:14}}>{proses}</span>
+                {dc&&<Badge label={dc.label} color="#fff" style={{background:"#ffffff30"}}/>}
+                <span style={{fontSize:11,color:"#ffffff90",marginLeft:"auto"}}>{distTasks}/{tasks.length} terdistribusi</span>
+              </div>
+              <div style={{border:`1px solid ${dc?.color||"#e2e8f0"}`,borderTop:"none",borderRadius:"0 0 10px 10px",overflow:"hidden"}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+                  <thead>
+                    <tr style={{background:"#f8fafc"}}>
+                      {["WP","Prioritas","Komponen","Operator","Status","Aksi"].map(h=>(
+                        <th key={h} style={{padding:"8px 10px",textAlign:"center",fontWeight:700,fontSize:10,color:"#64748b",borderBottom:"1px solid #e2e8f0"}}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {tasks.map((t,i)=>{
+                      const dist=isDist(t);
+                      const renharEntry=getRenharEntry(t);
+                      const pekerjaNama=renharEntry?.pekerja?.map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean).join(", ")||"Belum diassign";
+                      const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+                      const td={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",verticalAlign:"middle"};
+                      return(
+                        <tr key={i} style={{background:dist?"#f0fdf4":"#fff"}}>
+                          <td style={{...td,textAlign:"center"}}>
+                            <span style={{background:WP_COLOR[t.wp]||"#64748b",color:"#fff",borderRadius:6,padding:"2px 10px",fontSize:11,fontWeight:700}}>{t.wp}</span>
+                          </td>
+                          <td style={{...td,textAlign:"center"}}>
+                            <span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:700}}>{t.prioritas}</span>
+                          </td>
+                          <td style={{...td}}>
+                            <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
+                              {(t.komponen||[]).map(k=><span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",fontSize:10,color:"#475569"}}>{k}</span>)}
+                            </div>
+                          </td>
+                          <td style={{...td,textAlign:"center",color:dist?"#16a34a":"#94a3b8",fontSize:11}}>{pekerjaNama}</td>
+                          <td style={{...td,textAlign:"center"}}>
+                            {dist?<span style={{background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Distribusi</span>
+                            :<span style={{background:"#fff7ed",color:"#f59e0b",border:"1px solid #fde68a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⏳ Belum</span>}
+                          </td>
+                          <td style={{...td,textAlign:"center"}}>
+                            <Btn color={dist?"#0891b2":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>openAssign(t)}>
+                              {dist?"👥 Edit":"👤 Distribusi"}
+                            </Btn>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          );
+        })
+      )}
+      {assignModal&&(()=>{
+        const{task,divisi,existing,isExisting}=assignModal;
+        const dc=DIVISI_CONFIG[divisi];
+        const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
+        return(
+          <Modal title={`${isExisting?"Edit":"Distribusi"} Pekerja — ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
+              <Badge label={task.proses} color={PROSES_COLOR[task.proses]||"#64748b"}/>
+              <Badge label={`${task.wp}`} color={WP_COLOR[task.wp]||"#64748b"}/>
+              {dc&&<Badge label={dc.label} color={dc.color}/>}
+            </div>
+            <Lbl>Pilih Pekerja ({dc?.label||divisi})</Lbl>
+            {pekerjaDivisi.length===0?(
+              <div style={{padding:"16px",background:"#f8fafc",borderRadius:8,fontSize:12,color:"#94a3b8",textAlign:"center"}}>
+                Belum ada pekerja di divisi ini.
+              </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+                {pekerjaDivisi.map(p=>{
+                  const isSel=selPekerja.includes(p.id);
+                  return(
+                    <div key={p.id} onClick={()=>setSelPekerja(prev=>isSel?prev.filter(id=>id!==p.id):[...prev,p.id])}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",borderRadius:10,cursor:"pointer",
+                        border:`1.5px solid ${isSel?(dc?.color||"#2563eb"):"#e2e8f0"}`,background:isSel?(dc?.bg||"#eff6ff"):"#f8fafc",transition:"all .15s"}}>
+                      <div style={{width:28,height:28,borderRadius:8,background:isSel?(dc?.color||"#2563eb"):(dc?.bg||"#eff6ff"),
+                        display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0,color:isSel?"#fff":(dc?.color||"#2563eb")}}>
+                        {isSel?"✓":(dc?.icon||"👤")}
+                      </div>
+                      <span style={{fontWeight:isSel?700:500,fontSize:13,color:isSel?(dc?.color||"#2563eb"):"#475569"}}>{p.nama}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {selPekerja.length>0&&(
+              <div style={{padding:"8px 12px",background:"#f0fdf4",borderRadius:8,marginBottom:14,fontSize:12,color:"#16a34a",fontWeight:600}}>
+                ✓ {selPekerja.length} pekerja dipilih
+              </div>
+            )}
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
+              <Btn color="#1d4ed8" onClick={confirmDistribute}>{isExisting?"Simpan":"Distribusi"}</Btn>
+            </div>
+          </Modal>
+        );
+      })()}
+    </div>
+  );
 }
 
 
