@@ -676,6 +676,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
+    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi Semua - '+selDate,'','Rencana Harian');
   };
   const isDist=(task)=>!!getRenharEntry(task);
   const distCount=filteredTasks.filter(isDist).length;
