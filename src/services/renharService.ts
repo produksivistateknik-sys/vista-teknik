@@ -17,18 +17,20 @@ export const renharService = {
     return data ?? []
   },
   async create(payload: any) {
+    const { updated_by, ...safe } = payload
     const { data, error } = await supabase
       .from('renhar')
-      .insert(payload)
+      .insert(safe)
       .select()
       .single()
     if (error) throw new Error(error.message)
     return data
   },
   async update(id: number, payload: any) {
+    const { updated_by, ...safe } = payload
     const { data, error } = await supabase
       .from('renhar')
-      .update({ ...payload, updated_at: new Date().toISOString() })
+      .update({ ...safe, updated_at: new Date().toISOString() })
       .eq('id', id)
       .select()
       .single()
