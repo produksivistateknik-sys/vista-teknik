@@ -654,6 +654,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -796,6 +797,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
         return(
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
           <Modal title={(assignModal.isExisting?"Edit":"Distribusi")+" — "+task.proses} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
@@ -827,6 +829,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
               </div>
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
               <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
               <Btn color="#1d4ed8" onClick={confirmDistribute}>{assignModal.isExisting?"Simpan":"Distribusi"}</Btn>
             </div>
@@ -1976,6 +1979,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Tambah Panel '+p.nama+' ke Raw Schedule - WO '+wo.wo,jenis:'raw',wo_no:wo.wo,halaman:'Raw Schedule'});
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -2010,6 +2014,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -2295,6 +2300,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
         return(
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
           <Modal title={`${assignModal.isExisting?"Edit":"Distribusi"} Pekerja — ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
@@ -2325,6 +2331,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               </div>
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
               <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
               <Btn color="#1d4ed8" onClick={confirmDistribute}>{assignModal.isExisting?"Simpan Perubahan":"Distribusi"}</Btn>
             </div>
