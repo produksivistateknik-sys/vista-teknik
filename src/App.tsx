@@ -2470,12 +2470,14 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(editId, np);
+        await createLog(user?.name||user?.nama||'Admin','wo','update','Edit WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO');
         setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
       }
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
+        await createLog(user?.name||user?.nama||'Admin','wo','create','Tambah WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO');
         setWoData(prev=>[...prev,{...result.data,panels:np}]);
       }
     }
@@ -2845,6 +2847,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
