@@ -2,6 +2,7 @@
 import { useState, useMemo, useEffect } from "react";
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
+import { useKendala } from './hooks/useKendala'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
@@ -836,7 +837,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
 }
 
 
-function KendalaInbox({kendalaLog,setKendalaLog}){
+function KendalaInbox({kendalaLog,removeKendala}){
   const [filterDiv,setFilterDiv]=useState("ALL");
   const [filterProses,setFilterProses]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
@@ -906,7 +907,7 @@ function KendalaInbox({kendalaLog,setKendalaLog}){
                     <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>📅 {fmtDate(k.tanggal)}</span>
                     <span style={{fontSize:11,color:"#94a3b8"}}>👤 {k.operator}</span>
                   </div>
-                  <button onClick={()=>setKendalaLog(prev=>prev.filter(x=>x.id!==k.id))}
+                  <button onClick={()=>removeKendala(k.id)}
                     style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13,flexShrink:0}}>
                     🗑
                   </button>
@@ -2379,7 +2380,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW — tabel besar per proses
 // ─────────────────────────────────────────────────────────────────────────────
-function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendalaLog}){
+function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,createKendala}){
   const [viewDate,setViewDate]=useState(TODAY);
   const [shift,setShift]=useState("1");
   const [shiftSet,setShiftSet]=useState(false);
@@ -3002,14 +3003,15 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,setKendala
                   onClick={()=>{
                     const txt=(catatan[proses]||"").trim();
                     if(txt){
-                      setKendalaLog(prev=>[{
-                        id:uid(),divisi:user.divisi,divisiLabel:cfg.label,
+                      createKendala({
+                        divisi:user.divisi,divisi_label:cfg.label,
                         tanggal:viewDate,proses,catatan:txt,
-                        ts:new Date().toISOString(),operator:user.name
-                      },...prev]);
+                        ts:new Date().toISOString(),operator:user.name||user.nama
+                      });
                     }
                     setSavedNote(prev=>({...prev,[proses]:true}));
                     setTimeout(()=>setSavedNote(prev=>({...prev,[proses]:false})),2000);
+                
                   }}>
                   {savedNote[proses]?"✓ Terkirim":"Simpan"}
                 </Btn>
@@ -3052,7 +3054,7 @@ const [woData, setWoData] = useState<any[]>([]);
 const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
-  const [kendalaLog,setKendalaLog]=useState([]); // {id,divisi,tanggal,proses,catatan,ts}
+  const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
@@ -3126,7 +3128,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             </div>
           </div>
           <div style={{flex:1,overflowY:"auto"}}>
-            <OperatorView woData={woData} setWoData={setWoData} user={user} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} setKendalaLog={setKendalaLog}/>
+            <OperatorView woData={woData} setWoData={setWoData} user={user} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createKendala={createKendala}/>
           </div>
           <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
             display:"flex",height:52,zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
@@ -3183,12 +3185,21 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
-            {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} setKendalaLog={setKendalaLog}/>}
+            {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
           </div>
         </div>
       )}
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 
 
