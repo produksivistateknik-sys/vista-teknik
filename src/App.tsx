@@ -828,7 +828,6 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
               </div>
             )}
             <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
               <Btn outline color="#64748b" onClick={()=>{setAssignModal(null);setSelPekerja([]);}}>Batal</Btn>
               <Btn color="#1d4ed8" onClick={confirmDistribute}>{assignModal.isExisting?"Simpan":"Distribusi"}</Btn>
             </div>
