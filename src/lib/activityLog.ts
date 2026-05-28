@@ -48,18 +48,23 @@ export const createLog = async (
 
 export const fixSystemLog = async (adminNama: string, module: string) => {
   if(!adminNama || adminNama === 'System') return
+  // Cari log System yang dibuat dalam 10 detik terakhir
+  const tenSecondsAgo = new Date(Date.now() - 10000).toISOString()
   const { data } = await supabase
     .from('activity_log')
     .select('id')
     .eq('admin_nama', 'System')
     .eq('module', module)
+    .gte('created_at', tenSecondsAgo)
     .order('created_at', { ascending: false })
-    .limit(5)
+    .limit(10)
   if(data && data.length > 0) {
-    await supabase
+    const { error } = await supabase
       .from('activity_log')
       .update({ admin_nama: adminNama, user_name: adminNama })
       .in('id', data.map((r:any) => r.id))
-    console.log('[ActivityLog] fixed System ->', adminNama)
+    if(!error) console.log('[ActivityLog] fixed System ->', adminNama, 'count:', data.length)
+    else console.error('[ActivityLog] fixSystemLog error:', error.message)
   }
 }
+
