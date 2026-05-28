@@ -10,7 +10,13 @@ export const createLog = async (
   oldData?: any,
   newData?: any
 ) => {
-  console.log('[ActivityLog] creating log:', description)
+  try {
+    // Set session variable dulu agar trigger bisa baca nama admin
+    await supabase.rpc('set_current_admin', { admin_name: adminNama || 'Admin' })
+  } catch(e) {
+    // ignore jika RPC belum ada
+  }
+  
   const { error } = await supabase.from('activity_log').insert({
     user_id: null,
     user_name: adminNama || 'Admin',
@@ -38,19 +44,18 @@ export const createLog = async (
 
 export const fixSystemLog = async (adminNama: string, module: string) => {
   if(!adminNama || adminNama === 'System') return
-  // Update log System terbaru dengan nama admin yang benar
   const { data } = await supabase
     .from('activity_log')
     .select('id')
     .eq('admin_nama', 'System')
     .eq('module', module)
     .order('created_at', { ascending: false })
-    .limit(3)
+    .limit(5)
   if(data && data.length > 0) {
-    const ids = data.map((r:any) => r.id)
     await supabase
       .from('activity_log')
       .update({ admin_nama: adminNama, user_name: adminNama })
-      .in('id', ids)
+      .in('id', data.map((r:any) => r.id))
+    console.log('[ActivityLog] fixed System ->', adminNama)
   }
 }

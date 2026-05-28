@@ -1358,6 +1358,7 @@ function Login({onLogin}){
       jenis:"auth",halaman:"Login",table_name:"auth",
     });
     localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
+    await supabase.rpc('set_current_admin', { admin_name: data.nama });
     onLogin({...data,divisi:"admin",name:data.nama});
     setLoading(false);
   };
@@ -2848,6 +2849,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
 
 
 
