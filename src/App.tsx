@@ -8,6 +8,7 @@ import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 import { useActivityLog } from './hooks/useActivityLog';
+import { createLog } from './lib/activityLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -465,7 +466,7 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
               const pkr=pekerja.find(p=>p.id===delId);
               await removePekerja(delId);
               setPekerja(prev=>prev.filter(p=>p.id!==delId));
-              if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||"Admin",module:"pekerja",action_type:"delete",description:"Hapus pekerja "+(pkr?.nama||""),halaman:"Master Pekerja"});
+              await createLog(user?.name||user?.nama||"Admin","pekerja","delete","Hapus pekerja "+(pkr?.nama||""),"","Master Pekerja");
               setDelId(null);
             }}>Hapus</Btn>
           </div>
@@ -660,7 +661,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
+    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -2049,7 +2050,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,halaman:'Raw Schedule'});
+    await createLog(user?.name||user?.nama||'Admin','raw','create','Tambah Panel '+p.nama+' ke Raw Schedule',wo.wo,'Raw Schedule');
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -2084,7 +2085,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
+    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -2844,6 +2845,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
+
 
 
 
