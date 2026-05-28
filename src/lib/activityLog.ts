@@ -1,5 +1,13 @@
 ﻿import { supabase } from '../lib/supabase'
 
+export const setAdminSession = async (adminNama: string) => {
+  try {
+    await supabase.rpc('set_current_admin', { admin_name: adminNama || 'Admin' })
+  } catch(e) {
+    console.error('[setAdminSession] error:', e)
+  }
+}
+
 export const createLog = async (
   adminNama: string,
   module: string,
@@ -10,12 +18,8 @@ export const createLog = async (
   oldData?: any,
   newData?: any
 ) => {
-  try {
-    // Set session variable dulu agar trigger bisa baca nama admin
-    await supabase.rpc('set_current_admin', { admin_name: adminNama || 'Admin' })
-  } catch(e) {
-    // ignore jika RPC belum ada
-  }
+  // Set session variable agar trigger bisa baca nama admin
+  await setAdminSession(adminNama)
   
   const { error } = await supabase.from('activity_log').insert({
     user_id: null,
