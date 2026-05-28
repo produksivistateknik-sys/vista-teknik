@@ -2229,7 +2229,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{await removeRaw(row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule');await removeRaw(row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -2847,6 +2847,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
