@@ -2298,7 +2298,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
         return(
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
           <Modal title={`${assignModal.isExisting?"Edit":"Distribusi"} Pekerja — ${task.proses}`} onClose={()=>{setAssignModal(null);setSelPekerja([]);}} width={460}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:4}}>{task.proyek} · {task.panel}</div>
             <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:16}}>
