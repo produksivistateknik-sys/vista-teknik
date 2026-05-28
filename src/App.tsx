@@ -3401,6 +3401,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} user={user}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
+            {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
             {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
           </div>
         </div>
@@ -3408,6 +3409,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
