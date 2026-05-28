@@ -2025,6 +2025,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
     setDragMode(null);setDragInfo(null);
     if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
+    await createLog(user?.name||user?.nama||'Admin','raw','update','Pindah/Copy jadwal Raw Schedule','','Raw Schedule');
   };
 
   const updatePrioritasPanel=async(panelId,val)=>{
