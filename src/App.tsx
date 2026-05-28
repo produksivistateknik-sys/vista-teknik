@@ -7,6 +7,7 @@ import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
+import { useActivityLog } from './hooks/useActivityLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -598,7 +599,7 @@ function TrackingPekerja({pekerja,renhar}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
 // ─────────────────────────────────────────────────────────────────────────────
-function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar}){
+function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,user}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selProses,setSelProses]=useState("ALL");
@@ -832,6 +833,132 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
           </Modal>
         );
       })()}
+    </div>
+  );
+}
+
+
+function ActivityLogView({activityLog,user}){
+  const [filterAdmin,setFilterAdmin]=useState("ALL");
+  const [filterJenis,setFilterJenis]=useState("ALL");
+  const [filterTgl,setFilterTgl]=useState("");
+  const [search,setSearch]=useState("");
+
+  const adminList=[...new Set(activityLog.map(a=>a.admin_nama||a.user_name).filter(Boolean))];
+  const jenisList=[...new Set(activityLog.map(a=>a.jenis).filter(Boolean))];
+
+  const filtered=activityLog.filter(a=>
+    (filterAdmin==="ALL"||(a.admin_nama||a.user_name)===filterAdmin)&&
+    (filterJenis==="ALL"||a.jenis===filterJenis)&&
+    (!filterTgl||a.created_at?.startsWith(filterTgl))&&
+    (!search||(a.aktivitas||a.action||"").toLowerCase().includes(search.toLowerCase())||
+      (a.admin_nama||a.user_name||"").toLowerCase().includes(search.toLowerCase())||
+      (a.wo_no||"").toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const JENIS_COLOR={
+    "wo":"#2563eb","raw":"#f59e0b","rencana":"#10b981",
+    "progress":"#8b5cf6","kendala":"#ef4444","auth":"#64748b","pekerja":"#0891b2",
+  };
+
+  const fmtTime=(ts)=>{
+    if(!ts)return"—";
+    const d=new Date(ts);
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+
+      d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  return(
+    <div className="fi">
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
+        <div>
+          <Lbl>Cari</Lbl>
+          <input value={search} onChange={e=>setSearch(e.target.value)}
+            placeholder="Cari aktivitas, admin, WO..."
+            style={{padding:"8px 14px",borderRadius:9,border:"1.5px solid #e2e8f0",
+              background:"#fff",fontSize:13,width:240,color:"#1e293b"}}/>
+        </div>
+        <div>
+          <Lbl>Filter Admin</Lbl>
+          <Sel value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={{minWidth:160}}>
+            <option value="ALL">Semua Admin</option>
+            {adminList.map(a=><option key={a} value={a}>{a}</option>)}
+          </Sel>
+        </div>
+        <div>
+          <Lbl>Filter Jenis</Lbl>
+          <Sel value={filterJenis} onChange={e=>setFilterJenis(e.target.value)} style={{minWidth:140}}>
+            <option value="ALL">Semua Jenis</option>
+            {jenisList.map(j=><option key={j} value={j}>{j}</option>)}
+          </Sel>
+        </div>
+        <div>
+          <Lbl>Filter Tanggal</Lbl>
+          <Inp type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={{minWidth:160}}/>
+        </div>
+        {(filterAdmin!=="ALL"||filterJenis!=="ALL"||filterTgl||search)&&(
+          <Btn outline color="#64748b" style={{padding:"7px 14px",fontSize:12}}
+            onClick={()=>{setFilterAdmin("ALL");setFilterJenis("ALL");setFilterTgl("");setSearch("");}}>
+            Reset
+          </Btn>
+        )}
+        <div style={{marginLeft:"auto",fontSize:12,color:"#64748b",alignSelf:"flex-end",paddingBottom:4}}>
+          {filtered.length} aktivitas
+        </div>
+      </div>
+
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
+        {[
+          {l:"Total Log",v:activityLog.length,c:"#2563eb"},
+          {l:"Hari Ini",v:activityLog.filter(a=>a.created_at?.startsWith(new Date().toISOString().slice(0,10))).length,c:"#10b981"},
+          {l:"Admin Aktif",v:new Set(activityLog.map(a=>a.admin_nama||a.user_name).filter(Boolean)).size,c:"#f59e0b"},
+        ].map((s,i)=>(
+          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
+            <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#94a3b8",marginTop:2,fontWeight:600,textTransform:"uppercase"}}>{s.l}</div>
+          </Card>
+        ))}
+      </div>
+
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:14,fontWeight:600}}>Belum ada aktivitas</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map((a,i)=>{
+            const jColor=JENIS_COLOR[a.jenis]||"#64748b";
+            const adminName=a.admin_nama||a.user_name||"—";
+            const aktivitas=a.aktivitas||a.action||"—";
+            return(
+              <div key={a.id||i} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+                padding:"12px 16px",borderLeft:`4px solid ${jColor}`,
+                display:"flex",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
+                <div style={{width:36,height:36,borderRadius:10,background:jColor+"18",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>
+                  {a.jenis==="wo"?"📋":a.jenis==="raw"?"📅":a.jenis==="rencana"?"📊":
+                   a.jenis==="progress"?"📈":a.jenis==="kendala"?"⚠️":a.jenis==="auth"?"🔐":"⚙️"}
+                </div>
+                <div style={{flex:1,minWidth:200}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:3}}>{aktivitas}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"#475569",fontWeight:600}}>👤 {adminName}</span>
+                    {a.wo_no&&<span style={{fontSize:11,color:"#2563eb",fontWeight:700,fontFamily:"'DM Mono',monospace"}}>WO {a.wo_no}</span>}
+                    {a.halaman&&<span style={{fontSize:10,color:"#94a3b8"}}>📍 {a.halaman}</span>}
+                  </div>
+                </div>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:4}}>
+                  <span style={{background:jColor+"18",color:jColor,border:`1px solid ${jColor}33`,
+                    borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{a.jenis||"—"}</span>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</span>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -1125,16 +1252,54 @@ function LandingPage({onEnter}){
 // LOGIN
 // ─────────────────────────────────────────────────────────────────────────────
 function Login({onLogin}){
-  const [div,setDiv]=useState("admin");
-  const [uid,setUid]=useState(1);
+  const [mode,setMode]=useState("divisi"); // "divisi" | "admin"
+  const [div,setDiv]=useState("mekanik");
+  const [namaList,setNamaList]=useState([]);
+  const [selNama,setSelNama]=useState("");
+  const [username,setUsername]=useState("");
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
   const [show,setShow]=useState(false);
-  const dus=USERS.filter(u=>u.divisi===div);
-  const go=()=>{
-    if(pwd!==DIVISI_CONFIG[div].password){setErr("Password salah!");return;}
-    onLogin(USERS.find(u=>u.id===uid)||dus[0]);
+  const [loading,setLoading]=useState(false);
+
+  useEffect(()=>{
+    if(mode==="divisi"&&div){
+      supabase.from("pekerja").select("id,nama").eq("divisi",div).then(({data})=>{
+        setNamaList(data??[]);setSelNama("");
+      });
+    }
+  },[div,mode]);
+
+  const goAdmin=async()=>{
+    if(!username.trim()){setErr("Masukkan username!");return;}
+    if(!pwd){setErr("Masukkan password!");return;}
+    setLoading(true);
+    const{data,error}=await supabase.from("admins")
+      .select("*").eq("username",username.trim()).eq("password",pwd).eq("is_active",true).single();
+    if(error||!data){setErr("Username atau password salah!");setLoading(false);return;}
+    await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
+    await supabase.from("activity_log").insert({
+      user_name:data.nama,admin_nama:data.nama,
+      action:"Login ke sistem",aktivitas:"Login ke sistem",
+      jenis:"auth",halaman:"Login",table_name:"auth",
+    });
+    localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
+    onLogin({...data,divisi:"admin",name:data.nama});
+    setLoading(false);
   };
+
+  const goDivisi=async()=>{
+    if(!selNama){setErr("Pilih nama!");return;}
+    if(pwd!==DIVISI_CONFIG[div].password){setErr("Password salah!");return;}
+    setLoading(true);
+    const found=namaList.find(p=>p.nama===selNama);
+    if(!found){setErr("Nama tidak ditemukan!");setLoading(false);return;}
+    onLogin({...found,divisi:div,name:found.nama});
+    setLoading(false);
+  };
+
+  const go=mode==="admin"?goAdmin:goDivisi;
+
   return(
     <div style={{minHeight:"100vh",display:"flex"}}>
       <style>{GCss}</style>
@@ -1144,7 +1309,7 @@ function Login({onLogin}){
         <div style={{fontSize:32,fontWeight:800,lineHeight:1.2,marginBottom:14}}>Monitoring<br/>Proses Produksi</div>
         <div style={{fontSize:14,opacity:.75,lineHeight:1.8,maxWidth:320}}>Platform terpadu monitoring progress produksi panel listrik secara real-time.</div>
         <div style={{marginTop:36,display:"flex",flexDirection:"column",gap:10}}>
-          {["Tabel produksi harian lengkap","Shift & PIC per komponen","Prioritas dari Raw Schedule","Status H-7 Mendesak"].map(f=>(
+          {["Multi Admin dengan activity tracking","Tabel produksi harian lengkap","Shift & PIC per komponen","Status H-7 Mendesak"].map(f=>(
             <div key={f} style={{display:"flex",alignItems:"center",gap:10,fontSize:13,opacity:.85}}>
               <span style={{width:18,height:18,borderRadius:"50%",background:"#ffffff25",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10}}>✓</span>{f}
             </div>
@@ -1154,44 +1319,82 @@ function Login({onLogin}){
       <div style={{width:440,display:"flex",alignItems:"center",justifyContent:"center",padding:40,background:"#fff"}}>
         <div style={{width:"100%",maxWidth:340}} className="fi">
           <div style={{fontWeight:800,fontSize:22,color:"#1e293b",marginBottom:4}}>Selamat Datang 👋</div>
-          <div style={{fontSize:13,color:"#64748b",marginBottom:28}}>Masuk ke akun Anda</div>
-          <div style={{marginBottom:12}}><Lbl>Divisi</Lbl>
-            <Sel value={div} onChange={e=>{setDiv(e.target.value);setUid(USERS.find(u=>u.divisi===e.target.value)?.id||1);setErr("");}}>
-              {Object.entries(DIVISI_CONFIG).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
-            </Sel>
+          <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Masuk ke akun Anda</div>
+          <div style={{display:"flex",gap:8,marginBottom:20,background:"#f1f5f9",borderRadius:10,padding:4}}>
+            <button onClick={()=>{setMode("admin");setErr("");}}
+              style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",
+                background:mode==="admin"?"#fff":"transparent",
+                color:mode==="admin"?"#1d4ed8":"#64748b",fontWeight:700,fontSize:13,
+                boxShadow:mode==="admin"?"0 1px 4px #00000015":"none",transition:"all .15s"}}>
+              ⚙️ Admin
+            </button>
+            <button onClick={()=>{setMode("divisi");setErr("");}}
+              style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",
+                background:mode==="divisi"?"#fff":"transparent",
+                color:mode==="divisi"?"#1d4ed8":"#64748b",fontWeight:700,fontSize:13,
+                boxShadow:mode==="divisi"?"0 1px 4px #00000015":"none",transition:"all .15s"}}>
+              👷 Operator
+            </button>
           </div>
-          <div style={{marginBottom:12}}><Lbl>Nama</Lbl>
-            <Sel value={uid} onChange={e=>setUid(Number(e.target.value))}>
-              {dus.map(u=><option key={u.id} value={u.id}>{u.name}</option>)}
-            </Sel>
-          </div>
-          <div style={{marginBottom:20}}><Lbl>Password</Lbl>
-            <div style={{position:"relative"}}>
-              <Inp type={show?"text":"password"} value={pwd}
-                onChange={e=>{setPwd(e.target.value);setErr("");}}
-                onKeyDown={e=>e.key==="Enter"&&go()}
-                placeholder="Masukkan password..."
-                style={{border:`1.5px solid ${err?"#fca5a5":"#e2e8f0"}`,paddingRight:40}}/>
-              <button onClick={()=>setShow(!show)} style={{position:"absolute",right:10,top:"50%",
-                transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}>
-                {show?"🙈":"👁"}
-              </button>
-            </div>
-            {err&&<div style={{fontSize:11,color:"#dc2626",marginTop:5}}>{err}</div>}
-          </div>
-          <Btn color="#1d4ed8" style={{width:"100%",padding:13,fontSize:15,boxShadow:"0 4px 14px #2563eb33"}} onClick={go}>Masuk →</Btn>
-          <div style={{marginTop:16,padding:"8px 12px",background:"#f8fafc",borderRadius:8,fontSize:11,color:"#94a3b8"}}>
-            💡 Demo: <span style={{fontFamily:"'DM Mono',monospace",color:"#475569"}}>{DIVISI_CONFIG[div].password}</span>
-          </div>
+          {mode==="admin"?(
+            <>
+              <div style={{marginBottom:12}}><Lbl>Username</Lbl>
+                <Inp value={username} onChange={e=>{setUsername(e.target.value);setErr("");}}
+                  placeholder="contoh: rizky_admin" onKeyDown={e=>e.key==="Enter"&&go()}/>
+              </div>
+              <div style={{marginBottom:20}}><Lbl>Password</Lbl>
+                <div style={{position:"relative"}}>
+                  <Inp type={show?"text":"password"} value={pwd}
+                    onChange={e=>{setPwd(e.target.value);setErr("");}}
+                    onKeyDown={e=>e.key==="Enter"&&go()}
+                    placeholder="Masukkan password..."
+                    style={{border:`1.5px solid ${err?"#fca5a5":"#e2e8f0"}`,paddingRight:40}}/>
+                  <button onClick={()=>setShow(!show)} style={{position:"absolute",right:10,top:"50%",
+                    transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}>
+                    {show?"🙈":"👁"}
+                  </button>
+                </div>
+              </div>
+            </>
+          ):(
+            <>
+              <div style={{marginBottom:12}}><Lbl>Divisi</Lbl>
+                <Sel value={div} onChange={e=>{setDiv(e.target.value);setErr("");}}>
+                  {Object.entries(DIVISI_CONFIG).filter(([k])=>k!=="admin").map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
+                </Sel>
+              </div>
+              <div style={{marginBottom:12}}><Lbl>Nama</Lbl>
+                <Sel value={selNama} onChange={e=>setSelNama(e.target.value)}>
+                  <option value="">-- Pilih Nama --</option>
+                  {namaList.map(p=><option key={p.id} value={p.nama}>{p.nama}</option>)}
+                </Sel>
+              </div>
+              <div style={{marginBottom:20}}><Lbl>Password Divisi</Lbl>
+                <div style={{position:"relative"}}>
+                  <Inp type={show?"text":"password"} value={pwd}
+                    onChange={e=>{setPwd(e.target.value);setErr("");}}
+                    onKeyDown={e=>e.key==="Enter"&&go()}
+                    placeholder="Masukkan password divisi..."
+                    style={{border:`1.5px solid ${err?"#fca5a5":"#e2e8f0"}`,paddingRight:40}}/>
+                  <button onClick={()=>setShow(!show)} style={{position:"absolute",right:10,top:"50%",
+                    transform:"translateY(-50%)",background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}>
+                    {show?"🙈":"👁"}
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+          {err&&<div style={{fontSize:11,color:"#dc2626",marginBottom:12,padding:"8px 12px",background:"#fef2f2",borderRadius:8}}>{err}</div>}
+          <Btn color="#1d4ed8" style={{width:"100%",padding:13,fontSize:15,boxShadow:"0 4px 14px #2563eb33"}} onClick={go}>
+            {loading?"Memuat...":"Masuk →"}
+          </Btn>
         </div>
       </div>
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DASHBOARD
-// ─────────────────────────────────────────────────────────────────────────────
+
 function Dashboard({woData}){
   if(!woData.length) return(
     <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
@@ -1596,7 +1799,7 @@ function DetailProgress({woData}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RAW SCHEDULE
 // ─────────────────────────────────────────────────────────────────────────────
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,user}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
   const [dragInfo,setDragInfo]=useState(null);
@@ -2171,7 +2374,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 }
 
 
-function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO}){
+function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,user}){
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
   const [form,setForm]=useState(blank);
@@ -3048,6 +3251,18 @@ function OperatorView({woData,setWoData,user,renhar,setRenhar,pekerja,createKend
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(){
   const [page,setPage]=useState("landing");
+  // Restore admin session
+  useEffect(()=>{
+    const saved=localStorage.getItem("vista_admin_session");
+    if(saved){
+      try{
+        const parsed=JSON.parse(saved);
+        setUser(parsed);
+        setPage("app");
+        setTab("dashboard");
+      }catch{}
+    }
+  },[]);
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState("dashboard");
 const [woData, setWoData] = useState<any[]>([]);
@@ -3055,6 +3270,7 @@ const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
+  const { data: activityLog, log: logActivity } = useActivityLog()
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
@@ -3102,7 +3318,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ...(canWO?[{id:"wo",label:"📝 Manajemen WO"}]:[]),
     ...(["admin"].includes(user.divisi)?[{id:"pekerja",label:"👥 Master Pekerja"}]:[]),
     ...(canPekerja?[{id:"tracking",label:"📈 Tracking Pekerja"}]:[]),
-    ...(canKendala?[{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
+    ...(canKendala?[{id:"activity",label:"📊 Activity Log"},{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
@@ -3122,7 +3338,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             <div style={{display:"flex",alignItems:"center",gap:6}}>
               <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,
                 borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg.icon} {cfg.label}</span>
-              <button onClick={()=>{setUser(null);setPage("landing");}}
+              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}}
                 style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",
                   borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}>Keluar</button>
             </div>
@@ -3157,7 +3373,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               <span style={{fontSize:12,color:"#475569",fontWeight:500}}>{user.name}</span>
               <span style={{background:cfg.bg,color:cfg.color,border:`1px solid ${cfg.color}30`,
                 borderRadius:20,padding:"2px 11px",fontSize:11,fontWeight:700}}>{cfg.icon} {cfg.label}</span>
-              <button onClick={()=>{setUser(null);setPage("landing");}}
+              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}}
                 style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",
                   borderRadius:8,padding:"5px 13px",cursor:"pointer",fontSize:12,fontWeight:600}}>Keluar</button>
             </div>
@@ -3180,9 +3396,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="dashboard"&&<Dashboard woData={woData}/>}
             {tab==="summary"&&<SummaryProgress woData={woData}/>}
             {tab==="detail"&&<DetailProgress woData={woData}/>}
-            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
-            {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar}/>}
-            {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO}/>}
+            {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} user={user}/>}
+            {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} user={user}/>}
+            {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} user={user}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
             {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
@@ -3192,6 +3408,24 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
