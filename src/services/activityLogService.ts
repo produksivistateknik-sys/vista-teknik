@@ -1,5 +1,16 @@
 ﻿import { supabase } from '../lib/supabase'
 
+export type ActivityPayload = {
+  admin_nama: string
+  module: 'auth'|'wo'|'raw'|'rencana'|'progress'|'kendala'|'pekerja'|'general'
+  action_type: 'create'|'update'|'delete'|'login'|'logout'|'distribute'
+  description: string
+  wo_number?: string
+  halaman?: string
+  old_data?: any
+  new_data?: any
+}
+
 export const activityLogService = {
   async getAll() {
     const { data, error } = await supabase
@@ -10,29 +21,31 @@ export const activityLogService = {
     if (error) throw new Error(error.message)
     return data ?? []
   },
-  async log(payload: {
-    admin_id?: number,
-    admin_nama: string,
-    aktivitas: string,
-    jenis: string,
-    wo_id?: number,
-    wo_no?: string,
-    halaman?: string,
-    data_before?: any,
-    data_after?: any,
-  }) {
-    const { error } = await supabase.from('activity_log').insert({
-      user_name: payload.admin_nama,
-      action: payload.aktivitas,
-      table_name: payload.halaman || '',
-      admin_nama: payload.admin_nama,
-      aktivitas: payload.aktivitas,
-      jenis: payload.jenis,
-      wo_no: payload.wo_no || '',
+
+  async log(payload: ActivityPayload) {
+    const insertData = {
+      user_id: null,
+      user_name: payload.admin_nama || 'Admin',
+      action: payload.description || payload.action_type,
+      table_name: payload.halaman || payload.module || '',
+      record_id: null,
+      old_data: payload.old_data || null,
+      new_data: payload.new_data || null,
+      admin_nama: payload.admin_nama || 'Admin',
+      aktivitas: payload.description || payload.action_type,
+      jenis: payload.module || 'general',
+      wo_no: payload.wo_number || '',
       halaman: payload.halaman || '',
-      old_data: payload.data_before || null,
-      new_data: payload.data_after || null,
-    })
-    if (error) console.error('Activity log error:', error.message)
+      module: payload.module || 'general',
+      action_type: payload.action_type || 'update',
+      description: payload.description || '',
+      wo_number: payload.wo_number || '',
+    }
+    const { error } = await supabase.from('activity_log').insert(insertData)
+    if (error) {
+      console.error('[ActivityLog] error:', error.message, error.details)
+    } else {
+      console.log('[ActivityLog] success:', payload.description)
+    }
   },
 }
