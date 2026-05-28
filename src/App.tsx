@@ -8,7 +8,7 @@ import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 import { useActivityLog } from './hooks/useActivityLog';
-import { createLog } from './lib/activityLog';
+import { createLog, fixSystemLog } from './lib/activityLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -2848,6 +2848,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
 
 
 

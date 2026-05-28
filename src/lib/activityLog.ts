@@ -1,6 +1,5 @@
 ﻿import { supabase } from '../lib/supabase'
 
-// Global log function - bisa dipanggil langsung tanpa props
 export const createLog = async (
   adminNama: string,
   module: string,
@@ -31,8 +30,27 @@ export const createLog = async (
     wo_number: woNumber || '',
   })
   if (error) {
-    console.error('[ActivityLog] FAILED:', error.message, error)
+    console.error('[ActivityLog] FAILED:', error.message)
   } else {
     console.log('[ActivityLog] SUCCESS:', description)
+  }
+}
+
+export const fixSystemLog = async (adminNama: string, module: string) => {
+  if(!adminNama || adminNama === 'System') return
+  // Update log System terbaru dengan nama admin yang benar
+  const { data } = await supabase
+    .from('activity_log')
+    .select('id')
+    .eq('admin_nama', 'System')
+    .eq('module', module)
+    .order('created_at', { ascending: false })
+    .limit(3)
+  if(data && data.length > 0) {
+    const ids = data.map((r:any) => r.id)
+    await supabase
+      .from('activity_log')
+      .update({ admin_nama: adminNama, user_name: adminNama })
+      .in('id', ids)
   }
 }
