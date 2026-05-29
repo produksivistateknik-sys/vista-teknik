@@ -2244,6 +2244,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
     setModalWp("");setModalKomponen([]);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
+    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),'','Raw Schedule');
   };
 
   const removeEntry=async(wp)=>{
@@ -2258,6 +2259,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
+    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),'','Raw Schedule');
   };
 
   const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
@@ -3122,6 +3124,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
