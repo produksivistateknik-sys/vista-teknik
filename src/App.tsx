@@ -1,5 +1,5 @@
 ﻿
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendala } from './hooks/useKendala'
@@ -3606,6 +3606,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
