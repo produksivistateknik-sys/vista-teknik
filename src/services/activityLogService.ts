@@ -9,6 +9,8 @@ export type ActivityPayload = {
   halaman?: string
   old_data?: any
   new_data?: any
+  proyek?: string
+  panel?: string
 }
 
 export const activityLogService = {
@@ -40,6 +42,8 @@ export const activityLogService = {
       action_type: payload.action_type || 'update',
       description: payload.description || '',
       wo_number: payload.wo_number || '',
+      proyek: payload.proyek || '',
+      panel: payload.panel || '',
     }
     const { error } = await supabase.from('activity_log').insert(insertData)
     if (error) {
@@ -49,3 +53,4 @@ export const activityLogService = {
     }
   },
 }
+

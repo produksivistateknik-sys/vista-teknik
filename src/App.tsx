@@ -1982,6 +1982,7 @@ function MaintenanceTab({user,logActivity}:any){
 function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
+  const [filterProyek,setFilterProyek]=useState("ALL");
   const [filterProject,setFilterProject]=useState("ALL");
   const [filterPanel,setFilterPanel]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
@@ -2015,6 +2016,7 @@ function ActivityLogView({activityLog}:any){
     const pnl=a.panel||a.halaman||"";
     if(filterAdmin!=="ALL"&&adminName!==filterAdmin)return false;
     if(filterAction!=="ALL"&&actionType!==filterAction)return false;
+    if(filterProyek!=="ALL"&&a.proyek!==filterProyek)return false;
     if(filterProject!=="ALL"&&proj!==filterProject)return false;
     if(filterPanel!=="ALL"&&pnl!==filterPanel)return false;
     if(filterTgl&&!a.created_at?.startsWith(filterTgl))return false;
@@ -3338,7 +3340,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule');await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule',null,null,row.proyek,row.panel);await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -3964,6 +3966,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
 
 
 

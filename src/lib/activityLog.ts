@@ -38,7 +38,7 @@ export const createLog = async (
     action_type: actionType,
     description: description,
     wo_number: woNumber || '',
-    project: project || '',
+    proyek: project || '',
     panel: panel || '',
   })
   if (error) {
@@ -66,3 +66,4 @@ export const fixSystemLog = async (adminNama: string, module: string) => {
       .in('id', data.map((r:any) => r.id))
   }
 }
+
