@@ -3796,6 +3796,7 @@ export default function App(){
   },[]);
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState("dashboard");
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
 const [woData, setWoData] = useState<any[]>([]);
 const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
@@ -3867,7 +3868,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
 
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
-  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
 
   const SIDEBAR_MENUS=[
     {group:'Monitoring',items:[
