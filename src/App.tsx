@@ -3597,8 +3597,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} user={user}/>}
             {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} user={user}/>}
             {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
-            {tab==="masteruser"&&<MasterUser logActivity={logActivity} user={user}/>}
-            {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
+            {tab==="maintenance"&&<MaintenanceTab user={user} logActivity={logActivity}/>}
+            {tab==="masteruser"&&<SystemTab user={user} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
           </div>
         </div>
