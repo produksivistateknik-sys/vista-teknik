@@ -3513,8 +3513,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ...(canWO?[{id:"wo",label:"📝 Manajemen WO"}]:[]),
     ...(["admin"].includes(user.divisi)?[{id:"pekerja",label:"👥 Master Pekerja"}]:[]),
     ...(canPekerja?[{id:"tracking",label:"📈 Tracking Pekerja"}]:[]),
-    ...(["admin"].includes(user.divisi)?[{id:"masteruser",label:"👤 Master User"}]:[]),
-    ...(canKendala?[{id:"activity",label:"📊 Activity Log"},{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
+    ...(canKendala?[{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
+    ...(["admin"].includes(user.divisi)?[{id:"maintenance",label:"🔧 Maintenance"},{id:"masteruser",label:"⚙️ System"}]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
