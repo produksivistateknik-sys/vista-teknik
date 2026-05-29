@@ -3681,7 +3681,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
                                       <span onClick={e=>{e.stopPropagation();setEditingQty({woId:wo.id,panelId:p.id,kode:item.kode});setTempQty(prev=>({...prev,[wo.id+"-"+p.id+"-"+item.kode]:cl.qty}));}} style={{width:56,padding:"4px 6px",borderRadius:6,border:"1.5px solid "+( isLocked?"#fecaca":"#e2e8f0"),background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",fontWeight:700,color:isLocked?"#fca5a5":"#1e293b",cursor:"pointer",display:"inline-block"}}>{cl.qty}</span>
                                     )}
                                   </div>
-                                  </div>
                                 </div>
                               );
                             })}
