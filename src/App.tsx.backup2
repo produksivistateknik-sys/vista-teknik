@@ -4156,22 +4156,6 @@ const SIDEBAR_MENUS=[
     ]},
   ];
 
-  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
-  const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
-
-  const showTooltip=(e:any,label:string)=>{
-    if(!sidebarCollapsed)return;
-    let tip=document.getElementById("erp-tip") as HTMLElement;
-    if(!tip){tip=document.createElement("div");tip.id="erp-tip";tip.className="erp-tooltip-el";document.body.appendChild(tip);}
-    const r=e.currentTarget.getBoundingClientRect();
-    tip.textContent=label;
-    tip.style.display="block";
-    tip.style.top=(r.top+r.height/2)+"px";
-    tip.style.left="60px";
-    tip.style.transform="translateY(-50%)";
-  };
-  const hideTooltip=()=>{const tip=document.getElementById("erp-tip");if(tip)(tip as HTMLElement).style.display="none";};
-
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
