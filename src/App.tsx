@@ -1925,32 +1925,17 @@ function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
+  const [filterPanel,setFilterPanel]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
   const [search,setSearch]=useState("");
 
-  const MODULE_CONFIG:any={
-    auth:    {label:"Auth",     icon:"🔐",color:"#64748b"},
-    wo:      {label:"Work Order",icon:"📋",color:"#2563eb"},
-    raw:     {label:"Raw Schedule",icon:"📅",color:"#f59e0b"},
-    rencana: {label:"Rencana Harian",icon:"📊",color:"#10b981"},
-    progress:{label:"Progress", icon:"📈",color:"#8b5cf6"},
-    kendala: {label:"Kendala",  icon:"⚠️",color:"#ef4444"},
-    pekerja: {label:"Pekerja",  icon:"👥",color:"#0891b2"},
-    general: {label:"General",  icon:"⚙️",color:"#94a3b8"},
-  };
-
-  const ACTION_CONFIG:any={
-    create:    {label:"Buat",      color:"#16a34a",bg:"#f0fdf4"},
-    update:    {label:"Edit",      color:"#2563eb",bg:"#eff6ff"},
-    delete:    {label:"Hapus",     color:"#dc2626",bg:"#fef2f2"},
-    login:     {label:"Login",     color:"#7c3aed",bg:"#f5f3ff"},
-    logout:    {label:"Logout",    color:"#64748b",bg:"#f8fafc"},
-    distribute:{label:"Distribusi",color:"#0891b2",bg:"#ecfeff"},
-  };
+  const MODULE_CONFIG:any={auth:{label:"Auth",icon:"🔐",color:"#64748b"},wo:{label:"WO",icon:"📋",color:"#2563eb"},raw:{label:"Raw",icon:"📅",color:"#f59e0b"},rencana:{label:"Renhar",icon:"📊",color:"#10b981"},kendala:{label:"Kendala",icon:"⚠️",color:"#ef4444"},pekerja:{label:"Pekerja",icon:"👥",color:"#0891b2"},general:{label:"General",icon:"⚙️",color:"#94a3b8"}};
+  const ACTION_CONFIG:any={create:{label:"Buat",color:"#16a34a"},update:{label:"Edit",color:"#2563eb"},delete:{label:"Hapus",color:"#dc2626"},login:{label:"Login",color:"#7c3aed"},logout:{label:"Logout",color:"#64748b"},distribute:{label:"Distribusi",color:"#0891b2"}};
 
   const adminList=[...new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean))];
   const moduleList=[...new Set(activityLog.map((a:any)=>a.module||a.jenis).filter(Boolean))];
   const actionList=[...new Set(activityLog.map((a:any)=>a.action_type).filter(Boolean))];
+  const panelList=[...new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean))];
 
   const filtered=activityLog.filter((a:any)=>{
     const adminName=a.admin_nama||a.user_name||"";
@@ -1961,157 +1946,82 @@ function ActivityLogView({activityLog}:any){
     if(filterAdmin!=="ALL"&&adminName!==filterAdmin)return false;
     if(filterModule!=="ALL"&&module!==filterModule)return false;
     if(filterAction!=="ALL"&&actionType!==filterAction)return false;
+    if(filterPanel!=="ALL"&&woNo!==filterPanel)return false;
     if(filterTgl&&!a.created_at?.startsWith(filterTgl))return false;
-    if(search){
-      const q=search.toLowerCase();
-      if(!desc.toLowerCase().includes(q)&&
-         !adminName.toLowerCase().includes(q)&&
-         !woNo.toLowerCase().includes(q))return false;
-    }
+    if(search){const q=search.toLowerCase();if(!desc.toLowerCase().includes(q)&&!adminName.toLowerCase().includes(q)&&!woNo.toLowerCase().includes(q))return false;}
     return true;
   });
 
-  const fmtTime=(ts:string)=>{
-    if(!ts)return"—";
-    const d=new Date(ts);
-    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+
-      d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
-  };
-
+  const fmtTime=(ts:string)=>{if(!ts)return"—";const d=new Date(ts);return d.toLocaleDateString("id-ID",{day:"numeric",month:"short"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});};
   const todayStr=new Date().toISOString().slice(0,10);
 
   return(
     <div className="fi">
-      {/* Stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
-        {[
-          {l:"Total Log",v:activityLog.length,c:"#2563eb",i:"📊"},
-          {l:"Hari Ini",v:activityLog.filter((a:any)=>a.created_at?.startsWith(todayStr)).length,c:"#10b981",i:"📅"},
-          {l:"Admin Aktif",v:new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean)).size,c:"#f59e0b",i:"👤"},
-          {l:"WO Terlibat",v:new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6",i:"📋"},
-        ].map((s,i)=>(
-          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
-            <div style={{fontSize:18,marginBottom:4}}>{s.i}</div>
-            <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
-            <div style={{fontSize:10,color:"#94a3b8",marginTop:2,fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
-          </Card>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>
+        {[{l:"Total",v:activityLog.length,c:"#2563eb"},{l:"Hari Ini",v:activityLog.filter((a:any)=>a.created_at?.startsWith(todayStr)).length,c:"#10b981"},{l:"Admin",v:new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean)).size,c:"#f59e0b"},{l:"WO",v:new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6"}].map((s,i)=>(
+          <div key={i} style={{background:"#fff",borderRadius:8,padding:"8px 12px",borderLeft:`3px solid ${s.c}`,border:`1px solid ${s.c}30`}}>
+            <div style={{fontSize:18,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase" as const}}>{s.l}</div>
+          </div>
         ))}
       </div>
-
-      {/* Filters */}
-      <Card style={{marginBottom:16,padding:"12px 16px"}}>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap" as const,alignItems:"flex-end"}}>
-          <div style={{flex:1,minWidth:200}}>
-            <Lbl>Cari Aktivitas / Admin / WO</Lbl>
-            <input value={search} onChange={e=>setSearch(e.target.value)}
-              placeholder="Ketik untuk mencari..."
-              style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-                background:"#f8fafc",fontSize:13,color:"#1e293b"}}/>
-          </div>
-          <div style={{minWidth:140}}>
-            <Lbl>Admin</Lbl>
-            <Sel value={filterAdmin} onChange={(e:any)=>setFilterAdmin(e.target.value)}>
-              <option value="ALL">Semua Admin</option>
-              {adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
-            </Sel>
-          </div>
-          <div style={{minWidth:140}}>
-            <Lbl>Module</Lbl>
-            <Sel value={filterModule} onChange={(e:any)=>setFilterModule(e.target.value)}>
-              <option value="ALL">Semua Module</option>
-              {moduleList.map((m:any)=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
-            </Sel>
-          </div>
-          <div style={{minWidth:130}}>
-            <Lbl>Action</Lbl>
-            <Sel value={filterAction} onChange={(e:any)=>setFilterAction(e.target.value)}>
-              <option value="ALL">Semua Action</option>
-              {actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
-            </Sel>
-          </div>
-          <div style={{minWidth:140}}>
-            <Lbl>Tanggal</Lbl>
-            <Inp type="date" value={filterTgl} onChange={(e:any)=>setFilterTgl(e.target.value)}/>
-          </div>
-          {(filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search)&&(
-            <Btn outline color="#64748b" style={{padding:"7px 14px",fontSize:12}}
-              onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}>
-              Reset
-            </Btn>
-          )}
-          <div style={{fontSize:12,color:"#64748b",alignSelf:"flex-end",paddingBottom:4,marginLeft:"auto"}}>
-            {filtered.length} aktivitas
-          </div>
-        </div>
-      </Card>
-
-      {/* Log List */}
-      {filtered.length===0?(
-        <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-          <div style={{fontSize:40,marginBottom:12}}>📋</div>
-          <div style={{fontSize:14,fontWeight:600}}>Tidak ada aktivitas</div>
-        </div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map((a:any,i:number)=>{
-            const module=a.module||a.jenis||"general";
-            const actionType=a.action_type||"update";
-            const mc=MODULE_CONFIG[module]||MODULE_CONFIG.general;
-            const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b",bg:"#f8fafc"};
-            const adminName=a.admin_nama||a.user_name||"—";
-            const desc=a.description||a.aktivitas||a.action||"—";
-            const woNo=a.wo_number||a.wo_no||"";
-            return(
-              <div key={a.id||i} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
-                padding:"14px 16px",borderLeft:`4px solid ${mc.color}`,
-                display:"flex",gap:12,alignItems:"flex-start",transition:"all .15s"}}>
-                {/* Icon */}
-                <div style={{width:40,height:40,borderRadius:10,background:mc.color+"18",
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
-                  {mc.icon}
-                </div>
-                {/* Content */}
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:4}}>{desc}</div>
-                  <div style={{display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
-                    <span style={{fontSize:11,color:"#475569",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
-                      <span>👤</span>{adminName}
-                    </span>
-                    {woNo&&(
-                      <span style={{fontSize:11,color:"#2563eb",fontWeight:700,
-                        fontFamily:"'DM Mono',monospace",background:"#eff6ff",
-                        borderRadius:4,padding:"1px 6px"}}>
-                        WO {woNo}
-                      </span>
-                    )}
-                    <span style={{fontSize:10,color:"#94a3b8",display:"flex",alignItems:"center",gap:3}}>
-                      <span>📍</span>{a.halaman||mc.label}
-                    </span>
-                  </div>
-                </div>
-                {/* Right side */}
-                <div style={{display:"flex",flexDirection:"column" as const,alignItems:"flex-end",gap:6,flexShrink:0}}>
-                  <div style={{display:"flex",gap:5}}>
-                    <span style={{background:mc.color+"18",color:mc.color,border:`1px solid ${mc.color}33`,
-                      borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
-                      {mc.label}
-                    </span>
-                    <span style={{background:ac.bg,color:ac.color,border:`1px solid ${ac.color}33`,
-                      borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
-                      {ac.label}
-                    </span>
-                  </div>
-                  <span style={{fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</span>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap" as const,alignItems:"center",background:"#fff",borderRadius:8,padding:"8px 10px",border:"1px solid #e2e8f0"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari..." style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,width:140}}/>
+        <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Admin</option>{adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
+        </select>
+        <select value={filterModule} onChange={e=>setFilterModule(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Module</option>{moduleList.map((m:any)=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
+        </select>
+        <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Action</option>{actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
+        </select>
+        <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua WO</option>{panelList.map((p:any)=><option key={p} value={p}>{p}</option>)}
+        </select>
+        <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11}}/>
+        {(filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterPanel!=="ALL"||filterTgl||search)&&(
+          <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterPanel("ALL");setFilterTgl("");setSearch("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:700,cursor:"pointer"}}>Reset</button>
+        )}
+        <span style={{marginLeft:"auto",fontSize:11,color:"#64748b"}}>{filtered.length} log</span>
+      </div>
+      <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
+          <thead>
+            <tr style={{background:"#1e3a8a"}}>
+              {["Waktu","Admin","Module","Action","Aktivitas","WO"].map(h=>(
+                <th key={h} style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const}}>{h}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length===0?(<tr><td colSpan={6} style={{textAlign:"center",padding:"30px",color:"#94a3b8"}}>Tidak ada aktivitas</td></tr>):(
+              filtered.map((a:any,i:number)=>{
+                const module=a.module||a.jenis||"general";
+                const actionType=a.action_type||"";
+                const mc=MODULE_CONFIG[module]||MODULE_CONFIG.general;
+                const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b"};
+                const adminName=a.admin_nama||a.user_name||"—";
+                const desc=a.description||a.aktivitas||a.action||"—";
+                const woNo=a.wo_number||a.wo_no||"";
+                return(
+                  <tr key={a.id||i} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#f8fafc"}}>
+                    <td style={{padding:"5px 10px",color:"#94a3b8",whiteSpace:"nowrap" as const,fontSize:10}}>{fmtTime(a.created_at)}</td>
+                    <td style={{padding:"5px 10px",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const}}>{adminName}</td>
+                    <td style={{padding:"5px 10px"}}><span style={{background:mc.color+"18",color:mc.color,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{mc.icon} {mc.label}</span></td>
+                    <td style={{padding:"5px 10px"}}><span style={{color:ac.color,fontWeight:700,fontSize:10}}>{ac.label||actionType}</span></td>
+                    <td style={{padding:"5px 10px",color:"#475569",maxWidth:280,overflow:"hidden" as const,textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{desc}</td>
+                    <td style={{padding:"5px 10px"}}>{woNo&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{woNo}</span>}</td>
+                  </tr>
+                );
+              })
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
-
 
 function KendalaInbox({kendalaLog,removeKendala}){
   const [filterDiv,setFilterDiv]=useState("ALL");
@@ -3940,6 +3850,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
