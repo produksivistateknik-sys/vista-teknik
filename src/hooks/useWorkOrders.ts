@@ -96,3 +96,4 @@ export function useWorkOrders() {
 
   return { data, loading, error, refetch: fetch, create, update, remove }
 }
+

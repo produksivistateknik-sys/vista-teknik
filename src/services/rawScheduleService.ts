@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+﻿import { supabase } from '../lib/supabase'
 
 export const rawScheduleService = {
   async getAll() {
@@ -48,3 +48,4 @@ export const rawScheduleService = {
     if (error) throw new Error(error.message)
   },
 }
+

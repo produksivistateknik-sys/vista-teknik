@@ -1,4 +1,4 @@
-import { supabase } from '../lib/supabase'
+﻿import { supabase } from '../lib/supabase'
 import type { WorkOrderInsert, WorkOrderUpdate } from '../types/database'
 
 export const workOrderService = {

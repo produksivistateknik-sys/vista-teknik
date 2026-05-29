@@ -1122,6 +1122,477 @@ function MasterUser({logActivity,user}:any){
   );
 }
 
+// Toast Notification System
+const ToastContext = React.createContext(null);
+
+function ToastProvider({children, currentUser}:any){
+  const [toasts,setToasts]=useState<any[]>([]);
+
+  useEffect(()=>{
+    if(!currentUser) return;
+    const channel = supabase
+      .channel('toast-activity')
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_log'},
+        (payload:any)=>{
+          const log = payload.new;
+          // Hanya tampilkan notif dari admin LAIN
+          const logAdmin = log.admin_nama||log.user_name||'';
+          const myName = currentUser?.name||currentUser?.nama||'';
+          if(!logAdmin||logAdmin===myName||logAdmin==='System') return;
+          
+          const MODULE_ICON:any={wo:'📋',raw:'📅',rencana:'📊',pekerja:'👥',auth:'🔐',kendala:'⚠️',raw_schedule:'📅',general:'⚙️'};
+          const icon = MODULE_ICON[log.module||log.jenis]||'⚙️';
+          
+          const toast = {
+            id: Date.now(),
+            icon,
+            admin: logAdmin,
+            message: log.description||log.aktivitas||log.action||'Melakukan perubahan',
+            module: log.module||log.jenis||'',
+            time: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
+          };
+          setToasts(prev=>{
+            const next = [toast,...prev].slice(0,3);
+            return next;
+          });
+          // Auto remove setelah 5 detik
+          setTimeout(()=>{
+            setToasts(prev=>prev.filter(t=>t.id!==toast.id));
+          },5000);
+        }
+      )
+      .subscribe();
+    return ()=>{ supabase.removeChannel(channel); };
+  },[currentUser]);
+
+  const removeToast=(id:number)=>setToasts(prev=>prev.filter(t=>t.id!==id));
+
+  return(
+    <ToastContext.Provider value={{toasts,removeToast}}>
+      {children}
+      {/* Toast Container */}
+      <div style={{position:'fixed',bottom:24,right:24,zIndex:9999,display:'flex',flexDirection:'column',gap:10,maxWidth:360}}>
+        {toasts.map(t=>(
+          <div key={t.id} style={{background:'#fff',borderRadius:14,padding:'12px 16px',
+            boxShadow:'0 8px 32px #00000020',border:'1px solid #e2e8f0',
+            borderLeft:`4px solid #2563eb`,
+            display:'flex',gap:12,alignItems:'flex-start',
+            animation:'slideInRight .3s ease'}}>
+            <div style={{fontSize:20,flexShrink:0}}>{t.icon}</div>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:12,color:'#1e293b',marginBottom:2}}>
+                👤 {t.admin}
+              </div>
+              <div style={{fontSize:12,color:'#475569',lineHeight:1.4}}>{t.message}</div>
+              <div style={{fontSize:10,color:'#94a3b8',marginTop:4}}>{t.time} WIB</div>
+            </div>
+            <button onClick={()=>removeToast(t.id)}
+              style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:16,padding:0,flexShrink:0}}>✕</button>
+          </div>
+        ))}
+      </div>
+      <style>{`@keyframes slideInRight{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}`}</style>
+    </ToastContext.Provider>
+  );
+}
+
+function RecycleBin({user}:any){
+  const [items,setItems]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [filter,setFilter]=useState('ALL');
+
+  const load=async()=>{
+    setLoading(true);
+    const [wo,raw,pkr,rnh]=await Promise.all([
+      supabase.from('work_orders').select('*').not('deleted_at','is',null),
+      supabase.from('raw_schedule').select('*').not('deleted_at','is',null),
+      supabase.from('pekerja').select('*').not('deleted_at','is',null),
+      supabase.from('renhar').select('*').not('deleted_at','is',null),
+    ]);
+    const all=[
+      ...(wo.data||[]).map(i=>({...i,_type:'wo',_label:'Work Order',_name:i.wo+' - '+i.proyek})),
+      ...(raw.data||[]).map(i=>({...i,_type:'raw',_label:'Raw Schedule',_name:i.proses+' - '+i.panel})),
+      ...(pkr.data||[]).map(i=>({...i,_type:'pekerja',_label:'Pekerja',_name:i.nama})),
+      ...(rnh.data||[]).map(i=>({...i,_type:'renhar',_label:'Rencana Harian',_name:i.proses+' - '+i.panel})),
+    ].sort((a,b)=>new Date(b.deleted_at).getTime()-new Date(a.deleted_at).getTime());
+    setItems(all);
+    setLoading(false);
+  };
+
+  useEffect(()=>{load();},[]);
+
+  const restore=async(item:any)=>{
+    await supabase.from(
+      item._type==='wo'?'work_orders':
+      item._type==='raw'?'raw_schedule':
+      item._type==='pekerja'?'pekerja':'renhar'
+    ).update({deleted_at:null,deleted_by:null}).eq('id',item.id);
+    await load();
+  };
+
+  const deletePermanent=async(item:any)=>{
+    await supabase.from(
+      item._type==='wo'?'work_orders':
+      item._type==='raw'?'raw_schedule':
+      item._type==='pekerja'?'pekerja':'renhar'
+    ).delete().eq('id',item.id);
+    await load();
+  };
+
+  const TYPE_COLOR:any={wo:'#2563eb',raw:'#f59e0b',pekerja:'#0891b2',renhar:'#10b981'};
+  const filtered=filter==='ALL'?items:items.filter(i=>i._type===filter);
+
+  const fmtDate=(d:string)=>new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const daysLeft=(d:string)=>Math.max(0,15-Math.floor((Date.now()-new Date(d).getTime())/(1000*60*60*24)));
+
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat...</div>;
+
+  return(
+    <div>
+      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap' as const,alignItems:'center'}}>
+        {['ALL','wo','raw','pekerja','renhar'].map(f=>(
+          <button key={f} onClick={()=>setFilter(f)}
+            style={{padding:'6px 14px',borderRadius:20,border:`1.5px solid ${filter===f?(TYPE_COLOR[f]||'#1d4ed8'):'#e2e8f0'}`,
+              background:filter===f?(TYPE_COLOR[f]||'#1d4ed8')+'18':'#fff',
+              color:filter===f?(TYPE_COLOR[f]||'#1d4ed8'):'#64748b',
+              cursor:'pointer',fontSize:12,fontWeight:700}}>
+            {f==='ALL'?'Semua':f==='wo'?'Work Order':f==='raw'?'Raw Schedule':f==='pekerja'?'Pekerja':'Rencana Harian'}
+            {' '}({f==='ALL'?items.length:items.filter(i=>i._type===f).length})
+          </button>
+        ))}
+      </div>
+      {filtered.length===0?(
+        <div style={{textAlign:'center',padding:'60px 20px',color:'#94a3b8'}}>
+          <div style={{fontSize:40,marginBottom:12}}>🗑</div>
+          <div style={{fontSize:14,fontWeight:600}}>Recycle Bin Kosong</div>
+        </div>
+      ):(
+        <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+          {filtered.map((item:any)=>{
+            const c=TYPE_COLOR[item._type]||'#64748b';
+            const days=daysLeft(item.deleted_at);
+            return(
+              <div key={item._type+item.id} style={{background:'#fff',borderRadius:12,border:'1px solid #e2e8f0',
+                padding:'12px 16px',borderLeft:`4px solid ${c}`,display:'flex',alignItems:'center',gap:12}}>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{item._name}</div>
+                  <div style={{display:'flex',gap:8,marginTop:4,flexWrap:'wrap' as const}}>
+                    <span style={{background:c+'18',color:c,borderRadius:20,padding:'1px 8px',fontSize:10,fontWeight:700}}>{item._label}</span>
+                    <span style={{fontSize:11,color:'#94a3b8'}}>Dihapus: {fmtDate(item.deleted_at)}</span>
+                    {item.deleted_by&&<span style={{fontSize:11,color:'#94a3b8'}}>oleh {item.deleted_by}</span>}
+                    <span style={{fontSize:11,color:days<=3?'#dc2626':'#f59e0b',fontWeight:700}}>⏱ {days} hari tersisa</span>
+                  </div>
+                </div>
+                <div style={{display:'flex',gap:6}}>
+                  <Btn color="#16a34a" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>restore(item)}>↩ Pulihkan</Btn>
+                  <Btn color="#dc2626" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>deletePermanent(item)}>🗑 Hapus</Btn>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja}:any){
+  const [subTab,setSubTab]=useState('masteruser');
+  const SUB_TABS=[
+    {id:'masteruser',label:'👤 Master User'},
+    {id:'activity',label:'📊 Activity Log'},
+    {id:'recycle',label:'🗑 Recycle Bin'},
+  ];
+  return(
+    <div className="fi">
+      <div style={{display:'flex',gap:8,marginBottom:16,borderBottom:'2px solid #e2e8f0',paddingBottom:8}}>
+        {SUB_TABS.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)}
+            style={{padding:'8px 20px',borderRadius:'8px 8px 0 0',border:'none',cursor:'pointer',
+              fontWeight:700,fontSize:13,
+              background:subTab===t.id?'#1d4ed8':'transparent',
+              color:subTab===t.id?'#fff':'#64748b',
+              borderBottom:subTab===t.id?'2px solid #1d4ed8':'none',
+              transition:'all .15s'}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {subTab==='masteruser'&&<MasterUser logActivity={logActivity} user={user}/>}
+      {subTab==='activity'&&<ActivityLogView activityLog={activityLog} user={user}/>}
+      {subTab==='recycle'&&<RecycleBin user={user}/>}
+    </div>
+  );
+}
+
+function MaintenanceTab({user,logActivity}:any){
+  const [mesinList,setMesinList]=useState<any[]>([]);
+  const [logList,setLogList]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [selMesin,setSelMesin]=useState<any>(null);
+  const [mesinModal,setMesinModal]=useState<any>(null);
+  const [logModal,setLogModal]=useState<any>(null);
+  const [mesinForm,setMesinForm]=useState<any>({nama:'',kode:'',lokasi:'',status:'Normal'});
+  const [logForm,setLogForm]=useState<any>({kendala:'',perbaikan:'',tgl_kendala:'',tgl_perbaikan:'',teknisi:'',status:'Proses'});
+  const [saving,setSaving]=useState(false);
+  const [delMesin,setDelMesin]=useState<any>(null);
+  const [delLog,setDelLog]=useState<any>(null);
+
+  const STATUS_COLOR:any={
+    'Normal':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
+    'Perlu Service':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
+    'Rusak':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
+  };
+  const LOG_STATUS_COLOR:any={
+    'Proses':{bg:'#fffbeb',color:'#f59e0b'},
+    'Selesai':{bg:'#f0fdf4',color:'#16a34a'},
+    'Tertunda':{bg:'#fef2f2',color:'#dc2626'},
+  };
+
+  const load=async()=>{
+    setLoading(true);
+    const [{data:m},{data:l}]=await Promise.all([
+      supabase.from('mesin').select('*').is('deleted_at',null).order('nama'),
+      supabase.from('maintenance_log').select('*,mesin(nama,kode)').order('created_at',{ascending:false}),
+    ]);
+    setMesinList(m??[]);
+    setLogList(l??[]);
+    setLoading(false);
+  };
+
+  useEffect(()=>{load();},[]);
+
+  const saveMesin=async()=>{
+    if(!mesinForm.nama.trim())return;
+    setSaving(true);
+    if(mesinModal.mode==='add'){
+      await supabase.from('mesin').insert({...mesinForm});
+      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah mesin '+mesinForm.nama,'','Maintenance');
+    } else {
+      await supabase.from('mesin').update({...mesinForm}).eq('id',mesinModal.id);
+      await createLog(user?.name||user?.nama||'Admin','general','update','Edit mesin '+mesinForm.nama,'','Maintenance');
+    }
+    await load();
+    setMesinModal(null);
+    setSaving(false);
+  };
+
+  const saveLog=async()=>{
+    if(!logForm.kendala.trim())return;
+    setSaving(true);
+    const mesinId=selMesin?.id||logModal?.mesin_id;
+    if(logModal.mode==='add'){
+      await supabase.from('maintenance_log').insert({...logForm,mesin_id:mesinId});
+      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah log maintenance '+selMesin?.nama,'','Maintenance');
+    } else {
+      await supabase.from('maintenance_log').update({...logForm}).eq('id',logModal.id);
+      await createLog(user?.name||user?.nama||'Admin','general','update','Edit log maintenance','','Maintenance');
+    }
+    await load();
+    setLogModal(null);
+    setSaving(false);
+  };
+
+  const hapusMesin=async()=>{
+    await supabase.from('mesin').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',delMesin.id);
+    await createLog(user?.name||user?.nama||'Admin','general','delete','Hapus mesin '+delMesin.nama,'','Maintenance');
+    await load();
+    setDelMesin(null);
+  };
+
+  const hapusLog=async()=>{
+    await supabase.from('maintenance_log').delete().eq('id',delLog.id);
+    await load();
+    setDelLog(null);
+  };
+
+  const mesinLogs=selMesin?logList.filter(l=>l.mesin_id===selMesin.id):[];
+  const totalMasalah=mesinList.filter(m=>m.status!=='Normal').length;
+
+  if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat data...</div>;
+
+  return(
+    <div className="fi">
+      {/* Stats */}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+        {[
+          {l:'Total Mesin',v:mesinList.length,c:'#2563eb',i:'🔧'},
+          {l:'Normal',v:mesinList.filter(m=>m.status==='Normal').length,c:'#16a34a',i:'✅'},
+          {l:'Perlu Service',v:mesinList.filter(m=>m.status==='Perlu Service').length,c:'#f59e0b',i:'⚠️'},
+          {l:'Rusak',v:mesinList.filter(m=>m.status==='Rusak').length,c:'#dc2626',i:'❌'},
+        ].map((s,i)=>(
+          <Card key={i} style={{padding:'12px 16px',borderLeft:`3px solid ${s.c}`}}>
+            <div style={{fontSize:18,marginBottom:4}}>{s.i}</div>
+            <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>{s.l}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16}}>
+        {/* Daftar Mesin */}
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <STitle style={{marginBottom:0,fontSize:14}}>🔧 Daftar Mesin</STitle>
+            <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setMesinModal({mode:'add'});setMesinForm({nama:'',kode:'',lokasi:'',status:'Normal'});}}>+ Tambah</Btn>
+          </div>
+          <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+            {mesinList.length===0&&<div style={{textAlign:'center',padding:20,color:'#94a3b8',fontSize:13}}>Belum ada mesin</div>}
+            {mesinList.map(m=>{
+              const sc=STATUS_COLOR[m.status]||STATUS_COLOR['Normal'];
+              const isSel=selMesin?.id===m.id;
+              return(
+                <div key={m.id} onClick={()=>setSelMesin(isSel?null:m)}
+                  style={{background:isSel?'#eff6ff':'#fff',borderRadius:12,border:`1.5px solid ${isSel?'#2563eb':'#e2e8f0'}`,
+                    padding:'12px 14px',cursor:'pointer',transition:'all .15s'}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{m.nama}</div>
+                      {m.kode&&<div style={{fontSize:11,color:'#94a3b8',fontFamily:"'DM Mono',monospace"}}>{m.kode}</div>}
+                      {m.lokasi&&<div style={{fontSize:11,color:'#64748b',marginTop:2}}>📍 {m.lokasi}</div>}
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:4}}>
+                      <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,
+                        borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{m.status}</span>
+                      <div style={{display:'flex',gap:4}}>
+                        <button onClick={e=>{e.stopPropagation();setMesinModal({mode:'edit',id:m.id});setMesinForm({nama:m.nama,kode:m.kode||'',lokasi:m.lokasi||'',status:m.status});}}
+                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
+                        <button onClick={e=>{e.stopPropagation();setDelMesin(m);}}
+                          style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Log Maintenance */}
+        <div>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+            <STitle style={{marginBottom:0,fontSize:14}}>
+              📋 {selMesin?`Log Maintenance — ${selMesin.nama}`:'Semua Log Maintenance'}
+            </STitle>
+            {selMesin&&<Btn color="#16a34a" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setLogModal({mode:'add',mesin_id:selMesin.id});setLogForm({kendala:'',perbaikan:'',tgl_kendala:'',tgl_perbaikan:'',teknisi:'',status:'Proses'});}}>+ Tambah Log</Btn>}
+          </div>
+          <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
+            {(selMesin?mesinLogs:logList).length===0&&(
+              <div style={{textAlign:'center',padding:40,color:'#94a3b8',fontSize:13}}>
+                {selMesin?'Belum ada log maintenance untuk mesin ini':'Pilih mesin atau belum ada log'}
+              </div>
+            )}
+            {(selMesin?mesinLogs:logList).map((l:any)=>{
+              const sc=LOG_STATUS_COLOR[l.status]||LOG_STATUS_COLOR['Proses'];
+              return(
+                <Card key={l.id} style={{padding:'14px 16px',borderLeft:`3px solid ${sc.color}`}}>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
+                    <div style={{flex:1}}>
+                      {!selMesin&&<div style={{fontSize:11,fontWeight:700,color:'#2563eb',marginBottom:4}}>🔧 {l.mesin?.nama||'—'} {l.mesin?.kode?`(${l.mesin.kode})`:''}</div>}
+                      <div style={{fontWeight:700,fontSize:13,color:'#dc2626',marginBottom:4}}>⚠️ {l.kendala||'—'}</div>
+                      {l.perbaikan&&<div style={{fontSize:12,color:'#16a34a',marginBottom:4}}>🔨 {l.perbaikan}</div>}
+                      <div style={{display:'flex',gap:12,flexWrap:'wrap' as const,fontSize:11,color:'#64748b',marginTop:6}}>
+                        {l.tgl_kendala&&<span>📅 Kendala: <strong>{l.tgl_kendala}</strong></span>}
+                        {l.tgl_perbaikan&&<span>✅ Selesai: <strong>{l.tgl_perbaikan}</strong></span>}
+                        {l.teknisi&&<span>👤 Teknisi: <strong>{l.teknisi}</strong></span>}
+                      </div>
+                    </div>
+                    <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:6}}>
+                      <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:'2px 10px',fontSize:10,fontWeight:700}}>{l.status}</span>
+                      <div style={{display:'flex',gap:4}}>
+                        <button onClick={()=>{setLogModal({mode:'edit',id:l.id,mesin_id:l.mesin_id});setLogForm({kendala:l.kendala||'',perbaikan:l.perbaikan||'',tgl_kendala:l.tgl_kendala||'',tgl_perbaikan:l.tgl_perbaikan||'',teknisi:l.teknisi||'',status:l.status||'Proses'});}}
+                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
+                        <button onClick={()=>setDelLog(l)}
+                          style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
+                      </div>
+                    </div>
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      {/* Modal Mesin */}
+      {mesinModal&&(
+        <Modal title={(mesinModal.mode==='add'?'Tambah':'Edit')+' Mesin'} onClose={()=>setMesinModal(null)} width={440}>
+          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
+            <div><Lbl>Nama Mesin</Lbl><Inp value={mesinForm.nama} onChange={(e:any)=>setMesinForm({...mesinForm,nama:e.target.value})} placeholder="Nama mesin..."/></div>
+            <div><Lbl>Kode</Lbl><Inp value={mesinForm.kode} onChange={(e:any)=>setMesinForm({...mesinForm,kode:e.target.value})} placeholder="Kode mesin..."/></div>
+            <div><Lbl>Lokasi</Lbl><Inp value={mesinForm.lokasi} onChange={(e:any)=>setMesinForm({...mesinForm,lokasi:e.target.value})} placeholder="Lokasi mesin..."/></div>
+            <div><Lbl>Status</Lbl>
+              <Sel value={mesinForm.status} onChange={(e:any)=>setMesinForm({...mesinForm,status:e.target.value})}>
+                <option value="Normal">✅ Normal</option>
+                <option value="Perlu Service">⚠️ Perlu Service</option>
+                <option value="Rusak">❌ Rusak</option>
+              </Sel>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
+            <Btn outline color="#64748b" onClick={()=>setMesinModal(null)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={saveMesin}>{saving?'Menyimpan...':'Simpan'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Modal Log */}
+      {logModal&&(
+        <Modal title={(logModal.mode==='add'?'Tambah':'Edit')+' Log Maintenance'} onClose={()=>setLogModal(null)} width={480}>
+          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
+            <div><Lbl>Kendala</Lbl><Inp value={logForm.kendala} onChange={(e:any)=>setLogForm({...logForm,kendala:e.target.value})} placeholder="Deskripsi kendala..."/></div>
+            <div><Lbl>Perbaikan</Lbl><Inp value={logForm.perbaikan} onChange={(e:any)=>setLogForm({...logForm,perbaikan:e.target.value})} placeholder="Tindakan perbaikan..."/></div>
+            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
+              <div><Lbl>Tanggal Kendala</Lbl><Inp type="date" value={logForm.tgl_kendala} onChange={(e:any)=>setLogForm({...logForm,tgl_kendala:e.target.value})}/></div>
+              <div><Lbl>Tanggal Selesai</Lbl><Inp type="date" value={logForm.tgl_perbaikan} onChange={(e:any)=>setLogForm({...logForm,tgl_perbaikan:e.target.value})}/></div>
+            </div>
+            <div><Lbl>Teknisi</Lbl><Inp value={logForm.teknisi} onChange={(e:any)=>setLogForm({...logForm,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
+            <div><Lbl>Status</Lbl>
+              <Sel value={logForm.status} onChange={(e:any)=>setLogForm({...logForm,status:e.target.value})}>
+                <option value="Proses">⏳ Proses</option>
+                <option value="Selesai">✅ Selesai</option>
+                <option value="Tertunda">⏸ Tertunda</option>
+              </Sel>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
+            <Btn outline color="#64748b" onClick={()=>setLogModal(null)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={saveLog}>{saving?'Menyimpan...':'Simpan'}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {/* Hapus Mesin */}
+      {delMesin&&(
+        <Modal title="Hapus Mesin?" onClose={()=>setDelMesin(null)} width={360}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
+            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Mesin <strong>{delMesin.nama}</strong> akan dipindah ke Recycle Bin.</div>
+            <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+              <Btn outline color="#64748b" onClick={()=>setDelMesin(null)}>Batal</Btn>
+              <Btn color="#dc2626" onClick={hapusMesin}>Hapus</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* Hapus Log */}
+      {delLog&&(
+        <Modal title="Hapus Log?" onClose={()=>setDelLog(null)} width={360}>
+          <div style={{textAlign:'center'}}>
+            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
+            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Log maintenance ini akan dihapus permanen.</div>
+            <div style={{display:'flex',gap:10,justifyContent:'center'}}>
+              <Btn outline color="#64748b" onClick={()=>setDelLog(null)}>Batal</Btn>
+              <Btn color="#dc2626" onClick={hapusLog}>Hapus</Btn>
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
@@ -2515,7 +2986,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule');await removeRaw(row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule');await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -3135,6 +3606,15 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
+
+
+
+
+
+
 
 
 
