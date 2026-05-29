@@ -249,7 +249,6 @@ const RENHAR_SEED=[];
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
-@import url('https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@latest/dist/tabler-icons.min.css');
 *{box-sizing:border-box;margin:0;padding:0}
 body{background:#f1f5f9;color:#1e293b;font-family:'Plus Jakarta Sans',sans-serif}
 ::-webkit-scrollbar{width:5px;height:5px}
