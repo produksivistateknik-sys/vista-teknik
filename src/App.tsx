@@ -1341,21 +1341,49 @@ function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerj
 function ServiceSchedule({machines,user}:any){
   const [schedules,setSchedules]=useState<any[]>([]);
   const [modal,setModal]=useState<any>(null);
-  const [form,setForm]=useState<any>({machine_id:'',nama_mesin:'',tanggal_service:'',keterangan:'',status:'Pending'});
+  const [form,setForm]=useState<any>({machine_id:'',tanggal_service:'',keterangan:'',status:'Pending',interval_service:'3 bulan'});
   const [saving,setSaving]=useState(false);
 
+  const INTERVAL_LIST=['1 bulan','3 bulan','6 bulan','1 tahun'];
+  const INTERVAL_DAYS:any={'1 bulan':30,'3 bulan':90,'6 bulan':180,'1 tahun':365};
+
   const load=async()=>{
-    const{data}=await supabase.from('service_schedule').select('*,machines(nama_mesin)').order('tanggal_service',{ascending:true});
+    const{data}=await supabase.from('service_schedule').select('*').order('tanggal_service',{ascending:true});
     setSchedules(data??[]);
   };
 
   useEffect(()=>{load();},[]);
 
+  const calcNextDate=(lastDate:string,interval:string):string=>{
+    const days=INTERVAL_DAYS[interval]||90;
+    const d=new Date(lastDate||new Date());
+    d.setDate(d.getDate()+days);
+    return d.toISOString().slice(0,10);
+  };
+
+  const onMachineChange=(machineId:string)=>{
+    const machine=machines.find((m:any)=>m.id===Number(machineId));
+    const interval=machine?.interval_service||'3 bulan';
+    const lastService=machine?.last_service_date||new Date().toISOString().slice(0,10);
+    const nextDate=calcNextDate(lastService,interval);
+    setForm((prev:any)=>({...prev,machine_id:machineId,interval_service:interval,tanggal_service:nextDate}));
+  };
+
   const save=async()=>{
-    if(!form.tanggal_service)return;
+    if(!form.tanggal_service||!form.machine_id)return;
     setSaving(true);
     const machine=machines.find((m:any)=>m.id===Number(form.machine_id));
-    const payload={...form,machine_id:Number(form.machine_id),nama_mesin:machine?.nama_mesin||form.nama_mesin,created_by:user?.name||user?.nama||'Admin'};
+    // Update interval di mesin
+    await supabase.from('machines').update({interval_service:form.interval_service}).eq('id',Number(form.machine_id));
+    const payload={
+      machine_id:Number(form.machine_id),
+      nama_mesin:machine?.nama_mesin||'',
+      tanggal_service:form.tanggal_service,
+      keterangan:form.keterangan,
+      status:'Pending',
+      interval_service:form.interval_service,
+      created_by:user?.name||user?.nama||'Admin'
+    };
     if(modal.mode==='add'){
       await supabase.from('service_schedule').insert(payload);
     } else {
@@ -1371,93 +1399,122 @@ function ServiceSchedule({machines,user}:any){
     await load();
   };
 
-  const today=new Date().toISOString().slice(0,10);
-  const upcoming=schedules.filter(s=>{
-    const diff=Math.ceil((new Date(s.tanggal_service).getTime()-new Date().getTime())/(1000*60*60*24));
-    return diff>=0&&diff<=3&&s.status==='Pending';
-  });
-
-  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
-  const getDiff=(d:string)=>{
-    const diff=Math.ceil((new Date(d).getTime()-new Date().getTime())/(1000*60*60*24));
-    return diff;
+  const markDone=async(s:any)=>{
+    // Update status done dan set last_service_date
+    await supabase.from('service_schedule').update({status:'Done'}).eq('id',s.id);
+    await supabase.from('machines').update({last_service_date:s.tanggal_service}).eq('id',s.machine_id);
+    await load();
   };
+
+  const getDiff=(d:string)=>Math.ceil((new Date(d).getTime()-new Date().getTime())/(1000*60*60*24));
+  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
+
+  const upcoming=schedules.filter(s=>{const diff=getDiff(s.tanggal_service);return diff>=0&&diff<=3&&s.status==='Pending';});
+  const overdue=schedules.filter(s=>getDiff(s.tanggal_service)<0&&s.status==='Pending');
 
   return(
     <div style={{marginTop:24}}>
-      {/* Alert upcoming service */}
-      {upcoming.length>0&&(
-        <div style={{background:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:12,padding:'12px 16px',marginBottom:16,display:'flex',gap:12,alignItems:'flex-start'}}>
-          <span style={{fontSize:20}}>⚠️</span>
-          <div>
-            <div style={{fontWeight:700,fontSize:13,color:'#f59e0b',marginBottom:4}}>Service Rutin Segera!</div>
-            {upcoming.map(s=>(
-              <div key={s.id} style={{fontSize:12,color:'#92400e'}}>
-                🔧 {s.nama_mesin||s.machines?.nama_mesin} — {fmtDate(s.tanggal_service)} 
-                <strong style={{color:'#dc2626'}}> ({getDiff(s.tanggal_service)===0?'Hari ini':getDiff(s.tanggal_service)+' hari lagi'})</strong>
+      {/* Alert */}
+      {(upcoming.length>0||overdue.length>0)&&(
+        <div style={{display:'flex',flexDirection:'column' as const,gap:8,marginBottom:16}}>
+          {overdue.length>0&&(
+            <div style={{background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:10,padding:'10px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
+              <span style={{fontSize:18}}>❌</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:12,color:'#dc2626',marginBottom:2}}>Service Terlambat!</div>
+                {overdue.map(s=>(
+                  <div key={s.id} style={{fontSize:11,color:'#991b1b'}}>🔧 {s.nama_mesin} — {fmtDate(s.tanggal_service)} <strong>({Math.abs(getDiff(s.tanggal_service))} hari terlambat)</strong></div>
+                ))}
               </div>
-            ))}
-          </div>
+            </div>
+          )}
+          {upcoming.length>0&&(
+            <div style={{background:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:10,padding:'10px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
+              <span style={{fontSize:18}}>⚠️</span>
+              <div>
+                <div style={{fontWeight:700,fontSize:12,color:'#f59e0b',marginBottom:2}}>Service Mendekati!</div>
+                {upcoming.map(s=>(
+                  <div key={s.id} style={{fontSize:11,color:'#92400e'}}>🔧 {s.nama_mesin} — {fmtDate(s.tanggal_service)} <strong>({getDiff(s.tanggal_service)===0?'Hari ini!':getDiff(s.tanggal_service)+' hari lagi'})</strong></div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       )}
 
       <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
         <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>📅 Jadwal Service Rutin</div>
-        <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setModal({mode:'add'});setForm({machine_id:'',nama_mesin:'',tanggal_service:'',keterangan:'',status:'Pending'});}}>+ Tambah Jadwal</Btn>
+        <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setModal({mode:'add'});setForm({machine_id:'',tanggal_service:'',keterangan:'',status:'Pending',interval_service:'3 bulan'});}}>+ Tambah Jadwal</Btn>
       </div>
 
       {schedules.length===0?(
-        <div style={{textAlign:'center',padding:'20px',color:'#94a3b8',fontSize:13}}>Belum ada jadwal service</div>
+        <div style={{textAlign:'center',padding:'20px',color:'#94a3b8',fontSize:12}}>Belum ada jadwal service</div>
       ):(
-        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
-          {schedules.map(s=>{
-            const diff=getDiff(s.tanggal_service);
-            const isUrgent=diff>=0&&diff<=3&&s.status==='Pending';
-            const isOverdue=diff<0&&s.status==='Pending';
-            return(
-              <Card key={s.id} style={{padding:'12px 14px',borderLeft:`3px solid ${isOverdue?'#dc2626':isUrgent?'#f59e0b':s.status==='Done'?'#16a34a':'#2563eb'}`}}>
-                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                  <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{s.nama_mesin||s.machines?.nama_mesin||'—'}</div>
-                  <span style={{background:s.status==='Done'?'#f0fdf4':isOverdue?'#fef2f2':isUrgent?'#fffbeb':'#eff6ff',
-                    color:s.status==='Done'?'#16a34a':isOverdue?'#dc2626':isUrgent?'#f59e0b':'#2563eb',
-                    borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{s.status}</span>
-                </div>
-                <div style={{fontSize:12,color:'#475569',marginBottom:4}}>📅 {fmtDate(s.tanggal_service)}</div>
-                {isUrgent&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>⏰ {diff===0?'Hari ini!':diff+' hari lagi!'}</div>}
-                {isOverdue&&<div style={{fontSize:11,color:'#dc2626',fontWeight:700}}>❌ Terlambat {Math.abs(diff)} hari!</div>}
-                {s.keterangan&&<div style={{fontSize:11,color:'#64748b',marginTop:4}}>{s.keterangan}</div>}
-                <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'flex-end'}}>
-                  <button onClick={()=>{setModal({mode:'edit',id:s.id});setForm({machine_id:s.machine_id||'',nama_mesin:s.nama_mesin||'',tanggal_service:s.tanggal_service||'',keterangan:s.keterangan||'',status:s.status||'Pending'});}}
-                    style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
-                  {s.status==='Pending'&&(
-                    <button onClick={async()=>{await supabase.from('service_schedule').update({status:'Done'}).eq('id',s.id);load();}}
-                      style={{background:'none',border:'1px solid #bbf7d0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#16a34a'}}>✅ Done</button>
-                  )}
-                  <button onClick={()=>hapus(s.id)}
-                    style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                </div>
-              </Card>
-            );
-          })}
+        <div style={{background:'#fff',borderRadius:8,border:'1px solid #e2e8f0',overflow:'hidden'}}>
+          <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:11}}>
+            <thead>
+              <tr style={{background:'#1e3a8a'}}>
+                {['Mesin','Tanggal Service','Interval','Keterangan','Status',''].map(h=>(
+                  <th key={h} style={{padding:'6px 10px',color:'#fff',fontWeight:700,fontSize:10,textAlign:'left' as const}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {schedules.map((s:any,i:number)=>{
+                const diff=getDiff(s.tanggal_service);
+                const isOverdue=diff<0&&s.status==='Pending';
+                const isUrgent=diff>=0&&diff<=3&&s.status==='Pending';
+                return(
+                  <tr key={s.id} style={{borderBottom:'1px solid #f1f5f9',background:isOverdue?'#fef2f2':isUrgent?'#fffbeb':i%2===0?'#fff':'#f8fafc'}}>
+                    <td style={{padding:'6px 10px',fontWeight:600,color:'#1e293b'}}>{s.nama_mesin||'—'}</td>
+                    <td style={{padding:'6px 10px',color:'#475569',whiteSpace:'nowrap' as const}}>{fmtDate(s.tanggal_service)}
+                      {isOverdue&&<span style={{color:'#dc2626',fontWeight:700,marginLeft:6,fontSize:10}}>({Math.abs(diff)}h terlambat)</span>}
+                      {isUrgent&&<span style={{color:'#f59e0b',fontWeight:700,marginLeft:6,fontSize:10}}>({diff===0?'Hari ini':diff+'h lagi'})</span>}
+                    </td>
+                    <td style={{padding:'6px 10px'}}><span style={{background:'#eff6ff',color:'#2563eb',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:600}}>{s.interval_service||'—'}</span></td>
+                    <td style={{padding:'6px 10px',color:'#64748b',maxWidth:200,overflow:'hidden' as const,textOverflow:'ellipsis' as const,whiteSpace:'nowrap' as const}}>{s.keterangan||'—'}</td>
+                    <td style={{padding:'6px 10px'}}>
+                      <span style={{background:s.status==='Done'?'#f0fdf4':isOverdue?'#fef2f2':isUrgent?'#fffbeb':'#f1f5f9',color:s.status==='Done'?'#16a34a':isOverdue?'#dc2626':isUrgent?'#f59e0b':'#64748b',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:700}}>
+                        {s.status==='Done'?'Done':isOverdue?'Overdue':isUrgent?'Segera':s.status}
+                      </span>
+                    </td>
+                    <td style={{padding:'6px 10px'}}>
+                      <div style={{display:'flex',gap:4}}>
+                        <button onClick={()=>{setModal({mode:'edit',id:s.id});setForm({machine_id:s.machine_id||'',tanggal_service:s.tanggal_service||'',keterangan:s.keterangan||'',status:s.status||'Pending',interval_service:s.interval_service||'3 bulan'});}}
+                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#64748b'}}>✏️</button>
+                        {s.status!=='Done'&&<button onClick={()=>markDone(s)} style={{background:'none',border:'1px solid #bbf7d0',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#16a34a'}}>✅</button>}
+                        <button onClick={()=>hapus(s.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#dc2626'}}>🗑</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
         </div>
       )}
 
       {modal&&(
-        <Modal title={(modal.mode==='add'?'Tambah':'Edit')+' Jadwal Service'} onClose={()=>setModal(null)} width={440}>
+        <Modal title={(modal.mode==='add'?'Tambah':'Edit')+' Jadwal Service'} onClose={()=>setModal(null)} width={460}>
           <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
             <div><Lbl>Mesin</Lbl>
-              <Sel value={form.machine_id} onChange={(e:any)=>setForm({...form,machine_id:e.target.value})}>
+              <Sel value={form.machine_id} onChange={(e:any)=>onMachineChange(e.target.value)}>
                 <option value="">-- Pilih Mesin --</option>
                 {machines.map((m:any)=><option key={m.id} value={m.id}>{m.nama_mesin}</option>)}
               </Sel>
             </div>
-            <div><Lbl>Tanggal Service</Lbl><Inp type="date" value={form.tanggal_service} onChange={(e:any)=>setForm({...form,tanggal_service:e.target.value})}/></div>
-            <div><Lbl>Keterangan</Lbl><Inp value={form.keterangan} onChange={(e:any)=>setForm({...form,keterangan:e.target.value})} placeholder="Keterangan service..."/></div>
-            <div><Lbl>Status</Lbl>
-              <Sel value={form.status} onChange={(e:any)=>setForm({...form,status:e.target.value})}>
-                <option value="Pending">⏳ Pending</option>
-                <option value="Done">✅ Done</option>
+            <div><Lbl>Interval Service</Lbl>
+              <Sel value={form.interval_service} onChange={(e:any)=>{
+                setForm((prev:any)=>({...prev,interval_service:e.target.value,tanggal_service:calcNextDate(new Date().toISOString().slice(0,10),e.target.value)}));
+              }}>
+                {INTERVAL_LIST.map(i=><option key={i} value={i}>{i}</option>)}
               </Sel>
+            </div>
+            <div><Lbl>Tanggal Service (bisa diedit)</Lbl>
+              <Inp type="date" value={form.tanggal_service} onChange={(e:any)=>setForm((prev:any)=>({...prev,tanggal_service:e.target.value}))}/>
+            </div>
+            <div><Lbl>Keterangan</Lbl>
+              <Inp value={form.keterangan} onChange={(e:any)=>setForm((prev:any)=>({...prev,keterangan:e.target.value}))} placeholder="Keterangan service..."/>
             </div>
           </div>
           <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
@@ -1469,6 +1526,7 @@ function ServiceSchedule({machines,user}:any){
     </div>
   );
 }
+
 function MaintenanceTab({user,logActivity}:any){
   const [machines,setMachines]=useState<any[]>([]);
   const [logs,setLogs]=useState<any[]>([]);
@@ -1923,95 +1981,132 @@ function MaintenanceTab({user,logActivity}:any){
 }
 function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
-  const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
+  const [filterProject,setFilterProject]=useState("ALL");
   const [filterPanel,setFilterPanel]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
   const [search,setSearch]=useState("");
+  const [page,setPage]=useState(1);
+  const PER_PAGE=50;
 
-  const MODULE_CONFIG:any={auth:{label:"Auth",icon:"🔐",color:"#64748b"},wo:{label:"WO",icon:"📋",color:"#2563eb"},raw:{label:"Raw",icon:"📅",color:"#f59e0b"},rencana:{label:"Renhar",icon:"📊",color:"#10b981"},kendala:{label:"Kendala",icon:"⚠️",color:"#ef4444"},pekerja:{label:"Pekerja",icon:"👥",color:"#0891b2"},general:{label:"General",icon:"⚙️",color:"#94a3b8"}};
-  const ACTION_CONFIG:any={create:{label:"Buat",color:"#16a34a"},update:{label:"Edit",color:"#2563eb"},delete:{label:"Hapus",color:"#dc2626"},login:{label:"Login",color:"#7c3aed"},logout:{label:"Logout",color:"#64748b"},distribute:{label:"Distribusi",color:"#0891b2"}};
+  const ACTION_CONFIG:any={
+    create:{label:"Buat",color:"#16a34a",bg:"#f0fdf4"},
+    update:{label:"Edit",color:"#2563eb",bg:"#eff6ff"},
+    delete:{label:"Hapus",color:"#dc2626",bg:"#fef2f2"},
+    login:{label:"Login",color:"#7c3aed",bg:"#f5f3ff"},
+    logout:{label:"Logout",color:"#64748b",bg:"#f8fafc"},
+    distribute:{label:"Distribusi",color:"#0891b2",bg:"#ecfeff"},
+  };
+  const MODULE_COLOR:any={
+    wo:"#2563eb",raw:"#f59e0b",rencana:"#10b981",
+    kendala:"#ef4444",pekerja:"#0891b2",auth:"#64748b",general:"#94a3b8"
+  };
 
   const adminList=[...new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean))];
-  const moduleList=[...new Set(activityLog.map((a:any)=>a.module||a.jenis).filter(Boolean))];
   const actionList=[...new Set(activityLog.map((a:any)=>a.action_type).filter(Boolean))];
-  const panelList=[...new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean))];
+  const projectList=[...new Set(activityLog.map((a:any)=>a.project||a.wo_number||a.wo_no).filter(Boolean))];
+  const panelList=[...new Set(activityLog.map((a:any)=>a.panel||a.halaman).filter(Boolean))];
 
   const filtered=activityLog.filter((a:any)=>{
     const adminName=a.admin_nama||a.user_name||"";
-    const module=a.module||a.jenis||"";
     const actionType=a.action_type||"";
     const desc=a.description||a.aktivitas||a.action||"";
-    const woNo=a.wo_number||a.wo_no||"";
+    const proj=a.project||a.wo_number||a.wo_no||"";
+    const pnl=a.panel||a.halaman||"";
     if(filterAdmin!=="ALL"&&adminName!==filterAdmin)return false;
-    if(filterModule!=="ALL"&&module!==filterModule)return false;
     if(filterAction!=="ALL"&&actionType!==filterAction)return false;
-    if(filterPanel!=="ALL"&&woNo!==filterPanel)return false;
+    if(filterProject!=="ALL"&&proj!==filterProject)return false;
+    if(filterPanel!=="ALL"&&pnl!==filterPanel)return false;
     if(filterTgl&&!a.created_at?.startsWith(filterTgl))return false;
-    if(search){const q=search.toLowerCase();if(!desc.toLowerCase().includes(q)&&!adminName.toLowerCase().includes(q)&&!woNo.toLowerCase().includes(q))return false;}
+    if(search){const q=search.toLowerCase();if(!desc.toLowerCase().includes(q)&&!adminName.toLowerCase().includes(q)&&!proj.toLowerCase().includes(q))return false;}
     return true;
   });
 
-  const fmtTime=(ts:string)=>{if(!ts)return"—";const d=new Date(ts);return d.toLocaleDateString("id-ID",{day:"numeric",month:"short"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});};
-  const todayStr=new Date().toISOString().slice(0,10);
+  const totalPages=Math.ceil(filtered.length/PER_PAGE);
+  const paginated=filtered.slice((page-1)*PER_PAGE,page*PER_PAGE);
+
+  const fmtTime=(ts:string)=>{
+    if(!ts)return"—";
+    const d=new Date(ts);
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"2-digit"})+" "+
+      d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  const resetFilters=()=>{setFilterAdmin("ALL");setFilterAction("ALL");setFilterProject("ALL");setFilterPanel("ALL");setFilterTgl("");setSearch("");setPage(1);};
+  const hasFilter=filterAdmin!=="ALL"||filterAction!=="ALL"||filterProject!=="ALL"||filterPanel!=="ALL"||filterTgl||search;
 
   return(
     <div className="fi">
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:10}}>
-        {[{l:"Total",v:activityLog.length,c:"#2563eb"},{l:"Hari Ini",v:activityLog.filter((a:any)=>a.created_at?.startsWith(todayStr)).length,c:"#10b981"},{l:"Admin",v:new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean)).size,c:"#f59e0b"},{l:"WO",v:new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6"}].map((s,i)=>(
-          <div key={i} style={{background:"#fff",borderRadius:8,padding:"8px 12px",borderLeft:`3px solid ${s.c}`,border:`1px solid ${s.c}30`}}>
-            <div style={{fontSize:18,fontWeight:800,color:s.c}}>{s.v}</div>
-            <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase" as const}}>{s.l}</div>
-          </div>
-        ))}
-      </div>
+      {/* Filter Bar */}
       <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap" as const,alignItems:"center",background:"#fff",borderRadius:8,padding:"8px 10px",border:"1px solid #e2e8f0"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari..." style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,width:140}}/>
-        <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Admin</option>{adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
+        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="🔍 Cari..."
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,width:150,outline:"none"}}/>
+        <input type="date" value={filterTgl} onChange={e=>{setFilterTgl(e.target.value);setPage(1);}}
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11}}/>
+        <select value={filterAdmin} onChange={e=>{setFilterAdmin(e.target.value);setPage(1);}}
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Admin</option>
+          {adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
         </select>
-        <select value={filterModule} onChange={e=>setFilterModule(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Module</option>{moduleList.map((m:any)=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
+        <select value={filterAction} onChange={e=>{setFilterAction(e.target.value);setPage(1);}}
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Action</option>
+          {actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
         </select>
-        <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Action</option>{actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
+        <select value={filterProject} onChange={e=>{setFilterProject(e.target.value);setPage(1);}}
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Project</option>
+          {projectList.map((p:any)=><option key={p} value={p}>{p}</option>)}
         </select>
-        <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua WO</option>{panelList.map((p:any)=><option key={p} value={p}>{p}</option>)}
+        <select value={filterPanel} onChange={e=>{setFilterPanel(e.target.value);setPage(1);}}
+          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
+          <option value="ALL">Semua Panel</option>
+          {panelList.map((p:any)=><option key={p} value={p}>{p}</option>)}
         </select>
-        <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11}}/>
-        {(filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterPanel!=="ALL"||filterTgl||search)&&(
-          <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterPanel("ALL");setFilterTgl("");setSearch("");}} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:700,cursor:"pointer"}}>Reset</button>
-        )}
+        {hasFilter&&<button onClick={resetFilters} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:700,cursor:"pointer"}}>Reset</button>}
         <span style={{marginLeft:"auto",fontSize:11,color:"#64748b"}}>{filtered.length} log</span>
       </div>
+
+      {/* Table */}
       <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",overflow:"hidden"}}>
         <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
           <thead>
-            <tr style={{background:"#1e3a8a"}}>
-              {["Waktu","Admin","Module","Action","Aktivitas","WO"].map(h=>(
-                <th key={h} style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const}}>{h}</th>
-              ))}
+            <tr style={{background:"#1e3a8a",position:"sticky" as const,top:0,zIndex:2}}>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>TANGGAL</th>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>ADMIN</th>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:80}}>ACTION</th>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const}}>AKTIVITAS</th>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>PROJECT</th>
+              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:100}}>PANEL</th>
             </tr>
           </thead>
           <tbody>
-            {filtered.length===0?(<tr><td colSpan={6} style={{textAlign:"center",padding:"30px",color:"#94a3b8"}}>Tidak ada aktivitas</td></tr>):(
-              filtered.map((a:any,i:number)=>{
-                const module=a.module||a.jenis||"general";
+            {paginated.length===0?(
+              <tr><td colSpan={6} style={{textAlign:"center",padding:"30px",color:"#94a3b8",fontSize:12}}>Tidak ada aktivitas</td></tr>
+            ):(
+              paginated.map((a:any,i:number)=>{
                 const actionType=a.action_type||"";
-                const mc=MODULE_CONFIG[module]||MODULE_CONFIG.general;
-                const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b"};
+                const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b",bg:"#f8fafc"};
+                const module=a.module||a.jenis||"general";
+                const mc=MODULE_COLOR[module]||"#94a3b8";
                 const adminName=a.admin_nama||a.user_name||"—";
                 const desc=a.description||a.aktivitas||a.action||"—";
-                const woNo=a.wo_number||a.wo_no||"";
+                const proj=a.project||a.wo_number||a.wo_no||"";
+                const pnl=a.panel||a.halaman||"";
                 return(
                   <tr key={a.id||i} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#f8fafc"}}>
-                    <td style={{padding:"5px 10px",color:"#94a3b8",whiteSpace:"nowrap" as const,fontSize:10}}>{fmtTime(a.created_at)}</td>
-                    <td style={{padding:"5px 10px",fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const}}>{adminName}</td>
-                    <td style={{padding:"5px 10px"}}><span style={{background:mc.color+"18",color:mc.color,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{mc.icon} {mc.label}</span></td>
-                    <td style={{padding:"5px 10px"}}><span style={{color:ac.color,fontWeight:700,fontSize:10}}>{ac.label||actionType}</span></td>
-                    <td style={{padding:"5px 10px",color:"#475569",maxWidth:280,overflow:"hidden" as const,textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{desc}</td>
-                    <td style={{padding:"5px 10px"}}>{woNo&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{woNo}</span>}</td>
+                    <td style={{padding:"4px 10px",color:"#94a3b8",whiteSpace:"nowrap" as const,fontSize:10}}>{fmtTime(a.created_at)}</td>
+                    <td style={{padding:"4px 10px",fontWeight:600,color:"#1e293b",whiteSpace:"nowrap" as const,fontSize:11}}>{adminName}</td>
+                    <td style={{padding:"4px 10px"}}>
+                      <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>{ac.label||actionType}</span>
+                    </td>
+                    <td style={{padding:"4px 10px",color:"#475569",maxWidth:300,overflow:"hidden" as const,textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const,fontSize:11}}>{desc}</td>
+                    <td style={{padding:"4px 10px",whiteSpace:"nowrap" as const}}>
+                      {proj&&<span style={{background:mc+"18",color:mc,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:600}}>{proj}</span>}
+                    </td>
+                    <td style={{padding:"4px 10px",whiteSpace:"nowrap" as const}}>
+                      {pnl&&<span style={{background:"#f1f5f9",color:"#475569",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:600}}>{pnl}</span>}
+                    </td>
                   </tr>
                 );
               })
@@ -2019,6 +2114,25 @@ function ActivityLogView({activityLog}:any){
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages>1&&(
+        <div style={{display:"flex",gap:6,justifyContent:"center",alignItems:"center",marginTop:10}}>
+          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
+            style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:page===1?"#f8fafc":"#fff",cursor:page===1?"not-allowed":"pointer",fontSize:11,color:page===1?"#cbd5e1":"#475569"}}>◀</button>
+          {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
+            const p=page<=3?i+1:page>=totalPages-2?totalPages-4+i:page-2+i;
+            if(p<1||p>totalPages)return null;
+            return(
+              <button key={p} onClick={()=>setPage(p)}
+                style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${page===p?"#2563eb":"#e2e8f0"}`,background:page===p?"#2563eb":"#fff",cursor:"pointer",fontSize:11,color:page===p?"#fff":"#475569",fontWeight:page===p?700:400}}>{p}</button>
+            );
+          })}
+          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
+            style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:page===totalPages?"#f8fafc":"#fff",cursor:page===totalPages?"not-allowed":"pointer",fontSize:11,color:page===totalPages?"#cbd5e1":"#475569"}}>▶</button>
+          <span style={{fontSize:11,color:"#64748b"}}>Hal {page}/{totalPages}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -3850,6 +3964,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
 
 
 

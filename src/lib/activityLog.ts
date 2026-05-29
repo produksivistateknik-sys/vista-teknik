@@ -16,11 +16,11 @@ export const createLog = async (
   woNumber?: string,
   halaman?: string,
   oldData?: any,
-  newData?: any
+  newData?: any,
+  project?: string,
+  panel?: string,
 ) => {
-  // Set session variable agar trigger bisa baca nama admin
   await setAdminSession(adminNama)
-  
   const { error } = await supabase.from('activity_log').insert({
     user_id: null,
     user_name: adminNama || 'Admin',
@@ -38,6 +38,8 @@ export const createLog = async (
     action_type: actionType,
     description: description,
     wo_number: woNumber || '',
+    project: project || '',
+    panel: panel || '',
   })
   if (error) {
     console.error('[ActivityLog] FAILED:', error.message)
@@ -48,7 +50,6 @@ export const createLog = async (
 
 export const fixSystemLog = async (adminNama: string, module: string) => {
   if(!adminNama || adminNama === 'System') return
-  // Cari log System yang dibuat dalam 10 detik terakhir
   const tenSecondsAgo = new Date(Date.now() - 10000).toISOString()
   const { data } = await supabase
     .from('activity_log')
@@ -59,12 +60,9 @@ export const fixSystemLog = async (adminNama: string, module: string) => {
     .order('created_at', { ascending: false })
     .limit(10)
   if(data && data.length > 0) {
-    const { error } = await supabase
+    await supabase
       .from('activity_log')
       .update({ admin_nama: adminNama, user_name: adminNama })
       .in('id', data.map((r:any) => r.id))
-    if(!error) console.log('[ActivityLog] fixed System ->', adminNama, 'count:', data.length)
-    else console.error('[ActivityLog] fixSystemLog error:', error.message)
   }
 }
-
