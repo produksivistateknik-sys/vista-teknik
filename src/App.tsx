@@ -659,7 +659,10 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){
+        setRenhar(prev=>[...prev,result.data]);
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+      }
     }
     await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
     setAssignModal(null);setSelPekerja([]);
@@ -674,9 +677,11 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){
+        setRenhar(prev=>[...prev,result.data]);
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+      }
     }
-    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi Semua - '+selDate,'','Rencana Harian');
   };
   const isDist=(task)=>!!getRenharEntry(task);
   const distCount=filteredTasks.filter(isDist).length;
@@ -2358,7 +2363,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){
+        setRenhar(prev=>[...prev,result.data]);
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+      }
     }
     await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
     setAssignModal(null);setSelPekerja([]);
@@ -2374,7 +2382,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){
+        setRenhar(prev=>[...prev,result.data]);
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+      }
     }
   };
 
@@ -3124,6 +3135,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
