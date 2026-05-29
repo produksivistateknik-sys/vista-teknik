@@ -1,0 +1,10 @@
+﻿const fs = require('fs');
+const lines = fs.readFileSync('src/App.tsx', 'utf8').split('\n');
+const dupStart = lines.findIndex((l,i) => i > 4000 && l.includes('</div>') && lines[i+1] && lines[i+1].includes('</div>') && lines[i+2] && lines[i+2].includes(')}') && lines[i+3] && lines[i+3].includes('</div>') && lines[i+4] && lines[i+4].includes(');') && lines[i-1] && lines[i-1].includes(');'));
+console.log('Dup start:', dupStart);
+const clean = [...lines.slice(0, dupStart), ...lines.slice(dupStart + 6)];
+console.log('Total baru:', clean.length);
+console.log('Last 8:');
+clean.slice(-8).forEach((l,i)=>console.log(clean.length-8+i,':', l));
+fs.writeFileSync('src/App.tsx', clean.join('\n'), 'utf8');
+console.log('OK');
