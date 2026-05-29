@@ -668,10 +668,10 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){
         setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
       }
     }
-    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -686,7 +686,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){
         setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
       }
     }
   };
@@ -3074,7 +3074,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
     setModalWp("");setModalKomponen([]);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),'','Raw Schedule');
+    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),rawRow?.wo_id||'','Raw Schedule',null,null,rawRow?.proyek||'',rawRow?.panel||'');
   };
 
   const removeEntry=async(wp)=>{
@@ -3089,7 +3089,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),'','Raw Schedule');
+    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),rawRow?.wo_id||'','Raw Schedule',null,null,rawRow?.proyek||'',rawRow?.panel||'');
   };
 
   const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
@@ -3190,10 +3190,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){
         setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
       }
     }
-    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -3209,7 +3209,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){
         setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')','','Rencana Harian');
+        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
       }
     }
   };
@@ -3340,7 +3340,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,'','Raw Schedule',null,null,row.proyek,row.panel);await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,row.wo_id||'','Raw Schedule',null,null,row.proyek,row.panel);await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -3581,14 +3581,14 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(editId, np);
-        await createLog(user?.name||user?.nama||'Admin','wo','update','Edit WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO');
+        await createLog(user?.name||user?.nama||'Admin','wo','update','Edit WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO',null,null,form.proyek,'');
         setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
       }
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
-        await createLog(user?.name||user?.nama||'Admin','wo','create','Tambah WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO');
+        await createLog(user?.name||user?.nama||'Admin','wo','create','Tambah WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO',null,null,form.proyek,'');
         setWoData(prev=>[...prev,{...result.data,panels:np}]);
       }
     }
@@ -3966,6 +3966,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
 
 
 
