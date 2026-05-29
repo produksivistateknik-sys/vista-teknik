@@ -1300,6 +1300,9 @@ function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerj
   const [subTab,setSubTab]=useState('masteruser');
   const SUB_TABS=[
     {id:'masteruser',label:'👤 Master User'},
+    {id:'pekerja',label:'👥 Master Pekerja'},
+    {id:'tracking',label:'📈 Tracking Pekerja'},
+    {id:'maintenance',label:'🔧 Maintenance'},
     {id:'activity',label:'📊 Activity Log'},
     {id:'recycle',label:'🗑 Recycle Bin'},
   ];
@@ -1319,6 +1322,9 @@ function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerj
         ))}
       </div>
       {subTab==='masteruser'&&<MasterUser logActivity={logActivity} user={user}/>}
+      {subTab==='pekerja'&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} user={user}/>}
+      {subTab==='tracking'&&<TrackingPekerja pekerja={pekerja} renhar={[]}/>}
+      {subTab==='maintenance'&&<MaintenanceTab user={user} logActivity={logActivity}/>}
       {subTab==='activity'&&<ActivityLogView activityLog={activityLog} user={user}/>}
       {subTab==='recycle'&&<RecycleBin user={user}/>}
     </div>
