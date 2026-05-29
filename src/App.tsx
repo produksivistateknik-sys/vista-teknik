@@ -1,4 +1,6 @@
 ﻿
+import jsPDF from 'jspdf';
+import 'jspdf-autotable';
 import React, { useState, useMemo, useEffect } from "react";
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
@@ -100,6 +102,11 @@ const PROSES_COLOR = {
   "WIRING CONTROL":"#6366f1","WIRING POWER":"#ef4444","QC TEST":"#14b8a6","PACKING":"#84cc16",
 };
 const WP_COLOR = {"WP1":"#f59e0b","WP2":"#22c55e","WP3":"#06b6d4","WP4":"#f97316","WP5":"#a78bfa","WP6":"#f472b6"};
+// WP color mengikuti warna proses
+const getWpColor = (wp: string, proses?: string): string => {
+  if(proses && PROSES_COLOR[proses]) return PROSES_COLOR[proses];
+  return WP_COLOR[wp] || "#64748b";
+};
 const PRIORITAS_COLOR = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e"};
 
 const DIVISI_PROSES = {
@@ -1331,142 +1338,409 @@ function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerj
   );
 }
 
-function MaintenanceTab({user,logActivity}:any){
-  const [mesinList,setMesinList]=useState<any[]>([]);
-  const [logList,setLogList]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [selMesin,setSelMesin]=useState<any>(null);
-  const [mesinModal,setMesinModal]=useState<any>(null);
-  const [logModal,setLogModal]=useState<any>(null);
-  const [mesinForm,setMesinForm]=useState<any>({nama:'',kode:'',lokasi:'',status:'Normal'});
-  const [logForm,setLogForm]=useState<any>({kendala:'',perbaikan:'',tgl_kendala:'',tgl_perbaikan:'',teknisi:'',status:'Proses'});
+function ServiceSchedule({machines,user}:any){
+  const [schedules,setSchedules]=useState<any[]>([]);
+  const [modal,setModal]=useState<any>(null);
+  const [form,setForm]=useState<any>({machine_id:'',nama_mesin:'',tanggal_service:'',keterangan:'',status:'Pending'});
   const [saving,setSaving]=useState(false);
-  const [delMesin,setDelMesin]=useState<any>(null);
+
+  const load=async()=>{
+    const{data}=await supabase.from('service_schedule').select('*,machines(nama_mesin)').order('tanggal_service',{ascending:true});
+    setSchedules(data??[]);
+  };
+
+  useEffect(()=>{load();},[]);
+
+  const save=async()=>{
+    if(!form.tanggal_service)return;
+    setSaving(true);
+    const machine=machines.find((m:any)=>m.id===Number(form.machine_id));
+    const payload={...form,machine_id:Number(form.machine_id),nama_mesin:machine?.nama_mesin||form.nama_mesin,created_by:user?.name||user?.nama||'Admin'};
+    if(modal.mode==='add'){
+      await supabase.from('service_schedule').insert(payload);
+    } else {
+      await supabase.from('service_schedule').update(payload).eq('id',modal.id);
+    }
+    await load();
+    setModal(null);
+    setSaving(false);
+  };
+
+  const hapus=async(id:number)=>{
+    await supabase.from('service_schedule').delete().eq('id',id);
+    await load();
+  };
+
+  const today=new Date().toISOString().slice(0,10);
+  const upcoming=schedules.filter(s=>{
+    const diff=Math.ceil((new Date(s.tanggal_service).getTime()-new Date().getTime())/(1000*60*60*24));
+    return diff>=0&&diff<=3&&s.status==='Pending';
+  });
+
+  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
+  const getDiff=(d:string)=>{
+    const diff=Math.ceil((new Date(d).getTime()-new Date().getTime())/(1000*60*60*24));
+    return diff;
+  };
+
+  return(
+    <div style={{marginTop:24}}>
+      {/* Alert upcoming service */}
+      {upcoming.length>0&&(
+        <div style={{background:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:12,padding:'12px 16px',marginBottom:16,display:'flex',gap:12,alignItems:'flex-start'}}>
+          <span style={{fontSize:20}}>⚠️</span>
+          <div>
+            <div style={{fontWeight:700,fontSize:13,color:'#f59e0b',marginBottom:4}}>Service Rutin Segera!</div>
+            {upcoming.map(s=>(
+              <div key={s.id} style={{fontSize:12,color:'#92400e'}}>
+                🔧 {s.nama_mesin||s.machines?.nama_mesin} — {fmtDate(s.tanggal_service)} 
+                <strong style={{color:'#dc2626'}}> ({getDiff(s.tanggal_service)===0?'Hari ini':getDiff(s.tanggal_service)+' hari lagi'})</strong>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+        <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>📅 Jadwal Service Rutin</div>
+        <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setModal({mode:'add'});setForm({machine_id:'',nama_mesin:'',tanggal_service:'',keterangan:'',status:'Pending'});}}>+ Tambah Jadwal</Btn>
+      </div>
+
+      {schedules.length===0?(
+        <div style={{textAlign:'center',padding:'20px',color:'#94a3b8',fontSize:13}}>Belum ada jadwal service</div>
+      ):(
+        <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(280px,1fr))',gap:10}}>
+          {schedules.map(s=>{
+            const diff=getDiff(s.tanggal_service);
+            const isUrgent=diff>=0&&diff<=3&&s.status==='Pending';
+            const isOverdue=diff<0&&s.status==='Pending';
+            return(
+              <Card key={s.id} style={{padding:'12px 14px',borderLeft:`3px solid ${isOverdue?'#dc2626':isUrgent?'#f59e0b':s.status==='Done'?'#16a34a':'#2563eb'}`}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                  <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{s.nama_mesin||s.machines?.nama_mesin||'—'}</div>
+                  <span style={{background:s.status==='Done'?'#f0fdf4':isOverdue?'#fef2f2':isUrgent?'#fffbeb':'#eff6ff',
+                    color:s.status==='Done'?'#16a34a':isOverdue?'#dc2626':isUrgent?'#f59e0b':'#2563eb',
+                    borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{s.status}</span>
+                </div>
+                <div style={{fontSize:12,color:'#475569',marginBottom:4}}>📅 {fmtDate(s.tanggal_service)}</div>
+                {isUrgent&&<div style={{fontSize:11,color:'#f59e0b',fontWeight:700}}>⏰ {diff===0?'Hari ini!':diff+' hari lagi!'}</div>}
+                {isOverdue&&<div style={{fontSize:11,color:'#dc2626',fontWeight:700}}>❌ Terlambat {Math.abs(diff)} hari!</div>}
+                {s.keterangan&&<div style={{fontSize:11,color:'#64748b',marginTop:4}}>{s.keterangan}</div>}
+                <div style={{display:'flex',gap:6,marginTop:8,justifyContent:'flex-end'}}>
+                  <button onClick={()=>{setModal({mode:'edit',id:s.id});setForm({machine_id:s.machine_id||'',nama_mesin:s.nama_mesin||'',tanggal_service:s.tanggal_service||'',keterangan:s.keterangan||'',status:s.status||'Pending'});}}
+                    style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
+                  {s.status==='Pending'&&(
+                    <button onClick={async()=>{await supabase.from('service_schedule').update({status:'Done'}).eq('id',s.id);load();}}
+                      style={{background:'none',border:'1px solid #bbf7d0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#16a34a'}}>✅ Done</button>
+                  )}
+                  <button onClick={()=>hapus(s.id)}
+                    style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {modal&&(
+        <Modal title={(modal.mode==='add'?'Tambah':'Edit')+' Jadwal Service'} onClose={()=>setModal(null)} width={440}>
+          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
+            <div><Lbl>Mesin</Lbl>
+              <Sel value={form.machine_id} onChange={(e:any)=>setForm({...form,machine_id:e.target.value})}>
+                <option value="">-- Pilih Mesin --</option>
+                {machines.map((m:any)=><option key={m.id} value={m.id}>{m.nama_mesin}</option>)}
+              </Sel>
+            </div>
+            <div><Lbl>Tanggal Service</Lbl><Inp type="date" value={form.tanggal_service} onChange={(e:any)=>setForm({...form,tanggal_service:e.target.value})}/></div>
+            <div><Lbl>Keterangan</Lbl><Inp value={form.keterangan} onChange={(e:any)=>setForm({...form,keterangan:e.target.value})} placeholder="Keterangan service..."/></div>
+            <div><Lbl>Status</Lbl>
+              <Sel value={form.status} onChange={(e:any)=>setForm({...form,status:e.target.value})}>
+                <option value="Pending">⏳ Pending</option>
+                <option value="Done">✅ Done</option>
+              </Sel>
+            </div>
+          </div>
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
+            <Btn outline color="#64748b" onClick={()=>setModal(null)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={save}>{saving?'Menyimpan...':'Simpan'}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+function MaintenanceTab({user,logActivity}:any){
+  const [machines,setMachines]=useState<any[]>([]);
+  const [logs,setLogs]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [selMachine,setSelMachine]=useState<any>(null);
+  const [machineModal,setMachineModal]=useState<any>(null);
+  const [logModal,setLogModal]=useState<any>(null);
+  const [machineForm,setMachineForm]=useState<any>({nama_mesin:'',divisi:'',tipe_mesin:'',status_terakhir:'Normal'});
+  const [logForm,setLogForm]=useState<any>({issue_title:'',issue_type:'Mechanical',problem_description:'',repair_action:'',technician:'',status:'Open',priority:'Medium',downtime_hours:0,start_date:'',finish_date:''});
+  const [saving,setSaving]=useState(false);
+  const [filterStatus,setFilterStatus]=useState('ALL');
+  const [filterType,setFilterType]=useState('ALL');
+  const [delMachine,setDelMachine]=useState<any>(null);
   const [delLog,setDelLog]=useState<any>(null);
 
+  const STATUS_LIST=['Open','Checking','On Repair','Waiting Sparepart','Trial','Resolved','Closed'];
+  const TYPE_LIST=['Mechanical','Electrical','Sensor','Hydraulic','Pneumatic','Software'];
+  const PRIORITY_LIST=['Low','Medium','High','Critical'];
+
   const STATUS_COLOR:any={
-    'Normal':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
-    'Perlu Service':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
-    'Rusak':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
+    'Open':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
+    'Checking':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
+    'On Repair':{bg:'#eff6ff',color:'#2563eb',border:'#bfdbfe'},
+    'Waiting Sparepart':{bg:'#f5f3ff',color:'#7c3aed',border:'#ddd6fe'},
+    'Trial':{bg:'#ecfeff',color:'#0891b2',border:'#a5f3fc'},
+    'Resolved':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
+    'Closed':{bg:'#f8fafc',color:'#64748b',border:'#e2e8f0'},
   };
-  const LOG_STATUS_COLOR:any={
-    'Proses':{bg:'#fffbeb',color:'#f59e0b'},
-    'Selesai':{bg:'#f0fdf4',color:'#16a34a'},
-    'Tertunda':{bg:'#fef2f2',color:'#dc2626'},
+  const PRIORITY_COLOR:any={
+    'Low':'#16a34a','Medium':'#f59e0b','High':'#f97316','Critical':'#dc2626'
+  };
+  const TYPE_COLOR:any={
+    'Mechanical':'#2563eb','Electrical':'#f59e0b','Sensor':'#8b5cf6',
+    'Hydraulic':'#0891b2','Pneumatic':'#10b981','Software':'#f97316'
+  };
+  const MACHINE_STATUS_COLOR:any={
+    'Normal':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
+    'Rusak':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
+    'Maintenance':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
   };
 
   const load=async()=>{
     setLoading(true);
     const [{data:m},{data:l}]=await Promise.all([
-      supabase.from('mesin').select('*').is('deleted_at',null).order('nama'),
-      supabase.from('maintenance_log').select('*,mesin(nama,kode)').order('created_at',{ascending:false}),
+      supabase.from('machines').select('*').is('deleted_at',null).order('nama_mesin'),
+      supabase.from('maintenance_logs').select('*').order('created_at',{ascending:false}),
     ]);
-    setMesinList(m??[]);
-    setLogList(l??[]);
+    setMachines(m??[]);
+    setLogs(l??[]);
     setLoading(false);
   };
 
-  useEffect(()=>{load();},[]);
+  useEffect(()=>{
+    load();
+    const ch=supabase.channel('realtime-maintenance')
+      .on('postgres_changes',{event:'*',schema:'public',table:'maintenance_logs'},()=>load())
+      .on('postgres_changes',{event:'*',schema:'public',table:'machines'},()=>load())
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
 
-  const saveMesin=async()=>{
-    if(!mesinForm.nama.trim())return;
+  const saveMachine=async()=>{
+    if(!machineForm.nama_mesin.trim())return;
     setSaving(true);
-    if(mesinModal.mode==='add'){
-      await supabase.from('mesin').insert({...mesinForm});
-      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah mesin '+mesinForm.nama,'','Maintenance');
+    if(machineModal.mode==='add'){
+      await supabase.from('machines').insert({...machineForm});
+      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah mesin '+machineForm.nama_mesin,'','Maintenance');
     } else {
-      await supabase.from('mesin').update({...mesinForm}).eq('id',mesinModal.id);
-      await createLog(user?.name||user?.nama||'Admin','general','update','Edit mesin '+mesinForm.nama,'','Maintenance');
+      await supabase.from('machines').update({...machineForm}).eq('id',machineModal.id);
+      await createLog(user?.name||user?.nama||'Admin','general','update','Edit mesin '+machineForm.nama_mesin,'','Maintenance');
     }
     await load();
-    setMesinModal(null);
+    setMachineModal(null);
     setSaving(false);
   };
 
   const saveLog=async()=>{
-    if(!logForm.kendala.trim())return;
+    if(!logForm.issue_title.trim())return;
     setSaving(true);
-    const mesinId=selMesin?.id||logModal?.mesin_id;
+    const machineId=selMachine?.id||logModal?.machine_id;
     if(logModal.mode==='add'){
-      await supabase.from('maintenance_log').insert({...logForm,mesin_id:mesinId});
-      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah log maintenance '+selMesin?.nama,'','Maintenance');
+      await supabase.from('maintenance_logs').insert({...logForm,machine_id:machineId,created_by:user?.name||user?.nama||'Admin'});
+      // Update status mesin
+      const newStatus=logForm.status==='Resolved'||logForm.status==='Closed'?'Normal':'Maintenance';
+      await supabase.from('machines').update({status_terakhir:newStatus}).eq('id',machineId);
+      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah maintenance log: '+logForm.issue_title+' pada '+selMachine?.nama_mesin,'','Maintenance');
     } else {
-      await supabase.from('maintenance_log').update({...logForm}).eq('id',logModal.id);
-      await createLog(user?.name||user?.nama||'Admin','general','update','Edit log maintenance','','Maintenance');
+      await supabase.from('maintenance_logs').update({...logForm}).eq('id',logModal.id);
+      await createLog(user?.name||user?.nama||'Admin','general','update','Update maintenance log: '+logForm.issue_title,'','Maintenance');
     }
     await load();
     setLogModal(null);
     setSaving(false);
   };
 
-  const hapusMesin=async()=>{
-    await supabase.from('mesin').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',delMesin.id);
-    await createLog(user?.name||user?.nama||'Admin','general','delete','Hapus mesin '+delMesin.nama,'','Maintenance');
+  const hapusMachine=async()=>{
+    await supabase.from('machines').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',delMachine.id);
+    await createLog(user?.name||user?.nama||'Admin','general','delete','Hapus mesin '+delMachine.nama_mesin,'','Maintenance');
+    if(selMachine?.id===delMachine.id) setSelMachine(null);
     await load();
-    setDelMesin(null);
+    setDelMachine(null);
   };
 
   const hapusLog=async()=>{
-    await supabase.from('maintenance_log').delete().eq('id',delLog.id);
+    await supabase.from('maintenance_logs').delete().eq('id',delLog.id);
     await load();
     setDelLog(null);
   };
 
-  const mesinLogs=selMesin?logList.filter(l=>l.mesin_id===selMesin.id):[];
-  const totalMasalah=mesinList.filter(m=>m.status!=='Normal').length;
+  const machineLogs=selMachine?logs.filter(l=>l.machine_id===selMachine.id):logs;
+  const filteredLogs=machineLogs.filter(l=>
+    (filterStatus==='ALL'||l.status===filterStatus)&&
+    (filterType==='ALL'||l.issue_type===filterType)
+  );
+
+  const totalDowntime=logs.reduce((a,l)=>a+(Number(l.downtime_hours)||0),0);
+  const thisMonth=logs.filter(l=>l.created_at?.startsWith(new Date().toISOString().slice(0,7))).length;
+  const mostBroken=machines.map(m=>({...m,count:logs.filter(l=>l.machine_id===m.id).length})).sort((a,b)=>b.count-a.count)[0];
+
+  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
+
+  const downloadPDF=(log:any)=>{
+    const doc = new (jsPDF as any)();
+    const machine = machines.find(m=>m.id===log.machine_id);
+    doc.setFontSize(16);
+    doc.setFont('helvetica','bold');
+    doc.text('BERITA ACARA MAINTENANCE', 105, 20, {align:'center'});
+    doc.setFontSize(10);
+    doc.setFont('helvetica','normal');
+    doc.text('VISTA TEKNIK', 105, 28, {align:'center'});
+    doc.line(20, 32, 190, 32);
+    
+    doc.setFontSize(11);
+    doc.setFont('helvetica','bold');
+    doc.text('INFORMASI MESIN', 20, 42);
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    const info = [
+      ['Nama Mesin', machine?.nama_mesin||'—'],
+      ['Tipe Mesin', machine?.tipe_mesin||'—'],
+      ['Divisi/Lokasi', machine?.divisi||'—'],
+      ['Tanggal Mulai', fmtDate(log.start_date)],
+      ['Tanggal Selesai', fmtDate(log.finish_date)],
+      ['Teknisi', log.technician||'—'],
+      ['Status', log.status||'—'],
+      ['Priority', log.priority||'—'],
+      ['Downtime', (log.downtime_hours||0)+' jam'],
+    ];
+    let y = 50;
+    info.forEach(([k,v])=>{
+      doc.setFont('helvetica','bold');
+      doc.text(k+' :', 20, y);
+      doc.setFont('helvetica','normal');
+      doc.text(v, 80, y);
+      y += 7;
+    });
+
+    y += 5;
+    doc.line(20, y, 190, y);
+    y += 8;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('JUDUL MASALAH', 20, y);
+    y += 7;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    doc.text(log.issue_title||'—', 20, y);
+
+    y += 10;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('JENIS KERUSAKAN', 20, y);
+    y += 7;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    doc.text(log.issue_type||'—', 20, y);
+
+    y += 10;
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('DESKRIPSI MASALAH', 20, y);
+    y += 7;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    const desc = doc.splitTextToSize(log.problem_description||'—', 170);
+    doc.text(desc, 20, y);
+    y += desc.length * 6 + 4;
+
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(11);
+    doc.text('TINDAKAN PERBAIKAN', 20, y);
+    y += 7;
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(10);
+    const repair = doc.splitTextToSize(log.repair_action||'—', 170);
+    doc.text(repair, 20, y);
+    y += repair.length * 6 + 10;
+
+    doc.line(20, y, 190, y);
+    y += 10;
+    doc.setFont('helvetica','bold');
+    doc.text('Dibuat oleh:', 20, y);
+    doc.text('Disetujui oleh:', 110, y);
+    y += 20;
+    doc.text(log.created_by||'—', 20, y);
+    doc.text('_______________', 110, y);
+    y += 7;
+    doc.setFont('helvetica','normal');
+    doc.text(new Date(log.created_at).toLocaleDateString('id-ID'), 20, y);
+
+    doc.save('Berita_Acara_'+( machine?.nama_mesin||'Maintenance')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
+  };
 
   if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat data...</div>;
 
   return(
     <div className="fi">
       {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))',gap:10,marginBottom:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
         {[
-          {l:'Total Mesin',v:mesinList.length,c:'#2563eb',i:'🔧'},
-          {l:'Normal',v:mesinList.filter(m=>m.status==='Normal').length,c:'#16a34a',i:'✅'},
-          {l:'Perlu Service',v:mesinList.filter(m=>m.status==='Perlu Service').length,c:'#f59e0b',i:'⚠️'},
-          {l:'Rusak',v:mesinList.filter(m=>m.status==='Rusak').length,c:'#dc2626',i:'❌'},
+          {l:'Total Mesin',v:machines.length,c:'#2563eb',i:'🔧'},
+          {l:'Normal',v:machines.filter(m=>m.status_terakhir==='Normal').length,c:'#16a34a',i:'✅'},
+          {l:'Dalam Perbaikan',v:machines.filter(m=>m.status_terakhir==='Maintenance').length,c:'#f59e0b',i:'⚠️'},
+          {l:'Rusak',v:machines.filter(m=>m.status_terakhir==='Rusak').length,c:'#dc2626',i:'❌'},
+          {l:'Total Breakdown',v:logs.length,c:'#8b5cf6',i:'📋'},
+          {l:'Bulan Ini',v:thisMonth,c:'#0891b2',i:'📅'},
+          {l:'Total Downtime',v:totalDowntime+'h',c:'#f97316',i:'⏱'},
+          {l:'Sering Rusak',v:mostBroken?.nama_mesin||'—',c:'#dc2626',i:'🔴'},
         ].map((s,i)=>(
-          <Card key={i} style={{padding:'12px 16px',borderLeft:`3px solid ${s.c}`}}>
-            <div style={{fontSize:18,marginBottom:4}}>{s.i}</div>
-            <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
-            <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>{s.l}</div>
+          <Card key={i} style={{padding:'12px 14px',borderLeft:`3px solid ${s.c}`}}>
+            <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
+            <div style={{fontSize:i===7?11:20,fontWeight:800,color:s.c,lineHeight:1.2}}>{s.v}</div>
+            <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const,marginTop:2}}>{s.l}</div>
           </Card>
         ))}
       </div>
 
-      <div style={{display:'grid',gridTemplateColumns:'300px 1fr',gap:16}}>
+      <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16}}>
         {/* Daftar Mesin */}
         <div>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <STitle style={{marginBottom:0,fontSize:14}}>🔧 Daftar Mesin</STitle>
-            <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setMesinModal({mode:'add'});setMesinForm({nama:'',kode:'',lokasi:'',status:'Normal'});}}>+ Tambah</Btn>
+            <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>🔧 Daftar Mesin</div>
+            <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setMachineModal({mode:'add'});setMachineForm({nama_mesin:'',divisi:'',tipe_mesin:'',status_terakhir:'Normal'});}}>+ Tambah</Btn>
           </div>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
-            {mesinList.length===0&&<div style={{textAlign:'center',padding:20,color:'#94a3b8',fontSize:13}}>Belum ada mesin</div>}
-            {mesinList.map(m=>{
-              const sc=STATUS_COLOR[m.status]||STATUS_COLOR['Normal'];
-              const isSel=selMesin?.id===m.id;
+          <div style={{display:'flex',flexDirection:'column' as const,gap:8,maxHeight:600,overflowY:'auto' as const}}>
+            {machines.length===0&&<div style={{textAlign:'center',padding:20,color:'#94a3b8',fontSize:13}}>Belum ada mesin</div>}
+            {machines.map(m=>{
+              const sc=MACHINE_STATUS_COLOR[m.status_terakhir]||MACHINE_STATUS_COLOR['Normal'];
+              const isSel=selMachine?.id===m.id;
+              const mLogs=logs.filter(l=>l.machine_id===m.id);
+              const lastLog=mLogs[0];
               return(
-                <div key={m.id} onClick={()=>setSelMesin(isSel?null:m)}
-                  style={{background:isSel?'#eff6ff':'#fff',borderRadius:12,border:`1.5px solid ${isSel?'#2563eb':'#e2e8f0'}`,
+                <div key={m.id} onClick={()=>setSelMachine(isSel?null:m)}
+                  style={{background:isSel?'#eff6ff':'#fff',borderRadius:12,
+                    border:`1.5px solid ${isSel?'#2563eb':'#e2e8f0'}`,
                     padding:'12px 14px',cursor:'pointer',transition:'all .15s'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start'}}>
-                    <div>
-                      <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{m.nama}</div>
-                      {m.kode&&<div style={{fontSize:11,color:'#94a3b8',fontFamily:"'DM Mono',monospace"}}>{m.kode}</div>}
-                      {m.lokasi&&<div style={{fontSize:11,color:'#64748b',marginTop:2}}>📍 {m.lokasi}</div>}
-                    </div>
-                    <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:4}}>
-                      <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,
-                        borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{m.status}</span>
-                      <div style={{display:'flex',gap:4}}>
-                        <button onClick={e=>{e.stopPropagation();setMesinModal({mode:'edit',id:m.id});setMesinForm({nama:m.nama,kode:m.kode||'',lokasi:m.lokasi||'',status:m.status});}}
-                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
-                        <button onClick={e=>{e.stopPropagation();setDelMesin(m);}}
-                          style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                      </div>
-                    </div>
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+                    <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{m.nama_mesin}</div>
+                    <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,
+                      borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700,flexShrink:0}}>{m.status_terakhir}</span>
+                  </div>
+                  {m.tipe_mesin&&<div style={{fontSize:11,color:'#64748b',marginBottom:4}}>🏷 {m.tipe_mesin}</div>}
+                  {m.divisi&&<div style={{fontSize:11,color:'#64748b',marginBottom:4}}>📍 {m.divisi}</div>}
+                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6}}>
+                    <span style={{fontSize:10,color:'#94a3b8'}}>{mLogs.length} breakdown</span>
+                    {lastLog&&<span style={{fontSize:10,color:'#94a3b8'}}>Terakhir: {fmtDate(lastLog.created_at)}</span>}
+                  </div>
+                  <div style={{display:'flex',gap:4,marginTop:8,justifyContent:'flex-end'}}>
+                    <button onClick={e=>{e.stopPropagation();setMachineModal({mode:'edit',id:m.id});setMachineForm({nama_mesin:m.nama_mesin,divisi:m.divisi||'',tipe_mesin:m.tipe_mesin||'',status_terakhir:m.status_terakhir});}}
+                      style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
+                    <button onClick={e=>{e.stopPropagation();setDelMachine(m);}}
+                      style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
                   </div>
                 </div>
               );
@@ -1476,88 +1750,134 @@ function MaintenanceTab({user,logActivity}:any){
 
         {/* Log Maintenance */}
         <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <STitle style={{marginBottom:0,fontSize:14}}>
-              📋 {selMesin?`Log Maintenance — ${selMesin.nama}`:'Semua Log Maintenance'}
-            </STitle>
-            {selMesin&&<Btn color="#16a34a" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setLogModal({mode:'add',mesin_id:selMesin.id});setLogForm({kendala:'',perbaikan:'',tgl_kendala:'',tgl_perbaikan:'',teknisi:'',status:'Proses'});}}>+ Tambah Log</Btn>}
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap' as const,gap:8}}>
+            <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>
+              📋 {selMachine?`History — ${selMachine.nama_mesin}`:'Semua Log Maintenance'}
+            </div>
+            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
+              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
+                style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:11,fontWeight:600,color:'#475569',background:'#f8fafc'}}>
+                <option value="ALL">Semua Status</option>
+                {STATUS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
+              </select>
+              <select value={filterType} onChange={e=>setFilterType(e.target.value)}
+                style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:11,fontWeight:600,color:'#475569',background:'#f8fafc'}}>
+                <option value="ALL">Semua Tipe</option>
+                {TYPE_LIST.map(t=><option key={t} value={t}>{t}</option>)}
+              </select>
+              {selMachine&&(
+                <Btn color="#16a34a" style={{fontSize:11,padding:'5px 14px'}} onClick={()=>{setLogModal({mode:'add',machine_id:selMachine.id});setLogForm({issue_title:'',issue_type:'Mechanical',problem_description:'',repair_action:'',technician:'',status:'Open',priority:'Medium',downtime_hours:0,start_date:'',finish_date:''});}}>
+                  + Tambah Log
+                </Btn>
+              )}
+            </div>
           </div>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
-            {(selMesin?mesinLogs:logList).length===0&&(
-              <div style={{textAlign:'center',padding:40,color:'#94a3b8',fontSize:13}}>
-                {selMesin?'Belum ada log maintenance untuk mesin ini':'Pilih mesin atau belum ada log'}
-              </div>
-            )}
-            {(selMesin?mesinLogs:logList).map((l:any)=>{
-              const sc=LOG_STATUS_COLOR[l.status]||LOG_STATUS_COLOR['Proses'];
-              return(
-                <Card key={l.id} style={{padding:'14px 16px',borderLeft:`3px solid ${sc.color}`}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12}}>
-                    <div style={{flex:1}}>
-                      {!selMesin&&<div style={{fontSize:11,fontWeight:700,color:'#2563eb',marginBottom:4}}>🔧 {l.mesin?.nama||'—'} {l.mesin?.kode?`(${l.mesin.kode})`:''}</div>}
-                      <div style={{fontWeight:700,fontSize:13,color:'#dc2626',marginBottom:4}}>⚠️ {l.kendala||'—'}</div>
-                      {l.perbaikan&&<div style={{fontSize:12,color:'#16a34a',marginBottom:4}}>🔨 {l.perbaikan}</div>}
-                      <div style={{display:'flex',gap:12,flexWrap:'wrap' as const,fontSize:11,color:'#64748b',marginTop:6}}>
-                        {l.tgl_kendala&&<span>📅 Kendala: <strong>{l.tgl_kendala}</strong></span>}
-                        {l.tgl_perbaikan&&<span>✅ Selesai: <strong>{l.tgl_perbaikan}</strong></span>}
-                        {l.teknisi&&<span>👤 Teknisi: <strong>{l.teknisi}</strong></span>}
+
+          {filteredLogs.length===0?(
+            <div style={{textAlign:'center',padding:'60px 20px',color:'#94a3b8'}}>
+              <div style={{fontSize:40,marginBottom:12}}>📋</div>
+              <div style={{fontSize:14,fontWeight:600}}>{selMachine?'Belum ada log maintenance':'Pilih mesin untuk lihat history'}</div>
+            </div>
+          ):(
+            <div style={{display:'flex',flexDirection:'column' as const,gap:10,maxHeight:600,overflowY:'auto' as const}}>
+              {filteredLogs.map((l:any)=>{
+                const sc=STATUS_COLOR[l.status]||STATUS_COLOR['Open'];
+                const tc=TYPE_COLOR[l.issue_type]||'#64748b';
+                const pc=PRIORITY_COLOR[l.priority]||'#f59e0b';
+                const machineName=machines.find(m=>m.id===l.machine_id)?.nama_mesin||'—';
+                return(
+                  <Card key={l.id} style={{padding:'14px 16px',borderLeft:`4px solid ${sc.color}`}}>
+                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,marginBottom:8}}>
+                      <div style={{flex:1}}>
+                        {!selMachine&&<div style={{fontSize:11,fontWeight:700,color:'#2563eb',marginBottom:4}}>🔧 {machineName}</div>}
+                        <div style={{fontWeight:800,fontSize:14,color:'#1e293b',marginBottom:4}}>{l.issue_title}</div>
+                        <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginBottom:6}}>
+                          <span style={{background:tc+'18',color:tc,borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{l.issue_type}</span>
+                          <span style={{background:pc+'18',color:pc,borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>⚡ {l.priority}</span>
+                          {l.downtime_hours>0&&<span style={{background:'#fef2f2',color:'#dc2626',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>⏱ {l.downtime_hours}h downtime</span>}
+                        </div>
+                        {l.problem_description&&<div style={{fontSize:12,color:'#475569',marginBottom:4}}>❌ <strong>Masalah:</strong> {l.problem_description}</div>}
+                        {l.repair_action&&<div style={{fontSize:12,color:'#16a34a',marginBottom:4}}>🔨 <strong>Perbaikan:</strong> {l.repair_action}</div>}
+                        <div style={{display:'flex',gap:12,flexWrap:'wrap' as const,fontSize:11,color:'#64748b',marginTop:6}}>
+                          {l.start_date&&<span>📅 Mulai: <strong>{fmtDate(l.start_date)}</strong></span>}
+                          {l.finish_date&&<span>✅ Selesai: <strong>{fmtDate(l.finish_date)}</strong></span>}
+                          {l.technician&&<span>👤 Teknisi: <strong>{l.technician}</strong></span>}
+                          {l.created_by&&<span>✍️ Dicatat: <strong>{l.created_by}</strong></span>}
+                          <span style={{color:'#94a3b8'}}>{new Date(l.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
+                        </div>
+                      </div>
+                      <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:6,flexShrink:0}}>
+                        <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:700}}>{l.status}</span>
+                        <div style={{display:'flex',gap:4}}>
+                          <button onClick={()=>{setLogModal({mode:'edit',id:l.id,machine_id:l.machine_id});setLogForm({issue_title:l.issue_title,issue_type:l.issue_type,problem_description:l.problem_description||'',repair_action:l.repair_action||'',technician:l.technician||'',status:l.status,priority:l.priority,downtime_hours:l.downtime_hours||0,start_date:l.start_date||'',finish_date:l.finish_date||'',});}}
+                            style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
+                          <button onClick={()=>setDelLog(l)}
+                            style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
+                        </div>
                       </div>
                     </div>
-                    <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:6}}>
-                      <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:'2px 10px',fontSize:10,fontWeight:700}}>{l.status}</span>
-                      <div style={{display:'flex',gap:4}}>
-                        <button onClick={()=>{setLogModal({mode:'edit',id:l.id,mesin_id:l.mesin_id});setLogForm({kendala:l.kendala||'',perbaikan:l.perbaikan||'',tgl_kendala:l.tgl_kendala||'',tgl_perbaikan:l.tgl_perbaikan||'',teknisi:l.teknisi||'',status:l.status||'Proses'});}}
-                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
-                        <button onClick={()=>setDelLog(l)}
-                          style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                      </div>
-                    </div>
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Modal Mesin */}
-      {mesinModal&&(
-        <Modal title={(mesinModal.mode==='add'?'Tambah':'Edit')+' Mesin'} onClose={()=>setMesinModal(null)} width={440}>
+      {machineModal&&(
+        <Modal title={(machineModal.mode==='add'?'Tambah':'Edit')+' Mesin'} onClose={()=>setMachineModal(null)} width={440}>
           <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
-            <div><Lbl>Nama Mesin</Lbl><Inp value={mesinForm.nama} onChange={(e:any)=>setMesinForm({...mesinForm,nama:e.target.value})} placeholder="Nama mesin..."/></div>
-            <div><Lbl>Kode</Lbl><Inp value={mesinForm.kode} onChange={(e:any)=>setMesinForm({...mesinForm,kode:e.target.value})} placeholder="Kode mesin..."/></div>
-            <div><Lbl>Lokasi</Lbl><Inp value={mesinForm.lokasi} onChange={(e:any)=>setMesinForm({...mesinForm,lokasi:e.target.value})} placeholder="Lokasi mesin..."/></div>
+            <div><Lbl>Nama Mesin</Lbl><Inp value={machineForm.nama_mesin} onChange={(e:any)=>setMachineForm({...machineForm,nama_mesin:e.target.value})} placeholder="Nama mesin..."/></div>
+            <div><Lbl>Tipe Mesin</Lbl><Inp value={machineForm.tipe_mesin} onChange={(e:any)=>setMachineForm({...machineForm,tipe_mesin:e.target.value})} placeholder="CNC, Laser, Press, dll..."/></div>
+            <div><Lbl>Divisi / Lokasi</Lbl><Inp value={machineForm.divisi} onChange={(e:any)=>setMachineForm({...machineForm,divisi:e.target.value})} placeholder="Mekanik, Painting, dll..."/></div>
             <div><Lbl>Status</Lbl>
-              <Sel value={mesinForm.status} onChange={(e:any)=>setMesinForm({...mesinForm,status:e.target.value})}>
+              <Sel value={machineForm.status_terakhir} onChange={(e:any)=>setMachineForm({...machineForm,status_terakhir:e.target.value})}>
                 <option value="Normal">✅ Normal</option>
-                <option value="Perlu Service">⚠️ Perlu Service</option>
+                <option value="Maintenance">⚠️ Maintenance</option>
                 <option value="Rusak">❌ Rusak</option>
               </Sel>
             </div>
           </div>
           <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
-            <Btn outline color="#64748b" onClick={()=>setMesinModal(null)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={saveMesin}>{saving?'Menyimpan...':'Simpan'}</Btn>
+            <Btn outline color="#64748b" onClick={()=>setMachineModal(null)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={saveMachine}>{saving?'Menyimpan...':'Simpan'}</Btn>
           </div>
         </Modal>
       )}
 
       {/* Modal Log */}
       {logModal&&(
-        <Modal title={(logModal.mode==='add'?'Tambah':'Edit')+' Log Maintenance'} onClose={()=>setLogModal(null)} width={480}>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
-            <div><Lbl>Kendala</Lbl><Inp value={logForm.kendala} onChange={(e:any)=>setLogForm({...logForm,kendala:e.target.value})} placeholder="Deskripsi kendala..."/></div>
-            <div><Lbl>Perbaikan</Lbl><Inp value={logForm.perbaikan} onChange={(e:any)=>setLogForm({...logForm,perbaikan:e.target.value})} placeholder="Tindakan perbaikan..."/></div>
-            <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:10}}>
-              <div><Lbl>Tanggal Kendala</Lbl><Inp type="date" value={logForm.tgl_kendala} onChange={(e:any)=>setLogForm({...logForm,tgl_kendala:e.target.value})}/></div>
-              <div><Lbl>Tanggal Selesai</Lbl><Inp type="date" value={logForm.tgl_perbaikan} onChange={(e:any)=>setLogForm({...logForm,tgl_perbaikan:e.target.value})}/></div>
+        <Modal title={(logModal.mode==='add'?'Tambah':'Edit')+' Maintenance Log'} onClose={()=>setLogModal(null)} width={520}>
+          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
+            <div style={{gridColumn:'1/-1'}}><Lbl>Judul Masalah</Lbl><Inp value={logForm.issue_title} onChange={(e:any)=>setLogForm({...logForm,issue_title:e.target.value})} placeholder="Contoh: Motor Overheating..."/></div>
+            <div><Lbl>Jenis Kerusakan</Lbl>
+              <Sel value={logForm.issue_type} onChange={(e:any)=>setLogForm({...logForm,issue_type:e.target.value})}>
+                {TYPE_LIST.map(t=><option key={t} value={t}>{t}</option>)}
+              </Sel>
             </div>
-            <div><Lbl>Teknisi</Lbl><Inp value={logForm.teknisi} onChange={(e:any)=>setLogForm({...logForm,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
-            <div><Lbl>Status</Lbl>
+            <div><Lbl>Priority</Lbl>
+              <Sel value={logForm.priority} onChange={(e:any)=>setLogForm({...logForm,priority:e.target.value})}>
+                {PRIORITY_LIST.map(p=><option key={p} value={p}>{p}</option>)}
+              </Sel>
+            </div>
+            <div style={{gridColumn:'1/-1'}}><Lbl>Deskripsi Masalah</Lbl>
+              <textarea value={logForm.problem_description} onChange={(e:any)=>setLogForm({...logForm,problem_description:e.target.value})}
+                placeholder="Detail masalah yang terjadi..."
+                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:12,minHeight:60,resize:'vertical' as const,fontFamily:'inherit'}}/>
+            </div>
+            <div style={{gridColumn:'1/-1'}}><Lbl>Tindakan Perbaikan</Lbl>
+              <textarea value={logForm.repair_action} onChange={(e:any)=>setLogForm({...logForm,repair_action:e.target.value})}
+                placeholder="Apa yang dilakukan untuk perbaikan..."
+                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:12,minHeight:60,resize:'vertical' as const,fontFamily:'inherit'}}/>
+            </div>
+            <div><Lbl>Teknisi</Lbl><Inp value={logForm.technician} onChange={(e:any)=>setLogForm({...logForm,technician:e.target.value})} placeholder="Nama teknisi..."/></div>
+            <div><Lbl>Downtime (jam)</Lbl><Inp type="number" min="0" value={logForm.downtime_hours} onChange={(e:any)=>setLogForm({...logForm,downtime_hours:Number(e.target.value)})}/></div>
+            <div><Lbl>Tanggal Mulai</Lbl><Inp type="date" value={logForm.start_date} onChange={(e:any)=>setLogForm({...logForm,start_date:e.target.value})}/></div>
+            <div><Lbl>Tanggal Selesai</Lbl><Inp type="date" value={logForm.finish_date} onChange={(e:any)=>setLogForm({...logForm,finish_date:e.target.value})}/></div>
+            <div style={{gridColumn:'1/-1'}}><Lbl>Status</Lbl>
               <Sel value={logForm.status} onChange={(e:any)=>setLogForm({...logForm,status:e.target.value})}>
-                <option value="Proses">⏳ Proses</option>
-                <option value="Selesai">✅ Selesai</option>
-                <option value="Tertunda">⏸ Tertunda</option>
+                {STATUS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
               </Sel>
             </div>
           </div>
@@ -1569,14 +1889,14 @@ function MaintenanceTab({user,logActivity}:any){
       )}
 
       {/* Hapus Mesin */}
-      {delMesin&&(
-        <Modal title="Hapus Mesin?" onClose={()=>setDelMesin(null)} width={360}>
+      {delMachine&&(
+        <Modal title="Hapus Mesin?" onClose={()=>setDelMachine(null)} width={360}>
           <div style={{textAlign:'center'}}>
             <div style={{fontSize:32,marginBottom:8}}>🗑</div>
-            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Mesin <strong>{delMesin.nama}</strong> akan dipindah ke Recycle Bin.</div>
+            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Mesin <strong>{delMachine.nama_mesin}</strong> akan dipindah ke Recycle Bin.</div>
             <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-              <Btn outline color="#64748b" onClick={()=>setDelMesin(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={hapusMesin}>Hapus</Btn>
+              <Btn outline color="#64748b" onClick={()=>setDelMachine(null)}>Batal</Btn>
+              <Btn color="#dc2626" onClick={hapusMachine}>Hapus</Btn>
             </div>
           </div>
         </Modal>
@@ -1595,10 +1915,12 @@ function MaintenanceTab({user,logActivity}:any){
           </div>
         </Modal>
       )}
+
+      {/* Service Schedule Section */}
+      <ServiceSchedule machines={machines} user={user}/>
     </div>
   );
 }
-
 function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
@@ -3246,6 +3568,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
     }
     setOpen(false);
   };
+  const [editingQty,setEditingQty]=useState<any>(null);
+  const [tempQty,setTempQty]=useState<any>({});
+
   const updateItemQty=(woId,panelId,kode,qty)=>{
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
@@ -3343,13 +3668,19 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
-                                    <input type="number" min="0" value={cl.qty}
-                                      onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
-                                      onClick={e=>e.stopPropagation()}
-                                      style={{width:56,padding:"4px 6px",borderRadius:6,
-                                        border:`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
-                                        background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
-                                        fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"#1e293b"}}/>
+                                    {editingQty?.woId===wo.id&&editingQty?.panelId===p.id&&editingQty?.kode===item.kode?(
+                                      <>
+                                        <input type="number" min="0" value={tempQty[wo.id+"-"+p.id+"-"+item.kode]??cl.qty}
+                                          onChange={e=>{const k=wo.id+"-"+p.id+"-"+item.kode;setTempQty(prev=>({...prev,[k]:e.target.value}));}}
+                                          onClick={e=>e.stopPropagation()}
+                                          style={{width:56,padding:"4px 6px",borderRadius:6,border:"1.5px solid #2563eb",background:"#eff6ff",fontSize:12,textAlign:"center",fontWeight:700,color:"#1d4ed8"}} autoFocus/>
+                                        <button onClick={async(e)=>{e.stopPropagation();const k=wo.id+"-"+p.id+"-"+item.kode;const newQty=tempQty[k]??cl.qty;updateItemQty(wo.id,p.id,item.kode,newQty);await createLog(user?.name||user?.nama||"Admin","wo","update","Edit Qty "+item.kode+" WO "+wo.wo+" menjadi "+newQty,wo.wo,"Manajemen WO");setEditingQty(null);}} style={{padding:"3px 7px",borderRadius:6,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
+                                        <button onClick={e=>{e.stopPropagation();setEditingQty(null);}} style={{padding:"3px 7px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Cancel</button>
+                                      </>
+                                    ):(
+                                      <span onClick={e=>{e.stopPropagation();setEditingQty({woId:wo.id,panelId:p.id,kode:item.kode});setTempQty(prev=>({...prev,[wo.id+"-"+p.id+"-"+item.kode]:cl.qty}));}} style={{width:56,padding:"4px 6px",borderRadius:6,border:"1.5px solid "+( isLocked?"#fecaca":"#e2e8f0"),background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",fontWeight:700,color:isLocked?"#fca5a5":"#1e293b",cursor:"pointer",display:"inline-block"}}>{cl.qty}</span>
+                                    )}
+                                  </div>
                                   </div>
                                 </div>
                               );
@@ -3610,6 +3941,14 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
+
+
+
+
+
+
 
 
 

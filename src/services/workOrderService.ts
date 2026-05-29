@@ -6,6 +6,7 @@ export const workOrderService = {
     const { data, error } = await supabase
       .from('work_orders')
       .select('*, panels(*)')
+      .is('deleted_at', null)
       .order('created_at', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
@@ -32,12 +33,42 @@ export const workOrderService = {
     return data
   },
 
-  async remove(id: number): Promise<void> {
-    const { error } = await supabase
-      .from('work_orders')
-      .delete()
+  // Soft delete WO + cascade ke panels, raw_schedule, renhar
+  async remove(id: number, deletedBy?: string): Promise<void> {
+    const now = new Date().toISOString()
+    const by = deletedBy || 'Admin'
+    // Soft delete WO
+    await supabase.from('work_orders')
+      .update({ deleted_at: now, deleted_by: by })
       .eq('id', id)
-    if (error) throw new Error(error.message)
+    // Cascade soft delete panels
+    await supabase.from('panels')
+      .update({ deleted_at: now, deleted_by: by })
+      .eq('wo_id', id)
+    // Cascade soft delete raw_schedule
+    await supabase.from('raw_schedule')
+      .update({ deleted_at: now, deleted_by: by })
+      .eq('wo_id', id)
+    // Cascade soft delete renhar
+    await supabase.from('renhar')
+      .update({ deleted_at: now, deleted_by: by })
+      .eq('wo_id', id)
+  },
+
+  // Restore WO + cascade restore semua relasi
+  async restore(id: number): Promise<void> {
+    await supabase.from('work_orders')
+      .update({ deleted_at: null, deleted_by: null })
+      .eq('id', id)
+    await supabase.from('panels')
+      .update({ deleted_at: null, deleted_by: null })
+      .eq('wo_id', id)
+    await supabase.from('raw_schedule')
+      .update({ deleted_at: null, deleted_by: null })
+      .eq('wo_id', id)
+    await supabase.from('renhar')
+      .update({ deleted_at: null, deleted_by: null })
+      .eq('wo_id', id)
   },
 
   async savePanels(woId: number, panels: any[]) {

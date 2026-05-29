@@ -22,13 +22,11 @@ export function useWorkOrders() {
 
   useEffect(() => {
     fetch()
-    // Realtime subscription untuk tabel panels (checklist/progress update dari vista-pekerja)
     const channel = supabase
       .channel('realtime-panels')
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
         async (payload) => {
           console.log('[Realtime] panels UPDATE:', payload.new)
-          // Update panel di dalam woData tanpa refetch semua
           setData(prev => prev.map(wo => ({
             ...wo,
             panels: (wo.panels || []).map((p: any) =>
@@ -58,7 +56,6 @@ export function useWorkOrders() {
       .subscribe((status) => {
         console.log('[Realtime] panels channel status:', status)
       })
-
     return () => {
       supabase.removeChannel(channel)
     }
@@ -84,9 +81,9 @@ export function useWorkOrders() {
     }
   }
 
-  const remove = async (id: number) => {
+  const remove = async (id: number, deletedBy?: string) => {
     try {
-      await workOrderService.remove(id)
+      await workOrderService.remove(id, deletedBy)
       setData(prev => prev.filter(wo => wo.id !== id))
       return { success: true }
     } catch (err) {
@@ -96,4 +93,3 @@ export function useWorkOrders() {
 
   return { data, loading, error, refetch: fetch, create, update, remove }
 }
-
