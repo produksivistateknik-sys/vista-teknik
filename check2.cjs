@@ -1,7 +1,6 @@
 ﻿const fs = require('fs');
 const content = fs.readFileSync('src/App.tsx', 'utf8');
-const lines = content.split('\n');
 
-console.log('Total baris:', lines.length);
-console.log('Last 5 lines:');
-lines.slice(-5).forEach((l,i) => console.log(lines.length-5+i, ':', l));
+const idx = content.indexOf('.hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}');
+console.log('Found at:', idx);
+console.log('Next 10 chars:', JSON.stringify(content.substring(idx+83, idx+93)));
