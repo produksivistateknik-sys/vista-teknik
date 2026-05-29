@@ -3372,7 +3372,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn><Btn color="#dc2626" onClick={async()=>{await supabase.from('work_orders').delete().eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
+              <Btn color="#dc2626" onClick={async()=>{const wo=woData.find(w=>w.id===delId);await removeWO(delId,user?.name||user?.nama||"Admin");setWoData(prev=>prev.filter(w=>w.id!==delId));await createLog(user?.name||user?.nama||"Admin","wo","delete","Hapus WO "+(wo?.wo||"")+" - "+(wo?.proyek||""),wo?.wo||"","Manajemen WO");setDelId(null);}}>Hapus</Btn>
             </div>
           </div>
         </Modal>
@@ -3518,7 +3518,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ...(canRencana?[{id:"rencana",label:"📋 Rencana Harian"}]:[]),
     ...(canWO?[{id:"wo",label:"📝 Manajemen WO"}]:[]),
     ...(canKendala?[{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
-    ...(["admin"].includes(user.divisi)?[{id:"maintenance",label:"🔧 Maintenance"},{id:"masteruser",label:"⚙️ System"}]:[]),
+    ...(["admin"].includes(user.divisi)?[{id:"masteruser",label:"⚙️ System"}]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
