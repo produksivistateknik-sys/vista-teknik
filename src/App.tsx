@@ -3511,8 +3511,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ...(canRaw?[{id:"raw",label:"📅 Raw Schedule"}]:[]),
     ...(canRencana?[{id:"rencana",label:"📋 Rencana Harian"}]:[]),
     ...(canWO?[{id:"wo",label:"📝 Manajemen WO"}]:[]),
-    ...(["admin"].includes(user.divisi)?[{id:"pekerja",label:"👥 Master Pekerja"}]:[]),
-    ...(canPekerja?[{id:"tracking",label:"📈 Tracking Pekerja"}]:[]),
     ...(canKendala?[{id:"kendala",label:"📝 Kendala"+(kendalaLog.length>0?" ("+kendalaLog.length+")":"")}]:[]),
     ...(["admin"].includes(user.divisi)?[{id:"maintenance",label:"🔧 Maintenance"},{id:"masteruser",label:"⚙️ System"}]:[]),
   ];
@@ -3606,6 +3604,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
 }
+
+
 
 
 
