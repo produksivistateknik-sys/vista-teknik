@@ -1,7 +1,5 @@
 ﻿
-import jsPDF from 'jspdf';
-import 'jspdf-autotable';
-import React, { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendala } from './hooks/useKendala'
@@ -10,7 +8,6 @@ import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 import { useActivityLog } from './hooks/useActivityLog';
-import { createLog, fixSystemLog, setAdminSession } from './lib/activityLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -102,11 +99,6 @@ const PROSES_COLOR = {
   "WIRING CONTROL":"#6366f1","WIRING POWER":"#ef4444","QC TEST":"#14b8a6","PACKING":"#84cc16",
 };
 const WP_COLOR = {"WP1":"#f59e0b","WP2":"#22c55e","WP3":"#06b6d4","WP4":"#f97316","WP5":"#a78bfa","WP6":"#f472b6"};
-// WP color mengikuti warna proses
-const getWpColor = (wp: string, proses?: string): string => {
-  if(proses && PROSES_COLOR[proses]) return PROSES_COLOR[proses];
-  return WP_COLOR[wp] || "#64748b";
-};
 const PRIORITAS_COLOR = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e"};
 
 const DIVISI_PROSES = {
@@ -261,96 +253,7 @@ input::placeholder,textarea::placeholder{color:#94a3b8}
 .fi{animation:fadeIn .25s ease forwards}
 .su{animation:slideUp .2s ease forwards}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
-
-.erp-sidebar{width:220px;min-width:220px;background:#1e293b;border-right:none;display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:200;transition:width .2s;overflow:hidden}
-.erp-sidebar.collapsed{width:60px}
-.erp-logo-area{height:56px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid rgba(255,255,255,0.08);gap:10px;flex-shrink:0}
-.erp-logo-icon{width:32px;height:32px;background:#1d4ed8;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0}
-.erp-logo-text{overflow:hidden;white-space:nowrap}
-.erp-logo-title{font-weight:800;font-size:13px;color:#fff;line-height:1.2}
-.erp-logo-sub{font-size:8px;color:#64748b;letter-spacing:.5px;text-transform:uppercase}
-.erp-nav{flex:1;overflow-y:auto;padding:8px 0}
-.erp-nav::-webkit-scrollbar{width:3px}
-.erp-nav::-webkit-scrollbar-thumb{background:#334155}
-.erp-group-label{padding:8px 14px 3px;font-size:9px;font-weight:700;color:#475569;text-transform:uppercase;letter-spacing:.8px;white-space:nowrap;overflow:hidden}
-.erp-nav-item{width:100%;display:flex;align-items:center;gap:10px;padding:9px 14px;border:none;background:transparent;color:#94a3b8;cursor:pointer;text-align:left;border-left:3px solid transparent;transition:all .15s;white-space:nowrap}
-.erp-nav-item:hover{background:rgba(255,255,255,0.06);color:#e2e8f0}
-.erp-nav-item.active{background:#1d4ed8;color:#fff;border-left-color:#60a5fa}
-.erp-nav-item i{font-size:16px;flex-shrink:0;width:20px;text-align:center}
-.erp-nav-item span{font-size:12px;font-weight:600;flex:1}
-.erp-nav-badge{background:#dc2626;color:#fff;border-radius:20px;padding:1px 6px;font-size:9px;font-weight:700;flex-shrink:0}
-.erp-user-area{margin-top:auto;padding:10px 12px;border-top:1px solid rgba(255,255,255,0.08);display:flex;align-items:center;gap:10px;flex-shrink:0}
-.erp-user-avatar{width:32px;height:32px;border-radius:50%;background:#2563eb;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px;flex-shrink:0}
-.erp-user-info{flex:1;min-width:0;overflow:hidden}
-.erp-user-name{font-size:12px;font-weight:700;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.erp-user-role{font-size:10px;color:#64748b}
-.erp-logout-btn{background:none;border:none;cursor:pointer;color:#64748b;font-size:16px;padding:4px;border-radius:6px;flex-shrink:0;display:flex;align-items:center}
-.erp-logout-btn:hover{color:#e2e8f0;background:rgba(255,255,255,0.08)}
-.erp-main{margin-left:220px;flex:1;display:flex;flex-direction:column;min-height:100vh;transition:margin-left .2s}
-.erp-main.collapsed{margin-left:60px}
-.erp-topbar{height:52px;background:#fff;border-bottom:1px solid #e2e8f0;padding:0 20px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:100;box-shadow:0 1px 4px rgba(0,0,0,0.05)}
-.erp-topbar-left{display:flex;align-items:center;gap:12px}
-.erp-topbar-title{font-size:13px;font-weight:700;color:#1e293b}
-.erp-topbar-breadcrumb{font-size:11px;color:#94a3b8}
-.erp-toggle-btn{width:32px;height:32px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#64748b;font-size:16px}
-.erp-toggle-btn:hover{background:#e2e8f0}
-.erp-topbar-right{display:flex;align-items:center;gap:8px}
-.erp-content{padding:20px;flex:1}
-
-.erp-wrap{display:flex;height:100vh;width:100vw;overflow:hidden}
-.erp-sidebar{width:220px;min-width:220px;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;transition:width .25s cubic-bezier(.4,0,.2,1),min-width .25s cubic-bezier(.4,0,.2,1);overflow:hidden;flex-shrink:0;z-index:200}
-.erp-sidebar.collapsed{width:52px;min-width:52px}
-.erp-logo-area{height:56px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #e2e8f0;gap:10px;overflow:hidden;flex-shrink:0}
-.erp-logo-box{width:30px;height:30px;min-width:30px;background:#1d4ed8;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;flex-shrink:0}
-.erp-logo-text{overflow:hidden;white-space:nowrap;transition:opacity .2s;min-width:0}
-.erp-sidebar.collapsed .erp-logo-text{opacity:0;width:0}
-.erp-nav-group-label{font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.8px;padding:12px 14px 4px;white-space:nowrap;overflow:hidden;transition:opacity .15s}
-.erp-sidebar.collapsed .erp-nav-group-label{opacity:0}
-.erp-nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;color:#64748b;font-size:12px;font-weight:500;border-left:2px solid transparent;transition:all .15s;white-space:nowrap;overflow:hidden}
-.erp-nav-item:hover{background:#f8fafc;color:#1e293b}
-.erp-nav-item.active{background:#eff6ff;color:#1d4ed8;border-left-color:#1d4ed8;font-weight:600}
-.erp-nav-item i{font-size:17px;flex-shrink:0;min-width:17px}
-.erp-nav-text{overflow:hidden;transition:opacity .15s .05s;white-space:nowrap;flex:1}
-.erp-sidebar.collapsed .erp-nav-text{opacity:0;width:0}
-.erp-nav-badge{background:#fef2f2;color:#dc2626;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;flex-shrink:0}
-.erp-sidebar.collapsed .erp-nav-badge{opacity:0;overflow:hidden}
-.erp-user-area{margin-top:auto;padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0}
-.erp-user-info{overflow:hidden;white-space:nowrap;transition:opacity .2s;flex:1;min-width:0}
-.erp-sidebar.collapsed .erp-user-info{opacity:0;width:0}
-.erp-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow-y:auto}
-.erp-topbar{height:52px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:100;flex-shrink:0}
-.erp-toggle-btn{width:32px;height:32px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#64748b;transition:all .15s;flex-shrink:0}
-.erp-toggle-btn:hover{background:#f1f5f9;color:#1e293b}
-.erp-content{padding:20px;flex:1;overflow-y:auto}
-.erp-tooltip-el{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}
-.erp-tooltip-el::before{content:'';position:absolute;right:100%;top:50%;transform:translateY(-50%);border:5px solid transparent;border-right-color:#1e293b}
-.erp-wrap{display:flex;min-height:100vh}
-.erp-sidebar{width:220px;min-width:220px;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;height:100vh;position:sticky;top:0;transition:width .25s cubic-bezier(.4,0,.2,1),min-width .25s cubic-bezier(.4,0,.2,1);overflow:hidden;flex-shrink:0;z-index:200}
-.erp-sidebar.collapsed{width:52px;min-width:52px}
-.erp-logo-area{height:56px;display:flex;align-items:center;padding:0 12px;border-bottom:1px solid #e2e8f0;gap:10px;overflow:hidden;flex-shrink:0}
-.erp-logo-box{width:30px;height:30px;min-width:30px;background:#1d4ed8;border-radius:7px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:800;font-size:14px;flex-shrink:0}
-.erp-logo-text{overflow:hidden;white-space:nowrap;transition:opacity .2s;min-width:0}
-.erp-sidebar.collapsed .erp-logo-text{opacity:0;width:0}
-.erp-nav-group-label{font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.8px;padding:12px 14px 4px;white-space:nowrap;overflow:hidden;transition:opacity .15s}
-.erp-sidebar.collapsed .erp-nav-group-label{opacity:0}
-.erp-nav-item{display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;color:#64748b;font-size:12px;font-weight:500;border-left:2px solid transparent;transition:all .15s;white-space:nowrap;overflow:hidden}
-.erp-nav-item:hover{background:#f8fafc;color:#1e293b}
-.erp-nav-item.active{background:#eff6ff;color:#1d4ed8;border-left-color:#1d4ed8;font-weight:600}
-.erp-nav-item i{font-size:17px;flex-shrink:0;min-width:17px}
-.erp-nav-text{overflow:hidden;transition:opacity .15s .05s;white-space:nowrap;flex:1}
-.erp-sidebar.collapsed .erp-nav-text{opacity:0;width:0}
-.erp-nav-badge{background:#fef2f2;color:#dc2626;border-radius:10px;padding:1px 6px;font-size:10px;font-weight:700;flex-shrink:0;transition:opacity .15s}
-.erp-sidebar.collapsed .erp-nav-badge{opacity:0;overflow:hidden}
-.erp-user-area{margin-top:auto;padding:10px 12px;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0}
-.erp-user-info{overflow:hidden;white-space:nowrap;transition:opacity .2s;flex:1;min-width:0}
-.erp-sidebar.collapsed .erp-user-info{opacity:0;width:0}
-.erp-main{flex:1;min-width:0;display:flex;flex-direction:column;overflow:hidden}
-.erp-topbar{height:52px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;padding:0 20px;gap:12px;position:sticky;top:0;z-index:100;flex-shrink:0}
-.erp-toggle-btn{width:32px;height:32px;border-radius:8px;border:1px solid #e2e8f0;background:#fff;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#64748b;transition:all .15s;flex-shrink:0}
-.erp-toggle-btn:hover{background:#f1f5f9;color:#1e293b}
-.erp-content{padding:20px;flex:1;overflow-y:auto;max-width:1440px;width:100%;margin:0 auto}
-.erp-tooltip-el{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:5px 10px;border-radius:7px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}
-.erp-tooltip-el::before{content:'';position:absolute;right:100%;top:50%;transform:translateY(-50%);border:5px solid transparent;border-right-color:#1e293b}
+.erp-tooltip-el{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}
 `;
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -559,13 +462,7 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-            <Btn color="#dc2626" onClick={async()=>{
-              const pkr=pekerja.find(p=>p.id===delId);
-              await removePekerja(delId);
-              setPekerja(prev=>prev.filter(p=>p.id!==delId));
-              await createLog(user?.name||user?.nama||"Admin","pekerja","delete","Hapus pekerja "+(pkr?.nama||""),"","Master Pekerja");
-              setDelId(null);
-            }}>Hapus</Btn>
+            <Btn color="#dc2626" onClick={()=>{setPekerja(prev=>prev.filter(p=>p.id!==delId));setDelId(null);}}>Hapus</Btn>
           </div>
         </Modal>
       )}
@@ -756,12 +653,9 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
       });
-      if(result?.success&&result.data){
-        setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
-      }
+      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -774,10 +668,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
       });
-      if(result?.success&&result.data){
-        setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
-      }
+      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
   };
   const isDist=(task)=>!!getRenharEntry(task);
@@ -867,7 +758,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                     const workers=(rh?.pekerja||[]).map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
                     const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
-                    const wc=PROSES_COLOR[t.proses]||WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+                    const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
                     const rBg=i%2===0?"#fff":"#f8fafc";
                     const td={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:dist?"#f0fdf4":rBg,verticalAlign:"middle"};
                     return(
@@ -949,1285 +840,197 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
 }
 
 
-function MasterUser({logActivity,user}:any){
-  const [admins,setAdmins]=useState<any[]>([]);
-  const [pekerjaList,setPekerjaList]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [tab,setTab]=useState<'admin'|'pekerja'>('admin');
-  const [modal,setModal]=useState<any>(null);
-  const [form,setForm]=useState<any>({});
-  const [saving,setSaving]=useState(false);
-  const [delId,setDelId]=useState<any>(null);
-  const [delType,setDelType]=useState<'admin'|'pekerja'>('admin');
-
-  const loadData=async()=>{
-    setLoading(true);
-    const [{data:a},{data:p}]=await Promise.all([
-      supabase.from('admins').select('*').order('nama'),
-      supabase.from('pekerja').select('*').order('divisi'),
-    ]);
-    setAdmins(a??[]);
-    setPekerjaList(p??[]);
-    setLoading(false);
-  };
-
-  useEffect(()=>{loadData();},[]);
-
-  const openAdd=(type:'admin'|'pekerja')=>{
-    setModal({type,mode:'add'});
-    setForm(type==='admin'?{nama:'',username:'',password:'',is_active:true}:{nama:'',divisi:'mekanik',username:'',password:''});
-  };
-
-  const openEdit=(type:'admin'|'pekerja',item:any)=>{
-    setModal({type,mode:'edit',id:item.id});
-    setForm(type==='admin'
-      ?{nama:item.nama,username:item.username,password:item.password,is_active:item.is_active}
-      :{nama:item.nama,divisi:item.divisi,username:item.username||'',password:item.password||''}
-    );
-  };
-
-  const save=async()=>{
-    if(!modal)return;
-    setSaving(true);
-    const{type,mode,id}=modal;
-    if(type==='admin'){
-      if(mode==='add'){
-        const{error}=await supabase.from('admins').insert({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active??true,avatar:'👨‍💼'});
-        if(!error) await createLog(user?.name||user?.nama||'Admin','pekerja','create','Tambah admin '+form.nama,'','Master User');
-      } else {
-        const{error}=await supabase.from('admins').update({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active}).eq('id',id);
-        if(!error) await createLog(user?.name||user?.nama||'Admin','pekerja','update','Edit admin '+form.nama,'','Master User');
-      }
-    } else {
-      if(mode==='add'){
-        const{error}=await supabase.from('pekerja').insert({nama:form.nama,divisi:form.divisi,username:form.username||null,password:form.password||null});
-        if(!error) await createLog(user?.name||user?.nama||'Admin','pekerja','create','Tambah pekerja '+form.nama,'','Master User');
-      } else {
-        const{error}=await supabase.from('pekerja').update({nama:form.nama,divisi:form.divisi,username:form.username||null,password:form.password||null}).eq('id',id);
-        if(!error) await createLog(user?.name||user?.nama||'Admin','pekerja','update','Edit pekerja '+form.nama,'','Master User');
-      }
-    }
-    await loadData();
-    setModal(null);
-    setSaving(false);
-  };
-
-  const confirmDelete=async()=>{
-    if(!delId)return;
-    if(delType==='admin'){
-      await supabase.from('admins').delete().eq('id',delId);
-      await createLog(user?.name||user?.nama||'Admin','pekerja','delete','Hapus admin','','Master User');
-    } else {
-      await supabase.from('pekerja').delete().eq('id',delId);
-      await createLog(user?.name||user?.nama||'Admin','pekerja','delete','Hapus pekerja','','Master User');
-    }
-    await loadData();
-    setDelId(null);
-  };
-
-  const DIVISI_OPTS=Object.entries(DIVISI_CONFIG).filter(([k])=>k!=='admin').map(([k,v]:any)=>({key:k,label:v.label,icon:v.icon}));
-
-  if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat data...</div>;
-
-  return(
-    <div className="fi">
-      {/* Tab */}
-      <div style={{display:'flex',gap:8,marginBottom:16}}>
-        {(['admin','pekerja'] as const).map(t=>(
-          <button key={t} onClick={()=>setTab(t)}
-            style={{padding:'8px 24px',borderRadius:8,border:'none',cursor:'pointer',fontWeight:700,fontSize:13,
-              background:tab===t?'#1d4ed8':'#f1f5f9',color:tab===t?'#fff':'#64748b',transition:'all .15s'}}>
-            {t==='admin'?'⚙️ Admin':'👷 Pekerja'}
-          </button>
-        ))}
-        <button onClick={()=>openAdd(tab)}
-          style={{marginLeft:'auto',padding:'8px 20px',borderRadius:8,border:'none',cursor:'pointer',
-            fontWeight:700,fontSize:13,background:'#16a34a',color:'#fff'}}>
-          + Tambah {tab==='admin'?'Admin':'Pekerja'}
-        </button>
-      </div>
-
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
-        <Card style={{padding:'12px 16px',borderLeft:'3px solid #2563eb'}}>
-          <div style={{fontSize:22,fontWeight:800,color:'#2563eb'}}>{admins.length}</div>
-          <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>Total Admin</div>
-        </Card>
-        <Card style={{padding:'12px 16px',borderLeft:'3px solid #16a34a'}}>
-          <div style={{fontSize:22,fontWeight:800,color:'#16a34a'}}>{admins.filter(a=>a.is_active).length}</div>
-          <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>Admin Aktif</div>
-        </Card>
-        <Card style={{padding:'12px 16px',borderLeft:'3px solid #f59e0b'}}>
-          <div style={{fontSize:22,fontWeight:800,color:'#f59e0b'}}>{pekerjaList.length}</div>
-          <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>Total Pekerja</div>
-        </Card>
-        <Card style={{padding:'12px 16px',borderLeft:'3px solid #8b5cf6'}}>
-          <div style={{fontSize:22,fontWeight:800,color:'#8b5cf6'}}>{pekerjaList.filter(p=>p.password).length}</div>
-          <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const}}>Sudah Password</div>
-        </Card>
-      </div>
-
-      {/* Admin Table */}
-      {tab==='admin'&&(
-        <Card style={{padding:0,overflow:'hidden'}}>
-          <div style={{background:'#1e3a8a',padding:'10px 16px'}}>
-            <span style={{fontWeight:800,fontSize:14,color:'#fff'}}>⚙️ Daftar Admin</span>
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
-            <thead>
-              <tr>
-                {['No','Nama','Username','Password','Status','Terakhir Login','Aksi'].map(h=>(
-                  <th key={h} style={{background:'#f8fafc',padding:'8px 12px',fontWeight:700,color:'#64748b',
-                    fontSize:11,textAlign:'left' as const,borderBottom:'1px solid #e2e8f0'}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {admins.map((a,i)=>(
-                <tr key={a.id} style={{borderBottom:'1px solid #f1f5f9'}}>
-                  <td style={{padding:'10px 12px',color:'#94a3b8'}}>{i+1}</td>
-                  <td style={{padding:'10px 12px',fontWeight:700,color:'#1e293b'}}>{a.avatar||'👨‍💼'} {a.nama}</td>
-                  <td style={{padding:'10px 12px',fontFamily:"'DM Mono',monospace",color:'#475569'}}>{a.username}</td>
-                  <td style={{padding:'10px 12px'}}>
-                    <span style={{background:'#f1f5f9',borderRadius:6,padding:'2px 10px',fontFamily:"'DM Mono',monospace",fontSize:11,color:'#475569'}}>
-                      {'•'.repeat(Math.min(a.password?.length||0,8))}
-                    </span>
-                  </td>
-                  <td style={{padding:'10px 12px'}}>
-                    <span style={{background:a.is_active?'#f0fdf4':'#fef2f2',color:a.is_active?'#16a34a':'#dc2626',
-                      borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:700}}>
-                      {a.is_active?'Aktif':'Nonaktif'}
-                    </span>
-                  </td>
-                  <td style={{padding:'10px 12px',color:'#94a3b8',fontSize:11}}>
-                    {a.last_login?new Date(a.last_login).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'Belum pernah'}
-                  </td>
-                  <td style={{padding:'10px 12px'}}>
-                    <div style={{display:'flex',gap:6}}>
-                      <button onClick={()=>openEdit('admin',a)}
-                        style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:'#f8fafc',cursor:'pointer',fontSize:11,color:'#475569'}}>✏️</button>
-                      <button onClick={()=>{setDelId(a.id);setDelType('admin');}}
-                        style={{padding:'4px 10px',borderRadius:6,border:'1px solid #fecaca',background:'#fef2f2',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {/* Pekerja Table */}
-      {tab==='pekerja'&&(
-        <Card style={{padding:0,overflow:'hidden'}}>
-          <div style={{background:'#1e3a8a',padding:'10px 16px'}}>
-            <span style={{fontWeight:800,fontSize:14,color:'#fff'}}>👷 Daftar Pekerja</span>
-          </div>
-          <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:12}}>
-            <thead>
-              <tr>
-                {['No','Nama','Divisi','Username','Password','Aksi'].map(h=>(
-                  <th key={h} style={{background:'#f8fafc',padding:'8px 12px',fontWeight:700,color:'#64748b',
-                    fontSize:11,textAlign:'left' as const,borderBottom:'1px solid #e2e8f0'}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {pekerjaList.map((p,i)=>{
-                const dc=DIVISI_CONFIG[p.divisi];
-                return(
-                  <tr key={p.id} style={{borderBottom:'1px solid #f1f5f9'}}>
-                    <td style={{padding:'10px 12px',color:'#94a3b8'}}>{i+1}</td>
-                    <td style={{padding:'10px 12px',fontWeight:700,color:'#1e293b'}}>{p.nama}</td>
-                    <td style={{padding:'10px 12px'}}>
-                      <span style={{background:dc?.bg||'#f1f5f9',color:dc?.color||'#64748b',borderRadius:20,
-                        padding:'2px 10px',fontSize:11,fontWeight:700}}>{dc?.icon} {dc?.label||p.divisi}</span>
-                    </td>
-                    <td style={{padding:'10px 12px',fontFamily:"'DM Mono',monospace",color:'#475569'}}>
-                      {p.username||<span style={{color:'#cbd5e1',fontStyle:'italic'}}>—</span>}
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      {p.password
-                        ?<span style={{background:'#f0fdf4',color:'#16a34a',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:700}}>✓ Sudah diset</span>
-                        :<span style={{background:'#fef2f2',color:'#dc2626',borderRadius:20,padding:'2px 10px',fontSize:11,fontWeight:700}}>⚠ Belum diset</span>
-                      }
-                    </td>
-                    <td style={{padding:'10px 12px'}}>
-                      <div style={{display:'flex',gap:6}}>
-                        <button onClick={()=>openEdit('pekerja',p)}
-                          style={{padding:'4px 10px',borderRadius:6,border:'1px solid #e2e8f0',background:'#f8fafc',cursor:'pointer',fontSize:11,color:'#475569'}}>✏️</button>
-                        <button onClick={()=>{setDelId(p.id);setDelType('pekerja');}}
-                          style={{padding:'4px 10px',borderRadius:6,border:'1px solid #fecaca',background:'#fef2f2',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </Card>
-      )}
-
-      {/* Modal Add/Edit */}
-      {modal&&(
-        <Modal title={(modal.mode==='add'?'Tambah':'Edit')+(modal.type==='admin'?' Admin':' Pekerja')} onClose={()=>setModal(null)} width={440}>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
-            <div><Lbl>Nama Lengkap</Lbl>
-              <Inp value={form.nama||''} onChange={(e:any)=>setForm({...form,nama:e.target.value})} placeholder="Nama..."/>
-            </div>
-            {modal.type==='pekerja'&&(
-              <div><Lbl>Divisi</Lbl>
-                <Sel value={form.divisi||'mekanik'} onChange={(e:any)=>setForm({...form,divisi:e.target.value})}>
-                  {DIVISI_OPTS.map(d=><option key={d.key} value={d.key}>{d.icon} {d.label}</option>)}
-                </Sel>
-              </div>
-            )}
-            <div><Lbl>Username</Lbl>
-              <Inp value={form.username||''} onChange={(e:any)=>setForm({...form,username:e.target.value})} placeholder="username..."/>
-            </div>
-            <div><Lbl>Password</Lbl>
-              <Inp type="text" value={form.password||''} onChange={(e:any)=>setForm({...form,password:e.target.value})} placeholder="password..."/>
-            </div>
-            {modal.type==='admin'&&(
-              <div style={{display:'flex',alignItems:'center',gap:10}}>
-                <input type="checkbox" checked={form.is_active??true} onChange={(e:any)=>setForm({...form,is_active:e.target.checked})} id="isActive"/>
-                <label htmlFor="isActive" style={{fontSize:13,color:'#475569',fontWeight:600}}>Akun Aktif</label>
-              </div>
-            )}
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
-            <Btn outline color="#64748b" onClick={()=>setModal(null)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={save}>{saving?'Menyimpan...':modal.mode==='add'?'Tambah':'Simpan'}</Btn>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal Delete */}
-      {delId&&(
-        <Modal title="Hapus User?" onClose={()=>setDelId(null)} width={360}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
-            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Data tidak dapat dikembalikan.</div>
-            <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-              <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={confirmDelete}>Hapus</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-// Toast Notification System
-const ToastContext = React.createContext(null);
-
-function ToastProvider({children, currentUser}:any){
-  const [toasts,setToasts]=useState<any[]>([]);
-
-  useEffect(()=>{
-    if(!currentUser) return;
-    const channel = supabase
-      .channel('toast-activity')
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'activity_log'},
-        (payload:any)=>{
-          const log = payload.new;
-          // Hanya tampilkan notif dari admin LAIN
-          const logAdmin = log.admin_nama||log.user_name||'';
-          const myName = currentUser?.name||currentUser?.nama||'';
-          if(!logAdmin||logAdmin===myName||logAdmin==='System') return;
-          
-          const MODULE_ICON:any={wo:'📋',raw:'📅',rencana:'📊',pekerja:'👥',auth:'🔐',kendala:'⚠️',raw_schedule:'📅',general:'⚙️'};
-          const icon = MODULE_ICON[log.module||log.jenis]||'⚙️';
-          
-          const toast = {
-            id: Date.now(),
-            icon,
-            admin: logAdmin,
-            message: log.description||log.aktivitas||log.action||'Melakukan perubahan',
-            module: log.module||log.jenis||'',
-            time: new Date().toLocaleTimeString('id-ID',{hour:'2-digit',minute:'2-digit'}),
-          };
-          setToasts(prev=>{
-            const next = [toast,...prev].slice(0,3);
-            return next;
-          });
-          // Auto remove setelah 5 detik
-          setTimeout(()=>{
-            setToasts(prev=>prev.filter(t=>t.id!==toast.id));
-          },5000);
-        }
-      )
-      .subscribe();
-    return ()=>{ supabase.removeChannel(channel); };
-  },[currentUser]);
-
-  const removeToast=(id:number)=>setToasts(prev=>prev.filter(t=>t.id!==id));
-
-  return(
-    <ToastContext.Provider value={{toasts,removeToast}}>
-      {children}
-      {/* Toast Container */}
-      <div style={{position:'fixed',bottom:24,right:24,zIndex:9999,display:'flex',flexDirection:'column',gap:10,maxWidth:360}}>
-        {toasts.map(t=>(
-          <div key={t.id} style={{background:'#fff',borderRadius:14,padding:'12px 16px',
-            boxShadow:'0 8px 32px #00000020',border:'1px solid #e2e8f0',
-            borderLeft:`4px solid #2563eb`,
-            display:'flex',gap:12,alignItems:'flex-start',
-            animation:'slideInRight .3s ease'}}>
-            <div style={{fontSize:20,flexShrink:0}}>{t.icon}</div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:700,fontSize:12,color:'#1e293b',marginBottom:2}}>
-                👤 {t.admin}
-              </div>
-              <div style={{fontSize:12,color:'#475569',lineHeight:1.4}}>{t.message}</div>
-              <div style={{fontSize:10,color:'#94a3b8',marginTop:4}}>{t.time} WIB</div>
-            </div>
-            <button onClick={()=>removeToast(t.id)}
-              style={{background:'none',border:'none',cursor:'pointer',color:'#94a3b8',fontSize:16,padding:0,flexShrink:0}}>✕</button>
-          </div>
-        ))}
-      </div>
-      <style>{`@keyframes slideInRight{from{opacity:0;transform:translateX(100%)}to{opacity:1;transform:translateX(0)}}`}</style>
-    </ToastContext.Provider>
-  );
-}
-
-function RecycleBin({user}:any){
-  const [items,setItems]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [filter,setFilter]=useState('ALL');
-
-  const load=async()=>{
-    setLoading(true);
-    const [wo,raw,pkr,rnh]=await Promise.all([
-      supabase.from('work_orders').select('*').not('deleted_at','is',null),
-      supabase.from('raw_schedule').select('*').not('deleted_at','is',null),
-      supabase.from('pekerja').select('*').not('deleted_at','is',null),
-      supabase.from('renhar').select('*').not('deleted_at','is',null),
-    ]);
-    const all=[
-      ...(wo.data||[]).map(i=>({...i,_type:'wo',_label:'Work Order',_name:i.wo+' - '+i.proyek})),
-      ...(raw.data||[]).map(i=>({...i,_type:'raw',_label:'Raw Schedule',_name:i.proses+' - '+i.panel})),
-      ...(pkr.data||[]).map(i=>({...i,_type:'pekerja',_label:'Pekerja',_name:i.nama})),
-      ...(rnh.data||[]).map(i=>({...i,_type:'renhar',_label:'Rencana Harian',_name:i.proses+' - '+i.panel})),
-    ].sort((a,b)=>new Date(b.deleted_at).getTime()-new Date(a.deleted_at).getTime());
-    setItems(all);
-    setLoading(false);
-  };
-
-  useEffect(()=>{load();},[]);
-
-  const restore=async(item:any)=>{
-    await supabase.from(
-      item._type==='wo'?'work_orders':
-      item._type==='raw'?'raw_schedule':
-      item._type==='pekerja'?'pekerja':'renhar'
-    ).update({deleted_at:null,deleted_by:null}).eq('id',item.id);
-    await load();
-  };
-
-  const deletePermanent=async(item:any)=>{
-    await supabase.from(
-      item._type==='wo'?'work_orders':
-      item._type==='raw'?'raw_schedule':
-      item._type==='pekerja'?'pekerja':'renhar'
-    ).delete().eq('id',item.id);
-    await load();
-  };
-
-  const TYPE_COLOR:any={wo:'#2563eb',raw:'#f59e0b',pekerja:'#0891b2',renhar:'#10b981'};
-  const filtered=filter==='ALL'?items:items.filter(i=>i._type===filter);
-
-  const fmtDate=(d:string)=>new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'});
-  const daysLeft=(d:string)=>Math.max(0,15-Math.floor((Date.now()-new Date(d).getTime())/(1000*60*60*24)));
-
-  if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat...</div>;
-
-  return(
-    <div>
-      <div style={{display:'flex',gap:8,marginBottom:16,flexWrap:'wrap' as const,alignItems:'center'}}>
-        {['ALL','wo','raw','pekerja','renhar'].map(f=>(
-          <button key={f} onClick={()=>setFilter(f)}
-            style={{padding:'6px 14px',borderRadius:20,border:`1.5px solid ${filter===f?(TYPE_COLOR[f]||'#1d4ed8'):'#e2e8f0'}`,
-              background:filter===f?(TYPE_COLOR[f]||'#1d4ed8')+'18':'#fff',
-              color:filter===f?(TYPE_COLOR[f]||'#1d4ed8'):'#64748b',
-              cursor:'pointer',fontSize:12,fontWeight:700}}>
-            {f==='ALL'?'Semua':f==='wo'?'Work Order':f==='raw'?'Raw Schedule':f==='pekerja'?'Pekerja':'Rencana Harian'}
-            {' '}({f==='ALL'?items.length:items.filter(i=>i._type===f).length})
-          </button>
-        ))}
-      </div>
-      {filtered.length===0?(
-        <div style={{textAlign:'center',padding:'60px 20px',color:'#94a3b8'}}>
-          <div style={{fontSize:40,marginBottom:12}}>🗑</div>
-          <div style={{fontSize:14,fontWeight:600}}>Recycle Bin Kosong</div>
-        </div>
-      ):(
-        <div style={{display:'flex',flexDirection:'column' as const,gap:8}}>
-          {filtered.map((item:any)=>{
-            const c=TYPE_COLOR[item._type]||'#64748b';
-            const days=daysLeft(item.deleted_at);
-            return(
-              <div key={item._type+item.id} style={{background:'#fff',borderRadius:12,border:'1px solid #e2e8f0',
-                padding:'12px 16px',borderLeft:`4px solid ${c}`,display:'flex',alignItems:'center',gap:12}}>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{item._name}</div>
-                  <div style={{display:'flex',gap:8,marginTop:4,flexWrap:'wrap' as const}}>
-                    <span style={{background:c+'18',color:c,borderRadius:20,padding:'1px 8px',fontSize:10,fontWeight:700}}>{item._label}</span>
-                    <span style={{fontSize:11,color:'#94a3b8'}}>Dihapus: {fmtDate(item.deleted_at)}</span>
-                    {item.deleted_by&&<span style={{fontSize:11,color:'#94a3b8'}}>oleh {item.deleted_by}</span>}
-                    <span style={{fontSize:11,color:days<=3?'#dc2626':'#f59e0b',fontWeight:700}}>⏱ {days} hari tersisa</span>
-                  </div>
-                </div>
-                <div style={{display:'flex',gap:6}}>
-                  <Btn color="#16a34a" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>restore(item)}>↩ Pulihkan</Btn>
-                  <Btn color="#dc2626" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>deletePermanent(item)}>🗑 Hapus</Btn>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function SystemTab({user,logActivity,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja}:any){
-  const [subTab,setSubTab]=useState('masteruser');
-  const SUB_TABS=[
-    {id:'masteruser',label:'👤 Master User'},
-    {id:'pekerja',label:'👥 Master Pekerja'},
-    {id:'tracking',label:'📈 Tracking Pekerja'},
-    {id:'maintenance',label:'🔧 Maintenance'},
-    {id:'activity',label:'📊 Activity Log'},
-    {id:'recycle',label:'🗑 Recycle Bin'},
-  ];
-  return(
-    <div className="fi">
-      <div style={{display:'flex',gap:8,marginBottom:16,borderBottom:'2px solid #e2e8f0',paddingBottom:8}}>
-        {SUB_TABS.map(t=>(
-          <button key={t.id} onClick={()=>setSubTab(t.id)}
-            style={{padding:'8px 20px',borderRadius:'8px 8px 0 0',border:'none',cursor:'pointer',
-              fontWeight:700,fontSize:13,
-              background:subTab===t.id?'#1d4ed8':'transparent',
-              color:subTab===t.id?'#fff':'#64748b',
-              borderBottom:subTab===t.id?'2px solid #1d4ed8':'none',
-              transition:'all .15s'}}>
-            {t.label}
-          </button>
-        ))}
-      </div>
-      {subTab==='masteruser'&&<MasterUser logActivity={logActivity} user={user}/>}
-      {subTab==='pekerja'&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} user={user}/>}
-      {subTab==='tracking'&&<TrackingPekerja pekerja={pekerja} renhar={[]}/>}
-      {subTab==='maintenance'&&<MaintenanceTab user={user} logActivity={logActivity}/>}
-      {subTab==='activity'&&<ActivityLogView activityLog={activityLog} user={user}/>}
-      {subTab==='recycle'&&<RecycleBin user={user}/>}
-    </div>
-  );
-}
-
-function ServiceSchedule({machines,user}:any){
-  const [schedules,setSchedules]=useState<any[]>([]);
-  const [modal,setModal]=useState<any>(null);
-  const [form,setForm]=useState<any>({machine_id:'',tanggal_service:'',keterangan:'',status:'Pending',interval_service:'3 bulan'});
-  const [saving,setSaving]=useState(false);
-
-  const INTERVAL_LIST=['1 bulan','3 bulan','6 bulan','1 tahun'];
-  const INTERVAL_DAYS:any={'1 bulan':30,'3 bulan':90,'6 bulan':180,'1 tahun':365};
-
-  const load=async()=>{
-    const{data}=await supabase.from('service_schedule').select('*').order('tanggal_service',{ascending:true});
-    setSchedules(data??[]);
-  };
-
-  useEffect(()=>{load();},[]);
-
-  const calcNextDate=(lastDate:string,interval:string):string=>{
-    const days=INTERVAL_DAYS[interval]||90;
-    const d=new Date(lastDate||new Date());
-    d.setDate(d.getDate()+days);
-    return d.toISOString().slice(0,10);
-  };
-
-  const onMachineChange=(machineId:string)=>{
-    const machine=machines.find((m:any)=>m.id===Number(machineId));
-    const interval=machine?.interval_service||'3 bulan';
-    const lastService=machine?.last_service_date||new Date().toISOString().slice(0,10);
-    const nextDate=calcNextDate(lastService,interval);
-    setForm((prev:any)=>({...prev,machine_id:machineId,interval_service:interval,tanggal_service:nextDate}));
-  };
-
-  const save=async()=>{
-    if(!form.tanggal_service||!form.machine_id)return;
-    setSaving(true);
-    const machine=machines.find((m:any)=>m.id===Number(form.machine_id));
-    // Update interval di mesin
-    await supabase.from('machines').update({interval_service:form.interval_service}).eq('id',Number(form.machine_id));
-    const payload={
-      machine_id:Number(form.machine_id),
-      nama_mesin:machine?.nama_mesin||'',
-      tanggal_service:form.tanggal_service,
-      keterangan:form.keterangan,
-      status:'Pending',
-      interval_service:form.interval_service,
-      created_by:user?.name||user?.nama||'Admin'
-    };
-    if(modal.mode==='add'){
-      await supabase.from('service_schedule').insert(payload);
-    } else {
-      await supabase.from('service_schedule').update(payload).eq('id',modal.id);
-    }
-    await load();
-    setModal(null);
-    setSaving(false);
-  };
-
-  const hapus=async(id:number)=>{
-    await supabase.from('service_schedule').delete().eq('id',id);
-    await load();
-  };
-
-  const markDone=async(s:any)=>{
-    // Update status done dan set last_service_date
-    await supabase.from('service_schedule').update({status:'Done'}).eq('id',s.id);
-    await supabase.from('machines').update({last_service_date:s.tanggal_service}).eq('id',s.machine_id);
-    await load();
-  };
-
-  const getDiff=(d:string)=>Math.ceil((new Date(d).getTime()-new Date().getTime())/(1000*60*60*24));
-  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
-
-  const upcoming=schedules.filter(s=>{const diff=getDiff(s.tanggal_service);return diff>=0&&diff<=3&&s.status==='Pending';});
-  const overdue=schedules.filter(s=>getDiff(s.tanggal_service)<0&&s.status==='Pending');
-
-  return(
-    <div style={{marginTop:24}}>
-      {/* Alert */}
-      {(upcoming.length>0||overdue.length>0)&&(
-        <div style={{display:'flex',flexDirection:'column' as const,gap:8,marginBottom:16}}>
-          {overdue.length>0&&(
-            <div style={{background:'#fef2f2',border:'1.5px solid #fecaca',borderRadius:10,padding:'10px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
-              <span style={{fontSize:18}}>❌</span>
-              <div>
-                <div style={{fontWeight:700,fontSize:12,color:'#dc2626',marginBottom:2}}>Service Terlambat!</div>
-                {overdue.map(s=>(
-                  <div key={s.id} style={{fontSize:11,color:'#991b1b'}}>🔧 {s.nama_mesin} — {fmtDate(s.tanggal_service)} <strong>({Math.abs(getDiff(s.tanggal_service))} hari terlambat)</strong></div>
-                ))}
-              </div>
-            </div>
-          )}
-          {upcoming.length>0&&(
-            <div style={{background:'#fffbeb',border:'1.5px solid #fde68a',borderRadius:10,padding:'10px 14px',display:'flex',gap:10,alignItems:'flex-start'}}>
-              <span style={{fontSize:18}}>⚠️</span>
-              <div>
-                <div style={{fontWeight:700,fontSize:12,color:'#f59e0b',marginBottom:2}}>Service Mendekati!</div>
-                {upcoming.map(s=>(
-                  <div key={s.id} style={{fontSize:11,color:'#92400e'}}>🔧 {s.nama_mesin} — {fmtDate(s.tanggal_service)} <strong>({getDiff(s.tanggal_service)===0?'Hari ini!':getDiff(s.tanggal_service)+' hari lagi'})</strong></div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-        <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>📅 Jadwal Service Rutin</div>
-        <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setModal({mode:'add'});setForm({machine_id:'',tanggal_service:'',keterangan:'',status:'Pending',interval_service:'3 bulan'});}}>+ Tambah Jadwal</Btn>
-      </div>
-
-      {schedules.length===0?(
-        <div style={{textAlign:'center',padding:'20px',color:'#94a3b8',fontSize:12}}>Belum ada jadwal service</div>
-      ):(
-        <div style={{background:'#fff',borderRadius:8,border:'1px solid #e2e8f0',overflow:'hidden'}}>
-          <table style={{width:'100%',borderCollapse:'collapse' as const,fontSize:11}}>
-            <thead>
-              <tr style={{background:'#1e3a8a'}}>
-                {['Mesin','Tanggal Service','Interval','Keterangan','Status',''].map(h=>(
-                  <th key={h} style={{padding:'6px 10px',color:'#fff',fontWeight:700,fontSize:10,textAlign:'left' as const}}>{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {schedules.map((s:any,i:number)=>{
-                const diff=getDiff(s.tanggal_service);
-                const isOverdue=diff<0&&s.status==='Pending';
-                const isUrgent=diff>=0&&diff<=3&&s.status==='Pending';
-                return(
-                  <tr key={s.id} style={{borderBottom:'1px solid #f1f5f9',background:isOverdue?'#fef2f2':isUrgent?'#fffbeb':i%2===0?'#fff':'#f8fafc'}}>
-                    <td style={{padding:'6px 10px',fontWeight:600,color:'#1e293b'}}>{s.nama_mesin||'—'}</td>
-                    <td style={{padding:'6px 10px',color:'#475569',whiteSpace:'nowrap' as const}}>{fmtDate(s.tanggal_service)}
-                      {isOverdue&&<span style={{color:'#dc2626',fontWeight:700,marginLeft:6,fontSize:10}}>({Math.abs(diff)}h terlambat)</span>}
-                      {isUrgent&&<span style={{color:'#f59e0b',fontWeight:700,marginLeft:6,fontSize:10}}>({diff===0?'Hari ini':diff+'h lagi'})</span>}
-                    </td>
-                    <td style={{padding:'6px 10px'}}><span style={{background:'#eff6ff',color:'#2563eb',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:600}}>{s.interval_service||'—'}</span></td>
-                    <td style={{padding:'6px 10px',color:'#64748b',maxWidth:200,overflow:'hidden' as const,textOverflow:'ellipsis' as const,whiteSpace:'nowrap' as const}}>{s.keterangan||'—'}</td>
-                    <td style={{padding:'6px 10px'}}>
-                      <span style={{background:s.status==='Done'?'#f0fdf4':isOverdue?'#fef2f2':isUrgent?'#fffbeb':'#f1f5f9',color:s.status==='Done'?'#16a34a':isOverdue?'#dc2626':isUrgent?'#f59e0b':'#64748b',borderRadius:4,padding:'1px 6px',fontSize:10,fontWeight:700}}>
-                        {s.status==='Done'?'Done':isOverdue?'Overdue':isUrgent?'Segera':s.status}
-                      </span>
-                    </td>
-                    <td style={{padding:'6px 10px'}}>
-                      <div style={{display:'flex',gap:4}}>
-                        <button onClick={()=>{setModal({mode:'edit',id:s.id});setForm({machine_id:s.machine_id||'',tanggal_service:s.tanggal_service||'',keterangan:s.keterangan||'',status:s.status||'Pending',interval_service:s.interval_service||'3 bulan'});}}
-                          style={{background:'none',border:'1px solid #e2e8f0',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#64748b'}}>✏️</button>
-                        {s.status!=='Done'&&<button onClick={()=>markDone(s)} style={{background:'none',border:'1px solid #bbf7d0',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#16a34a'}}>✅</button>}
-                        <button onClick={()=>hapus(s.id)} style={{background:'none',border:'1px solid #fecaca',borderRadius:5,padding:'2px 7px',cursor:'pointer',fontSize:10,color:'#dc2626'}}>🗑</button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {modal&&(
-        <Modal title={(modal.mode==='add'?'Tambah':'Edit')+' Jadwal Service'} onClose={()=>setModal(null)} width={460}>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
-            <div><Lbl>Mesin</Lbl>
-              <Sel value={form.machine_id} onChange={(e:any)=>onMachineChange(e.target.value)}>
-                <option value="">-- Pilih Mesin --</option>
-                {machines.map((m:any)=><option key={m.id} value={m.id}>{m.nama_mesin}</option>)}
-              </Sel>
-            </div>
-            <div><Lbl>Interval Service</Lbl>
-              <Sel value={form.interval_service} onChange={(e:any)=>{
-                setForm((prev:any)=>({...prev,interval_service:e.target.value,tanggal_service:calcNextDate(new Date().toISOString().slice(0,10),e.target.value)}));
-              }}>
-                {INTERVAL_LIST.map(i=><option key={i} value={i}>{i}</option>)}
-              </Sel>
-            </div>
-            <div><Lbl>Tanggal Service (bisa diedit)</Lbl>
-              <Inp type="date" value={form.tanggal_service} onChange={(e:any)=>setForm((prev:any)=>({...prev,tanggal_service:e.target.value}))}/>
-            </div>
-            <div><Lbl>Keterangan</Lbl>
-              <Inp value={form.keterangan} onChange={(e:any)=>setForm((prev:any)=>({...prev,keterangan:e.target.value}))} placeholder="Keterangan service..."/>
-            </div>
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
-            <Btn outline color="#64748b" onClick={()=>setModal(null)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={save}>{saving?'Menyimpan...':'Simpan'}</Btn>
-          </div>
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function MaintenanceTab({user,logActivity}:any){
-  const [machines,setMachines]=useState<any[]>([]);
-  const [logs,setLogs]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
-  const [selMachine,setSelMachine]=useState<any>(null);
-  const [machineModal,setMachineModal]=useState<any>(null);
-  const [logModal,setLogModal]=useState<any>(null);
-  const [machineForm,setMachineForm]=useState<any>({nama_mesin:'',divisi:'',tipe_mesin:'',status_terakhir:'Normal'});
-  const [logForm,setLogForm]=useState<any>({issue_title:'',issue_type:'Mechanical',problem_description:'',repair_action:'',technician:'',status:'Open',priority:'Medium',downtime_hours:0,start_date:'',finish_date:''});
-  const [saving,setSaving]=useState(false);
-  const [filterStatus,setFilterStatus]=useState('ALL');
-  const [filterType,setFilterType]=useState('ALL');
-  const [delMachine,setDelMachine]=useState<any>(null);
-  const [delLog,setDelLog]=useState<any>(null);
-
-  const STATUS_LIST=['Open','Checking','On Repair','Waiting Sparepart','Trial','Resolved','Closed'];
-  const TYPE_LIST=['Mechanical','Electrical','Sensor','Hydraulic','Pneumatic','Software'];
-  const PRIORITY_LIST=['Low','Medium','High','Critical'];
-
-  const STATUS_COLOR:any={
-    'Open':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
-    'Checking':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
-    'On Repair':{bg:'#eff6ff',color:'#2563eb',border:'#bfdbfe'},
-    'Waiting Sparepart':{bg:'#f5f3ff',color:'#7c3aed',border:'#ddd6fe'},
-    'Trial':{bg:'#ecfeff',color:'#0891b2',border:'#a5f3fc'},
-    'Resolved':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
-    'Closed':{bg:'#f8fafc',color:'#64748b',border:'#e2e8f0'},
-  };
-  const PRIORITY_COLOR:any={
-    'Low':'#16a34a','Medium':'#f59e0b','High':'#f97316','Critical':'#dc2626'
-  };
-  const TYPE_COLOR:any={
-    'Mechanical':'#2563eb','Electrical':'#f59e0b','Sensor':'#8b5cf6',
-    'Hydraulic':'#0891b2','Pneumatic':'#10b981','Software':'#f97316'
-  };
-  const MACHINE_STATUS_COLOR:any={
-    'Normal':{bg:'#f0fdf4',color:'#16a34a',border:'#bbf7d0'},
-    'Rusak':{bg:'#fef2f2',color:'#dc2626',border:'#fecaca'},
-    'Maintenance':{bg:'#fffbeb',color:'#f59e0b',border:'#fde68a'},
-  };
-
-  const load=async()=>{
-    setLoading(true);
-    const [{data:m},{data:l}]=await Promise.all([
-      supabase.from('machines').select('*').is('deleted_at',null).order('nama_mesin'),
-      supabase.from('maintenance_logs').select('*').order('created_at',{ascending:false}),
-    ]);
-    setMachines(m??[]);
-    setLogs(l??[]);
-    setLoading(false);
-  };
-
-  useEffect(()=>{
-    load();
-    const ch=supabase.channel('realtime-maintenance')
-      .on('postgres_changes',{event:'*',schema:'public',table:'maintenance_logs'},()=>load())
-      .on('postgres_changes',{event:'*',schema:'public',table:'machines'},()=>load())
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-  },[]);
-
-  const saveMachine=async()=>{
-    if(!machineForm.nama_mesin.trim())return;
-    setSaving(true);
-    if(machineModal.mode==='add'){
-      await supabase.from('machines').insert({...machineForm});
-      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah mesin '+machineForm.nama_mesin,'','Maintenance');
-    } else {
-      await supabase.from('machines').update({...machineForm}).eq('id',machineModal.id);
-      await createLog(user?.name||user?.nama||'Admin','general','update','Edit mesin '+machineForm.nama_mesin,'','Maintenance');
-    }
-    await load();
-    setMachineModal(null);
-    setSaving(false);
-  };
-
-  const saveLog=async()=>{
-    if(!logForm.issue_title.trim())return;
-    setSaving(true);
-    const machineId=selMachine?.id||logModal?.machine_id;
-    if(logModal.mode==='add'){
-      await supabase.from('maintenance_logs').insert({...logForm,machine_id:machineId,created_by:user?.name||user?.nama||'Admin'});
-      // Update status mesin
-      const newStatus=logForm.status==='Resolved'||logForm.status==='Closed'?'Normal':'Maintenance';
-      await supabase.from('machines').update({status_terakhir:newStatus}).eq('id',machineId);
-      await createLog(user?.name||user?.nama||'Admin','general','create','Tambah maintenance log: '+logForm.issue_title+' pada '+selMachine?.nama_mesin,'','Maintenance');
-    } else {
-      await supabase.from('maintenance_logs').update({...logForm}).eq('id',logModal.id);
-      await createLog(user?.name||user?.nama||'Admin','general','update','Update maintenance log: '+logForm.issue_title,'','Maintenance');
-    }
-    await load();
-    setLogModal(null);
-    setSaving(false);
-  };
-
-  const hapusMachine=async()=>{
-    await supabase.from('machines').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',delMachine.id);
-    await createLog(user?.name||user?.nama||'Admin','general','delete','Hapus mesin '+delMachine.nama_mesin,'','Maintenance');
-    if(selMachine?.id===delMachine.id) setSelMachine(null);
-    await load();
-    setDelMachine(null);
-  };
-
-  const hapusLog=async()=>{
-    await supabase.from('maintenance_logs').delete().eq('id',delLog.id);
-    await load();
-    setDelLog(null);
-  };
-
-  const machineLogs=selMachine?logs.filter(l=>l.machine_id===selMachine.id):logs;
-  const filteredLogs=machineLogs.filter(l=>
-    (filterStatus==='ALL'||l.status===filterStatus)&&
-    (filterType==='ALL'||l.issue_type===filterType)
-  );
-
-  const totalDowntime=logs.reduce((a,l)=>a+(Number(l.downtime_hours)||0),0);
-  const thisMonth=logs.filter(l=>l.created_at?.startsWith(new Date().toISOString().slice(0,7))).length;
-  const mostBroken=machines.map(m=>({...m,count:logs.filter(l=>l.machine_id===m.id).length})).sort((a,b)=>b.count-a.count)[0];
-
-  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'}):'—';
-
-  const downloadPDF=(log:any)=>{
-    const doc = new (jsPDF as any)();
-    const machine = machines.find(m=>m.id===log.machine_id);
-    doc.setFontSize(16);
-    doc.setFont('helvetica','bold');
-    doc.text('BERITA ACARA MAINTENANCE', 105, 20, {align:'center'});
-    doc.setFontSize(10);
-    doc.setFont('helvetica','normal');
-    doc.text('VISTA TEKNIK', 105, 28, {align:'center'});
-    doc.line(20, 32, 190, 32);
-    
-    doc.setFontSize(11);
-    doc.setFont('helvetica','bold');
-    doc.text('INFORMASI MESIN', 20, 42);
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    const info = [
-      ['Nama Mesin', machine?.nama_mesin||'—'],
-      ['Tipe Mesin', machine?.tipe_mesin||'—'],
-      ['Divisi/Lokasi', machine?.divisi||'—'],
-      ['Tanggal Mulai', fmtDate(log.start_date)],
-      ['Tanggal Selesai', fmtDate(log.finish_date)],
-      ['Teknisi', log.technician||'—'],
-      ['Status', log.status||'—'],
-      ['Priority', log.priority||'—'],
-      ['Downtime', (log.downtime_hours||0)+' jam'],
-    ];
-    let y = 50;
-    info.forEach(([k,v])=>{
-      doc.setFont('helvetica','bold');
-      doc.text(k+' :', 20, y);
-      doc.setFont('helvetica','normal');
-      doc.text(v, 80, y);
-      y += 7;
-    });
-
-    y += 5;
-    doc.line(20, y, 190, y);
-    y += 8;
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('JUDUL MASALAH', 20, y);
-    y += 7;
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    doc.text(log.issue_title||'—', 20, y);
-
-    y += 10;
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('JENIS KERUSAKAN', 20, y);
-    y += 7;
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    doc.text(log.issue_type||'—', 20, y);
-
-    y += 10;
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('DESKRIPSI MASALAH', 20, y);
-    y += 7;
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    const desc = doc.splitTextToSize(log.problem_description||'—', 170);
-    doc.text(desc, 20, y);
-    y += desc.length * 6 + 4;
-
-    doc.setFont('helvetica','bold');
-    doc.setFontSize(11);
-    doc.text('TINDAKAN PERBAIKAN', 20, y);
-    y += 7;
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(10);
-    const repair = doc.splitTextToSize(log.repair_action||'—', 170);
-    doc.text(repair, 20, y);
-    y += repair.length * 6 + 10;
-
-    doc.line(20, y, 190, y);
-    y += 10;
-    doc.setFont('helvetica','bold');
-    doc.text('Dibuat oleh:', 20, y);
-    doc.text('Disetujui oleh:', 110, y);
-    y += 20;
-    doc.text(log.created_by||'—', 20, y);
-    doc.text('_______________', 110, y);
-    y += 7;
-    doc.setFont('helvetica','normal');
-    doc.text(new Date(log.created_at).toLocaleDateString('id-ID'), 20, y);
-
-    doc.save('Berita_Acara_'+( machine?.nama_mesin||'Maintenance')+'_'+new Date().toISOString().slice(0,10)+'.pdf');
-  };
-
-  if(loading) return <div style={{padding:40,textAlign:'center',color:'#94a3b8'}}>Memuat data...</div>;
-
-  return(
-    <div className="fi">
-      {/* Stats */}
-      <div style={{display:'grid',gridTemplateColumns:'repeat(auto-fit,minmax(140px,1fr))',gap:10,marginBottom:16}}>
-        {[
-          {l:'Total Mesin',v:machines.length,c:'#2563eb',i:'🔧'},
-          {l:'Normal',v:machines.filter(m=>m.status_terakhir==='Normal').length,c:'#16a34a',i:'✅'},
-          {l:'Dalam Perbaikan',v:machines.filter(m=>m.status_terakhir==='Maintenance').length,c:'#f59e0b',i:'⚠️'},
-          {l:'Rusak',v:machines.filter(m=>m.status_terakhir==='Rusak').length,c:'#dc2626',i:'❌'},
-          {l:'Total Breakdown',v:logs.length,c:'#8b5cf6',i:'📋'},
-          {l:'Bulan Ini',v:thisMonth,c:'#0891b2',i:'📅'},
-          {l:'Total Downtime',v:totalDowntime+'h',c:'#f97316',i:'⏱'},
-          {l:'Sering Rusak',v:mostBroken?.nama_mesin||'—',c:'#dc2626',i:'🔴'},
-        ].map((s,i)=>(
-          <Card key={i} style={{padding:'12px 14px',borderLeft:`3px solid ${s.c}`}}>
-            <div style={{fontSize:16,marginBottom:4}}>{s.i}</div>
-            <div style={{fontSize:i===7?11:20,fontWeight:800,color:s.c,lineHeight:1.2}}>{s.v}</div>
-            <div style={{fontSize:10,color:'#94a3b8',fontWeight:600,textTransform:'uppercase' as const,marginTop:2}}>{s.l}</div>
-          </Card>
-        ))}
-      </div>
-
-      <div style={{display:'grid',gridTemplateColumns:'320px 1fr',gap:16}}>
-        {/* Daftar Mesin */}
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-            <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>🔧 Daftar Mesin</div>
-            <Btn color="#1d4ed8" style={{fontSize:11,padding:'5px 12px'}} onClick={()=>{setMachineModal({mode:'add'});setMachineForm({nama_mesin:'',divisi:'',tipe_mesin:'',status_terakhir:'Normal'});}}>+ Tambah</Btn>
-          </div>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:8,maxHeight:600,overflowY:'auto' as const}}>
-            {machines.length===0&&<div style={{textAlign:'center',padding:20,color:'#94a3b8',fontSize:13}}>Belum ada mesin</div>}
-            {machines.map(m=>{
-              const sc=MACHINE_STATUS_COLOR[m.status_terakhir]||MACHINE_STATUS_COLOR['Normal'];
-              const isSel=selMachine?.id===m.id;
-              const mLogs=logs.filter(l=>l.machine_id===m.id);
-              const lastLog=mLogs[0];
-              return(
-                <div key={m.id} onClick={()=>setSelMachine(isSel?null:m)}
-                  style={{background:isSel?'#eff6ff':'#fff',borderRadius:12,
-                    border:`1.5px solid ${isSel?'#2563eb':'#e2e8f0'}`,
-                    padding:'12px 14px',cursor:'pointer',transition:'all .15s'}}>
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
-                    <div style={{fontWeight:700,fontSize:13,color:'#1e293b'}}>{m.nama_mesin}</div>
-                    <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,
-                      borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700,flexShrink:0}}>{m.status_terakhir}</span>
-                  </div>
-                  {m.tipe_mesin&&<div style={{fontSize:11,color:'#64748b',marginBottom:4}}>🏷 {m.tipe_mesin}</div>}
-                  {m.divisi&&<div style={{fontSize:11,color:'#64748b',marginBottom:4}}>📍 {m.divisi}</div>}
-                  <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginTop:6}}>
-                    <span style={{fontSize:10,color:'#94a3b8'}}>{mLogs.length} breakdown</span>
-                    {lastLog&&<span style={{fontSize:10,color:'#94a3b8'}}>Terakhir: {fmtDate(lastLog.created_at)}</span>}
-                  </div>
-                  <div style={{display:'flex',gap:4,marginTop:8,justifyContent:'flex-end'}}>
-                    <button onClick={e=>{e.stopPropagation();setMachineModal({mode:'edit',id:m.id});setMachineForm({nama_mesin:m.nama_mesin,divisi:m.divisi||'',tipe_mesin:m.tipe_mesin||'',status_terakhir:m.status_terakhir});}}
-                      style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
-                    <button onClick={e=>{e.stopPropagation();setDelMachine(m);}}
-                      style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'2px 8px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Log Maintenance */}
-        <div>
-          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10,flexWrap:'wrap' as const,gap:8}}>
-            <div style={{fontWeight:800,fontSize:14,color:'#1e293b'}}>
-              📋 {selMachine?`History — ${selMachine.nama_mesin}`:'Semua Log Maintenance'}
-            </div>
-            <div style={{display:'flex',gap:8,alignItems:'center',flexWrap:'wrap' as const}}>
-              <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
-                style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:11,fontWeight:600,color:'#475569',background:'#f8fafc'}}>
-                <option value="ALL">Semua Status</option>
-                {STATUS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
-              </select>
-              <select value={filterType} onChange={e=>setFilterType(e.target.value)}
-                style={{padding:'5px 10px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:11,fontWeight:600,color:'#475569',background:'#f8fafc'}}>
-                <option value="ALL">Semua Tipe</option>
-                {TYPE_LIST.map(t=><option key={t} value={t}>{t}</option>)}
-              </select>
-              {selMachine&&(
-                <Btn color="#16a34a" style={{fontSize:11,padding:'5px 14px'}} onClick={()=>{setLogModal({mode:'add',machine_id:selMachine.id});setLogForm({issue_title:'',issue_type:'Mechanical',problem_description:'',repair_action:'',technician:'',status:'Open',priority:'Medium',downtime_hours:0,start_date:'',finish_date:''});}}>
-                  + Tambah Log
-                </Btn>
-              )}
-            </div>
-          </div>
-
-          {filteredLogs.length===0?(
-            <div style={{textAlign:'center',padding:'60px 20px',color:'#94a3b8'}}>
-              <div style={{fontSize:40,marginBottom:12}}>📋</div>
-              <div style={{fontSize:14,fontWeight:600}}>{selMachine?'Belum ada log maintenance':'Pilih mesin untuk lihat history'}</div>
-            </div>
-          ):(
-            <div style={{display:'flex',flexDirection:'column' as const,gap:10,maxHeight:600,overflowY:'auto' as const}}>
-              {filteredLogs.map((l:any)=>{
-                const sc=STATUS_COLOR[l.status]||STATUS_COLOR['Open'];
-                const tc=TYPE_COLOR[l.issue_type]||'#64748b';
-                const pc=PRIORITY_COLOR[l.priority]||'#f59e0b';
-                const machineName=machines.find(m=>m.id===l.machine_id)?.nama_mesin||'—';
-                return(
-                  <Card key={l.id} style={{padding:'14px 16px',borderLeft:`4px solid ${sc.color}`}}>
-                    <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',gap:12,marginBottom:8}}>
-                      <div style={{flex:1}}>
-                        {!selMachine&&<div style={{fontSize:11,fontWeight:700,color:'#2563eb',marginBottom:4}}>🔧 {machineName}</div>}
-                        <div style={{fontWeight:800,fontSize:14,color:'#1e293b',marginBottom:4}}>{l.issue_title}</div>
-                        <div style={{display:'flex',gap:6,flexWrap:'wrap' as const,marginBottom:6}}>
-                          <span style={{background:tc+'18',color:tc,borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>{l.issue_type}</span>
-                          <span style={{background:pc+'18',color:pc,borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>⚡ {l.priority}</span>
-                          {l.downtime_hours>0&&<span style={{background:'#fef2f2',color:'#dc2626',borderRadius:20,padding:'2px 8px',fontSize:10,fontWeight:700}}>⏱ {l.downtime_hours}h downtime</span>}
-                        </div>
-                        {l.problem_description&&<div style={{fontSize:12,color:'#475569',marginBottom:4}}>❌ <strong>Masalah:</strong> {l.problem_description}</div>}
-                        {l.repair_action&&<div style={{fontSize:12,color:'#16a34a',marginBottom:4}}>🔨 <strong>Perbaikan:</strong> {l.repair_action}</div>}
-                        <div style={{display:'flex',gap:12,flexWrap:'wrap' as const,fontSize:11,color:'#64748b',marginTop:6}}>
-                          {l.start_date&&<span>📅 Mulai: <strong>{fmtDate(l.start_date)}</strong></span>}
-                          {l.finish_date&&<span>✅ Selesai: <strong>{fmtDate(l.finish_date)}</strong></span>}
-                          {l.technician&&<span>👤 Teknisi: <strong>{l.technician}</strong></span>}
-                          {l.created_by&&<span>✍️ Dicatat: <strong>{l.created_by}</strong></span>}
-                          <span style={{color:'#94a3b8'}}>{new Date(l.created_at).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric',hour:'2-digit',minute:'2-digit'})}</span>
-                        </div>
-                      </div>
-                      <div style={{display:'flex',flexDirection:'column' as const,alignItems:'flex-end',gap:6,flexShrink:0}}>
-                        <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:20,padding:'3px 10px',fontSize:11,fontWeight:700}}>{l.status}</span>
-                        <div style={{display:'flex',gap:4}}>
-                          <button onClick={()=>{setLogModal({mode:'edit',id:l.id,machine_id:l.machine_id});setLogForm({issue_title:l.issue_title,issue_type:l.issue_type,problem_description:l.problem_description||'',repair_action:l.repair_action||'',technician:l.technician||'',status:l.status,priority:l.priority,downtime_hours:l.downtime_hours||0,start_date:l.start_date||'',finish_date:l.finish_date||'',});}}
-                            style={{background:'none',border:'1px solid #e2e8f0',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'#64748b'}}>✏️</button>
-                          <button onClick={()=>setDelLog(l)}
-                            style={{background:'none',border:'1px solid #fecaca',borderRadius:6,padding:'3px 10px',cursor:'pointer',fontSize:11,color:'#dc2626'}}>🗑</button>
-                        </div>
-                      </div>
-                    </div>
-                  </Card>
-                );
-              })}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Modal Mesin */}
-      {machineModal&&(
-        <Modal title={(machineModal.mode==='add'?'Tambah':'Edit')+' Mesin'} onClose={()=>setMachineModal(null)} width={440}>
-          <div style={{display:'flex',flexDirection:'column' as const,gap:12}}>
-            <div><Lbl>Nama Mesin</Lbl><Inp value={machineForm.nama_mesin} onChange={(e:any)=>setMachineForm({...machineForm,nama_mesin:e.target.value})} placeholder="Nama mesin..."/></div>
-            <div><Lbl>Tipe Mesin</Lbl><Inp value={machineForm.tipe_mesin} onChange={(e:any)=>setMachineForm({...machineForm,tipe_mesin:e.target.value})} placeholder="CNC, Laser, Press, dll..."/></div>
-            <div><Lbl>Divisi / Lokasi</Lbl><Inp value={machineForm.divisi} onChange={(e:any)=>setMachineForm({...machineForm,divisi:e.target.value})} placeholder="Mekanik, Painting, dll..."/></div>
-            <div><Lbl>Status</Lbl>
-              <Sel value={machineForm.status_terakhir} onChange={(e:any)=>setMachineForm({...machineForm,status_terakhir:e.target.value})}>
-                <option value="Normal">✅ Normal</option>
-                <option value="Maintenance">⚠️ Maintenance</option>
-                <option value="Rusak">❌ Rusak</option>
-              </Sel>
-            </div>
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
-            <Btn outline color="#64748b" onClick={()=>setMachineModal(null)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={saveMachine}>{saving?'Menyimpan...':'Simpan'}</Btn>
-          </div>
-        </Modal>
-      )}
-
-      {/* Modal Log */}
-      {logModal&&(
-        <Modal title={(logModal.mode==='add'?'Tambah':'Edit')+' Maintenance Log'} onClose={()=>setLogModal(null)} width={520}>
-          <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div style={{gridColumn:'1/-1'}}><Lbl>Judul Masalah</Lbl><Inp value={logForm.issue_title} onChange={(e:any)=>setLogForm({...logForm,issue_title:e.target.value})} placeholder="Contoh: Motor Overheating..."/></div>
-            <div><Lbl>Jenis Kerusakan</Lbl>
-              <Sel value={logForm.issue_type} onChange={(e:any)=>setLogForm({...logForm,issue_type:e.target.value})}>
-                {TYPE_LIST.map(t=><option key={t} value={t}>{t}</option>)}
-              </Sel>
-            </div>
-            <div><Lbl>Priority</Lbl>
-              <Sel value={logForm.priority} onChange={(e:any)=>setLogForm({...logForm,priority:e.target.value})}>
-                {PRIORITY_LIST.map(p=><option key={p} value={p}>{p}</option>)}
-              </Sel>
-            </div>
-            <div style={{gridColumn:'1/-1'}}><Lbl>Deskripsi Masalah</Lbl>
-              <textarea value={logForm.problem_description} onChange={(e:any)=>setLogForm({...logForm,problem_description:e.target.value})}
-                placeholder="Detail masalah yang terjadi..."
-                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:12,minHeight:60,resize:'vertical' as const,fontFamily:'inherit'}}/>
-            </div>
-            <div style={{gridColumn:'1/-1'}}><Lbl>Tindakan Perbaikan</Lbl>
-              <textarea value={logForm.repair_action} onChange={(e:any)=>setLogForm({...logForm,repair_action:e.target.value})}
-                placeholder="Apa yang dilakukan untuk perbaikan..."
-                style={{width:'100%',padding:'8px 12px',borderRadius:8,border:'1.5px solid #e2e8f0',fontSize:12,minHeight:60,resize:'vertical' as const,fontFamily:'inherit'}}/>
-            </div>
-            <div><Lbl>Teknisi</Lbl><Inp value={logForm.technician} onChange={(e:any)=>setLogForm({...logForm,technician:e.target.value})} placeholder="Nama teknisi..."/></div>
-            <div><Lbl>Downtime (jam)</Lbl><Inp type="number" min="0" value={logForm.downtime_hours} onChange={(e:any)=>setLogForm({...logForm,downtime_hours:Number(e.target.value)})}/></div>
-            <div><Lbl>Tanggal Mulai</Lbl><Inp type="date" value={logForm.start_date} onChange={(e:any)=>setLogForm({...logForm,start_date:e.target.value})}/></div>
-            <div><Lbl>Tanggal Selesai</Lbl><Inp type="date" value={logForm.finish_date} onChange={(e:any)=>setLogForm({...logForm,finish_date:e.target.value})}/></div>
-            <div style={{gridColumn:'1/-1'}}><Lbl>Status</Lbl>
-              <Sel value={logForm.status} onChange={(e:any)=>setLogForm({...logForm,status:e.target.value})}>
-                {STATUS_LIST.map(s=><option key={s} value={s}>{s}</option>)}
-              </Sel>
-            </div>
-          </div>
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end',marginTop:20}}>
-            <Btn outline color="#64748b" onClick={()=>setLogModal(null)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={saveLog}>{saving?'Menyimpan...':'Simpan'}</Btn>
-          </div>
-        </Modal>
-      )}
-
-      {/* Hapus Mesin */}
-      {delMachine&&(
-        <Modal title="Hapus Mesin?" onClose={()=>setDelMachine(null)} width={360}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
-            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Mesin <strong>{delMachine.nama_mesin}</strong> akan dipindah ke Recycle Bin.</div>
-            <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-              <Btn outline color="#64748b" onClick={()=>setDelMachine(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={hapusMachine}>Hapus</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Hapus Log */}
-      {delLog&&(
-        <Modal title="Hapus Log?" onClose={()=>setDelLog(null)} width={360}>
-          <div style={{textAlign:'center'}}>
-            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
-            <div style={{fontSize:13,color:'#64748b',marginBottom:20}}>Log maintenance ini akan dihapus permanen.</div>
-            <div style={{display:'flex',gap:10,justifyContent:'center'}}>
-              <Btn outline color="#64748b" onClick={()=>setDelLog(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={hapusLog}>Hapus</Btn>
-            </div>
-          </div>
-        </Modal>
-      )}
-
-      {/* Service Schedule Section */}
-      <ServiceSchedule machines={machines} user={user}/>
-    </div>
-  );
-}
 function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
+  const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
-  const [filterProyek,setFilterProyek]=useState("ALL");
-  const [filterProject,setFilterProject]=useState("ALL");
-  const [filterPanel,setFilterPanel]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
   const [search,setSearch]=useState("");
-  const [page,setPage]=useState(1);
-  const PER_PAGE=50;
+
+  const MODULE_CONFIG:any={
+    auth:    {label:"Auth",     icon:"🔐",color:"#64748b"},
+    wo:      {label:"Work Order",icon:"📋",color:"#2563eb"},
+    raw:     {label:"Raw Schedule",icon:"📅",color:"#f59e0b"},
+    rencana: {label:"Rencana Harian",icon:"📊",color:"#10b981"},
+    progress:{label:"Progress", icon:"📈",color:"#8b5cf6"},
+    kendala: {label:"Kendala",  icon:"⚠️",color:"#ef4444"},
+    pekerja: {label:"Pekerja",  icon:"👥",color:"#0891b2"},
+    general: {label:"General",  icon:"⚙️",color:"#94a3b8"},
+  };
 
   const ACTION_CONFIG:any={
-    create:{label:"Buat",color:"#16a34a",bg:"#f0fdf4"},
-    update:{label:"Edit",color:"#2563eb",bg:"#eff6ff"},
-    delete:{label:"Hapus",color:"#dc2626",bg:"#fef2f2"},
-    login:{label:"Login",color:"#7c3aed",bg:"#f5f3ff"},
-    logout:{label:"Logout",color:"#64748b",bg:"#f8fafc"},
+    create:    {label:"Buat",      color:"#16a34a",bg:"#f0fdf4"},
+    update:    {label:"Edit",      color:"#2563eb",bg:"#eff6ff"},
+    delete:    {label:"Hapus",     color:"#dc2626",bg:"#fef2f2"},
+    login:     {label:"Login",     color:"#7c3aed",bg:"#f5f3ff"},
+    logout:    {label:"Logout",    color:"#64748b",bg:"#f8fafc"},
     distribute:{label:"Distribusi",color:"#0891b2",bg:"#ecfeff"},
-  };
-  const MODULE_COLOR:any={
-    wo:"#2563eb",raw:"#f59e0b",rencana:"#10b981",
-    kendala:"#ef4444",pekerja:"#0891b2",auth:"#64748b",general:"#94a3b8"
   };
 
   const adminList=[...new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean))];
+  const moduleList=[...new Set(activityLog.map((a:any)=>a.module||a.jenis).filter(Boolean))];
   const actionList=[...new Set(activityLog.map((a:any)=>a.action_type).filter(Boolean))];
-  const projectList=[...new Set(activityLog.map((a:any)=>a.project||a.wo_number||a.wo_no).filter(Boolean))];
-  const panelList=[...new Set(activityLog.map((a:any)=>a.panel||a.halaman).filter(Boolean))];
 
   const filtered=activityLog.filter((a:any)=>{
     const adminName=a.admin_nama||a.user_name||"";
+    const module=a.module||a.jenis||"";
     const actionType=a.action_type||"";
     const desc=a.description||a.aktivitas||a.action||"";
-    const proj=a.project||a.wo_number||a.wo_no||"";
-    const pnl=a.panel||a.halaman||"";
+    const woNo=a.wo_number||a.wo_no||"";
     if(filterAdmin!=="ALL"&&adminName!==filterAdmin)return false;
+    if(filterModule!=="ALL"&&module!==filterModule)return false;
     if(filterAction!=="ALL"&&actionType!==filterAction)return false;
-    if(filterProyek!=="ALL"&&a.proyek!==filterProyek)return false;
-    if(filterProject!=="ALL"&&proj!==filterProject)return false;
-    if(filterPanel!=="ALL"&&pnl!==filterPanel)return false;
     if(filterTgl&&!a.created_at?.startsWith(filterTgl))return false;
-    if(search){const q=search.toLowerCase();if(!desc.toLowerCase().includes(q)&&!adminName.toLowerCase().includes(q)&&!proj.toLowerCase().includes(q))return false;}
+    if(search){
+      const q=search.toLowerCase();
+      if(!desc.toLowerCase().includes(q)&&
+         !adminName.toLowerCase().includes(q)&&
+         !woNo.toLowerCase().includes(q))return false;
+    }
     return true;
   });
-
-  const totalPages=Math.ceil(filtered.length/PER_PAGE);
-  const paginated=filtered.slice((page-1)*PER_PAGE,page*PER_PAGE);
 
   const fmtTime=(ts:string)=>{
     if(!ts)return"—";
     const d=new Date(ts);
-    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"2-digit"})+" "+
-      d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+
+      d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
   };
 
-  const resetFilters=()=>{setFilterAdmin("ALL");setFilterAction("ALL");setFilterProject("ALL");setFilterPanel("ALL");setFilterTgl("");setSearch("");setPage(1);};
-  const hasFilter=filterAdmin!=="ALL"||filterAction!=="ALL"||filterProject!=="ALL"||filterPanel!=="ALL"||filterTgl||search;
+  const todayStr=new Date().toISOString().slice(0,10);
 
   return(
     <div className="fi">
-      {/* Filter Bar */}
-      <div style={{display:"flex",gap:6,marginBottom:8,flexWrap:"wrap" as const,alignItems:"center",background:"#fff",borderRadius:8,padding:"8px 10px",border:"1px solid #e2e8f0"}}>
-        <input value={search} onChange={e=>{setSearch(e.target.value);setPage(1);}} placeholder="🔍 Cari..."
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,width:150,outline:"none"}}/>
-        <input type="date" value={filterTgl} onChange={e=>{setFilterTgl(e.target.value);setPage(1);}}
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11}}/>
-        <select value={filterAdmin} onChange={e=>{setFilterAdmin(e.target.value);setPage(1);}}
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Admin</option>
-          {adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
-        </select>
-        <select value={filterAction} onChange={e=>{setFilterAction(e.target.value);setPage(1);}}
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Action</option>
-          {actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
-        </select>
-        <select value={filterProject} onChange={e=>{setFilterProject(e.target.value);setPage(1);}}
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Project</option>
-          {projectList.map((p:any)=><option key={p} value={p}>{p}</option>)}
-        </select>
-        <select value={filterPanel} onChange={e=>{setFilterPanel(e.target.value);setPage(1);}}
-          style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",fontSize:11,color:"#475569"}}>
-          <option value="ALL">Semua Panel</option>
-          {panelList.map((p:any)=><option key={p} value={p}>{p}</option>)}
-        </select>
-        {hasFilter&&<button onClick={resetFilters} style={{padding:"4px 8px",borderRadius:6,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:700,cursor:"pointer"}}>Reset</button>}
-        <span style={{marginLeft:"auto",fontSize:11,color:"#64748b"}}>{filtered.length} log</span>
+      {/* Stats */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:16}}>
+        {[
+          {l:"Total Log",v:activityLog.length,c:"#2563eb",i:"📊"},
+          {l:"Hari Ini",v:activityLog.filter((a:any)=>a.created_at?.startsWith(todayStr)).length,c:"#10b981",i:"📅"},
+          {l:"Admin Aktif",v:new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean)).size,c:"#f59e0b",i:"👤"},
+          {l:"WO Terlibat",v:new Set(activityLog.map((a:any)=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6",i:"📋"},
+        ].map((s,i)=>(
+          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
+            <div style={{fontSize:18,marginBottom:4}}>{s.i}</div>
+            <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#94a3b8",marginTop:2,fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
+          </Card>
+        ))}
       </div>
 
-      {/* Table */}
-      <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-        <table style={{width:"100%",borderCollapse:"collapse" as const,fontSize:11}}>
-          <thead>
-            <tr style={{background:"#1e3a8a",position:"sticky" as const,top:0,zIndex:2}}>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>TANGGAL</th>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>ADMIN</th>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:80}}>ACTION</th>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const}}>AKTIVITAS</th>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:120}}>PROJECT</th>
-              <th style={{padding:"6px 10px",color:"#fff",fontWeight:700,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,width:100}}>PANEL</th>
-            </tr>
-          </thead>
-          <tbody>
-            {paginated.length===0?(
-              <tr><td colSpan={6} style={{textAlign:"center",padding:"30px",color:"#94a3b8",fontSize:12}}>Tidak ada aktivitas</td></tr>
-            ):(
-              paginated.map((a:any,i:number)=>{
-                const actionType=a.action_type||"";
-                const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b",bg:"#f8fafc"};
-                const module=a.module||a.jenis||"general";
-                const mc=MODULE_COLOR[module]||"#94a3b8";
-                const adminName=a.admin_nama||a.user_name||"—";
-                const desc=a.description||a.aktivitas||a.action||"—";
-                const proj=a.project||a.wo_number||a.wo_no||"";
-                const pnl=a.panel||a.halaman||"";
-                return(
-                  <tr key={a.id||i} style={{borderBottom:"1px solid #f1f5f9",background:i%2===0?"#fff":"#f8fafc"}}>
-                    <td style={{padding:"4px 10px",color:"#94a3b8",whiteSpace:"nowrap" as const,fontSize:10}}>{fmtTime(a.created_at)}</td>
-                    <td style={{padding:"4px 10px",fontWeight:600,color:"#1e293b",whiteSpace:"nowrap" as const,fontSize:11}}>{adminName}</td>
-                    <td style={{padding:"4px 10px"}}>
-                      <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>{ac.label||actionType}</span>
-                    </td>
-                    <td style={{padding:"4px 10px",color:"#475569",maxWidth:300,overflow:"hidden" as const,textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const,fontSize:11}}>{desc}</td>
-                    <td style={{padding:"4px 10px",whiteSpace:"nowrap" as const}}>
-                      {proj&&<span style={{background:mc+"18",color:mc,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:600}}>{proj}</span>}
-                    </td>
-                    <td style={{padding:"4px 10px",whiteSpace:"nowrap" as const}}>
-                      {pnl&&<span style={{background:"#f1f5f9",color:"#475569",borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:600}}>{pnl}</span>}
-                    </td>
-                  </tr>
-                );
-              })
-            )}
-          </tbody>
-        </table>
-      </div>
+      {/* Filters */}
+      <Card style={{marginBottom:16,padding:"12px 16px"}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap" as const,alignItems:"flex-end"}}>
+          <div style={{flex:1,minWidth:200}}>
+            <Lbl>Cari Aktivitas / Admin / WO</Lbl>
+            <input value={search} onChange={e=>setSearch(e.target.value)}
+              placeholder="Ketik untuk mencari..."
+              style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
+                background:"#f8fafc",fontSize:13,color:"#1e293b"}}/>
+          </div>
+          <div style={{minWidth:140}}>
+            <Lbl>Admin</Lbl>
+            <Sel value={filterAdmin} onChange={(e:any)=>setFilterAdmin(e.target.value)}>
+              <option value="ALL">Semua Admin</option>
+              {adminList.map((a:any)=><option key={a} value={a}>{a}</option>)}
+            </Sel>
+          </div>
+          <div style={{minWidth:140}}>
+            <Lbl>Module</Lbl>
+            <Sel value={filterModule} onChange={(e:any)=>setFilterModule(e.target.value)}>
+              <option value="ALL">Semua Module</option>
+              {moduleList.map((m:any)=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
+            </Sel>
+          </div>
+          <div style={{minWidth:130}}>
+            <Lbl>Action</Lbl>
+            <Sel value={filterAction} onChange={(e:any)=>setFilterAction(e.target.value)}>
+              <option value="ALL">Semua Action</option>
+              {actionList.map((a:any)=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
+            </Sel>
+          </div>
+          <div style={{minWidth:140}}>
+            <Lbl>Tanggal</Lbl>
+            <Inp type="date" value={filterTgl} onChange={(e:any)=>setFilterTgl(e.target.value)}/>
+          </div>
+          {(filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search)&&(
+            <Btn outline color="#64748b" style={{padding:"7px 14px",fontSize:12}}
+              onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}>
+              Reset
+            </Btn>
+          )}
+          <div style={{fontSize:12,color:"#64748b",alignSelf:"flex-end",paddingBottom:4,marginLeft:"auto"}}>
+            {filtered.length} aktivitas
+          </div>
+        </div>
+      </Card>
 
-      {/* Pagination */}
-      {totalPages>1&&(
-        <div style={{display:"flex",gap:6,justifyContent:"center",alignItems:"center",marginTop:10}}>
-          <button onClick={()=>setPage(p=>Math.max(1,p-1))} disabled={page===1}
-            style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:page===1?"#f8fafc":"#fff",cursor:page===1?"not-allowed":"pointer",fontSize:11,color:page===1?"#cbd5e1":"#475569"}}>◀</button>
-          {Array.from({length:Math.min(5,totalPages)},(_,i)=>{
-            const p=page<=3?i+1:page>=totalPages-2?totalPages-4+i:page-2+i;
-            if(p<1||p>totalPages)return null;
+      {/* Log List */}
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+          <div style={{fontSize:40,marginBottom:12}}>📋</div>
+          <div style={{fontSize:14,fontWeight:600}}>Tidak ada aktivitas</div>
+        </div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map((a:any,i:number)=>{
+            const module=a.module||a.jenis||"general";
+            const actionType=a.action_type||"update";
+            const mc=MODULE_CONFIG[module]||MODULE_CONFIG.general;
+            const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b",bg:"#f8fafc"};
+            const adminName=a.admin_nama||a.user_name||"—";
+            const desc=a.description||a.aktivitas||a.action||"—";
+            const woNo=a.wo_number||a.wo_no||"";
             return(
-              <button key={p} onClick={()=>setPage(p)}
-                style={{padding:"4px 10px",borderRadius:6,border:`1px solid ${page===p?"#2563eb":"#e2e8f0"}`,background:page===p?"#2563eb":"#fff",cursor:"pointer",fontSize:11,color:page===p?"#fff":"#475569",fontWeight:page===p?700:400}}>{p}</button>
+              <div key={a.id||i} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+                padding:"14px 16px",borderLeft:`4px solid ${mc.color}`,
+                display:"flex",gap:12,alignItems:"flex-start",transition:"all .15s"}}>
+                {/* Icon */}
+                <div style={{width:40,height:40,borderRadius:10,background:mc.color+"18",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>
+                  {mc.icon}
+                </div>
+                {/* Content */}
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:4}}>{desc}</div>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
+                    <span style={{fontSize:11,color:"#475569",fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+                      <span>👤</span>{adminName}
+                    </span>
+                    {woNo&&(
+                      <span style={{fontSize:11,color:"#2563eb",fontWeight:700,
+                        fontFamily:"'DM Mono',monospace",background:"#eff6ff",
+                        borderRadius:4,padding:"1px 6px"}}>
+                        WO {woNo}
+                      </span>
+                    )}
+                    <span style={{fontSize:10,color:"#94a3b8",display:"flex",alignItems:"center",gap:3}}>
+                      <span>📍</span>{a.halaman||mc.label}
+                    </span>
+                  </div>
+                </div>
+                {/* Right side */}
+                <div style={{display:"flex",flexDirection:"column" as const,alignItems:"flex-end",gap:6,flexShrink:0}}>
+                  <div style={{display:"flex",gap:5}}>
+                    <span style={{background:mc.color+"18",color:mc.color,border:`1px solid ${mc.color}33`,
+                      borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
+                      {mc.label}
+                    </span>
+                    <span style={{background:ac.bg,color:ac.color,border:`1px solid ${ac.color}33`,
+                      borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
+                      {ac.label}
+                    </span>
+                  </div>
+                  <span style={{fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</span>
+                </div>
+              </div>
             );
           })}
-          <button onClick={()=>setPage(p=>Math.min(totalPages,p+1))} disabled={page===totalPages}
-            style={{padding:"4px 10px",borderRadius:6,border:"1px solid #e2e8f0",background:page===totalPages?"#f8fafc":"#fff",cursor:page===totalPages?"not-allowed":"pointer",fontSize:11,color:page===totalPages?"#cbd5e1":"#475569"}}>▶</button>
-          <span style={{fontSize:11,color:"#64748b"}}>Hal {page}/{totalPages}</span>
         </div>
       )}
     </div>
   );
 }
+
 
 function KendalaInbox({kendalaLog,removeKendala}){
   const [filterDiv,setFilterDiv]=useState("ALL");
@@ -2549,7 +1352,6 @@ function Login({onLogin}){
       jenis:"auth",halaman:"Login",table_name:"auth",
     });
     localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
-    await supabase.rpc('set_current_admin', { admin_name: data.nama });
     onLogin({...data,divisi:"admin",name:data.nama});
     setLoading(false);
   };
@@ -3164,7 +1966,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
     setModalWp("");setModalKomponen([]);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),rawRow?.wo_id||'','Raw Schedule',null,null,rawRow?.proyek||'',rawRow?.panel||'');
   };
 
   const removeEntry=async(wp)=>{
@@ -3179,7 +1980,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-    await createLog(user?.name||user?.nama||'Admin','raw','update','Tambah WP '+modalWp+' ke jadwal '+(rawRow?.panel||''),rawRow?.wo_id||'','Raw Schedule',null,null,rawRow?.proyek||'',rawRow?.panel||'');
   };
 
   const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
@@ -3219,7 +2019,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
     setDragMode(null);setDragInfo(null);
     if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
-    await createLog(user?.name||user?.nama||'Admin','raw','update','Pindah/Copy jadwal Raw Schedule','','Raw Schedule');
   };
 
   const updatePrioritasPanel=async(panelId,val)=>{
@@ -3245,7 +2044,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
-    await createLog(user?.name||user?.nama||'Admin','raw','create','Tambah Panel '+p.nama+' ke Raw Schedule',wo.wo,'Raw Schedule');
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,halaman:'Raw Schedule'});
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -3278,12 +2077,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
       });
-      if(result?.success&&result.data){
-        setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
-      }
+      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -3297,10 +2093,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
       });
-      if(result?.success&&result.data){
-        setRenhar(prev=>[...prev,result.data]);
-        await createLog(user?.name||user?.nama||'Admin','rencana','distribute','Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',task.woId||'','Rencana Harian',null,null,task.proyek,task.panel);
-      }
+      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
   };
 
@@ -3415,7 +2208,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:"grab",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
-                                const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||WP_COLOR[e.wp]||"#64748b"};
+                                const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:WP_COLOR[e.wp]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
                                 return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
@@ -3430,7 +2223,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{await createLog(user?.name||user?.nama||'Admin','raw','delete','Hapus Raw Schedule '+row.proses+' - '+row.panel,row.wo_id||'','Raw Schedule',null,null,row.proyek,row.panel);await supabase.from('raw_schedule').update({deleted_at:new Date().toISOString(),deleted_by:user?.name||user?.nama||'Admin'}).eq('id',row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      <button onClick={async()=>{await removeRaw(row.id);setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
                     </td>
                   </tr>
                 );
@@ -3540,7 +2333,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               {WP_LIST.map(wp=>{
                 const added=cellEntries.some(e=>e.wp===wp);
                 const wpDone=isWpDone(livePanelForCell,wp,rawRow?.proses||"");
-                const disabled=added||wpDone;const sel=modalWp===wp;const wc=PROSES_COLOR[rawRow?.proses||""]||WP_COLOR[wp];
+                const disabled=added||wpDone;const sel=modalWp===wp;const wc=WP_COLOR[wp];
                 return(
                   <button key={wp} onClick={()=>{if(!disabled){setModalWp(sel?"":wp);setModalKomponen([]);}}} disabled={disabled}
                     style={{padding:"8px",borderRadius:8,border:`2px solid ${wpDone?"#16a34a":sel?wc:disabled?"#e2e8f0":"#e2e8f0"}`,background:wpDone?"#f0fdf4":sel?wc+"18":disabled?"#f8fafc":"#f8fafc",cursor:disabled?"not-allowed":"pointer",color:wpDone?"#16a34a":sel?wc:disabled?"#cbd5e1":"#64748b",fontWeight:700,fontSize:12,opacity:1,display:"flex",alignItems:"center",gap:6,justifyContent:"center"}}>
@@ -3671,22 +2464,17 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(editId, np);
-        await createLog(user?.name||user?.nama||'Admin','wo','update','Edit WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO',null,null,form.proyek,'');
         setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
       }
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
-        await createLog(user?.name||user?.nama||'Admin','wo','create','Tambah WO '+form.wo+' - '+form.proyek,form.wo,'Manajemen WO',null,null,form.proyek,'');
         setWoData(prev=>[...prev,{...result.data,panels:np}]);
       }
     }
     setOpen(false);
   };
-  const [editingQty,setEditingQty]=useState<any>(null);
-  const [tempQty,setTempQty]=useState<any>({});
-
   const updateItemQty=(woId,panelId,kode,qty)=>{
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
@@ -3784,18 +2572,13 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
-                                    {editingQty?.woId===wo.id&&editingQty?.panelId===p.id&&editingQty?.kode===item.kode?(
-                                      <>
-                                        <input type="number" min="0" value={tempQty[wo.id+"-"+p.id+"-"+item.kode]??cl.qty}
-                                          onChange={e=>{const k=wo.id+"-"+p.id+"-"+item.kode;setTempQty(prev=>({...prev,[k]:e.target.value}));}}
-                                          onClick={e=>e.stopPropagation()}
-                                          style={{width:56,padding:"4px 6px",borderRadius:6,border:"1.5px solid #2563eb",background:"#eff6ff",fontSize:12,textAlign:"center",fontWeight:700,color:"#1d4ed8"}} autoFocus/>
-                                        <button onClick={async(e)=>{e.stopPropagation();const k=wo.id+"-"+p.id+"-"+item.kode;const newQty=tempQty[k]??cl.qty;updateItemQty(wo.id,p.id,item.kode,newQty);await createLog(user?.name||user?.nama||"Admin","wo","update","Edit Qty "+item.kode+" WO "+wo.wo+" menjadi "+newQty,wo.wo,"Manajemen WO");setEditingQty(null);}} style={{padding:"3px 7px",borderRadius:6,border:"none",background:"#16a34a",color:"#fff",cursor:"pointer",fontSize:11,fontWeight:700}}>Save</button>
-                                        <button onClick={e=>{e.stopPropagation();setEditingQty(null);}} style={{padding:"3px 7px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Cancel</button>
-                                      </>
-                                    ):(
-                                      <span onClick={e=>{e.stopPropagation();setEditingQty({woId:wo.id,panelId:p.id,kode:item.kode});setTempQty(prev=>({...prev,[wo.id+"-"+p.id+"-"+item.kode]:cl.qty}));}} style={{width:56,padding:"4px 6px",borderRadius:6,border:"1.5px solid "+( isLocked?"#fecaca":"#e2e8f0"),background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",fontWeight:700,color:isLocked?"#fca5a5":"#1e293b",cursor:"pointer",display:"inline-block"}}>{cl.qty}</span>
-                                    )}
+                                    <input type="number" min="0" value={cl.qty}
+                                      onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
+                                      onClick={e=>e.stopPropagation()}
+                                      style={{width:56,padding:"4px 6px",borderRadius:6,
+                                        border:`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
+                                        background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
+                                        fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"#1e293b"}}/>
                                   </div>
                                 </div>
                               );
@@ -3818,7 +2601,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,us
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={async()=>{const wo=woData.find(w=>w.id===delId);await removeWO(delId,user?.name||user?.nama||"Admin");setWoData(prev=>prev.filter(w=>w.id!==delId));await createLog(user?.name||user?.nama||"Admin","wo","delete","Hapus WO "+(wo?.wo||"")+" - "+(wo?.proyek||""),wo?.wo||"","Manajemen WO");setDelId(null);}}>Hapus</Btn>
+              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn><Btn color="#dc2626" onClick={async()=>{await supabase.from('work_orders').delete().eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
             </div>
           </div>
         </Modal>
@@ -3957,20 +2740,18 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const canRencana=["admin"].includes(user.divisi);
 
 
-  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
-
   const SIDEBAR_MENUS=[
-    {group:"Monitoring",items:[
+    {group:"MONITORING",items:[
       {id:"dashboard",label:"Dashboard",icon:"ti-layout-dashboard"},
       {id:"summary",label:"Summary Progress",icon:"ti-table"},
       {id:"detail",label:"Detail Progress",icon:"ti-zoom-in"},
     ]},
-    {group:"Produksi",items:[
+    {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti-calendar-event"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti-file-text"}]:[]),
     ]},
-    {group:"System",items:[
+    {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
         {id:"pekerja",label:"Master Pekerja",icon:"ti-users"},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti-chart-bar"},
@@ -3982,6 +2763,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
   ];
 
+  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
   const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
 
   const showTooltip=(e:any,label:string)=>{
@@ -3989,11 +2771,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     let tip=document.getElementById("erp-tip") as HTMLElement;
     if(!tip){tip=document.createElement("div");tip.id="erp-tip";tip.className="erp-tooltip-el";document.body.appendChild(tip);}
     const r=e.currentTarget.getBoundingClientRect();
-    tip.textContent=label;
-    tip.style.display="block";
-    tip.style.top=(r.top+r.height/2)+"px";
-    tip.style.left="60px";
-    tip.style.transform="translateY(-50%)";
+    tip.textContent=label;tip.style.display="block";
+    tip.style.top=(r.top+r.height/2-14)+"px";tip.style.left="72px";
   };
   const hideTooltip=()=>{
     const tip=document.getElementById("erp-tip");
@@ -4001,13 +2780,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
+    <>
       <style>{GCss}</style>
       {isOp?(
-        <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
+        <div style={{display:"flex",flexDirection:"column",minHeight:"100vh",background:"#f1f5f9"}}>
           <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 16px",height:52,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:28,height:28,background:"#1d4ed8",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>V</div>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:28,height:28,background:"#1d4ed8",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14}}>V</div>
               <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Vista Teknik</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -4026,62 +2805,66 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </div>
         </div>
       ):(
-        <div className="erp-wrap">
-          <div className={"erp-sidebar"+(sidebarCollapsed?" collapsed":"")}>
-            <div className="erp-logo-area">
-              <div className="erp-logo-box">V</div>
-              <div className="erp-logo-text">
-                <div style={{fontWeight:800,fontSize:13,color:"#1e293b",lineHeight:1.2}}>Vista Teknik</div>
+        <div style={{display:"flex",height:"100vh",overflow:"hidden",background:"#f1f5f9"}}>
+          <div style={{width:sidebarCollapsed?56:240,minWidth:sidebarCollapsed?56:240,height:"100vh",background:"#fff",borderRight:"1px solid #e2e8f0",display:"flex",flexDirection:"column",transition:"width .25s ease,min-width .25s ease",overflow:"hidden",flexShrink:0}}>
+            <div style={{height:60,display:"flex",alignItems:"center",padding:"0 14px",borderBottom:"1px solid #e2e8f0",gap:10,overflow:"hidden",flexShrink:0}}>
+              <div style={{width:32,height:32,minWidth:32,background:"#1d4ed8",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:15,flexShrink:0}}>V</div>
+              {!sidebarCollapsed&&<div style={{overflow:"hidden",whiteSpace:"nowrap"}}>
+                <div style={{fontWeight:800,fontSize:13,color:"#0f172a",lineHeight:1.2}}>Vista Teknik</div>
                 <div style={{fontSize:9,color:"#94a3b8",marginTop:2,lineHeight:1.3}}>Electrical Switchboard Manufacturing</div>
-              </div>
+              </div>}
             </div>
-            <div style={{flex:1,overflowY:"auto",overflowX:"hidden"}}>
+            <div style={{flex:1,overflowY:"auto",overflowX:"hidden",paddingBottom:8}}>
               {SIDEBAR_MENUS.map(group=>(
                 <div key={group.group}>
-                  <div className="erp-nav-group-label">{group.group}</div>
+                  {!sidebarCollapsed&&<div style={{fontSize:9,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:1,padding:"10px 16px 4px",whiteSpace:"nowrap" as const}}>{group.group}</div>}
+                  {sidebarCollapsed&&<div style={{height:8}}/>}
                   {group.items.map((item:any)=>(
                     <div key={item.id}
-                      className={"erp-nav-item"+(tab===item.id?" active":"")}
                       onClick={()=>setTab(item.id)}
-                      onMouseEnter={(e)=>showTooltip(e,item.label)}
-                      onMouseLeave={hideTooltip}>
-                      <i className={"ti "+item.icon} aria-hidden="true"/>
-                      <span className="erp-nav-text">{item.label}</span>
-                      {item.badge&&<span className="erp-nav-badge">{item.badge}</span>}
+                      onMouseEnter={(e:any)=>showTooltip(e,item.label)}
+                      onMouseLeave={hideTooltip}
+                      style={{display:"flex",alignItems:"center",gap:10,padding:sidebarCollapsed?"10px 0":"8px 14px",justifyContent:sidebarCollapsed?"center":"flex-start",cursor:"pointer",color:tab===item.id?"#1d4ed8":"#64748b",background:tab===item.id?"#eff6ff":"transparent",borderLeft:tab===item.id?"3px solid #1d4ed8":"3px solid transparent",margin:"1px 0",transition:"all .15s",fontWeight:tab===item.id?700:500,fontSize:13,whiteSpace:"nowrap" as const,overflow:"hidden",position:"relative" as const}}>
+                      <i className={"ti "+item.icon} style={{fontSize:18,flexShrink:0,minWidth:20,textAlign:"center" as const}}/>
+                      {!sidebarCollapsed&&<span style={{overflow:"hidden",flex:1}}>{item.label}</span>}
+                      {!sidebarCollapsed&&item.badge&&<span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:700}}>{item.badge}</span>}
                     </div>
                   ))}
                 </div>
               ))}
             </div>
-            <div className="erp-user-area">
-              <div style={{width:28,height:28,minWidth:28,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#1d4ed8",flexShrink:0}}>
+            <div style={{padding:"10px 14px",borderTop:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:10,overflow:"hidden",flexShrink:0,justifyContent:sidebarCollapsed?"center":"flex-start"}}>
+              <div style={{width:32,height:32,minWidth:32,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#1d4ed8",flexShrink:0,border:"2px solid #bfdbfe"}}>
                 {(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}
               </div>
-              <div className="erp-user-info">
-                <div style={{fontWeight:700,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.name||user?.nama}</div>
-                <div style={{fontSize:10,color:"#94a3b8"}}>{cfg?.label||"Admin"}</div>
-              </div>
-              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,flexShrink:0,padding:2}} title="Keluar">
-                <i className="ti ti-logout" aria-hidden="true"/>
-              </button>
+              {!sidebarCollapsed&&<>
+                <div style={{flex:1,minWidth:0,overflow:"hidden"}}>
+                  <div style={{fontWeight:700,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" as const}}>{user?.name||user?.nama}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{cfg?.label||"Admin"}</div>
+                </div>
+                <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:18,flexShrink:0,padding:2,display:"flex",alignItems:"center"}} title="Keluar">
+                  <i className="ti ti-logout"/>
+                </button>
+              </>}
             </div>
           </div>
-          <div className="erp-main">
-            <div className="erp-topbar">
-              <button className="erp-toggle-btn" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)} title="Toggle sidebar">
-                <i className={"ti "+(sidebarCollapsed?"ti-layout-sidebar-left-expand":"ti-layout-sidebar-left-collapse")} style={{fontSize:18}} aria-hidden="true"/>
+          <div style={{flex:1,display:"flex",flexDirection:"column",overflow:"hidden",minWidth:0}}>
+            <div style={{height:56,background:"#fff",borderBottom:"1px solid #e2e8f0",display:"flex",alignItems:"center",padding:"0 24px",gap:12,flexShrink:0,boxShadow:"0 1px 3px #00000008"}}>
+              <button onClick={()=>setSidebarCollapsed((p:boolean)=>!p)} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#64748b",flexShrink:0,transition:"all .15s"}}>
+                <i className={"ti "+(sidebarCollapsed?"ti-layout-sidebar-left-expand":"ti-layout-sidebar-left-collapse")} style={{fontSize:18}}/>
               </button>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{activeLabel}</span>
-                <span style={{color:"#94a3b8",fontSize:12}}> / Vista Teknik</span>
+              <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+                <span style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>{activeLabel}</span>
+                <span style={{color:"#cbd5e1",fontSize:12}}>/</span>
+                <span style={{color:"#94a3b8",fontSize:12}}>Vista Teknik</span>
               </div>
-              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
-                {alerts>0&&<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>🔔 {alerts} peringatan</span>}
-                <span style={{fontSize:12,color:"#475569",fontWeight:500}}>{user?.name||user?.nama}</span>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {alerts>0&&<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700}}>🔔 {alerts} peringatan</span>}
                 <span style={{background:cfg.bg,color:cfg.color,border:"1px solid "+cfg.color+"30",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{cfg.icon} {cfg.label}</span>
+                <span style={{fontSize:12,color:"#475569",fontWeight:600}}>{user?.name||user?.nama}</span>
               </div>
             </div>
-            <div className="erp-content">
+            <div style={{flex:1,overflowY:"auto",overflowX:"hidden",padding:24,background:"#f1f5f9"}}>
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData}/>}
@@ -4098,9 +2881,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
-
-
-
