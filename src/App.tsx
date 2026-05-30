@@ -3984,7 +3984,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const canRencana=["admin"].includes(user.divisi);
 
 
-  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
+
 
   const SIDEBAR_MENUS=[
     {group:"MONITORING",items:[
