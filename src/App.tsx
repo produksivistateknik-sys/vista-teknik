@@ -261,6 +261,33 @@ input::placeholder,textarea::placeholder{color:#94a3b8}
 .fi{animation:fadeIn .25s ease forwards}
 .su{animation:slideUp .2s ease forwards}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
+.erp-layout{display:flex;height:100vh;overflow:hidden;background:#f1f5f9}
+.erp-sidebar{width:240px;min-width:240px;height:100vh;background:#fff;border-right:1px solid #e2e8f0;display:flex;flex-direction:column;transition:width .25s ease,min-width .25s ease;overflow:hidden;flex-shrink:0;position:relative;z-index:50}
+.erp-sidebar.collapsed{width:56px;min-width:56px}
+.erp-logo-area{height:60px;display:flex;align-items:center;padding:0 14px;border-bottom:1px solid #e2e8f0;gap:10px;overflow:hidden;flex-shrink:0}
+.erp-logo-box{width:32px;height:32px;min-width:32px;background:#1d4ed8;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:900;font-size:15px;flex-shrink:0;letter-spacing:-1px}
+.erp-logo-text{overflow:hidden;white-space:nowrap;opacity:1;transition:opacity .2s}
+.erp-sidebar.collapsed .erp-logo-text{opacity:0;pointer-events:none}
+.erp-nav-section{padding:8px 0}
+.erp-nav-label{font-size:9px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:1px;padding:10px 16px 4px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .15s}
+.erp-sidebar.collapsed .erp-nav-label{opacity:0}
+.erp-nav-item{display:flex;align-items:center;gap:12px;padding:9px 14px;cursor:pointer;color:#64748b;font-size:13px;font-weight:500;border-left:3px solid transparent;margin:1px 8px;border-radius:8px;transition:all .15s;white-space:nowrap;overflow:hidden;position:relative}
+.erp-nav-item:hover{background:#f8fafc;color:#1e293b}
+.erp-nav-item.active{background:#eff6ff;color:#1d4ed8;font-weight:700;border-left-color:#1d4ed8}
+.erp-nav-item i{font-size:18px;flex-shrink:0;min-width:20px;text-align:center}
+.erp-nav-text{overflow:hidden;opacity:1;transition:opacity .15s .05s;white-space:nowrap;flex:1}
+.erp-sidebar.collapsed .erp-nav-text{opacity:0;pointer-events:none}
+.erp-nav-badge{background:#fef2f2;color:#dc2626;border-radius:20px;padding:1px 7px;font-size:10px;font-weight:700;flex-shrink:0;transition:opacity .15s}
+.erp-sidebar.collapsed .erp-nav-badge{opacity:0}
+.erp-user-area{margin-top:auto;padding:12px 14px;border-top:1px solid #e2e8f0;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0}
+.erp-user-info{overflow:hidden;white-space:nowrap;opacity:1;transition:opacity .2s;flex:1;min-width:0}
+.erp-sidebar.collapsed .erp-user-info{opacity:0;pointer-events:none}
+.erp-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
+.erp-topbar{height:56px;background:#fff;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;padding:0 24px;gap:12px;flex-shrink:0;box-shadow:0 1px 3px #00000008}
+.erp-toggle-btn{width:34px;height:34px;border-radius:8px;border:1px solid #e2e8f0;background:#f8fafc;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#64748b;transition:all .15s;flex-shrink:0}
+.erp-toggle-btn:hover{background:#eff6ff;color:#1d4ed8;border-color:#bfdbfe}
+.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:24px;background:#f1f5f9}
+.erp-tooltip-el{position:fixed;background:#1e293b;color:#fff;font-size:11px;font-weight:600;padding:6px 12px;border-radius:8px;white-space:nowrap;pointer-events:none;z-index:9999;display:none;box-shadow:0 4px 12px #00000025}
 
 .erp-sidebar{width:220px;min-width:220px;background:#1e293b;border-right:none;display:flex;flex-direction:column;height:100vh;position:fixed;left:0;top:0;z-index:200;transition:width .2s;overflow:hidden}
 .erp-sidebar.collapsed{width:60px}
@@ -3960,17 +3987,17 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
 
   const SIDEBAR_MENUS=[
-    {group:"Monitoring",items:[
+    {group:"MONITORING",items:[
       {id:"dashboard",label:"Dashboard",icon:"ti-layout-dashboard"},
       {id:"summary",label:"Summary Progress",icon:"ti-table"},
       {id:"detail",label:"Detail Progress",icon:"ti-zoom-in"},
     ]},
-    {group:"Produksi",items:[
+    {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti-calendar-event"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti-file-text"}]:[]),
     ]},
-    {group:"System",items:[
+    {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
         {id:"pekerja",label:"Master Pekerja",icon:"ti-users"},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti-chart-bar"},
@@ -3982,6 +4009,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
   ];
 
+  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
   const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
 
   const showTooltip=(e:any,label:string)=>{
@@ -3991,9 +4019,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     const r=e.currentTarget.getBoundingClientRect();
     tip.textContent=label;
     tip.style.display="block";
-    tip.style.top=(r.top+r.height/2)+"px";
-    tip.style.left="60px";
-    tip.style.transform="translateY(-50%)";
+    tip.style.top=(r.top+r.height/2-14)+"px";
+    tip.style.left="72px";
   };
   const hideTooltip=()=>{
     const tip=document.getElementById("erp-tip");
@@ -4001,13 +4028,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"block"}}>
+    <>
       <style>{GCss}</style>
       {isOp?(
-        <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
-          <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 16px",height:52,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-            <div style={{display:"flex",alignItems:"center",gap:10}}>
-              <div style={{width:28,height:28,background:"#1d4ed8",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:800,fontSize:13}}>V</div>
+        <div style={{display:"flex",flexDirection:"column",minHeight:"100vh",background:"#f1f5f9"}}>
+          <div style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 16px",height:52,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 3px #00000008"}}>
+            <div style={{display:"flex",alignItems:"center",gap:8}}>
+              <div style={{width:28,height:28,background:"#1d4ed8",borderRadius:7,display:"flex",alignItems:"center",justifyContent:"center",color:"#fff",fontWeight:900,fontSize:14}}>V</div>
               <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>Vista Teknik</span>
             </div>
             <div style={{display:"flex",alignItems:"center",gap:8}}>
@@ -4026,26 +4053,27 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </div>
         </div>
       ):(
-        <div className="erp-wrap">
+        <div className="erp-layout">
+          {/* ── SIDEBAR ── */}
           <div className={"erp-sidebar"+(sidebarCollapsed?" collapsed":"")}>
             <div className="erp-logo-area">
               <div className="erp-logo-box">V</div>
               <div className="erp-logo-text">
-                <div style={{fontWeight:800,fontSize:13,color:"#1e293b",lineHeight:1.2}}>Vista Teknik</div>
-                <div style={{fontSize:9,color:"#94a3b8",marginTop:2,lineHeight:1.3}}>Electrical Switchboard Manufacturing</div>
+                <div style={{fontWeight:800,fontSize:13,color:"#0f172a",lineHeight:1.2}}>Vista Teknik</div>
+                <div style={{fontSize:9,color:"#94a3b8",marginTop:2,lineHeight:1.3,fontWeight:500}}>Electrical Switchboard Manufacturing</div>
               </div>
             </div>
-            <div style={{flex:1,overflowY:"auto",overflowX:"hidden"}}>
+            <div style={{flex:1,overflowY:"auto",overflowX:"hidden",paddingBottom:8}}>
               {SIDEBAR_MENUS.map(group=>(
-                <div key={group.group}>
-                  <div className="erp-nav-group-label">{group.group}</div>
+                <div key={group.group} className="erp-nav-section">
+                  <div className="erp-nav-label">{group.group}</div>
                   {group.items.map((item:any)=>(
                     <div key={item.id}
                       className={"erp-nav-item"+(tab===item.id?" active":"")}
                       onClick={()=>setTab(item.id)}
-                      onMouseEnter={(e)=>showTooltip(e,item.label)}
+                      onMouseEnter={(e:any)=>showTooltip(e,item.label)}
                       onMouseLeave={hideTooltip}>
-                      <i className={"ti "+item.icon} aria-hidden="true"/>
+                      <i className={"ti "+item.icon}/>
                       <span className="erp-nav-text">{item.label}</span>
                       {item.badge&&<span className="erp-nav-badge">{item.badge}</span>}
                     </div>
@@ -4054,34 +4082,45 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               ))}
             </div>
             <div className="erp-user-area">
-              <div style={{width:28,height:28,minWidth:28,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#1d4ed8",flexShrink:0}}>
+              <div style={{width:32,height:32,minWidth:32,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:"#1d4ed8",flexShrink:0,border:"2px solid #bfdbfe"}}>
                 {(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}
               </div>
               <div className="erp-user-info">
-                <div style={{fontWeight:700,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis"}}>{user?.name||user?.nama}</div>
-                <div style={{fontSize:10,color:"#94a3b8"}}>{cfg?.label||"Admin"}</div>
+                <div style={{fontWeight:700,fontSize:12,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{user?.name||user?.nama}</div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:1}}>{cfg?.label||"Admin"}</div>
               </div>
-              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,flexShrink:0,padding:2}} title="Keluar">
-                <i className="ti ti-logout" aria-hidden="true"/>
+              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:18,flexShrink:0,padding:2,display:"flex",alignItems:"center"}} title="Keluar">
+                <i className="ti ti-logout"/>
               </button>
             </div>
           </div>
+
+          {/* ── MAIN ── */}
           <div className="erp-main">
             <div className="erp-topbar">
               <button className="erp-toggle-btn" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)} title="Toggle sidebar">
-                <i className={"ti "+(sidebarCollapsed?"ti-layout-sidebar-left-expand":"ti-layout-sidebar-left-collapse")} style={{fontSize:18}} aria-hidden="true"/>
+                <i className={"ti "+(sidebarCollapsed?"ti-layout-sidebar-left-expand":"ti-layout-sidebar-left-collapse")} style={{fontSize:18}}/>
               </button>
-              <div style={{display:"flex",alignItems:"center",gap:6}}>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{activeLabel}</span>
-                <span style={{color:"#94a3b8",fontSize:12}}> / Vista Teknik</span>
+              <div style={{display:"flex",alignItems:"center",gap:6,flex:1}}>
+                <span style={{fontSize:14,fontWeight:700,color:"#1e293b"}}>{activeLabel}</span>
+                <span style={{color:"#cbd5e1",fontSize:12}}>/</span>
+                <span style={{color:"#94a3b8",fontSize:12}}>Vista Teknik</span>
               </div>
-              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:10}}>
-                {alerts>0&&<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>🔔 {alerts} peringatan</span>}
-                <span style={{fontSize:12,color:"#475569",fontWeight:500}}>{user?.name||user?.nama}</span>
-                <span style={{background:cfg.bg,color:cfg.color,border:"1px solid "+cfg.color+"30",borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{cfg.icon} {cfg.label}</span>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                {alerts>0&&<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"4px 14px",fontSize:11,fontWeight:700}}>🔔 {alerts} peringatan</span>}
+                <div style={{display:"flex",alignItems:"center",gap:8,padding:"6px 12px",background:"#f8fafc",borderRadius:10,border:"1px solid #e2e8f0"}}>
+                  <div style={{width:26,height:26,borderRadius:"50%",background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:10,fontWeight:800,color:"#1d4ed8"}}>
+                    {(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{fontSize:12,fontWeight:700,color:"#1e293b",lineHeight:1.2}}>{user?.name||user?.nama}</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>{cfg?.label}</div>
+                  </div>
+                  <span style={{background:cfg.bg,color:cfg.color,border:"1px solid "+cfg.color+"30",borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:700,marginLeft:4}}>{cfg.icon} {cfg.label}</span>
+                </div>
               </div>
             </div>
-            <div className="erp-content">
+            <div className="erp-body">
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData}/>}
@@ -4098,9 +4137,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </div>
         </div>
       )}
-    </div>
+    </>
   );
 }
-
-
-
