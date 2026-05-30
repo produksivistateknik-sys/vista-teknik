@@ -4001,7 +4001,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   };
 
   return(
-    <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
+    <div style={{minHeight:"100vh",background:"#f1f5f9",display:"flex",flexDirection:"column"}}>
       <style>{GCss}</style>
       {isOp?(
         <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
