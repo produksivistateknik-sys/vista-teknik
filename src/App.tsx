@@ -700,7 +700,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',proyek:task.proyek||'',panel:task.panel||'',halaman:'Rencana Harian'});
+    await supabase.from("activity_log").insert({action:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",admin_nama:user?.name||user?.nama||"Admin",user_name:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",aktivitas:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",jenis:"rencana",proyek:task.proyek||"",panel:task.panel||"",wo_number:"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -1350,7 +1350,7 @@ function Login({onLogin}){
     const{data,error}=await supabase.from("admins").select("*").eq("username",username.trim()).eq("password",pwd).eq("is_active",true).single();
     if(error||!data){setErr("Username atau password salah!");setLoading(false);return;}
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
-    await supabase.from("activity_log").insert({user_name:data.nama,admin_nama:data.nama,action:"Login ke sistem",aktivitas:"Login ke sistem",jenis:"auth",halaman:"Login",table_name:"auth"});
+    await supabase.from("activity_log").insert({user_name:data.nama,admin_nama:data.nama,action:"Login ke sistem",aktivitas:"Login ke sistem",jenis:"auth",module:"auth",action_type:"login",description:"Login ke sistem",halaman:"Login",table_name:"auth"});
     localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
     setSuccess(true);
     setTimeout(()=>onLogin({...data,divisi:"admin",name:data.nama}),800);
@@ -2565,7 +2565,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,proyek:wo.proyek||'',panel:p.nama||'',halaman:'Raw Schedule'});
+    await supabase.from('activity_log').insert({action:'Tambah Panel '+p.nama+' ke Raw Schedule',admin_nama:user?.name||user?.nama||'Admin',user_name:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',aktivitas:'Tambah Panel '+p.nama+' ke Raw Schedule',jenis:'raw',wo_number:wo.wo,proyek:wo.proyek||'',panel:p.nama||'',halaman:'Raw Schedule'});
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -2600,7 +2600,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',proyek:task.proyek||'',panel:task.panel||'',halaman:'Rencana Harian'});
+    await supabase.from("activity_log").insert({action:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",admin_nama:user?.name||user?.nama||"Admin",user_name:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",aktivitas:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",jenis:"rencana",proyek:task.proyek||"",panel:task.panel||"",wo_number:"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
 
