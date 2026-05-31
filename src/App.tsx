@@ -2655,7 +2655,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
   };
 
-  const thS={background:"#f8fafc",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
+  const thS={background:"#f8fafc",color:"#64748b",padding:"8px 10px",fontWeight:700,fontSize:10,
     whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
     position:"sticky",top:0,zIndex:3};
 
@@ -2705,7 +2705,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               <th style={{...thS,minWidth:90,position:"sticky",left:490,zIndex:5}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1d4ed8":selDate===d?"#eff6ff":"#f8fafc",color:d===TODAY?"#fff":selDate===d?"#2563eb":"#64748b",borderBottom:d===TODAY?"2px solid #2563eb":selDate===d?"2px solid #2563eb":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#2563eb"}}>▼ Review</div>}
@@ -2768,7 +2768,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:WP_COLOR[e.wp]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} style={{...statusStyle,color:"#64748b",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                           ):(
@@ -2831,7 +2831,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   </div>
                   <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
                     <Badge label={t.proses} color={pc}/>
-                    <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:700}}>{t.wp}</span>
+                    <span style={{background:wc,color:"#64748b",borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:700}}>{t.wp}</span>
                     <Badge label={t.prioritas||"Sedang"} color={priColor}/>
                     <span style={{fontSize:11,fontWeight:700,color:statusColor}}>{statusLabel}</span>
                   </div>
@@ -2874,7 +2874,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 return(
                   <div key={e.wp} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #e2e8f0"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                      <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 10px",fontSize:12,fontWeight:700}}>{e.wp}</span>
+                      <span style={{background:wc,color:"#64748b",borderRadius:6,padding:"2px 10px",fontSize:12,fontWeight:700}}>{e.wp}</span>
                       <button onClick={()=>removeEntry(e.wp)} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13}}>✕ Hapus</button>
                     </div>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
