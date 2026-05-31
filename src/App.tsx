@@ -2233,7 +2233,7 @@ function DetailProgress({woData}:{woData:any[]}){
     letterSpacing:.3,borderBottom:"1px solid #1e3a5f",whiteSpace:"nowrap" as const,
     borderRight:"1px solid rgba(255,255,255,.1)"};
   const thSL={...thS,textAlign:"left" as const};
-  const tdS={padding:"7px 10px",borderBottom:"1px solid #f5f7fa",
+  const tdS={padding:"6px 10px",borderBottom:"1px solid #f5f7fa",
     color:"#374151",verticalAlign:"middle" as const,fontSize:11,
     borderRight:"1px solid #f5f7fa",textAlign:"center" as const};
   const tdSL={...tdS,textAlign:"left" as const};
@@ -2257,7 +2257,7 @@ function DetailProgress({woData}:{woData:any[]}){
     return(
       <td style={tdS}>
         <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
-          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+          <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
             <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
           </div>
           <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
@@ -2266,8 +2266,7 @@ function DetailProgress({woData}:{woData:any[]}){
     );
   };
 
-  // Proses yang ada di data
-  const prosesAda=PROSES_LIST.filter(pr=>allPanels.some(p=>p.pd[pr]!==undefined));
+  const prosesAda=PROSES_LIST.filter(pr=>allPanels.some(p=>p.pd[pr]!==undefined&&p.pd[pr]>=0));
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2313,104 +2312,115 @@ function DetailProgress({woData}:{woData:any[]}){
         <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"#f1f5f9",borderRadius:5}}>👁 Read-only</span>
       </div>
 
-      {/* Table */}
+      {/* Panel cards dengan komponen */}
       {filtered.length===0?(
         <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
           Tidak ada data yang sesuai filter
         </div>
-      ):(
-        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,overflow:"hidden"}}>
-          <div style={{overflowX:"auto" as const}}>
-            <table style={{width:"100%",borderCollapse:"collapse"}}>
-              <thead>
-                <tr>
-                  <th style={{...thSL,minWidth:55}}>WO</th>
-                  <th style={{...thSL,minWidth:80}}>Proyek</th>
-                  <th style={{...thS,minWidth:35}}>H-</th>
-                  <th style={{...thSL,minWidth:130}}>Nama Panel</th>
-                  <th style={{...thS,minWidth:45}}>Tipe</th>
-                  <th style={{...thS,minWidth:35}}>Qty</th>
-                  <th style={{...thS,minWidth:60}}>Overall</th>
-                  <th style={{...thS,minWidth:65}}>Status</th>
-                  {prosesAda.map(pr=>(
-                    <th key={pr} style={{...thS,minWidth:65,borderTop:"3px solid "+((PROSES_COLOR as any)[pr]||"#94a3b8")}}>
-                      {pr}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map((p:any,pi:number)=>{
-                  const ppct=panelOverall(p);
-                  const d=daysUntil(p.target);
-                  const late=isDelayed(p.target);
-                  const urg=isUrgent(p.target);
-                  const done=ppct===100;
-                  const pc=done?"#16a34a":ppct>=70?"#16a34a":ppct>=40?"#d97706":"#dc2626";
-                  const ps=done?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
-                  const pbg=done?"#f0fdf4":late?"#fef2f2":urg?"#fffbeb":"#eff6ff";
-                  const psc=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#2563eb";
-                  const rowBg=pi%2===0?"#fff":"#fafbfc";
-                  return(
-                    <tr key={pi}>
-                      <td style={{...tdSL,background:rowBg,color:"#2563eb",fontWeight:700,fontFamily:"ui-monospace,monospace",fontSize:10}}>{p.wo}</td>
-                      <td style={{...tdSL,background:rowBg,color:"#475569",fontSize:10}}>{p.proyek}</td>
-                      <td style={{...tdS,background:rowBg,fontWeight:600,fontSize:10,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
-                        {late?"−"+Math.abs(d):d}
-                      </td>
-                      <td style={{...tdSL,background:rowBg,fontWeight:500,color:"#1e293b"}}># {p.nama||p.name||"Panel "+(pi+1)}</td>
-                      <td style={{...tdS,background:rowBg}}>
-                        {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
-                      </td>
-                      <td style={{...tdS,background:rowBg}}>{p.qty||1}</td>
-                      <td style={{...tdS,background:rowBg}}>
-                        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
-                          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                            <div style={{width:ppct+"%",height:"100%",background:pc,borderRadius:99}}/>
-                          </div>
-                          <span style={{fontSize:9,fontWeight:700,color:pc}}>{ppct}%</span>
-                        </div>
-                      </td>
-                      <td style={{...tdS,background:rowBg}}>
-                        <span style={{background:pbg,color:psc,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:600}}>{ps}</span>
-                      </td>
-                      {prosesAda.map(pr=><ProsesPctCell key={pr} pct={p.pd[pr]} proses={pr}/>)}
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {/* Footer rata-rata */}
-              <tfoot>
-                <tr style={{background:"#f8fafc"}}>
-                  <td colSpan={6} style={{...tdSL,color:"#94a3b8",fontSize:10,fontStyle:"italic" as const}}>
-                    Rata-rata ({filtered.length} panel)
-                  </td>
-                  <td style={tdS}>
-                    {(()=>{
-                      const avg=filtered.length?Math.round(filtered.reduce((a,p)=>a+panelOverall(p),0)/filtered.length):0;
-                      const c=avg>=70?"#16a34a":avg>=40?"#d97706":"#dc2626";
+      ):filtered.map((p:any,pi:number)=>{
+        const ppct=panelOverall(p);
+        const d=daysUntil(p.target);
+        const late=isDelayed(p.target);
+        const urg=isUrgent(p.target);
+        const done=ppct===100;
+        const pc=done?"#16a34a":ppct>=70?"#16a34a":ppct>=40?"#d97706":"#dc2626";
+        const statusLabel=done?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
+        const statusColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#2563eb";
+        const statusBg=done?"#f0fdf4":late?"#fef2f2":urg?"#fffbeb":"#eff6ff";
+        const borderColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#e2e8f0";
+        const cfg=(PANEL_TYPES as any)[p.tipe];
+        const wps=cfg?.wps||[];
+        const prosesPanel=PROSES_LIST.filter(pr=>p.pd[pr]!==undefined&&p.pd[pr]>=0);
+
+        return(
+          <div key={pi} style={{background:"#fff",border:"1px solid #eaecf0",
+            borderRadius:8,overflow:"hidden",borderLeft:"3px solid "+borderColor}}>
+
+            {/* Panel header */}
+            <div style={{padding:"9px 13px",borderBottom:"1px solid #eaecf0",
+              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const,background:"#fafbfc"}}>
+              <span style={{color:"#2563eb",fontWeight:800,fontFamily:"ui-monospace,monospace",fontSize:12}}>WO {p.wo}</span>
+              <span style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{p.proyek}</span>
+              <span style={{color:"#94a3b8",fontSize:11}}>|</span>
+              <span style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{p.nama||"Panel "+(pi+1)}</span>
+              {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
+              <span style={{fontSize:11,color:"#94a3b8"}}>📅 {p.target}</span>
+              {!done&&<span style={{fontSize:11,fontWeight:600,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
+                {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
+              </span>}
+              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                  <div style={{width:100,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                    <div style={{width:ppct+"%",height:"100%",background:pc,borderRadius:99}}/>
+                  </div>
+                  <span style={{fontSize:13,fontWeight:800,color:pc}}>{ppct}%</span>
+                </div>
+                <span style={{background:statusBg,color:statusColor,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{statusLabel}</span>
+              </div>
+            </div>
+
+            {/* Komponen table */}
+            <div style={{overflowX:"auto" as const}}>
+              <table style={{width:"100%",borderCollapse:"collapse"}}>
+                <thead>
+                  <tr>
+                    <th style={{...thS,minWidth:50}}>WP</th>
+                    <th style={{...thSL,minWidth:180}}>Komponen</th>
+                    <th style={{...thS,minWidth:60}}>Kode</th>
+                    <th style={{...thS,minWidth:50}}>QTY 🔒</th>
+                    {prosesPanel.map(pr=>(
+                      <th key={pr} style={{...thS,minWidth:70,borderTop:"3px solid "+((PROSES_COLOR as any)[pr]||"#94a3b8")}}>
+                        {pr}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {wps.map((wp:any)=>{
+                    const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
+                    const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                    if(!activeItems.length) return null;
+                    return activeItems.map((it:any,ii:number)=>{
+                      const cl=p.checklist?.[it.kode];
+                      const qty=cl?.qty||it.qty||1;
+                      const rowBg=wp.wp==="WP1"?"#fffbeb":wp.wp==="WP2"?"#f0fdf4":wp.wp==="WP3"?"#eff6ff":wp.wp==="WP4"?"#fff7ed":"#fafbfc";
                       return(
-                        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
-                          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                            <div style={{width:avg+"%",height:"100%",background:c,borderRadius:99}}/>
-                          </div>
-                          <span style={{fontSize:9,fontWeight:700,color:c}}>{avg}%</span>
-                        </div>
+                        <tr key={it.kode}>
+                          {ii===0&&(
+                            <td style={{...tdS,background:rowBg,fontWeight:700,fontSize:10}} rowSpan={activeItems.length}>
+                              <span style={{background:wpColor,color:"#fff",borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:700}}>
+                                {wp.wp}
+                              </span>
+                            </td>
+                          )}
+                          <td style={{...tdSL,background:rowBg,color:"#1e293b",fontWeight:500}}>{it.nama||it.komponen||it.name}</td>
+                          <td style={{...tdS,background:rowBg,color:"#94a3b8",fontFamily:"ui-monospace,monospace",fontSize:9}}>{it.kode}</td>
+                          <td style={{...tdS,background:rowBg,color:"#475569",fontWeight:600}}>{qty}</td>
+                          {prosesPanel.map(pr=>{
+                            const pct=cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0;
+                            const color=(PROSES_COLOR as any)[pr]||"#94a3b8";
+                            const isDone=pct===100;
+                            return(
+                              <td key={pr} style={{...tdS,background:rowBg}}>
+                                <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                                  <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                    <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
+                                  </div>
+                                  <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
                       );
-                    })()}
-                  </td>
-                  <td style={tdS}/>
-                  {prosesAda.map(pr=>{
-                    const vals=filtered.map(p=>p.pd[pr]).filter((v:any)=>v!==undefined) as number[];
-                    const avg=vals.length?Math.round(vals.reduce((a,v)=>a+v,0)/vals.length):undefined;
-                    return <ProsesPctCell key={pr} pct={avg} proses={pr}/>;
+                    });
                   })}
-                </tr>
-              </tfoot>
-            </table>
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })}
     </div>
   );
 }
