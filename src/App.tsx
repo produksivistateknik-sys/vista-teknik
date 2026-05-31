@@ -886,7 +886,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
 }
 
 
-﻿function ActivityLogView({activityLog}){
+﻿﻿function ActivityLogView({activityLog}){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
@@ -894,7 +894,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const [search,setSearch]=useState("");
 
   const MODULE_CONFIG={
-    auth:    {label:"Auth",        color:"#64748b",bg:"#f8fafc",icon:"🔐"},
+    auth:    {label:"Auth",        color:"#64748b",bg:"#f1f5f9",icon:"🔐"},
     wo:      {label:"Work Order",  color:"#2563eb",bg:"#eff6ff",icon:"📋"},
     raw:     {label:"Raw Schedule",color:"#f59e0b",bg:"#fffbeb",icon:"📅"},
     rencana: {label:"Rencana",     color:"#10b981",bg:"#f0fdf4",icon:"📊"},
@@ -931,7 +931,11 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const fmtTime=(ts)=>{
     if(!ts)return"—";
     const d=new Date(ts);
-    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
+    return d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
+  };
+  const fmtDate=(ts)=>{
+    if(!ts)return"—";
+    return new Date(ts).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
   };
   const stats=[
     {l:"Total Log",v:activityLog.length,c:"#2563eb"},
@@ -940,7 +944,8 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     {l:"WO Terlibat",v:new Set(activityLog.map(a=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6"},
   ];
   const isReset=filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search;
-  const selSt={height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#475569",outline:"none",cursor:"pointer",fontFamily:"inherit"};
+  const selSt={height:26,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#475569",outline:"none",cursor:"pointer",fontFamily:"inherit"};
+
   return(
     <div className="fi">
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
@@ -951,9 +956,9 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
           </div>
         ))}
       </div>
-      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,padding:"8px 12px",marginBottom:10,display:"flex",gap:7,flexWrap:"wrap",alignItems:"center"}}>
+      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,padding:"8px 12px",marginBottom:10,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari aktivitas, admin, WO..."
-          style={{height:28,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#1e293b",outline:"none",width:200,fontFamily:"inherit"}}/>
+          style={{height:26,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#1e293b",outline:"none",width:190,fontFamily:"inherit"}}/>
         <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={selSt}>
           <option value="ALL">Semua Admin</option>
           {adminList.map(a=><option key={a} value={a}>{a}</option>)}
@@ -969,9 +974,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={selSt}/>
         {isReset&&(
           <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}
-            style={{height:28,padding:"0 10px",border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",borderRadius:5,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-            Reset
-          </button>
+            style={{height:26,padding:"0 10px",border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",borderRadius:5,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
         )}
         <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} aktivitas</span>
       </div>
@@ -991,23 +994,23 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
             const desc=a.description||a.aktivitas||a.action||"—";
             const woNo=a.wo_number||a.wo_no||"";
             return(
-              <div key={a.id||i} style={{display:"flex",gap:10,alignItems:"center",padding:"8px 12px",borderBottom:i<filtered.length-1?"1px solid #f5f7fa":"none",transition:"background .1s"}}
+              <div key={a.id||i} style={{display:"flex",gap:10,alignItems:"center",padding:"7px 14px",borderBottom:i<filtered.length-1?"1px solid #f5f7fa":"none"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#fafbfc"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{width:30,height:30,borderRadius:7,background:mc.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{mc.icon}</div>
+                <div style={{width:28,height:28,borderRadius:7,background:mc.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0}}>{mc.icon}</div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontSize:12,fontWeight:600,color:"#1e293b",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{desc}</div>
                   <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontSize:10,color:"#475569",fontWeight:500}}>👤 {adminName}</span>
-                    {woNo&&<span style={{fontSize:10,color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:3,padding:"1px 5px"}}>WO {woNo}</span>}
+                    <span style={{fontSize:10,color:"#64748b"}}>👤 {adminName}</span>
+                    {woNo&&<span style={{fontSize:10,color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:3,padding:"1px 5px"}}>WO-{woNo}</span>}
                     <span style={{fontSize:10,color:"#94a3b8"}}>📍 {a.halaman||mc.label}</span>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                  <span style={{background:mc.bg,color:mc.color,borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:600}}>{mc.label}</span>
-                  <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"2px 7px",fontSize:10,fontWeight:600}}>{ac.label}</span>
+                  <span style={{background:mc.bg,color:mc.color,borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:600}}>{mc.label}</span>
+                  <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:600}}>{ac.label}</span>
                 </div>
-                <span style={{fontSize:10,color:"#94a3b8",flexShrink:0,minWidth:130,textAlign:"right"}}>{fmtTime(a.created_at)}</span>
+                <span style={{fontSize:10,color:"#94a3b8",flexShrink:0,minWidth:120,textAlign:"right"}}>{fmtDate(a.created_at)} {fmtTime(a.created_at)}</span>
               </div>
             );
           })}
