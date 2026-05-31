@@ -2200,192 +2200,221 @@ function SummaryProgress({woData}:{woData:any[]}){
   );
 }
 
-function DetailProgress({woData}){
-  const [selWoId,setSelWoId]=useState(woData[0]?.id);
-  const wo=woData.find(w=>w.id===selWoId);
-  const [selPanelId,setSelPanelId]=useState(wo?.panels[0]?.id);
-  const panel=wo?.panels.find(p=>p.id===selPanelId);
-  const [wpFilter,setWpFilter]=useState("ALL");
-  const cfg=panel?PANEL_TYPES[panel.tipe]:null;
-  const calcProg=panel?calcPanelProgress(panel):{};
-  const visibleWps=cfg?(wpFilter==="ALL"?cfg.wps:cfg.wps.filter(w=>w.wp===wpFilter)):[];
+function DetailProgress({woData}:{woData:any[]}){
+  const [search,setSearch]=useState("");
+  const [woFilter,setWoFilter]=useState("semua");
+  const [statusFilter,setStatusFilter]=useState("semua");
 
-  const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
-    whiteSpace:"nowrap",letterSpacing:.3,borderRight:"1px solid #ffffff15",textAlign:"center",
-    position:"sticky",top:0,zIndex:3};
+  const PROSES_LIST=["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+
+  const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
+    ...p,
+    wo:wo.wo,
+    woId:wo.id,
+    proyek:wo.proyek,
+    target:wo.target,
+    pd:calcPanelProgress(p),
+  })));
+
+  const filtered=allPanels.filter(p=>{
+    const pct=panelOverall(p);
+    const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
+    const matchS=statusFilter==="semua"||statusFilter===s;
+    const matchWO=woFilter==="semua"||p.wo===woFilter;
+    const matchQ=!search||
+      (p.nama||"").toLowerCase().includes(search.toLowerCase())||
+      (p.proyek||"").toLowerCase().includes(search.toLowerCase())||
+      (p.wo||"").toLowerCase().includes(search.toLowerCase());
+    return matchS&&matchWO&&matchQ;
+  });
+
+  const thS={background:"#1e3a5f",color:"#fff",fontWeight:600,padding:"7px 10px",
+    textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
+    letterSpacing:.3,borderBottom:"1px solid #1e3a5f",whiteSpace:"nowrap" as const,
+    borderRight:"1px solid rgba(255,255,255,.1)"};
+  const thSL={...thS,textAlign:"left" as const};
+  const tdS={padding:"7px 10px",borderBottom:"1px solid #f5f7fa",
+    color:"#374151",verticalAlign:"middle" as const,fontSize:11,
+    borderRight:"1px solid #f5f7fa",textAlign:"center" as const};
+  const tdSL={...tdS,textAlign:"left" as const};
 
   if(!woData.length) return(
-    <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-      <div style={{fontSize:40,marginBottom:12}}>📋</div>
-      <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
-      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
+    <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+      <div style={{fontSize:40,marginBottom:12}}>🔍</div>
+      <div style={{fontSize:14,fontWeight:600,color:"#1e293b"}}>Belum ada data</div>
     </div>
   );
 
+  const totalPanel=allPanels.length;
+  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverall(p),0)/totalPanel):0;
+  const selesai=allPanels.filter(p=>panelOverall(p)===100).length;
+  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverall(p)<100).length;
+
+  const ProsesPctCell=({pct,proses}:{pct:number|undefined,proses:string})=>{
+    if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
+    const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
+    const isDone=pct===100;
+    return(
+      <td style={tdS}>
+        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+            <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
+          </div>
+          <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+        </div>
+      </td>
+    );
+  };
+
+  // Proses yang ada di data
+  const prosesAda=PROSES_LIST.filter(pr=>allPanels.some(p=>p.pd[pr]!==undefined));
+
   return(
-    <div className="fi">
-      <div style={{display:"flex",gap:12,marginBottom:16,flexWrap:"wrap",alignItems:"flex-end"}}>
-        <div style={{flex:"0 0 220px"}}><Lbl>Work Order</Lbl>
-          <Sel value={selWoId} onChange={e=>{
-            const w=woData.find(x=>x.id===Number(e.target.value));
-            setSelWoId(Number(e.target.value));setSelPanelId(w?.panels[0]?.id);setWpFilter("ALL");
-          }}>
-            {woData.map(w=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
-          </Sel>
-        </div>
-        <div style={{flex:1,minWidth:200}}><Lbl>Panel</Lbl>
-          <Sel value={selPanelId} onChange={e=>setSelPanelId(Number(e.target.value))}>
-            {wo?.panels.map(p=><option key={p.id} value={p.id}>#{p.noPnl} — {p.nama}</option>)}
-          </Sel>
-        </div>
-        <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,
-          padding:"6px 14px",fontSize:11,color:"#92400e",fontWeight:600,display:"flex",alignItems:"center",gap:6}}>
-          🔒 Hanya baca · arahkan kursor ke sel ber-🕐 untuk lihat riwayat progress
-        </div>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+      {/* Stat row */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8}}>
+        {[
+          {n:totalPanel,l:"Total Panel",c:"#2563eb",bc:"#2563eb"},
+          {n:avgOverall+"%",l:"Avg Overall",c:avgOverall>=70?"#16a34a":avgOverall>=40?"#d97706":"#dc2626",bc:avgOverall>=70?"#16a34a":avgOverall>=40?"#d97706":"#dc2626"},
+          {n:selesai,l:"Panel Selesai",c:"#16a34a",bc:"#16a34a"},
+          {n:terlambat,l:"Panel Terlambat",c:"#dc2626",bc:"#dc2626"},
+        ].map((s,i)=>(
+          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
+            <div style={{fontSize:20,fontWeight:700,color:s.c}}>{s.n}</div>
+            <div style={{fontSize:9,color:"#94a3b8",marginTop:3,fontWeight:500,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
+          </div>
+        ))}
       </div>
-      {panel&&cfg&&(
-        <Card>
-          <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14,alignItems:"center"}}>
-            <div>
-              <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:4}}>{panel.nama}</div>
-              <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                <Badge label={cfg.label} color={cfg.color}/>
-                <Badge label={`Qty: ${panel.qty}`} color="#0891b2"/>
-                <Badge label={`Overall: ${panelOverall(panel)}%`} color={pColor(panelOverall(panel))}/>
-              </div>
-            </div>
-            <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
-              {["ALL",...cfg.wps.map(w=>w.wp)].map(w=>(
-                <button key={w} onClick={()=>setWpFilter(w)}
-                  style={{padding:"4px 12px",borderRadius:20,border:`1.5px solid ${wpFilter===w?"#1d4ed8":"#e2e8f0"}`,
-                    background:wpFilter===w?"#1d4ed8":"#fff",color:wpFilter===w?"#fff":"#64748b",
-                    cursor:"pointer",fontSize:11,fontWeight:700}}>
-                  {w==="ALL"?"Semua WP":w}
-                </button>
-              ))}
-            </div>
-          </div>
-          <div style={{display:"flex",gap:5,marginBottom:12,flexWrap:"wrap"}}>
-            {ALL_PROSES.map(pr=>(
-              <div key={pr} style={{display:"flex",alignItems:"center",gap:4,background:"#f8fafc",
-                borderRadius:7,padding:"3px 8px",border:"1px solid #e2e8f0",fontSize:10}}>
-                <span style={{width:6,height:6,borderRadius:"50%",background:PROSES_COLOR[pr],display:"inline-block"}}/>
-                <span style={{color:"#475569",fontWeight:600}}>{pr.slice(0,6)}</span>
-                <span style={{fontWeight:800,color:pColor(calcProg[pr]),fontFamily:"'DM Mono',monospace"}}>{calcProg[pr]}%</span>
-              </div>
-            ))}
-          </div>
-          <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+
+      {/* Filter bar */}
+      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
+        <input placeholder="🔍 Cari panel, proyek, WO..."
+          value={search} onChange={e=>setSearch(e.target.value)}
+          style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 10px",
+            fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",
+            fontFamily:"inherit",flex:1,minWidth:160}}/>
+        <select value={woFilter} onChange={e=>setWoFilter(e.target.value)}
+          style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
+            fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",cursor:"pointer",fontFamily:"inherit"}}>
+          <option value="semua">Semua WO</option>
+          {woData.map(w=><option key={w.id} value={w.wo}>WO {w.wo} — {w.proyek}</option>)}
+        </select>
+        <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
+          style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
+            fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",cursor:"pointer",fontFamily:"inherit"}}>
+          <option value="semua">Semua Status</option>
+          <option value="ontrack">On Track</option>
+          <option value="mendesak">Mendesak</option>
+          <option value="terlambat">Terlambat</option>
+          <option value="selesai">Selesai</option>
+        </select>
+        <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} panel</span>
+        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"#f1f5f9",borderRadius:5}}>👁 Read-only</span>
+      </div>
+
+      {/* Table */}
+      {filtered.length===0?(
+        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
+          Tidak ada data yang sesuai filter
+        </div>
+      ):(
+        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,overflow:"hidden"}}>
+          <div style={{overflowX:"auto" as const}}>
+            <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead>
                 <tr>
-                  <th style={{...thS,textAlign:"left",minWidth:52,position:"sticky",left:0,zIndex:4}}>WP</th>
-                  <th style={{...thS,textAlign:"left",minWidth:200,position:"sticky",left:52,zIndex:4}}>Komponen</th>
-                  <th style={{...thS,minWidth:60}}>Kode</th>
-                  <th style={{...thS,minWidth:56}}>QTY 🔒</th>
-                  {ALL_PROSES.map(pr=>(
-                    <th key={pr} style={{...thS,minWidth:110,borderBottom:`2px solid ${PROSES_COLOR[pr]}`}}>
+                  <th style={{...thSL,minWidth:55}}>WO</th>
+                  <th style={{...thSL,minWidth:80}}>Proyek</th>
+                  <th style={{...thS,minWidth:35}}>H-</th>
+                  <th style={{...thSL,minWidth:130}}>Nama Panel</th>
+                  <th style={{...thS,minWidth:45}}>Tipe</th>
+                  <th style={{...thS,minWidth:35}}>Qty</th>
+                  <th style={{...thS,minWidth:60}}>Overall</th>
+                  <th style={{...thS,minWidth:65}}>Status</th>
+                  {prosesAda.map(pr=>(
+                    <th key={pr} style={{...thS,minWidth:65,borderTop:"3px solid "+((PROSES_COLOR as any)[pr]||"#94a3b8")}}>
                       {pr}
                     </th>
                   ))}
                 </tr>
               </thead>
               <tbody>
-                {visibleWps.map(wpDef=>wpDef.items.map((item,ii)=>{
-                  const cl=panel.checklist[item.kode]||{qty:0,progress:{}};
-                  const isLocked=cl.qty===0;
-                  const rBg=isLocked?"#fafafa":ii%2===0?wpDef.bg:"#fff";
-                  const td={padding:"0 6px",height:36,borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg};
+                {filtered.map((p:any,pi:number)=>{
+                  const ppct=panelOverall(p);
+                  const d=daysUntil(p.target);
+                  const late=isDelayed(p.target);
+                  const urg=isUrgent(p.target);
+                  const done=ppct===100;
+                  const pc=done?"#16a34a":ppct>=70?"#16a34a":ppct>=40?"#d97706":"#dc2626";
+                  const ps=done?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
+                  const pbg=done?"#f0fdf4":late?"#fef2f2":urg?"#fffbeb":"#eff6ff";
+                  const psc=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#2563eb";
+                  const rowBg=pi%2===0?"#fff":"#fafbfc";
                   return(
-                    <tr key={item.kode} style={{opacity:isLocked?.45:1}}>
-                      <td style={{...td,position:"sticky",left:0,zIndex:1,fontWeight:800,fontSize:10,color:wpDef.color,verticalAlign:"middle",borderLeft:`3px solid ${isLocked?"#e2e8f0":wpDef.color}`}}>
-                        {ii===0&&<span style={{background:wpDef.color+"18",border:`1px solid ${wpDef.color}33`,borderRadius:4,padding:"2px 6px",whiteSpace:"nowrap"}}>{wpDef.wp}</span>}
+                    <tr key={pi}>
+                      <td style={{...tdSL,background:rowBg,color:"#2563eb",fontWeight:700,fontFamily:"ui-monospace,monospace",fontSize:10}}>{p.wo}</td>
+                      <td style={{...tdSL,background:rowBg,color:"#475569",fontSize:10}}>{p.proyek}</td>
+                      <td style={{...tdS,background:rowBg,fontWeight:600,fontSize:10,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
+                        {late?"−"+Math.abs(d):d}
                       </td>
-                      <td style={{...td,position:"sticky",left:52,zIndex:1,fontWeight:600,color:isLocked?"#cbd5e1":"#374151",verticalAlign:"middle",whiteSpace:"nowrap"}}>
-                        {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#cbd5e1"}}>🔒</span>}
+                      <td style={{...tdSL,background:rowBg,fontWeight:500,color:"#1e293b"}}># {p.nama||p.name||"Panel "+(pi+1)}</td>
+                      <td style={{...tdS,background:rowBg}}>
+                        {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
                       </td>
-                      <td style={{...td,textAlign:"center",verticalAlign:"middle",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontSize:10}}>{item.kode}</td>
-                      {/* QTY — read only */}
-                      <td style={{...td,textAlign:"center",verticalAlign:"middle"}}>
-                        <span style={{fontWeight:800,fontFamily:"'DM Mono',monospace",fontSize:12,
-                          color:isLocked?"#fca5a5":"#1e293b",
-                          background:isLocked?"#fef2f2":"#f1f5f9",
-                          borderRadius:6,padding:"3px 10px",display:"inline-block"}}>
-                          {cl.qty} 🔒
-                        </span>
+                      <td style={{...tdS,background:rowBg}}>{p.qty||1}</td>
+                      <td style={{...tdS,background:rowBg}}>
+                        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                            <div style={{width:ppct+"%",height:"100%",background:pc,borderRadius:99}}/>
+                          </div>
+                          <span style={{fontSize:9,fontWeight:700,color:pc}}>{ppct}%</span>
+                        </div>
                       </td>
-                      {/* PROGRESS — read only, dengan tooltip riwayat */}
-                      {ALL_PROSES.map(pr=>{
-                        const v=getLatestProgress(cl,pr);const isDone=v===100;
-                        const hist=cl.history?.[pr]||[];
-                        return(
-                          <td key={pr} style={{...td,textAlign:"center",verticalAlign:"middle",padding:"4px 5px"}}>
-                            {isLocked
-                              ?<div style={{height:28,borderRadius:6,background:"#f1f5f9",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center"}}><span style={{color:"#e2e8f0",fontSize:12}}>—</span></div>
-                              :<div className={hist.length>0?"hist-cell":""} style={{height:28,borderRadius:6,
-                                  cursor:hist.length>0?"help":"default",position:"relative",
-                                  background:v===0?"transparent":pBg(v),
-                                  border:v===0?"1px dashed #e2e8f0":`1px solid ${pColor(v)}30`,
-                                  display:"flex",alignItems:"center",justifyContent:"center",minWidth:66,gap:3}}>
-                                {v===0?<span style={{color:"#cbd5e1",fontSize:12}}>—</span>
-                                  :<>
-                                    <span style={{fontWeight:700,fontSize:11,color:pColor(v),fontFamily:"'DM Mono',monospace"}}>{isDone?"Done":`${v}%`}</span>
-                                    {hist.length>0&&<span style={{fontSize:9,color:pColor(v),opacity:.6}}>🕐</span>}
-                                  </>}
-                                {hist.length>0&&(
-                                  <div className="hist-tooltip" style={{position:"absolute",top:"calc(100% + 6px)",left:"50%",
-                                    transform:"translateX(-50%)",background:"#1e293b",borderRadius:8,padding:"8px 10px",
-                                    minWidth:150,zIndex:50,boxShadow:"0 6px 20px #00000035",
-                                    opacity:0,visibility:"hidden",transition:"opacity .15s",pointerEvents:"none"}}>
-                                    <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:6,
-                                      textTransform:"uppercase",letterSpacing:.5}}>Riwayat {pr}</div>
-                                    {hist.map((h,hi)=>(
-                                      <div key={hi} style={{display:"flex",justifyContent:"space-between",
-                                        alignItems:"center",gap:10,padding:"3px 0",
-                                        borderTop:hi>0?"1px solid #ffffff15":"none"}}>
-                                        <span style={{fontSize:11,color:"#e2e8f0",whiteSpace:"nowrap"}}>
-                                          {fmtShort(h.tanggal)} · Shift {h.shift}
-                                        </span>
-                                        <span style={{fontSize:11,fontWeight:800,color:pColor(h.pct),
-                                          fontFamily:"'DM Mono',monospace"}}>{h.pct}%</span>
-                                      </div>
-                                    ))}
-                                    <div style={{position:"absolute",bottom:"100%",left:"50%",transform:"translateX(-50%)",
-                                      borderLeft:"5px solid transparent",borderRight:"5px solid transparent",
-                                      borderBottom:"5px solid #1e293b"}}/>
-                                  </div>
-                                )}
-                              </div>
-                            }
-                          </td>
-                        );
-                      })}
+                      <td style={{...tdS,background:rowBg}}>
+                        <span style={{background:pbg,color:psc,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:600}}>{ps}</span>
+                      </td>
+                      {prosesAda.map(pr=><ProsesPctCell key={pr} pct={p.pd[pr]} proses={pr}/>)}
                     </tr>
                   );
-                }))}
+                })}
               </tbody>
+              {/* Footer rata-rata */}
               <tfoot>
-                <tr style={{background:"#f0f4ff"}}>
-                  <td colSpan={4} style={{padding:"7px 10px",fontWeight:700,color:"#475569",fontSize:11,borderTop:"2px solid #e2e8f0",position:"sticky",left:0,background:"#f0f4ff"}}>Rata-rata</td>
-                  {ALL_PROSES.map(pr=>(
-                    <td key={pr} style={{padding:"6px 5px",textAlign:"center",borderTop:"2px solid #e2e8f0"}}>
-                      <span style={{fontWeight:800,fontSize:11,color:pColor(calcProg[pr]),fontFamily:"'DM Mono',monospace",background:pBg(calcProg[pr]),borderRadius:5,padding:"2px 7px",display:"inline-block"}}>{calcProg[pr]}%</span>
-                    </td>
-                  ))}
+                <tr style={{background:"#f8fafc"}}>
+                  <td colSpan={6} style={{...tdSL,color:"#94a3b8",fontSize:10,fontStyle:"italic" as const}}>
+                    Rata-rata ({filtered.length} panel)
+                  </td>
+                  <td style={tdS}>
+                    {(()=>{
+                      const avg=filtered.length?Math.round(filtered.reduce((a,p)=>a+panelOverall(p),0)/filtered.length):0;
+                      const c=avg>=70?"#16a34a":avg>=40?"#d97706":"#dc2626";
+                      return(
+                        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                          <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                            <div style={{width:avg+"%",height:"100%",background:c,borderRadius:99}}/>
+                          </div>
+                          <span style={{fontSize:9,fontWeight:700,color:c}}>{avg}%</span>
+                        </div>
+                      );
+                    })()}
+                  </td>
+                  <td style={tdS}/>
+                  {prosesAda.map(pr=>{
+                    const vals=filtered.map(p=>p.pd[pr]).filter((v:any)=>v!==undefined) as number[];
+                    const avg=vals.length?Math.round(vals.reduce((a,v)=>a+v,0)/vals.length):undefined;
+                    return <ProsesPctCell key={pr} pct={avg} proses={pr}/>;
+                  })}
                 </tr>
               </tfoot>
             </table>
           </div>
-          <div style={{marginTop:7,fontSize:11,color:"#94a3b8"}}>💡 Klik cell proses untuk update · 🔒 Qty=0 terkunci</div>
-        </Card>
+        </div>
       )}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// RAW SCHEDULE
-// ─────────────────────────────────────────────────────────────────────────────
 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,user}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
