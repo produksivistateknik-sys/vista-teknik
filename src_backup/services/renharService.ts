@@ -73,8 +73,8 @@ export const renharService = {
       wo_no: data.wo_id ?? null,
       proyek: data.proyek ?? null,
       panel: data.panel ?? null,
-      user_name: updated_by ?? 'System',
-     admin_nama: updated_by ?? 'System',
+      user_name: updated_by ?? 'Admin',
+      admin_nama: updated_by ?? 'Admin',
     })
 
     return data

@@ -1,0 +1,1 @@
+﻿const RENHAR_TH={background:"#1e3a8a",color:"#fff",padding:"7px 10px",fontWeight:700,fontSize:10,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};

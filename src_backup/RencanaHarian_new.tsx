@@ -1,4 +1,4 @@
-﻿function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,user}){
+﻿function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selProses,setSelProses]=useState("ALL");
@@ -46,12 +46,10 @@
       setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
     } else {
       const result=await createRenhar({
-        updated_by: user?.name || user?.nama,
         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
         proyek:task.proyek,panel:task.panel,proses:task.proses,
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
-        updated_by: user?.name || user?.nama,
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
@@ -62,12 +60,10 @@
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       if(getRenharEntry(task))continue;
       const result=await createRenhar({
-        updated_by: user?.name || user?.nama,
         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
         proyek:task.proyek,panel:task.panel,proses:task.proses,
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
-        updated_by: user?.name || user?.nama,
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
