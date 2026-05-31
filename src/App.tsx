@@ -959,7 +959,7 @@ function ActivityLogView({activityLog}:any){
       {/* Stat cards */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
         {stats.map((s,i)=>(
-          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,padding:"10px 12px",borderLeft:`3px solid ${s.c}`}}>
+          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,padding:"10px 12px",borderLeft:"3px solid "+s.c}}>
             <div style={{fontSize:20,fontWeight:700,color:s.c,lineHeight:1}}>{s.v}</div>
             <div style={{fontSize:9.5,color:"#94a3b8",marginTop:3,fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
           </div>
