@@ -1006,9 +1006,9 @@ function ActivityLogView({activityLog}:any){
       ):(
         <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,overflow:"hidden"}}>
           {filtered.map((a:any,i:number)=>{
-            const module=a.module||a.jenis||"general";
+            const modKey=a.module||a.jenis||"general";
             const actionType=a.action_type||"update";
-            const mc=MODULE_CONFIG[module]||MODULE_CONFIG.general;
+            const mc=MODULE_CONFIG[modKey]||MODULE_CONFIG.general;
             const ac=ACTION_CONFIG[actionType]||{label:actionType,color:"#64748b",bg:"#f8fafc"};
             const adminName=a.admin_nama||a.user_name||"—";
             const desc=a.description||a.aktivitas||a.action||"—";
