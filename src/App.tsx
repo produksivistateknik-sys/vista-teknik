@@ -886,7 +886,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
 }
 
 
-﻿﻿function ActivityLogView({activityLog}){
+﻿﻿﻿function ActivityLogView({activityLog}){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
@@ -902,6 +902,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     kendala: {label:"Kendala",     color:"#ef4444",bg:"#fef2f2",icon:"⚠️"},
     pekerja: {label:"Pekerja",     color:"#0891b2",bg:"#ecfeff",icon:"👥"},
     general: {label:"General",     color:"#94a3b8",bg:"#f8fafc",icon:"⚙️"},
+    maintenance:{label:"Maintenance",color:"#16a34a",bg:"#f0fdf4",icon:"🔧"},
   };
   const ACTION_CONFIG={
     create:    {label:"Buat",      color:"#16a34a",bg:"#f0fdf4"},
@@ -928,14 +929,10 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     if(search){const q=search.toLowerCase();if(!desc.toLowerCase().includes(q)&&!adminName.toLowerCase().includes(q)&&!woNo.toLowerCase().includes(q))return false;}
     return true;
   });
-  const fmtTime=(ts)=>{
+  const fmtDateTime=(ts)=>{
     if(!ts)return"—";
     const d=new Date(ts);
-    return d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
-  };
-  const fmtDate=(ts)=>{
-    if(!ts)return"—";
-    return new Date(ts).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})+" WIB";
   };
   const stats=[
     {l:"Total Log",v:activityLog.length,c:"#2563eb"},
@@ -944,8 +941,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     {l:"WO Terlibat",v:new Set(activityLog.map(a=>a.wo_number||a.wo_no).filter(Boolean)).size,c:"#8b5cf6"},
   ];
   const isReset=filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search;
-  const selSt={height:26,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#475569",outline:"none",cursor:"pointer",fontFamily:"inherit"};
-
+  const selSt={height:26,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#fff",color:"#475569",outline:"none",cursor:"pointer",fontFamily:"inherit"};
   return(
     <div className="fi">
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
@@ -956,36 +952,36 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
           </div>
         ))}
       </div>
-      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,padding:"8px 12px",marginBottom:10,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari aktivitas, admin, WO..."
-          style={{height:26,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#f8fafc",color:"#1e293b",outline:"none",width:190,fontFamily:"inherit"}}/>
-        <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={selSt}>
-          <option value="ALL">Semua Admin</option>
-          {adminList.map(a=><option key={a} value={a}>{a}</option>)}
-        </select>
-        <select value={filterModule} onChange={e=>setFilterModule(e.target.value)} style={selSt}>
-          <option value="ALL">Semua Module</option>
-          {moduleList.map(m=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
-        </select>
-        <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={selSt}>
-          <option value="ALL">Semua Action</option>
-          {actionList.map(a=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
-        </select>
-        <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={selSt}/>
-        {isReset&&(
-          <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}
-            style={{height:26,padding:"0 10px",border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",borderRadius:5,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
-        )}
-        <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} aktivitas</span>
-      </div>
-      {filtered.length===0?(
-        <div style={{textAlign:"center",padding:"40px",color:"#94a3b8",background:"#fff",borderRadius:7,border:"1px solid #eaecf0"}}>
-          <div style={{fontSize:28,marginBottom:8}}>📋</div>
-          <div style={{fontSize:13,fontWeight:600}}>Tidak ada aktivitas</div>
+      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,marginBottom:10,overflow:"hidden"}}>
+        <div style={{padding:"8px 12px",borderBottom:"1px solid #f0f2f5",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",background:"#f8fafc"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari aktivitas, admin, WO..."
+            style={{height:26,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:5,fontSize:11,background:"#fff",color:"#1e293b",outline:"none",width:200,fontFamily:"inherit"}}/>
+          <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={selSt}>
+            <option value="ALL">Semua Admin</option>
+            {adminList.map(a=><option key={a} value={a}>{a}</option>)}
+          </select>
+          <select value={filterModule} onChange={e=>setFilterModule(e.target.value)} style={selSt}>
+            <option value="ALL">Semua Module</option>
+            {moduleList.map(m=><option key={m} value={m}>{MODULE_CONFIG[m]?.label||m}</option>)}
+          </select>
+          <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={selSt}>
+            <option value="ALL">Semua Action</option>
+            {actionList.map(a=><option key={a} value={a}>{ACTION_CONFIG[a]?.label||a}</option>)}
+          </select>
+          <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={selSt}/>
+          {isReset&&(
+            <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}
+              style={{height:26,padding:"0 10px",border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",borderRadius:5,fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>Reset</button>
+          )}
+          <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} aktivitas</span>
         </div>
-      ):(
-        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:7,overflow:"hidden"}}>
-          {filtered.map((a,i)=>{
+        {filtered.length===0?(
+          <div style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>
+            <div style={{fontSize:24,marginBottom:6}}>📋</div>
+            <div style={{fontSize:12,fontWeight:600}}>Tidak ada aktivitas</div>
+          </div>
+        ):(
+          filtered.map((a,i)=>{
             const modKey=a.module||a.jenis||"general";
             const actionType=a.action_type||"update";
             const mc=MODULE_CONFIG[modKey]||MODULE_CONFIG.general;
@@ -993,29 +989,34 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
             const adminName=a.admin_nama||a.user_name||"—";
             const desc=a.description||a.aktivitas||a.action||"—";
             const woNo=a.wo_number||a.wo_no||"";
+            const panelNo=a.panel||"";
+            const proyekNo=a.proyek||"";
             return(
-              <div key={a.id||i} style={{display:"flex",gap:10,alignItems:"center",padding:"7px 14px",borderBottom:i<filtered.length-1?"1px solid #f5f7fa":"none"}}
+              <div key={a.id||i}
+                style={{display:"flex",gap:12,alignItems:"center",padding:"8px 14px",borderBottom:i<filtered.length-1?"1px solid #f5f7fa":"none",cursor:"default"}}
                 onMouseEnter={e=>e.currentTarget.style.background="#fafbfc"}
                 onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
-                <div style={{width:28,height:28,borderRadius:7,background:mc.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0}}>{mc.icon}</div>
+                <div style={{width:32,height:32,borderRadius:8,background:mc.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,flexShrink:0}}>{mc.icon}</div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#1e293b",marginBottom:2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{desc}</div>
-                  <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontSize:10,color:"#64748b"}}>👤 {adminName}</span>
-                    {woNo&&<span style={{fontSize:10,color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:3,padding:"1px 5px"}}>WO-{woNo}</span>}
-                    <span style={{fontSize:10,color:"#94a3b8"}}>📍 {a.halaman||mc.label}</span>
+                  <div style={{fontSize:12.5,fontWeight:600,color:"#1e293b",marginBottom:3}}>{desc}</div>
+                  <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                    <span style={{fontSize:10.5,color:"#64748b",display:"flex",alignItems:"center",gap:3}}>👤 {adminName}</span>
+                    {woNo&&<span style={{fontSize:10,color:"#2563eb",fontWeight:700,background:"#eff6ff",borderRadius:3,padding:"1px 6px",fontFamily:"monospace"}}>WO-{woNo}</span>}
+                    {proyekNo&&<span style={{fontSize:10,color:"#475569",background:"#f1f5f9",borderRadius:3,padding:"1px 6px"}}>{proyekNo}</span>}
+                    {panelNo&&<span style={{fontSize:10,color:"#475569",background:"#f1f5f9",borderRadius:3,padding:"1px 6px"}}>{panelNo}</span>}
+                    <span style={{fontSize:10,color:"#94a3b8",display:"flex",alignItems:"center",gap:2}}>📍 {a.halaman||mc.label}</span>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:4,alignItems:"center",flexShrink:0}}>
-                  <span style={{background:mc.bg,color:mc.color,borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:600}}>{mc.label}</span>
-                  <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:600}}>{ac.label}</span>
+                  <span style={{background:mc.bg,color:mc.color,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{mc.label}</span>
+                  <span style={{background:ac.bg,color:ac.color,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{ac.label}</span>
                 </div>
-                <span style={{fontSize:10,color:"#94a3b8",flexShrink:0,minWidth:120,textAlign:"right"}}>{fmtDate(a.created_at)} {fmtTime(a.created_at)}</span>
+                <span style={{fontSize:10.5,color:"#94a3b8",flexShrink:0,minWidth:140,textAlign:"right"}}>{fmtDateTime(a.created_at)}</span>
               </div>
             );
-          })}
-        </div>
-      )}
+          })
+        )}
+      </div>
     </div>
   );
 }
