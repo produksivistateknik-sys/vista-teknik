@@ -2471,7 +2471,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       newJadwal=[...existing,{tanggal:date,wp,komponen:komps,status:"on_progress"}];
     }
     await updateRaw(rowId,{jadwal:newJadwal});
-    if(logActivity) logActivity({action:"Tambah "+wp,aktivitas:"Tambah "+wp+" ("+komps.length+" komponen) ke Raw Schedule",halaman:"Raw Schedule",jenis:"update",table_name:"raw_schedule"});
+    if(logActivity) logActivity({admin_nama:user?.name||user?.nama||"Admin",action:"Tambah WP ke Raw Schedule",aktivitas:"Tambah "+wp+" ("+komps.length+" komponen) ke jadwal",jenis:"update",halaman:"Raw Schedule",table_name:"raw_schedule",user_name:user?.name||user?.nama||"Admin"});
   };
 
   const handleRemoveWP=async(rowId:string,date:string,wp:string)=>{
@@ -2484,14 +2484,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const handleRemoveRow=async(rowId:string)=>{
     if(!confirm("Hapus baris ini?")) return;
     await removeRaw(rowId);
-    if(logActivity) logActivity({action:"Hapus Raw Schedule",aktivitas:"Hapus baris Raw Schedule",halaman:"Raw Schedule",jenis:"delete",table_name:"raw_schedule"});
+    if(logActivity) logActivity({admin_nama:user?.name||user?.nama||"Admin",action:"Hapus Raw Schedule",aktivitas:"Hapus baris dari Raw Schedule",jenis:"delete",halaman:"Raw Schedule",table_name:"raw_schedule",user_name:user?.name||user?.nama||"Admin"});
   };
 
   const handleAddRow=async()=>{
     if(!addWO||!addPanel||!addProses) return;
     setSaving(true);
     await createRaw({wo:addWO,panel:addPanel,proses:addProses,prioritas:addPrioritas,jadwal:[]});
-    if(logActivity) logActivity({action:"Tambah Raw Schedule",aktivitas:"Tambah "+addProses+" - "+addPanel+" ke Raw Schedule",halaman:"Raw Schedule",jenis:"create",table_name:"raw_schedule"});
+    if(logActivity) logActivity({admin_nama:user?.name||user?.nama||"Admin",action:"Tambah Panel ke Raw Schedule",aktivitas:"Tambah "+addProses+" - "+addPanel+" ke Raw Schedule",jenis:"create",halaman:"Raw Schedule",table_name:"raw_schedule",user_name:user?.name||user?.nama||"Admin"});
     setShowAddModal(false);
     setSaving(false);
   };
