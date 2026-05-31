@@ -1,0 +1,1 @@
+﻿const RAW_TH_STYLE={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:9.5,whiteSpace:"nowrap",letterSpacing:.4,textAlign:"center",borderRight:"1px solid #2d3348",position:"sticky",top:0,zIndex:3,textTransform:"uppercase"};
