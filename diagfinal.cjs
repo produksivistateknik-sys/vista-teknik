@@ -1,17 +1,25 @@
 ﻿const fs = require('fs');
-const content = fs.readFileSync('src/App.tsx', 'utf8');
-console.log('erp-wrap render:', content.includes('"erp-wrap"'));
-console.log('erp-main render:', content.includes('"erp-main"'));
-console.log('erp-content render:', content.includes('"erp-content"'));
-console.log('SIDEBAR_MENUS.map:', content.includes('SIDEBAR_MENUS.map'));
+let content = fs.readFileSync('src/App.tsx', 'utf8');
 
-// Cari posisi return utama App
 const appIdx = content.indexOf('export default function App()');
 const sub = content.slice(appIdx);
-let returns = [], i = 0;
-while((i = sub.indexOf('return(', i)) !== -1){ returns.push(appIdx+i); i++; }
-console.log('Jumlah return(:', returns.length);
 
-// Lihat 50 char sebelum erp-wrap
-const erpWrapIdx = content.indexOf('"erp-wrap"');
-console.log('Sebelum erp-wrap:', JSON.stringify(content.slice(erpWrapIdx-100, erpWrapIdx+20)));
+// Cari semua SIDEBAR_MENUS
+let i = 0, positions = [];
+while((i = sub.indexOf('const SIDEBAR_MENUS', i)) !== -1){
+  positions.push(i); i++;
+}
+console.log('Jumlah SIDEBAR_MENUS:', positions.length);
+positions.forEach((p,idx)=>{
+  console.log('\n--- #'+idx+' at pos '+p+' ---');
+  console.log(sub.slice(p, p+100));
+});
+
+// Cari return(
+const retPositions = [];
+let j = 0;
+while((j = sub.indexOf('\n  return(', j)) !== -1){
+  retPositions.push(j); j++;
+}
+console.log('\nJumlah return(:', retPositions.length);
+retPositions.forEach((p,idx)=>console.log('return #'+idx+' at:', p));
