@@ -2655,7 +2655,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
   };
 
-  const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
+  const thS={background:"#f8fafc",color:"#fff",padding:"8px 10px",fontWeight:700,fontSize:10,
     whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
     position:"sticky",top:0,zIndex:3};
 
@@ -2708,7 +2708,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
-                  {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
+                  {selDate===d&&<div style={{fontSize:9,color:"#2563eb"}}>▼ Review</div>}
                 </th>
               ))}
               <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
@@ -2792,7 +2792,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       </div>
 
       {selDate&&(
-        <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#f0f8ff"}} className="su">
+        <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#eff6ff"}} className="su">
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
             <div>
               <div style={{fontWeight:800,fontSize:15,color:"#1d4ed8"}}>📋 {fmtDateFull(selDate)}</div>
