@@ -2471,7 +2471,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       newJadwal=[...existing,{tanggal:date,wp,komponen:komps,status:"on_progress"}];
     }
     await updateRaw(rowId,{jadwal:newJadwal});
-    logActivity?.({action:"Tambah "+wp+" ("+komps.length+" komponen) ke Raw Schedule",halaman:"Raw Schedule"});
+    if(logActivity) logActivity({action:"Tambah "+wp,aktivitas:"Tambah "+wp+" ("+komps.length+" komponen) ke Raw Schedule",halaman:"Raw Schedule",jenis:"update",table_name:"raw_schedule"});
   };
 
   const handleRemoveWP=async(rowId:string,date:string,wp:string)=>{
@@ -2484,14 +2484,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const handleRemoveRow=async(rowId:string)=>{
     if(!confirm("Hapus baris ini?")) return;
     await removeRaw(rowId);
-    logActivity?.({action:"Hapus Raw Schedule",halaman:"Raw Schedule"});
+    if(logActivity) logActivity({action:"Hapus Raw Schedule",aktivitas:"Hapus baris Raw Schedule",halaman:"Raw Schedule",jenis:"delete",table_name:"raw_schedule"});
   };
 
   const handleAddRow=async()=>{
     if(!addWO||!addPanel||!addProses) return;
     setSaving(true);
     await createRaw({wo:addWO,panel:addPanel,proses:addProses,prioritas:addPrioritas,jadwal:[]});
-    logActivity?.({action:"Tambah Raw Schedule "+addProses+" - "+addPanel,halaman:"Raw Schedule"});
+    if(logActivity) logActivity({action:"Tambah Raw Schedule",aktivitas:"Tambah "+addProses+" - "+addPanel+" ke Raw Schedule",halaman:"Raw Schedule",jenis:"create",table_name:"raw_schedule"});
     setShowAddModal(false);
     setSaving(false);
   };
