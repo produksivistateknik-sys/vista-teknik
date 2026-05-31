@@ -887,11 +887,11 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
 
 
 ﻿function ActivityLogView({activityLog}){
-  const [filterAdmin,setFilterAdmin]=React.useState("ALL");
-  const [filterModule,setFilterModule]=React.useState("ALL");
-  const [filterAction,setFilterAction]=React.useState("ALL");
-  const [filterTgl,setFilterTgl]=React.useState("");
-  const [search,setSearch]=React.useState("");
+  const [filterAdmin,setFilterAdmin]=useState("ALL");
+  const [filterModule,setFilterModule]=useState("ALL");
+  const [filterAction,setFilterAction]=useState("ALL");
+  const [filterTgl,setFilterTgl]=useState("");
+  const [search,setSearch]=useState("");
 
   const MODULE_CONFIG={
     auth:    {label:"Auth",        color:"#64748b",bg:"#f8fafc",icon:"🔐"},
