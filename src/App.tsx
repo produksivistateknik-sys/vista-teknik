@@ -3321,6 +3321,29 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
   ];
 
+  const SIDEBAR_MENUS=[
+    {group:"MONITORING",items:[
+      {id:"dashboard",label:"Dashboard",icon:"📊"},
+      {id:"summary",label:"Summary Progress",icon:"📋"},
+      {id:"detail",label:"Detail Progress",icon:"🔍"},
+    ]},
+    {group:"PRODUKSI",items:[
+      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"📅"}]:[]),
+      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"📋"}]:[]),
+      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"📝"}]:[]),
+    ]},
+    {group:"SYSTEM",items:[
+      ...(["admin"].includes(user?.divisi)?[
+        {id:"pekerja",label:"Master Pekerja",icon:"👥"},
+        {id:"tracking",label:"Tracking Pekerja",icon:"📈"},
+        {id:"activity",label:"Activity Log",icon:"📊"},
+        {id:"kendala",label:"Kendala",icon:"📝",badge:kendalaLog.length>0?kendalaLog.length:null},
+        {id:"maintenance",label:"Maintenance",icon:"🔧"},
+        {id:"masteruser",label:"System",icon:"⚙️"},
+      ]:[]),
+    ]},
+  ];
+
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
   const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
 
@@ -3330,7 +3353,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     if(!tip){tip=document.createElement("div");tip.id="erp-tip";tip.className="erp-tooltip-el";document.body.appendChild(tip);}
     const r=e.currentTarget.getBoundingClientRect();
     tip.textContent=label;tip.style.display="block";
-    tip.style.top=(r.top+r.height/2-14)+"px";tip.style.left="58px";
+    tip.style.top=(r.top+r.height/2)+"px";tip.style.left="58px";
   };
   const hideTooltip=()=>{const tip=document.getElementById("erp-tip");if(tip)(tip as HTMLElement).style.display="none";};
 
@@ -3355,6 +3378,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         </div>
       ):(
         <div className="erp-wrap">
+          {/* SIDEBAR */}
           <div className={"erp-sb"+(sidebarCollapsed?" col":"")}>
             <div className="erp-sb-head">
               <div className="erp-logo">V</div>
@@ -3373,7 +3397,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                       onClick={()=>setTab(item.id)}
                       onMouseEnter={(e:any)=>showTooltip(e,item.label)}
                       onMouseLeave={hideTooltip}>
-                      <i className={"ti "+item.icon} aria-hidden="true"/>
+                      <span className="erp-icon" style={{fontSize:15,flexShrink:0,width:17,textAlign:"center" as const}}>{item.icon}</span>
                       <span className="erp-nav-label">{item.label}</span>
                       {item.badge&&<span className="erp-nav-badge">{item.badge}</span>}
                     </button>
@@ -3387,22 +3411,24 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 <div className="erp-foot-name">{user?.name||user?.nama}</div>
                 <div className="erp-foot-role">{cfg?.label||"Admin"}</div>
               </div>
-              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,flexShrink:0,padding:2,display:"flex",alignItems:"center"}} title="Keluar"><i className="ti ti-logout" aria-hidden="true"/></button>}
+              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,flexShrink:0,padding:2,display:"flex",alignItems:"center"}} title="Keluar">✕</button>}
             </div>
           </div>
+
+          {/* MAIN */}
           <div className="erp-main">
             <div className="erp-topbar">
               <button className="erp-toggle" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)}>
-                <i className={"ti "+(sidebarCollapsed?"ti-layout-sidebar-left-expand":"ti-layout-sidebar-left-collapse")} style={{fontSize:17}} aria-hidden="true"/>
+                {sidebarCollapsed?"▶":"◀"}
               </button>
               <input className="erp-search" placeholder="Cari work order, panel..."/>
               <div className="erp-topbar-right">
                 <div className="erp-bell">
-                  <i className="ti ti-bell" style={{fontSize:16}} aria-hidden="true"/>
+                  🔔
                   {alerts>0&&<div className="erp-bell-dot"/>}
                 </div>
-                {alerts>0&&<span className="erp-badge erp-b-orange">{alerts} mendesak</span>}
-                <span style={{background:"#f1f5f9",color:"#475569",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{cfg?.icon} {cfg?.label}</span>
+                {alerts>0&&<span style={{background:"#fffbeb",color:"#d97706",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{alerts} mendesak</span>}
+                <span style={{background:"#f1f5f9",color:"#475569",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{cfg?.label||"Admin"}</span>
                 <div className="erp-foot-av">{(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}</div>
               </div>
             </div>
