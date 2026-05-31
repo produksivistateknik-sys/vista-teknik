@@ -2456,13 +2456,22 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     return (row.jadwal||[]).filter((j:any)=>j.tanggal===date);
   };
 
-  const handleAddWP=async(rowId:string,date:string,wp:string)=>{
+  const handleAddWP=async(rowId:string,date:string,wp:string,komps:string[]=[])=>{
     const row=rawData.find((r:any)=>r.id===rowId);
     if(!row) return;
     const existing=row.jadwal||[];
-    const newJadwal=[...existing,{tanggal:date,wp,status:"on_progress"}];
+    // Cek kalau sudah ada WP di tanggal yang sama, update komponen
+    const existIdx=existing.findIndex((j:any)=>j.tanggal===date&&j.wp===wp);
+    let newJadwal;
+    if(existIdx!==-1){
+      newJadwal=existing.map((j:any,i:number)=>
+        i===existIdx?{...j,komponen:[...(j.komponen||[]),...komps.filter(k=>!(j.komponen||[]).includes(k))]}:j
+      );
+    } else {
+      newJadwal=[...existing,{tanggal:date,wp,komponen:komps,status:"on_progress"}];
+    }
     await updateRaw(rowId,{jadwal:newJadwal});
-    logActivity?.({action:"Tambah WP "+wp+" ke Raw Schedule",halaman:"Raw Schedule"});
+    logActivity?.({action:"Tambah "+wp+" ("+komps.length+" komponen) ke Raw Schedule",halaman:"Raw Schedule"});
   };
 
   const handleRemoveWP=async(rowId:string,date:string,wp:string)=>{
@@ -2637,8 +2646,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                   onClick={()=>handleRemoveWP(row.id,dateStr,j.wp)}
                                   style={{background:isDone?"#16a34a":wpColor,color:"#fff",
                                     borderRadius:4,padding:"2px 6px",fontSize:9,fontWeight:700,
-                                    cursor:"pointer",display:"inline-flex",alignItems:"center",gap:2}}>
-                                  {isDone?"✓ ":""}{j.wp}
+                                    cursor:"pointer",display:"inline-flex",alignItems:"center",gap:2}}
+                                  title={"Klik untuk hapus "+j.wp}>
+                                  {isDone?"✓ ":""}{j.wp}{(j.komponen||[]).length>0?" ("+(j.komponen||[]).length+")":""}
                                 </span>
                               );
                             })}
