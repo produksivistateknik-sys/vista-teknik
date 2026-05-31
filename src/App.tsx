@@ -3298,65 +3298,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const canRencana=["admin"].includes(user.divisi);
 
 
-  const SIDEBAR_MENUS=[
-    {group:"MONITORING",items:[
-      {id:"dashboard",label:"Dashboard",icon:"ti-layout-dashboard"},
-      {id:"summary",label:"Summary Progress",icon:"ti-table"},
-      {id:"detail",label:"Detail Progress",icon:"ti-zoom-in"},
-    ]},
-    {group:"PRODUKSI",items:[
-      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti-calendar-event"}]:[]),
-      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti-clipboard-list"}]:[]),
-      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti-file-text"}]:[]),
-    ]},
-    {group:"SYSTEM",items:[
-      ...(["admin"].includes(user?.divisi)?[
-        {id:"pekerja",label:"Master Pekerja",icon:"ti-users"},
-        {id:"tracking",label:"Tracking Pekerja",icon:"ti-chart-bar"},
-        {id:"activity",label:"Activity Log",icon:"ti-activity"},
-        {id:"kendala",label:"Kendala",icon:"ti-message-report",badge:kendalaLog.length>0?kendalaLog.length:null},
-        {id:"maintenance",label:"Maintenance",icon:"ti-tool"},
-        {id:"masteruser",label:"System",icon:"ti-settings"},
-      ]:[]),
-    ]},
-  ];
-
-  const SIDEBAR_MENUS=[
-    {group:"MONITORING",items:[
-      {id:"dashboard",label:"Dashboard",icon:"📊"},
-      {id:"summary",label:"Summary Progress",icon:"📋"},
-      {id:"detail",label:"Detail Progress",icon:"🔍"},
-    ]},
-    {group:"PRODUKSI",items:[
-      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"📅"}]:[]),
-      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"📋"}]:[]),
-      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"📝"}]:[]),
-    ]},
-    {group:"SYSTEM",items:[
-      ...(["admin"].includes(user?.divisi)?[
-        {id:"pekerja",label:"Master Pekerja",icon:"👥"},
-        {id:"tracking",label:"Tracking Pekerja",icon:"📈"},
-        {id:"activity",label:"Activity Log",icon:"📊"},
-        {id:"kendala",label:"Kendala",icon:"📝",badge:kendalaLog.length>0?kendalaLog.length:null},
-        {id:"maintenance",label:"Maintenance",icon:"🔧"},
-        {id:"masteruser",label:"System",icon:"⚙️"},
-      ]:[]),
-    ]},
-  ];
-
-  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
-  const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
-
-  const showTooltip=(e:any,label:string)=>{
-    if(!sidebarCollapsed)return;
-    let tip=document.getElementById("erp-tip") as HTMLElement;
-    if(!tip){tip=document.createElement("div");tip.id="erp-tip";tip.className="erp-tooltip-el";document.body.appendChild(tip);}
-    const r=e.currentTarget.getBoundingClientRect();
-    tip.textContent=label;tip.style.display="block";
-    tip.style.top=(r.top+r.height/2)+"px";tip.style.left="58px";
-  };
-  const hideTooltip=()=>{const tip=document.getElementById("erp-tip");if(tip)(tip as HTMLElement).style.display="none";};
-
+  
   return(
     <>
       <style>{GCss}</style>
