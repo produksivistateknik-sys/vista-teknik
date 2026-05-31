@@ -1804,7 +1804,7 @@ function Dashboard({woData}){
           <div style={{padding:"9px 13px",borderBottom:"1px solid #f0f2f5",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap" as const}}>
             <span style={{fontSize:13,fontWeight:600,color:"#0f172a"}}>Daftar Work Order</span>
             <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" as const}}>
-              <input style={{...inpS,width:180,paddingLeft:26,backgroundImage:"url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E")",backgroundRepeat:"no-repeat",backgroundPosition:"7px center"}}
+              <input style={{...inpS,width:180,paddingLeft:26,backgroundImage:"url('%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2394a3b8%22 stroke-width=%222%22%3E%3Ccircle cx=%2211%22 cy=%2211%22 r=%228%22/%3E%3Cpath d=%22m21 21-4.35-4.35%22/%3E%3C/svg%3E')",backgroundRepeat:"no-repeat",backgroundPosition:"7px center"}}
                 placeholder="Cari WO atau proyek..." value={woSearch} onChange={e=>setWoSearch(e.target.value)}/>
               <select style={selS} value={woStatus} onChange={e=>setWoStatus(e.target.value)}>
                 <option value="semua">Semua Status</option>
@@ -1862,7 +1862,7 @@ function Dashboard({woData}){
           <div style={{padding:"9px 13px",borderBottom:"1px solid #f0f2f5",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap" as const}}>
             <span style={{fontSize:13,fontWeight:600,color:"#0f172a"}}>Daftar Panel</span>
             <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" as const}}>
-              <input style={{...inpS,width:160,paddingLeft:26,backgroundImage:"url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E")",backgroundRepeat:"no-repeat",backgroundPosition:"7px center"}}
+              <input style={{...inpS,width:160,paddingLeft:26,backgroundImage:"url('%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 width=%2212%22 height=%2212%22 viewBox=%220 0 24 24%22 fill=%22none%22 stroke=%22%2394a3b8%22 stroke-width=%222%22%3E%3Ccircle cx=%2211%22 cy=%2211%22 r=%228%22/%3E%3Cpath d=%22m21 21-4.35-4.35%22/%3E%3C/svg%3E')",backgroundRepeat:"no-repeat",backgroundPosition:"7px center"}}
                 placeholder="Cari panel..." value={panelSearch} onChange={e=>setPanelSearch(e.target.value)}/>
               <select style={selS} value={panelWO} onChange={e=>setPanelWO(e.target.value)}>
                 <option value="semua">Semua WO</option>
