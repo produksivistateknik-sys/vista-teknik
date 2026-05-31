@@ -1954,142 +1954,158 @@ function Dashboard({woData}){
   );
 }
 
-function SummaryProgress({woData}){
+function SummaryProgress({woData}:{woData:any[]}){
+  const [search,setSearch]=useState("");
+  const [statusFilter,setStatusFilter]=useState("semua");
+
+  const filtered=woData.filter(w=>{
+    const pct=woOverall(w);
+    const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
+    const matchS=statusFilter==="semua"||statusFilter===s;
+    const matchQ=!search||(w.wo||"").toLowerCase().includes(search.toLowerCase())||(w.proyek||"").toLowerCase().includes(search.toLowerCase());
+    return matchS&&matchQ;
+  });
+
+  const thS={background:"#f8fafc",color:"#64748b",fontWeight:600,padding:"7px 11px",
+    textAlign:"left" as const,fontSize:9.5,textTransform:"uppercase" as const,
+    letterSpacing:.4,borderBottom:"1px solid #eaecf0",whiteSpace:"nowrap" as const};
+  const tdS={padding:"8px 11px",borderBottom:"1px solid #f5f7fa",
+    color:"#374151",verticalAlign:"middle" as const,fontSize:11.5};
+
   if(!woData.length) return(
-    <div className="fi" style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
-      <div style={{fontSize:40,marginBottom:12}}>📋</div>
-      <div style={{fontSize:14,fontWeight:600}}>Belum ada Work Order</div>
-      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di tab Manajemen WO terlebih dahulu</div>
+    <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
+      <div style={{fontSize:40,marginBottom:12}}>📊</div>
+      <div style={{fontSize:14,fontWeight:600,color:"#1e293b"}}>Belum ada data</div>
     </div>
   );
-  const [search,setSearch]=useState("");
-  const rows=useMemo(()=>
-    woData.flatMap(wo=>wo.panels.map(p=>({
-      wo:wo.wo,proyek:wo.proyek,target:wo.target,
-      noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,
-      overall:panelOverall(p),prog:calcPanelProgress(p),
-      status:getStatus(wo.target,panelOverall(p)),
-      hariSisa:daysUntil(wo.target),
-    })))
-    .filter(r=>r.proyek.toLowerCase().includes(search.toLowerCase())||
-               r.wo.includes(search)||r.nama.toLowerCase().includes(search.toLowerCase()))
-  ,[woData,search]);
-
-  const avgOverall=rows.length?Math.round(rows.reduce((a,r)=>a+r.overall,0)/rows.length):0;
-  const thS={background:"#1e3a8a",color:"#fff",padding:"8px 9px",fontWeight:700,fontSize:10,
-    whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
-    position:"sticky",top:0,zIndex:3};
 
   return(
-    <div className="fi">
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(140px,1fr))",gap:10,marginBottom:18}}>
-        {[
-          {l:"Total Panel",v:rows.length,c:"#2563eb"},
-          {l:"Avg Overall",v:`${avgOverall}%`,c:pColor(avgOverall)},
-          {l:"Selesai",v:rows.filter(r=>r.overall===100).length,c:"#16a34a"},
-          {l:"Mendesak H-7",v:rows.filter(r=>isUrgent(r.target)&&r.overall<100).length,c:"#ea580c"},
-          {l:"Terlambat",v:rows.filter(r=>isDelayed(r.target)&&r.overall<100).length,c:"#dc2626"},
-        ].map((s,i)=>(
-          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
-            <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
-            <div style={{fontSize:10,color:"#94a3b8",marginTop:2,fontWeight:600,textTransform:"uppercase",letterSpacing:.3}}>{s.l}</div>
-          </Card>
-        ))}
-      </div>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap",gap:10}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)}
-          placeholder="🔍 Cari WO / proyek / panel..."
-          style={{padding:"8px 14px",borderRadius:9,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1e293b",fontSize:13,width:280}}/>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          <Badge label="✅ SELESAI" color="#16a34a"/><Badge label="🟢 ON TRACK" color="#2563eb"/>
-          <Badge label="🟠 MENDESAK H-7" color="#ea580c"/><Badge label="🔴 TERLAMBAT" color="#dc2626"/>
-          <span style={{fontSize:11,color:"#94a3b8"}}>👁 Read-only</span>
+    <div style={{display:"flex",flexDirection:"column",gap:10}}>
+
+      {/* Header card */}
+      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"12px 14px",display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap" as const,gap:8}}>
+        <div>
+          <div style={{fontSize:14,fontWeight:700,color:"#0f172a"}}>Summary Progress</div>
+          <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>Ringkasan progress semua Work Order</div>
+        </div>
+        <div style={{display:"flex",gap:6,alignItems:"center",flexWrap:"wrap" as const}}>
+          <input
+            placeholder="Cari WO atau proyek..."
+            value={search} onChange={e=>setSearch(e.target.value)}
+            style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 8px",
+              fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",
+              fontFamily:"inherit",width:180}}/>
+          <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
+            style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
+              fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",
+              cursor:"pointer",fontFamily:"inherit"}}>
+            <option value="semua">Semua Status</option>
+            <option value="ontrack">On Track</option>
+            <option value="mendesak">Mendesak</option>
+            <option value="terlambat">Terlambat</option>
+            <option value="selesai">Selesai</option>
+          </select>
         </div>
       </div>
-      <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-          <thead>
-            <tr>
-              <th style={{...thS,textAlign:"left",minWidth:60,position:"sticky",left:0,zIndex:4}}>WO</th>
-              <th style={{...thS,textAlign:"left",minWidth:120,position:"sticky",left:60,zIndex:4}}>PROYEK</th>
-              <th style={{...thS,minWidth:70}}>TARGET</th>
-              <th style={{...thS,minWidth:55}}>H-</th>
-              <th style={{...thS,textAlign:"left",minWidth:180,position:"sticky",left:180,zIndex:4}}>NAMA PANEL</th>
-              <th style={{...thS,minWidth:50}}>TIPE</th>
-              <th style={{...thS,minWidth:44}}>QTY</th>
-              <th style={{...thS,minWidth:70,background:"#1e40af"}}>OVERALL</th>
-              <th style={{...thS,minWidth:90}}>STATUS</th>
-              {ALL_PROSES.map(pr=>(
-                <th key={pr} style={{...thS,minWidth:80,borderBottom:`2px solid ${PROSES_COLOR[pr]}`}}>
-                  {pr}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r,ri)=>{
-              const rBg=ri%2===0?"#fff":"#f8fafc";
-              const td={padding:"7px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
-              return(
-                <tr key={`${r.wo}-${r.noPnl}`} style={{background:r.status.color==="#dc2626"?"#fff8f8":r.status.color==="#ea580c"?"#fff9f5":rBg}}>
-                  <td style={{...td,position:"sticky",left:0,zIndex:1,fontWeight:800,color:"#1d4ed8",fontFamily:"'DM Mono',monospace",background:rBg}}>{r.wo}</td>
-                  <td style={{...td,position:"sticky",left:60,zIndex:1,fontWeight:600,whiteSpace:"nowrap",background:rBg}}>{r.proyek}</td>
-                  <td style={{...td,textAlign:"center",fontSize:10,color:"#64748b",whiteSpace:"nowrap"}}>{r.target}</td>
-                  <td style={{...td,textAlign:"center",fontWeight:700,fontSize:11,
-                    color:isDelayed(r.target)?"#dc2626":isUrgent(r.target)?"#ea580c":"#16a34a"}}>
-                    {isDelayed(r.target)?`-${Math.abs(r.hariSisa)}`:`H-${r.hariSisa}`}
-                  </td>
-                  <td style={{...td,position:"sticky",left:180,zIndex:1,fontWeight:600,whiteSpace:"nowrap",background:rBg}}>
-                    <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>#{r.noPnl}</span>{r.nama}
-                  </td>
-                  <td style={{...td,textAlign:"center"}}><Badge label={PANEL_TYPES[r.tipe]?.label||r.tipe} color={PANEL_TYPES[r.tipe]?.color||"#64748b"}/></td>
-                  <td style={{...td,textAlign:"center",fontFamily:"'DM Mono',monospace",fontWeight:700}}>{r.qty}</td>
-                  <td style={{...td,textAlign:"center",background:pBg(r.overall)+"cc"}}>
-                    <span style={{fontWeight:800,color:pColor(r.overall),fontFamily:"'DM Mono',monospace",fontSize:12}}>{r.overall}%</span>
-                  </td>
-                  <td style={{...td,textAlign:"center"}}>
-                    <Badge label={r.status.label} color={r.status.color} bg={r.status.bg}/>
-                  </td>
-                  {ALL_PROSES.map(pr=>{
-                    const v=r.prog[pr]||0;
-                    return(
-                      <td key={pr} style={{...td,textAlign:"center",background:pBg(v)+"cc"}}>
-                        <span style={{fontWeight:700,fontSize:11,color:pColor(v),fontFamily:"'DM Mono',monospace"}}>{v}%</span>
-                      </td>
-                    );
-                  })}
-                </tr>
-              );
-            })}
-          </tbody>
-          <tfoot>
-            <tr style={{background:"#f0f4ff"}}>
-              <td colSpan={8} style={{padding:"7px 10px",fontWeight:700,color:"#475569",fontSize:11,
-                borderTop:"2px solid #e2e8f0",position:"sticky",left:0,background:"#f0f4ff"}}>
-                Rata-rata ({rows.length} panel)
-              </td>
-              <td style={{padding:"6px 8px",borderTop:"2px solid #e2e8f0",textAlign:"center"}}>
-                <Badge label={`${avgOverall}%`} color={pColor(avgOverall)}/>
-              </td>
-              {ALL_PROSES.map(pr=>{
-                const avg=rows.length?Math.round(rows.reduce((a,r)=>a+(r.prog[pr]||0),0)/rows.length):0;
-                return(
-                  <td key={pr} style={{padding:"6px 5px",textAlign:"center",borderTop:"2px solid #e2e8f0",background:pBg(avg)+"88"}}>
-                    <span style={{fontWeight:800,fontSize:11,color:pColor(avg),fontFamily:"'DM Mono',monospace"}}>{avg}%</span>
-                  </td>
-                );
-              })}
-            </tr>
-          </tfoot>
-        </table>
-      </div>
+
+      {/* WO Cards */}
+      {filtered.length===0&&(
+        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"40px",textAlign:"center",color:"#94a3b8"}}>
+          Tidak ada data yang sesuai filter
+        </div>
+      )}
+
+      {filtered.map(wo=>{
+        const pct=woOverall(wo);
+        const d=daysUntil(wo.target);
+        const late=isDelayed(wo.target);
+        const urg=isUrgent(wo.target);
+        const done=pct===100;
+        const statusLabel=done?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
+        const statusColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#16a34a";
+        const statusBg=done?"#f0fdf4":late?"#fef2f2":urg?"#fffbeb":"#f0fdf4";
+        const pbColor=done?"#16a34a":pct>=70?"#16a34a":pct>=40?"#d97706":"#dc2626";
+        const borderColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#e2e8f0";
+
+        return(
+          <div key={wo.id} style={{background:"#fff",border:"1px solid #eaecf0",
+            borderRadius:8,overflow:"hidden",borderLeft:"3px solid "+borderColor}}>
+
+            {/* WO Header */}
+            <div style={{padding:"10px 14px",borderBottom:"1px solid #f0f2f5",
+              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const}}>
+              <span style={{color:"#2563eb",fontWeight:700,fontFamily:"ui-monospace,monospace",fontSize:12}}>WO {wo.wo}</span>
+              <span style={{fontWeight:600,color:"#1e293b",fontSize:13}}>{wo.proyek}</span>
+              <span style={{fontSize:11,color:"#94a3b8"}}>📅 {wo.target}</span>
+              {!done&&<span style={{fontSize:11,fontWeight:600,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
+                {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
+              </span>}
+              <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                <span style={{background:statusBg,color:statusColor,borderRadius:4,
+                  padding:"2px 8px",fontSize:10,fontWeight:600}}>{statusLabel}</span>
+                <span style={{fontSize:16,fontWeight:800,color:pbColor}}>{pct}%</span>
+              </div>
+            </div>
+
+            {/* Overall progress bar */}
+            <div style={{padding:"8px 14px",borderBottom:"1px solid #f5f7fa",display:"flex",alignItems:"center",gap:10}}>
+              <span style={{fontSize:10,color:"#94a3b8",fontWeight:500,width:80,flexShrink:0}}>OVERALL</span>
+              <div style={{flex:1,height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                <div style={{width:pct+"%",height:"100%",background:pbColor,borderRadius:99,transition:"width .3s"}}/>
+              </div>
+              <span style={{fontSize:11,fontWeight:700,color:pbColor,minWidth:32,textAlign:"right" as const}}>{pct}%</span>
+            </div>
+
+            {/* Panel table */}
+            {(wo.panels||[]).length>0&&(
+              <div style={{overflowX:"auto" as const}}>
+                <table style={{width:"100%",borderCollapse:"collapse"}}>
+                  <thead>
+                    <tr>
+                      {["Panel","Progress","Proses Selesai","Status"].map(h=>(
+                        <th key={h} style={thS}>{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(wo.panels||[]).map((p:any,pi:number)=>{
+                      const ppct=panelOverall?.(p)??0;
+                      const pc=ppct===100?"#16a34a":ppct>=70?"#16a34a":ppct>=40?"#d97706":"#dc2626";
+                      const ps=ppct===100?"Selesai":ppct>=70?"On Track":ppct>=40?"Perlu Perhatian":"Terlambat";
+                      const pbg=ppct===100?"#f0fdf4":ppct>=70?"#f0fdf4":ppct>=40?"#fffbeb":"#fef2f2";
+                      const doneProses=(p.proses||[]).filter((pr:any)=>pr.done||pr.selesai||pr.status==="done").length;
+                      const totalProses=(p.proses||[]).length;
+                      return(
+                        <tr key={pi}>
+                          <td style={{...tdS,fontWeight:500,color:"#1e293b"}}>{p.nama||p.name||"Panel "+(pi+1)}</td>
+                          <td style={tdS}>
+                            <div style={{display:"flex",alignItems:"center",gap:7}}>
+                              <div style={{width:80,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden",flexShrink:0}}>
+                                <div style={{width:ppct+"%",height:"100%",background:pc,borderRadius:99}}/>
+                              </div>
+                              <span style={{fontSize:11,fontWeight:600,color:pc,minWidth:28}}>{ppct}%</span>
+                            </div>
+                          </td>
+                          <td style={{...tdS,color:"#64748b"}}>
+                            {totalProses>0?doneProses+"/"+totalProses+" proses":"-"}
+                          </td>
+                          <td style={tdS}>
+                            <span style={{background:pbg,color:pc,borderRadius:4,padding:"2px 7px",fontSize:9.5,fontWeight:600}}>{ps}</span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        );
+      })}
     </div>
   );
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// DETAIL PROGRESS
-// ─────────────────────────────────────────────────────────────────────────────
 function DetailProgress({woData}){
   const [selWoId,setSelWoId]=useState(woData[0]?.id);
   const wo=woData.find(w=>w.id===selWoId);
