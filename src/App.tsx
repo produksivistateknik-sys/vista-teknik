@@ -8,6 +8,7 @@ import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 import { useActivityLog } from './hooks/useActivityLog';
+import { useLog } from './hooks/useLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -645,7 +646,7 @@ function TrackingPekerja({pekerja,renhar}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
 // ─────────────────────────────────────────────────────────────────────────────
-function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,user}){
+function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,user}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selProses,setSelProses]=useState("ALL");
@@ -700,7 +701,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    await supabase.from("activity_log").insert({action:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",admin_nama:user?.name||user?.nama||"Admin",user_name:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",aktivitas:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",jenis:"rencana",proyek:task.proyek||"",panel:task.panel||"",wo_number:"",halaman:"Rencana Harian"});
+    if(logAct) await logAct({admin_nama:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",proyek:task.proyek||"",panel:task.panel||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -2600,7 +2601,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    await supabase.from("activity_log").insert({action:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",admin_nama:user?.name||user?.nama||"Admin",user_name:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",aktivitas:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",jenis:"rencana",proyek:task.proyek||"",panel:task.panel||"",wo_number:"",halaman:"Rencana Harian"});
+    if(logAct) await logAct({admin_nama:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",proyek:task.proyek||"",panel:task.panel||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -3195,6 +3196,7 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
   const { data: activityLog, log: logActivity } = useActivityLog()
+  const { log: logAct } = useLog()
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
@@ -3373,7 +3375,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData}/>}
               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} user={user}/>}
-              {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} user={user}/>}
+              {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} user={user}/>}
               {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} user={user}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
