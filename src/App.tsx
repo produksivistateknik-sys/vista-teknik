@@ -241,7 +241,11 @@ const RENHAR_SEED=[];
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12.5px}
+body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12.5px;font-weight:400;text-align:left}
+h1,h2,h3,h4,h5,h6{font-weight:500;text-align:left}
+th,td{text-align:left;font-weight:400}
+button{font-weight:500}
+b,strong{font-weight:500}
 ::-webkit-scrollbar{width:4px;height:4px}
 ::-webkit-scrollbar-track{background:transparent}
 ::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
@@ -696,7 +700,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',proyek:task.proyek||'',panel:task.panel||'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -717,7 +721,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const allDist=filteredTasks.length>0&&distCount===filteredTasks.length;
   return(
     <div className="fi">
-      <Card style={{marginBottom:14,padding:"12px 16px"}}>
+      <Card style={{marginBottom:10,padding:"10px 14px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
           <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
@@ -770,7 +774,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         const thS={background:"#1e3a8a",color:"#fff",padding:"9px 10px",fontWeight:700,fontSize:11,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
-            <div style={{background:pc,borderRadius:"10px 10px 0 0",padding:"10px 16px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
@@ -2561,7 +2565,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,halaman:'Raw Schedule'});
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,proyek:wo.proyek||'',panel:p.nama||'',halaman:'Raw Schedule'});
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -2596,7 +2600,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',halaman:'Rencana Harian'});
+    if(logActivity) await logActivity({admin_nama:user?.name||user?.nama||'Admin',aktivitas:'Distribusi '+task.proses+' - '+task.panel+' ('+task.tanggal+')',jenis:'rencana',wo_no:'',proyek:task.proyek||'',panel:task.panel||'',halaman:'Rencana Harian'});
     setAssignModal(null);setSelPekerja([]);
   };
 
