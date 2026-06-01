@@ -16,15 +16,18 @@ export interface LogParams {
 }
 
 export const activityLogger = async (params: LogParams): Promise<void> => {
+  const userName = params.user_name && params.user_name !== 'Unknown' && params.user_name !== ''
+    ? params.user_name
+    : 'Admin'
   try {
     const { error } = await supabase.from('activity_log').insert({
       user_id: params.user_id || null,
-      user_name: params.user_name,
+      user_name: userName,
       action: params.action,
       description: params.description,
       table_name: params.table_name,
       record_id: params.record_id || null,
-      admin_nama: params.user_name,
+      admin_nama: userName,
       aktivitas: params.description,
       module: params.module || 'general',
       action_type: params.action_type || 'update',
@@ -36,9 +39,9 @@ export const activityLogger = async (params: LogParams): Promise<void> => {
       halaman: params.halaman || '',
     })
     if (error) {
-      console.error('[ActivityLog] ERROR:', error.message)
+      console.error('[ActivityLog] ERROR:', error.message, error.details)
     } else {
-      console.log('[ActivityLog] OK:', params.action, '-', params.user_name)
+      console.log('[ActivityLog] OK:', params.action, '-', userName)
     }
   } catch (e) {
     console.error('[ActivityLog] CATCH:', e)
