@@ -3181,7 +3181,7 @@ export default function App(){
     if(saved){
       try{
         const parsed=JSON.parse(saved);
-        setUser({...JSON.parse(saved),name:JSON.parse(saved).name||JSON.parse(saved).nama});
+        setUser({...parsed,name:parsed.name||parsed.nama});
         setPage("app");
         setTab("dashboard");
       }catch{}
