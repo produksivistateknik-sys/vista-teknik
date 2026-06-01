@@ -2470,29 +2470,37 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     if(!modalWp||!modalKomponen.length)return;
     let finalKomp=modalKomponen;
     let updatedRow=null;
+    let oldKomp:string[]=[];
+    let isEdit=false;
     setRawData(prev=>prev.map(r=>{
       if(r.id!==cellModal.rawId)return r;
       const newSch={...r.schedule};
       const existing=newSch[cellModal.date]||[];
       const wpEntry=existing.find(e=>e.wp===modalWp);
       let updated;
-      if(wpEntry){
-        finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
-      } else {
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen}];
-      }
+      if(wpEntry){oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});}
+      else{updated=[...existing,{wp:modalWp,komponen:modalKomponen}];}
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
-    setModalWp("");setModalKomponen([]);
-    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule, updated_by:user?.name||user?.nama||'Admin'});
+    setModalWp('');setModalKomponen([]);
+    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'});
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
-    const kompNames=finalKomp.map(k=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k).join(', ');
-    await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
-
+    const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
+    if(isEdit){
+      const added=modalKomponen.filter(k=>!oldKomp.includes(k)).map(getName);
+      const removed=oldKomp.filter(k=>!modalKomponen.includes(k)).map(getName);
+      const parts=[];
+      if(added.length) parts.push('Tambah: '+added.join(', '));
+      if(removed.length) parts.push('Hapus: '+removed.join(', '));
+      const desc=parts.length?parts.join(' | '):'Tidak ada perubahan';
+      await activityLogService.insert({user_name:uname,action:'EDIT WP RAW SCHEDULE',description:'Edit '+modalWp+' '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+'): '+desc,module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+    } else {
+      const kompNames=finalKomp.map(getName).join(', ');
+      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+    }
   };
   const removeEntry=async(wp)=>{
     let updatedRow=null;
@@ -2506,14 +2514,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
     if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-  };
-
-  const onDragStart=(e,rawId,date,entries)=>{setDragInfo({rawId,fromDate:date,entries});e.dataTransfer.effectAllowed="copyMove";};
-  const onDragOver=(e,rawId,date)=>{e.preventDefault();setDragOverCell({rawId,date});};
-  const onDrop=(e,rawId,toDate)=>{
-    e.preventDefault();
-    if(!dragInfo||dragInfo.fromDate===toDate){setDragOverCell(null);setDragInfo(null);return;}
-    setDragMode({...dragInfo,toDate});setDragOverCell(null);
   };
 
   const confirmDrag=async(mode)=>{
