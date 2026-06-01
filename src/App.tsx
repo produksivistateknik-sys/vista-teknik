@@ -1,14 +1,13 @@
-﻿
-import { useState, useMemo, useEffect } from "react";
+﻿import { useState, useMemo, useEffect } from 'react';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendala } from './hooks/useKendala'
 import { supabase } from './lib/supabase'
-import { useActivityLog } from './hooks/useActivityLog';
-
-
-
-import { activityLogService } from './services/activityLogService';
+import { useWorkOrders } from './hooks/useWorkOrders'
+import { workOrderService } from './services/workOrderService'
+import { useRawSchedule } from './hooks/useRawSchedule'
+import { useActivityLog } from './hooks/useActivityLog'
+import { activityLogService } from './services/activityLogService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3204,7 +3203,8 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   const logAct = null
   const log = async (action:string, description:string, module:string, extra?:any) => {
     const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-    const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
+    const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Unknown User';
+    console.log('[LOG USER]', user, sess);
     await activityLogService.insert({user_name:uname,action,description,module,
       halaman:extra?.halaman||'',proyek:extra?.proyek||'',
       panel:extra?.panel||'',wo_number:extra?.wo_number||''})
@@ -3217,6 +3217,8 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 
 
 
+const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
+const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
