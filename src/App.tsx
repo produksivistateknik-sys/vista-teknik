@@ -2488,9 +2488,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
     setModalWp("");setModalKomponen([]);
-    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
-  };
-
+    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule, updated_by:user?.name||user?.nama||'Admin'});
+    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
+    await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ke jadwal '+rawRow?.panel+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
   const removeEntry=async(wp)=>{
     let updatedRow=null;
     setRawData(prev=>prev.map(r=>{
