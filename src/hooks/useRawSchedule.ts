@@ -37,15 +37,11 @@ export function useRawSchedule() {
     return () => { supabase.removeChannel(channel) }
   }, [fetch])
 
-  const getUname = () => {
-    const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
-    return sess?.nama || sess?.name || 'Admin'
-  }
-
   const create = async (payload: any) => {
     try {
-      const uname = getUname()
-      const result = await rawScheduleService.create({ ...payload, updated_by: uname }, uname)
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
+      const result = await rawScheduleService.create({ ...payload, updated_by: uname })
       setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
       return { success: true, data: result }
     } catch (err) {
@@ -55,7 +51,9 @@ export function useRawSchedule() {
 
   const update = async (id: number, payload: any) => {
     try {
-      const result = await rawScheduleService.update(id, payload)
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
+      const result = await rawScheduleService.update(id, { ...payload, updated_by: uname })
       setData(prev => prev.map(r => r.id === id ? result : r))
       return { success: true, data: result }
     } catch (err) {
@@ -65,7 +63,8 @@ export function useRawSchedule() {
 
   const remove = async (id: number) => {
     try {
-      const uname = getUname()
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
       await rawScheduleService.remove(id, uname)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }

@@ -25,22 +25,13 @@ export function useRenhar() {
     const channel = supabase
       .channel('realtime-renhar')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'renhar' },
-        (payload) => {
-          setData(prev => {
-            if (prev.some(r => r.id === payload.new.id)) return prev
-            return [...prev, payload.new]
-          })
-        }
+        (payload) => { setData(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) }
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
-        (payload) => {
-          setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
-        }
+        (payload) => { setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r)) }
       )
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'renhar' },
-        (payload) => {
-          setData(prev => prev.filter(r => r.id !== payload.old.id))
-        }
+        (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
@@ -48,7 +39,9 @@ export function useRenhar() {
 
   const create = async (payload: any) => {
     try {
-      const result = await renharService.create(payload)
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
+      const result = await renharService.create({ ...payload, updated_by: uname })
       setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
       return { success: true, data: result }
     } catch (err) {
@@ -58,7 +51,9 @@ export function useRenhar() {
 
   const update = async (id: number, payload: any) => {
     try {
-      const result = await renharService.update(id, payload)
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
+      const result = await renharService.update(id, { ...payload, updated_by: uname })
       setData(prev => prev.map(r => r.id === id ? result : r))
       return { success: true, data: result }
     } catch (err) {
@@ -68,6 +63,8 @@ export function useRenhar() {
 
   const remove = async (id: number) => {
     try {
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
       await renharService.remove(id)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
