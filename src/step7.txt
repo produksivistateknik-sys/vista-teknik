@@ -1,0 +1,9 @@
+﻿    if(editId){
+      await updatePekerja(editId,{nama:form.nama.trim(),divisi:form.divisi});
+      if(log) await log("EDIT PEKERJA","Edit pekerja "+form.nama+" ("+form.divisi+")","pekerja",{module:"pekerja",action_type:"update",halaman:"Master Pekerja"});
+      setEditId(null);
+    } else {
+      await createPekerja({nama:form.nama.trim(),divisi:form.divisi});
+      if(log) await log("TAMBAH PEKERJA","Tambah pekerja "+form.nama+" ("+form.divisi+")","pekerja",{module:"pekerja",action_type:"create",halaman:"Master Pekerja"});
+    }
+    setForm({nama:"",divisi:"mekanik"});

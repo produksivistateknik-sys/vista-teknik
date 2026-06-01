@@ -8,6 +8,7 @@ import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
 import { useActivityLog } from './hooks/useActivityLog';
+import { activityLogger } from './services/activityLogger';
 import { useLog } from './hooks/useLog';
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
@@ -377,7 +378,7 @@ const wpProgress=(panelData,wp,proses)=>{
 // ─────────────────────────────────────────────────────────────────────────────
 // MASTER PEKERJA
 // ─────────────────────────────────────────────────────────────────────────────
-function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,user}){
+function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,log,user}){
   const [form,setForm]=useState({nama:"",divisi:"mekanik"});
   const [editId,setEditId]=useState(null);
   const [delId,setDelId]=useState(null);
@@ -646,7 +647,7 @@ function TrackingPekerja({pekerja,renhar}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
 // ─────────────────────────────────────────────────────────────────────────────
-function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,user}){
+function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selProses,setSelProses]=useState("ALL");
@@ -701,7 +702,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logAct) await logAct({admin_nama:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",proyek:task.proyek||"",panel:task.panel||"",halaman:"Rencana Harian"});
+    if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
@@ -2389,7 +2390,7 @@ function DetailProgress({woData}:{woData:any[]}){
   );
 }
 
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,user}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [cellModal,setCellModal]=useState(null);
   const [dragInfo,setDragInfo]=useState(null);
@@ -2566,7 +2567,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
     }
     await refetchRaw();
-    if(logAct) await logAct({admin_nama:user?.name||user?.nama||'Admin',module:'raw',action_type:'create',description:'Tambah Panel '+p.nama+' ke Raw Schedule',wo_number:wo.wo,proyek:wo.proyek||'',panel:p.nama||'',halaman:'Raw Schedule'});
+    if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
     setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
   };
 
@@ -2601,7 +2602,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       });
       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
     }
-    if(logAct) await logAct({admin_nama:user?.name||user?.nama||"Admin",module:"rencana",action_type:"distribute",description:"Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")",proyek:task.proyek||"",panel:task.panel||"",halaman:"Rencana Harian"});
+    if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
     setAssignModal(null);setSelPekerja([]);
   };
 
@@ -2964,7 +2965,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 }
 
 
-function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,user}){
+function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user}){
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
   const [form,setForm]=useState(blank);
@@ -2985,13 +2986,15 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       if(result.success){
         await workOrderService.savePanels(editId, np);
         setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
-      }
+        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
+        if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
         setWoData(prev=>[...prev,{...result.data,panels:np}]);
-      }
+        setWoData(prev=>[...prev,{...result.data,panels:np}]);
+        if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
     }
     setOpen(false);
   };
@@ -3197,6 +3200,20 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
   const { data: activityLog, log: logActivity } = useActivityLog()
   const { log: logAct } = useLog()
+  const log = async (action:string, description:string, table_name:string, extra?:any) => {
+    await activityLogger({
+      user_id: user?.id?.toString()||null,
+      user_name: user?.name||user?.nama||'Unknown',
+      action, description, table_name,
+      record_id: extra?.record_id||null,
+      module: extra?.module||'general',
+      action_type: extra?.action_type||'update',
+      proyek: extra?.proyek||'',
+      panel: extra?.panel||'',
+      wo_number: extra?.wo_number||'',
+      halaman: extra?.halaman||'',
+    })
+  }
 const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
@@ -3374,10 +3391,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData}/>}
-              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} user={user}/>}
+              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} user={user}/>}
-              {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} user={user}/>}
-              {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} user={user}/>}
+              {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+              {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={log} user={user}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
               {tab==="maintenance"&&<MaintenanceTab user={user} logActivity={logActivity}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
