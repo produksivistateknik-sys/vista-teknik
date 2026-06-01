@@ -1,92 +1,53 @@
 ﻿import { supabase } from '../lib/supabase'
-import type { WorkOrderInsert, WorkOrderUpdate } from '../types/database'
+
+const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
+  await supabase.from('activity_log').insert({
+    user_name, action, description,
+    module: extra?.module || 'wo',
+    halaman: extra?.halaman || 'Manajemen WO',
+    proyek: extra?.proyek || '',
+    panel: extra?.panel || '',
+    wo_number: extra?.wo_number || '',
+  })
+}
 
 export const workOrderService = {
   async getAll() {
-    const { data, error } = await supabase
-      .from('work_orders')
-      .select('*, panels(*)')
-      .is('deleted_at', null)
-      .order('created_at', { ascending: true })
+    const { data, error } = await supabase.from('work_orders').select('*').order('created_at', { ascending: false })
     if (error) throw new Error(error.message)
     return data ?? []
   },
 
-  async create(payload: WorkOrderInsert) {
-    const { data, error } = await supabase
-      .from('work_orders')
-      .insert(payload)
-      .select('*, panels(*)')
-      .single()
+  async create(payload: any, user_name = 'Admin') {
+    const { updated_by, ...safe } = payload
+    const uname = updated_by || user_name
+    const { data, error } = await supabase.from('work_orders').insert(safe).select().single()
     if (error) throw new Error(error.message)
+    await logActivity(uname, 'TAMBAH WO', `Tambah WO ${safe.wo} - ${safe.proyek}`, { wo_number: safe.wo, proyek: safe.proyek })
     return data
   },
 
-  async update(id: number, payload: WorkOrderUpdate) {
-    const { data, error } = await supabase
-      .from('work_orders')
-      .update({ ...payload, updated_at: new Date().toISOString() })
-      .eq('id', id)
-      .select('*, panels(*)')
-      .single()
+  async update(id: number, payload: any, user_name = 'Admin') {
+    const { updated_by, ...safe } = payload
+    const uname = updated_by || user_name
+    const { data, error } = await supabase.from('work_orders').update(safe).eq('id', id).select().single()
     if (error) throw new Error(error.message)
+    await logActivity(uname, 'EDIT WO', `Edit WO ${safe.wo} - ${safe.proyek}`, { wo_number: safe.wo, proyek: safe.proyek })
     return data
   },
 
-  // Soft delete WO + cascade ke panels, raw_schedule, renhar
-  async remove(id: number, deletedBy?: string): Promise<void> {
-    const now = new Date().toISOString()
-    const by = deletedBy || 'Admin'
-    // Soft delete WO
-    await supabase.from('work_orders')
-      .update({ deleted_at: now, deleted_by: by })
-      .eq('id', id)
-    // Cascade soft delete panels
-    await supabase.from('panels')
-      .update({ deleted_at: now, deleted_by: by })
-      .eq('wo_id', id)
-    // Cascade soft delete raw_schedule
-    await supabase.from('raw_schedule')
-      .update({ deleted_at: now, deleted_by: by })
-      .eq('wo_id', id)
-    // Cascade soft delete renhar
-    await supabase.from('renhar')
-      .update({ deleted_at: now, deleted_by: by })
-      .eq('wo_id', id)
-  },
-
-  // Restore WO + cascade restore semua relasi
-  async restore(id: number): Promise<void> {
-    await supabase.from('work_orders')
-      .update({ deleted_at: null, deleted_by: null })
-      .eq('id', id)
-    await supabase.from('panels')
-      .update({ deleted_at: null, deleted_by: null })
-      .eq('wo_id', id)
-    await supabase.from('raw_schedule')
-      .update({ deleted_at: null, deleted_by: null })
-      .eq('wo_id', id)
-    await supabase.from('renhar')
-      .update({ deleted_at: null, deleted_by: null })
-      .eq('wo_id', id)
+  async remove(id: number, user_name = 'Admin') {
+    const { data: old } = await supabase.from('work_orders').select('*').eq('id', id).single()
+    const { error } = await supabase.from('work_orders').delete().eq('id', id)
+    if (error) throw new Error(error.message)
+    await logActivity(user_name, 'HAPUS WO', `Hapus WO ${old?.wo} - ${old?.proyek}`, { wo_number: old?.wo, proyek: old?.proyek })
   },
 
   async savePanels(woId: number, panels: any[]) {
     await supabase.from('panels').delete().eq('wo_id', woId)
-    if (panels.length === 0) return []
-    const payload = panels.map((p, i) => ({
-      wo_id: woId,
-      no_pnl: i + 1,
-      nama: p.nama,
-      tipe: p.tipe,
-      qty: p.qty,
-      checklist: p.checklist || {},
-    }))
-    const { data, error } = await supabase
-      .from('panels')
-      .insert(payload)
-      .select()
+    if (!panels.length) return
+    const rows = panels.map(p => ({ ...p, wo_id: woId }))
+    const { error } = await supabase.from('panels').insert(rows)
     if (error) throw new Error(error.message)
-    return data ?? []
-  },
+  }
 }

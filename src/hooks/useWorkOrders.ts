@@ -14,7 +14,7 @@ export function useWorkOrders() {
       const result = await workOrderService.getAll()
       setData(result)
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Unknown error')
+      setError(err instanceof Error ? err.message : 'Error')
     } finally {
       setLoading(false)
     }
@@ -23,49 +23,31 @@ export function useWorkOrders() {
   useEffect(() => {
     fetch()
     const channel = supabase
-      .channel('realtime-panels')
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
-        async (payload) => {
-          console.log('[Realtime] panels UPDATE:', payload.new)
-          setData(prev => prev.map(wo => ({
-            ...wo,
-            panels: (wo.panels || []).map((p: any) =>
-              p.id === payload.new.id ? { ...p, ...payload.new } : p
-            )
-          })))
-        }
+      .channel('realtime-wo')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'work_orders' },
+        (payload) => { setData(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) }
       )
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'panels' },
-        async () => {
-          console.log('[Realtime] panels INSERT — refetch')
-          await fetch()
-        }
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'work_orders' },
+        (payload) => { setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r)) }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'panels' },
-        async () => {
-          console.log('[Realtime] panels DELETE — refetch')
-          await fetch()
-        }
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'work_orders' },
+        (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'work_orders' },
-        async () => {
-          console.log('[Realtime] work_orders change — refetch')
-          await fetch()
-        }
-      )
-      .subscribe((status) => {
-        console.log('[Realtime] panels channel status:', status)
-      })
-    return () => {
-      supabase.removeChannel(channel)
-    }
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [fetch])
+
+  const getUname = () => {
+    const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+    return sess?.nama || sess?.name || 'Admin'
+  }
 
   const create = async (payload: any) => {
     try {
-      const newWO = await workOrderService.create(payload)
-      setData(prev => [newWO, ...prev])
-      return { success: true, data: newWO }
+      const uname = getUname()
+      const result = await workOrderService.create({ ...payload, updated_by: uname }, uname)
+      setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
+      return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
     }
@@ -73,18 +55,20 @@ export function useWorkOrders() {
 
   const update = async (id: number, payload: any) => {
     try {
-      const updated = await workOrderService.update(id, payload)
-      setData(prev => prev.map(wo => wo.id === id ? updated : wo))
-      return { success: true, data: updated }
+      const uname = getUname()
+      const result = await workOrderService.update(id, { ...payload, updated_by: uname }, uname)
+      setData(prev => prev.map(r => r.id === id ? result : r))
+      return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
     }
   }
 
-  const remove = async (id: number, deletedBy?: string) => {
+  const remove = async (id: number) => {
     try {
-      await workOrderService.remove(id, deletedBy)
-      setData(prev => prev.filter(wo => wo.id !== id))
+      const uname = getUname()
+      await workOrderService.remove(id, uname)
+      setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
