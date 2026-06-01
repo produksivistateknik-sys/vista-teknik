@@ -7,9 +7,9 @@ import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from "./hooks/useRawSchedule";
-import { useActivityLog } from './hooks/useActivityLog';
-import { activityLogger } from './services/activityLogger';
-import { useLog } from './hooks/useLog';
+import { activityLogService } from './services/activityLogService';
+
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PANEL TYPES
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1352,7 +1352,7 @@ function Login({onLogin}){
     const{data,error}=await supabase.from("admins").select("*").eq("username",username.trim()).eq("password",pwd).eq("is_active",true).single();
     if(error||!data){setErr("Username atau password salah!");setLoading(false);return;}
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
-    await supabase.from("activity_log").insert({user_name:data.nama,admin_nama:data.nama,action:"Login ke sistem",aktivitas:"Login ke sistem",jenis:"auth",module:"auth",action_type:"login",description:"Login ke sistem",halaman:"Login",table_name:"auth"});
+    await activityLogService.insert({user_name:data.nama,action:"LOGIN",description:"Login ke sistem",module:"auth",halaman:"Login"});
     localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
     setSuccess(true);
     setTimeout(()=>onLogin({...data,divisi:"admin",name:data.nama}),800);
@@ -3198,24 +3198,25 @@ const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
-  const { data: activityLog, log: logActivity } = useActivityLog()
-  const { log: logAct } = useLog()
-  const log = async (action:string, description:string, table_name:string, extra?:any) => {
-    await activityLogger({
-      user_id: user?.id?.toString()||null,
-      user_name: user?.name||user?.nama||'Unknown',
-      action, description, table_name,
-      record_id: extra?.record_id||null,
-      module: extra?.module||'general',
-      action_type: extra?.action_type||'update',
-      proyek: extra?.proyek||'',
-      panel: extra?.panel||'',
-      wo_number: extra?.wo_number||'',
-      halaman: extra?.halaman||'',
-    })
+  const { data: activityLog } = useActivityLog()
+  const logActivity = null
+  const logAct = null
+  const log = async (action:string, description:string, module:string, extra?:any) => {
+    const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+    const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
+    await activityLogService.insert({user_name:uname,action,description,module,
+      halaman:extra?.halaman||'',proyek:extra?.proyek||'',
+      panel:extra?.panel||'',wo_number:extra?.wo_number||''})
   }
-const { data: woList, loading: woLoading, error: woError, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
-const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
+
+
+
+
+
+
+
+
+
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
 useEffect(() => {
