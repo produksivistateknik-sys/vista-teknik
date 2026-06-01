@@ -1,4 +1,4 @@
-import { supabase } from "../lib/supabase"
+﻿import { supabase } from '../lib/supabase'
 
 export interface ActivityPayload {
   user_name?: string
@@ -13,34 +13,25 @@ export interface ActivityPayload {
 }
 
 export const activityLogService = {
-  async getAll() {
-    const { data, error } = await supabase
-      .from("activity_log")
-      .select("*")
-      .order("created_at", { ascending: false })
-
-    if (error) throw error
-
-    return data || []
-  },
-
   async log(payload: ActivityPayload) {
-    console.log("[ACTIVITY LOG PAYLOAD]", payload)
+    console.log('[ACTIVITY LOG PAYLOAD]', payload)
     const { error } = await supabase
-      .from("activity_log")
+      .from('activity_log')
       .insert({
         ...payload,
+        action: payload.action,
+        description: payload.aktivitas,
+        table_name: payload.jenis,
+        module: payload.jenis,
+        action_type: 'update',
         created_at: new Date().toISOString(),
       })
-
     if (error) {
-      console.error("Activity Log Error:", error)
+      console.error('Activity Log Error:', error)
       throw error
     }
   },
-
   async create(payload: ActivityPayload) {
     return this.log(payload)
   },
 }
-

@@ -22,14 +22,11 @@ export function useRenhar() {
 
   useEffect(() => {
     fetch()
-    // Realtime subscription untuk tabel renhar
     const channel = supabase
       .channel('realtime-renhar')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'renhar' },
         (payload) => {
-          console.log('[Realtime] renhar INSERT:', payload.new)
           setData(prev => {
-            // cegah duplicate
             if (prev.some(r => r.id === payload.new.id)) return prev
             return [...prev, payload.new]
           })
@@ -37,23 +34,16 @@ export function useRenhar() {
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
         (payload) => {
-          console.log('[Realtime] renhar UPDATE:', payload.new)
           setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
         }
       )
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'renhar' },
         (payload) => {
-          console.log('[Realtime] renhar DELETE:', payload.old)
           setData(prev => prev.filter(r => r.id !== payload.old.id))
         }
       )
-      .subscribe((status) => {
-        console.log('[Realtime] renhar channel status:', status)
-      })
-
-    return () => {
-      supabase.removeChannel(channel)
-    }
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
   }, [fetch])
 
   const create = async (payload: any) => {
