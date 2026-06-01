@@ -17,10 +17,10 @@ export const workOrderService = {
     if (error) throw new Error(error.message)
     return (data ?? []).map(wo => ({
       ...wo,
-      panels: (wo.panels ?? []).map((p: any) => ({
+      panels: Array.isArray(wo.panels) ? wo.panels.map((p: any) => ({
         ...p,
         noPnl: p.no_pnl,
-      }))
+      })) : []
     }))
   },
 
