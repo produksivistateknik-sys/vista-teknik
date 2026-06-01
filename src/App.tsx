@@ -2492,7 +2492,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
     const kompNames=finalKomp.map(k=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k).join(', ');
     await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
-  };
+
   };
   const removeEntry=async(wp)=>{
     let updatedRow=null;
