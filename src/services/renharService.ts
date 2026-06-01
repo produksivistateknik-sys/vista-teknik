@@ -3,19 +3,18 @@ import { activityLogService } from './activityLogService'
 
 export const renharService = {
   async getAll() {
-    const { data, error } = await supabase
-      .from('renhar').select('*').order('tanggal', { ascending: true })
+    const { data, error } = await supabase.from('renhar').select('*').order('tanggal', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
   },
 
   async create(payload: any) {
     const { updated_by, ...safe } = payload
-    const { data, error } = await supabase
-      .from('renhar').insert(safe).select().single()
+    const uname = updated_by || 'Admin'
+    const { data, error } = await supabase.from('renhar').insert(safe).select().single()
     if (error) throw new Error(error.message)
     await activityLogService.insert({
-      user_name: updated_by || 'Admin',
+      user_name: uname,
       action: 'DISTRIBUSI RENHAR',
       description: `Distribusi proses ${safe.proses} - ${safe.panel} (${safe.tanggal})`,
       module: 'rencana',
@@ -29,12 +28,11 @@ export const renharService = {
 
   async update(id: number, payload: any) {
     const { updated_by, ...safe } = payload
-    const { data, error } = await supabase
-      .from('renhar').update({ ...safe, updated_at: new Date().toISOString() })
-      .eq('id', id).select().single()
+    const uname = updated_by || 'Admin'
+    const { data, error } = await supabase.from('renhar').update({ ...safe, updated_at: new Date().toISOString() }).eq('id', id).select().single()
     if (error) throw new Error(error.message)
     await activityLogService.insert({
-      user_name: updated_by || 'Admin',
+      user_name: uname,
       action: 'UPDATE RENHAR',
       description: `Update distribusi proses ${data.proses} - ${data.panel}`,
       module: 'rencana',
@@ -56,8 +54,6 @@ export const renharService = {
       description: `Hapus distribusi proses ${old?.proses} - ${old?.panel}`,
       module: 'rencana',
       halaman: 'Rencana Harian',
-      proyek: old?.proyek || '',
-      panel: old?.panel || '',
     })
   },
 }

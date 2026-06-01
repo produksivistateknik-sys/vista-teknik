@@ -1,18 +1,16 @@
 ﻿import { supabase } from '../lib/supabase'
 
-export interface LogPayload {
-  user_name: string
-  action: string
-  description: string
-  module: string
-  halaman?: string
-  proyek?: string
-  panel?: string
-  wo_number?: string
-}
-
 export const activityLogService = {
-  async insert(payload: LogPayload) {
+  async insert(payload: {
+    user_name: string
+    action: string
+    description: string
+    module: string
+    halaman?: string
+    proyek?: string
+    panel?: string
+    wo_number?: string
+  }) {
     const { error } = await supabase.from('activity_log').insert({
       user_name: payload.user_name || 'Admin',
       action: payload.action,
