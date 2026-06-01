@@ -2456,7 +2456,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
-  console.log("[DEBUG] rawRow:", rawRow?.panel_id, rawRow?.panelId, "panels:", woData.flatMap(w=>w.panels||[]).map(p=>p.id), "found:", livePanelForCell?.id);
   const panelCfg=livePanelForCell?PANEL_TYPES[livePanelForCell.tipe]:null;
   const wpItems=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
 
@@ -3203,7 +3202,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   const logActivity = null
   const logAct = null
   const log = async (action:string, description:string, module:string, extra?:any) => {
-    console.log('[LOG CALLED]', action, 'user:', user?.name, user?.nama)
+
     const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}')
     const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Unknown User'
     await activityLogService.insert({user_name:uname,action,description,module,
