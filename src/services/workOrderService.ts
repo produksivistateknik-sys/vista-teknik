@@ -15,7 +15,13 @@ export const workOrderService = {
   async getAll() {
     const { data, error } = await supabase.from('work_orders').select('*, panels(*)').order('created_at', { ascending: false })
     if (error) throw new Error(error.message)
-    return (data ?? []).map(wo => ({ ...wo, panels: wo.panels ?? [] }))
+    return (data ?? []).map(wo => ({
+      ...wo,
+      panels: (wo.panels ?? []).map((p: any) => ({
+        ...p,
+        noPnl: p.no_pnl,
+      }))
+    }))
   },
 
   async create(payload: any, user_name = 'Admin') {
@@ -46,7 +52,15 @@ export const workOrderService = {
   async savePanels(woId: number, panels: any[]) {
     await supabase.from('panels').delete().eq('wo_id', woId)
     if (!panels.length) return
-    const rows = panels.map(p => ({ ...p, wo_id: woId }))
+    const rows = panels.map(p => ({
+      wo_id: woId,
+      no_pnl: p.noPnl || p.no_pnl || 1,
+      nama: p.nama,
+      tipe: p.tipe,
+      qty: p.qty || 1,
+      checklist: p.checklist || {},
+      catatan: p.catatan || "",
+    }))
     const { error } = await supabase.from('panels').insert(rows)
     if (error) throw new Error(error.message)
   }
