@@ -2986,15 +2986,15 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       if(result.success){
         await workOrderService.savePanels(editId, np);
         setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
-        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+      }
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
         setWoData(prev=>[...prev,{...result.data,panels:np}]);
-        setWoData(prev=>[...prev,{...result.data,panels:np}]);
         if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+      }
     }
     setOpen(false);
   };
