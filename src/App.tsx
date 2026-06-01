@@ -3202,9 +3202,9 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   const logActivity = null
   const logAct = null
   const log = async (action:string, description:string, module:string, extra?:any) => {
-    const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-    const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Unknown User';
-    console.log('[LOG USER]', user, sess);
+    console.log('[LOG CALLED]', action, 'user:', user?.name, user?.nama)
+    const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}')
+    const uname = user?.name||user?.nama||sess?.nama||sess?.name||'Unknown User'
     await activityLogService.insert({user_name:uname,action,description,module,
       halaman:extra?.halaman||'',proyek:extra?.proyek||'',
       panel:extra?.panel||'',wo_number:extra?.wo_number||''})
