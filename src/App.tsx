@@ -243,7 +243,7 @@ const RENHAR_SEED=[];
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}
-body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12.5px;font-weight:400;text-align:left}
+body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12px;font-weight:400;text-align:left}
 h1,h2,h3,h4,h5,h6{font-weight:500;text-align:left}
 th,td{text-align:left;font-weight:400}
 button{font-weight:500}
