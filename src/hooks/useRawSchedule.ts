@@ -65,7 +65,8 @@ export function useRawSchedule() {
     try {
       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
       const uname = sess?.nama || sess?.name || 'Admin'
-      await rawScheduleService.remove(id, uname)
+      const { error } = await supabase.from('raw_schedule').update({deleted_at: new Date().toISOString(), deleted_by: uname}).eq('id', id)
+      if (error) throw new Error(error.message)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
     } catch (err) {

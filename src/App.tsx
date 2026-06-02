@@ -3127,7 +3127,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn><Btn color="#dc2626" onClick={async()=>{await supabase.from('work_orders').delete().eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
+              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn><Btn color="#dc2626" onClick={async()=>{const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=sess?.nama||sess?.name||'Admin';await supabase.from('work_orders').update({deleted_at:new Date().toISOString(),deleted_by:uname}).eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
             </div>
           </div>
         </Modal>

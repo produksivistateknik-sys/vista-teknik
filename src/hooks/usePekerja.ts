@@ -65,7 +65,8 @@ export function usePekerja() {
     try {
       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
       const uname = user_name || sess?.nama || sess?.name || 'Admin'
-      await pekerjaService.remove(id, uname)
+      const { error } = await import('../lib/supabase').then(m => m.supabase.from('pekerja').update({deleted_at: new Date().toISOString(), deleted_by: uname}).eq('id', id))
+      if (error) throw new Error(error.message)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
     } catch (err) {

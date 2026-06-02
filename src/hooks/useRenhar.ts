@@ -65,7 +65,10 @@ export function useRenhar() {
     try {
       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
       const uname = sess?.nama || sess?.name || 'Admin'
-      await renharService.remove(id)
+      const sess2 = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname2 = sess2?.nama || sess2?.name || 'Admin'
+      const { error } = await supabase.from('renhar').update({deleted_at: new Date().toISOString(), deleted_by: uname2}).eq('id', id)
+      if (error) throw new Error(error.message)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
     } catch (err) {
