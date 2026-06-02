@@ -3557,7 +3557,8 @@ function SystemTab({user,activityLog}){
   const subTabs=[
     {id:"masteruser",label:"👤 Master User"},
     {id:"mesin",label:"⚙️ Master Mesin"},
-    {id:"maintenance",label:"🔧 Maintenance"},
+    {id:"pekerja",label:"👥 Master Pekerja"},
+    {id:"recycle",label:"🗑 Recycle Bin"},
   ];
 
   return(
@@ -3579,7 +3580,8 @@ function SystemTab({user,activityLog}){
         <>
           {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user}/>}
           {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
-          {subTab==="maintenance"&&<MaintenanceTab mesinList={mesinList} maintenanceList={maintenanceList} setMaintenanceList={setMaintenanceList} user={user}/>}
+          {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} user={user}/>}
+          {subTab==="recycle"&&<RecycleBinTab user={user}/>}
         </>
       )}
     </div>
