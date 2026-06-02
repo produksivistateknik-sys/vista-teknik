@@ -54,7 +54,10 @@ export function useKendala() {
 
   const remove = async (id: number) => {
     try {
-      await kendalaService.remove(id)
+      const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+      const uname = sess?.nama || sess?.name || 'Admin'
+      const { error } = await supabase.from('kendala').update({deleted_at: new Date().toISOString(), deleted_by: uname}).eq('id', id)
+      if (error) throw new Error(error.message)
       setData(prev => prev.filter(k => k.id !== id))
       return { success: true }
     } catch (err) {

@@ -1108,7 +1108,7 @@ function KendalaInbox({kendalaLog,removeKendala}){
                     <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>📅 {fmtDate(k.tanggal)}</span>
                     <span style={{fontSize:11,color:"#94a3b8"}}>👤 {k.operator}</span>
                   </div>
-                  <button onClick={()=>removeKendala(k.id)}
+                  <button onClick={()=>removeKendala(k.id, user?.name||user?.nama||'Admin')}
                     style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13,flexShrink:0}}>
                     🗑
                   </button>
