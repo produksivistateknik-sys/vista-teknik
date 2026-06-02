@@ -3179,6 +3179,516 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW — tabel besar per proses
 // ─────────────────────────────────────────────────────────────────────────────
+function SystemTab({user,activityLog}){
+  const [subTab,setSubTab]=useState("masteruser");
+  const [admins,setAdmins]=useState([]);
+  const [mesinList,setMesinList]=useState([]);
+  const [maintenanceList,setMaintenanceList]=useState([]);
+  const [loading,setLoading]=useState(true);
+
+  useEffect(()=>{
+    const fetchAll=async()=>{
+      setLoading(true);
+      const [{data:ad},{data:ms},{data:ml}]=await Promise.all([
+        supabase.from("admins").select("*").order("created_at",{ascending:true}),
+        supabase.from("mesin").select("*").is("deleted_at",null).order("kode",{ascending:true}),
+        supabase.from("maintenance_log").select("*,mesin(nama,kode)").order("created_at",{ascending:false}),
+      ]);
+      setAdmins(ad??[]);setMesinList(ms??[]);setMaintenanceList(ml??[]);
+      setLoading(false);
+    };
+    fetchAll();
+  },[]);
+
+  const subTabs=[
+    {id:"masteruser",label:"👤 Master User"},
+    {id:"mesin",label:"⚙️ Master Mesin"},
+    {id:"maintenance",label:"🔧 Maintenance"},
+  ];
+
+  return(
+    <div className="fi">
+      <div style={{display:"flex",gap:0,marginBottom:20,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+        {subTabs.map(t=>(
+          <button key={t.id} onClick={()=>setSubTab(t.id)}
+            style={{flex:1,padding:"10px 16px",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
+              background:subTab===t.id?"#1d4ed8":"transparent",
+              color:subTab===t.id?"#fff":"#64748b",
+              borderRight:"1px solid #e2e8f0",transition:"all .15s"}}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {loading?(
+        <div style={{textAlign:"center",padding:"40px",color:"#94a3b8"}}>Memuat data...</div>
+      ):(
+        <>
+          {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user}/>}
+          {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
+          {subTab==="maintenance"&&<MaintenanceTab mesinList={mesinList} maintenanceList={maintenanceList} setMaintenanceList={setMaintenanceList} user={user}/>}
+        </>
+      )}
+    </div>
+  );
+}
+
+function MasterUserTab({admins,setAdmins,user}){
+  const [form,setForm]=useState({nama:"",username:"",password:"",is_active:true});
+  const [editId,setEditId]=useState(null);
+  const [delId,setDelId]=useState(null);
+  const [showPwd,setShowPwd]=useState({});
+  const [resetId,setResetId]=useState(null);
+  const [newPwd,setNewPwd]=useState("");
+
+  const save=async()=>{
+    if(!form.nama.trim()||!form.username.trim()||!form.password.trim())return;
+    if(editId){
+      const{data,error}=await supabase.from("admins").update({nama:form.nama,username:form.username,is_active:form.is_active}).eq("id",editId).select().single();
+      if(!error){setAdmins(prev=>prev.map(a=>a.id===editId?data:a));setEditId(null);setForm({nama:"",username:"",password:"",is_active:true});}
+    } else {
+      const{data,error}=await supabase.from("admins").insert({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active}).select().single();
+      if(!error){setAdmins(prev=>[...prev,data]);setForm({nama:"",username:"",password:"",is_active:true});}
+    }
+  };
+
+  const resetPwd=async()=>{
+    if(!newPwd.trim())return;
+    const{error}=await supabase.from("admins").update({password:newPwd}).eq("id",resetId);
+    if(!error){setResetId(null);setNewPwd("");}
+  };
+
+  const toggleActive=async(id,val)=>{
+    await supabase.from("admins").update({is_active:val}).eq("id",id);
+    setAdmins(prev=>prev.map(a=>a.id===id?{...a,is_active:val}:a));
+  };
+
+  const del=async()=>{
+    await supabase.from("admins").delete().eq("id",delId);
+    setAdmins(prev=>prev.filter(a=>a.id!==delId));setDelId(null);
+  };
+
+  const fmtTime=(ts)=>{
+    if(!ts)return"—";
+    return new Date(ts).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+
+      new Date(ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10",position:"sticky",top:0};
+
+  return(
+    <div>
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
+          {editId?"✏️ Edit User":"➕ Tambah Admin Baru"}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
+          <div><Lbl>Nama Lengkap</Lbl>
+            <Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})} placeholder="Nama admin..."/>
+          </div>
+          <div><Lbl>Username</Lbl>
+            <Inp value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="username_admin"/>
+          </div>
+          {!editId&&(
+            <div><Lbl>Password</Lbl>
+              <Inp type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Password awal..."/>
+            </div>
+          )}
+          <div style={{display:"flex",gap:8,alignItems:"center",paddingBottom:2}}>
+            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,color:"#475569",cursor:"pointer"}}>
+              <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>
+              Aktif
+            </label>
+            <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"+ Tambah"}</Btn>
+            {editId&&<Btn outline color="#64748b" onClick={()=>{setEditId(null);setForm({nama:"",username:"",password:"",is_active:true});}}>Batal</Btn>}
+          </div>
+        </div>
+      </Card>
+
+      <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr>
+              <th style={thS}>NAMA</th>
+              <th style={thS}>USERNAME</th>
+              <th style={thS}>PASSWORD</th>
+              <th style={{...thS,textAlign:"center"}}>STATUS</th>
+              <th style={thS}>LAST LOGIN</th>
+              <th style={thS}>DIBUAT</th>
+              <th style={{...thS,textAlign:"center"}}>AKSI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {admins.map((a,i)=>{
+              const rBg=i%2===0?"#fff":"#f8fafc";
+              const td={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
+              const isSelf=user?.id===a.id;
+              return(
+                <tr key={a.id}>
+                  <td style={{...td,fontWeight:700,color:"#1e293b"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8}}>
+                      <div style={{width:28,height:28,borderRadius:7,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#1d4ed8",flexShrink:0}}>
+                        {a.nama?.slice(0,2).toUpperCase()}
+                      </div>
+                      {a.nama}
+                      {isSelf&&<span style={{fontSize:10,background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"1px 7px",fontWeight:700}}>Saya</span>}
+                    </div>
+                  </td>
+                  <td style={{...td,fontFamily:"monospace",color:"#475569"}}>{a.username}</td>
+                  <td style={{...td}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6}}>
+                      <span style={{fontFamily:"monospace",fontSize:12,color:"#94a3b8",letterSpacing:2}}>
+                        {showPwd[a.id]?a.password:"••••••••"}
+                      </span>
+                      <button onClick={()=>setShowPwd(prev=>({...prev,[a.id]:!prev[a.id]}))}
+                        style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:13,padding:0}}>
+                        {showPwd[a.id]?"🙈":"👁"}
+                      </button>
+                    </div>
+                  </td>
+                  <td style={{...td,textAlign:"center"}}>
+                    <button onClick={()=>!isSelf&&toggleActive(a.id,!a.is_active)}
+                      style={{background:a.is_active?"#f0fdf4":"#fef2f2",border:`1px solid ${a.is_active?"#bbf7d0":"#fecaca"}`,
+                        color:a.is_active?"#16a34a":"#dc2626",borderRadius:20,padding:"2px 12px",
+                        fontSize:11,fontWeight:700,cursor:isSelf?"not-allowed":"pointer"}}>
+                      {a.is_active?"✓ Aktif":"✕ Nonaktif"}
+                    </button>
+                  </td>
+                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{fmtTime(a.last_login)}</td>
+                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</td>
+                  <td style={{...td,textAlign:"center"}}>
+                    <div style={{display:"flex",gap:5,justifyContent:"center"}}>
+                      <button onClick={()=>{setEditId(a.id);setForm({nama:a.nama,username:a.username,password:a.password,is_active:a.is_active});}}
+                        style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
+                      <button onClick={()=>{setResetId(a.id);setNewPwd("");}}
+                        style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#92400e"}}>🔑</button>
+                      {!isSelf&&<button onClick={()=>setDelId(a.id)}
+                        style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {resetId&&(
+        <Modal title="🔑 Reset Password" onClose={()=>setResetId(null)} width={380}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:14}}>
+            Reset password untuk <strong>{admins.find(a=>a.id===resetId)?.nama}</strong>
+          </div>
+          <Lbl>Password Baru</Lbl>
+          <Inp type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="Password baru..." style={{marginBottom:16}}/>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setResetId(null)}>Batal</Btn>
+            <Btn color="#f59e0b" onClick={resetPwd}>Reset Password</Btn>
+          </div>
+        </Modal>
+      )}
+      {delId&&(
+        <Modal title="Hapus User?" onClose={()=>setDelId(null)} width={360}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:20}}>
+            User <strong>{admins.find(a=>a.id===delId)?.nama}</strong> akan dihapus permanen.
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
+            <Btn color="#dc2626" onClick={del}>Hapus</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function MasterMesinTab({mesinList,setMesinList,user}){
+  const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif"});
+  const [editId,setEditId]=useState(null);
+  const [delId,setDelId]=useState(null);
+
+  const save=async()=>{
+    if(!form.kode.trim()||!form.nama.trim())return;
+    if(editId){
+      const{data,error}=await supabase.from("mesin").update({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).eq("id",editId).select().single();
+      if(!error){setMesinList(prev=>prev.map(m=>m.id===editId?data:m));setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+    } else {
+      const{data,error}=await supabase.from("mesin").insert({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).select().single();
+      if(!error){setMesinList(prev=>[...prev,data]);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+    }
+  };
+
+  const del=async()=>{
+    await supabase.from("mesin").update({deleted_at:new Date().toISOString(),deleted_by:user?.name||"Admin"}).eq("id",delId);
+    setMesinList(prev=>prev.filter(m=>m.id!==delId));setDelId(null);
+  };
+
+  const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
+  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
+
+  return(
+    <div>
+      <Card style={{marginBottom:16}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
+          {editId?"✏️ Edit Mesin":"➕ Tambah Mesin"}
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr 150px auto",gap:12,alignItems:"flex-end"}}>
+          <div><Lbl>Kode</Lbl><Inp value={form.kode} onChange={e=>setForm({...form,kode:e.target.value})} placeholder="MSN-001"/></div>
+          <div><Lbl>Nama Mesin</Lbl><Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})} placeholder="Nama mesin..."/></div>
+          <div><Lbl>Lokasi</Lbl><Inp value={form.lokasi} onChange={e=>setForm({...form,lokasi:e.target.value})} placeholder="Lantai 1 / Area B..."/></div>
+          <div><Lbl>Status</Lbl>
+            <Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+              <option value="aktif">Aktif</option>
+              <option value="maintenance">Maintenance</option>
+              <option value="rusak">Rusak</option>
+              <option value="nonaktif">Nonaktif</option>
+            </Sel>
+          </div>
+          <div style={{display:"flex",gap:8,paddingBottom:2}}>
+            <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"+ Tambah"}</Btn>
+            {editId&&<Btn outline color="#64748b" onClick={()=>{setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}}>Batal</Btn>}
+          </div>
+        </div>
+      </Card>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10,marginBottom:16}}>
+        {Object.entries(STATUS_COLOR).map(([s,c])=>(
+          <Card key={s} style={{padding:"12px 16px",borderLeft:`3px solid ${c}`}}>
+            <div style={{fontSize:20,fontWeight:800,color:c}}>{mesinList.filter(m=>m.status===s).length}</div>
+            <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3,marginTop:2}}>{s}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead>
+            <tr>
+              <th style={thS}>KODE</th>
+              <th style={thS}>NAMA MESIN</th>
+              <th style={thS}>LOKASI</th>
+              <th style={{...thS,textAlign:"center"}}>STATUS</th>
+              <th style={{...thS,textAlign:"center"}}>AKSI</th>
+            </tr>
+          </thead>
+          <tbody>
+            {mesinList.map((m,i)=>{
+              const c=STATUS_COLOR[m.status]||"#64748b";
+              const rBg=i%2===0?"#fff":"#f8fafc";
+              const td={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
+              return(
+                <tr key={m.id}>
+                  <td style={{...td,fontFamily:"monospace",fontWeight:700,color:"#1d4ed8"}}>{m.kode}</td>
+                  <td style={{...td,fontWeight:600,color:"#1e293b"}}>{m.nama}</td>
+                  <td style={{...td,color:"#64748b"}}>{m.lokasi||"—"}</td>
+                  <td style={{...td,textAlign:"center"}}>
+                    <span style={{background:c+"18",color:c,border:`1px solid ${c}33`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                      {m.status}
+                    </span>
+                  </td>
+                  <td style={{...td,textAlign:"center"}}>
+                    <div style={{display:"flex",gap:5,justifyContent:"center"}}>
+                      <button onClick={()=>{setEditId(m.id);setForm({kode:m.kode,nama:m.nama,lokasi:m.lokasi||"",status:m.status});}}
+                        style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
+                      <button onClick={()=>setDelId(m.id)}
+                        style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {delId&&(
+        <Modal title="Hapus Mesin?" onClose={()=>setDelId(null)} width={360}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:20}}>
+            Mesin <strong>{mesinList.find(m=>m.id===delId)?.nama}</strong> akan dihapus.
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
+            <Btn color="#dc2626" onClick={del}>Hapus</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function MaintenanceTab({mesinList,maintenanceList,setMaintenanceList,user}){
+  const [form,setForm]=useState({mesin_id:"",kendala:"",perbaikan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"});
+  const [editId,setEditId]=useState(null);
+  const [delId,setDelId]=useState(null);
+  const [filterStatus,setFilterStatus]=useState("ALL");
+  const [filterMesin,setFilterMesin]=useState("ALL");
+  const [showForm,setShowForm]=useState(false);
+
+  const save=async()=>{
+    if(!form.mesin_id||!form.kendala.trim())return;
+    const payload={mesin_id:Number(form.mesin_id),kendala:form.kendala,perbaikan:form.perbaikan,
+      tgl_kendala:form.tgl_kendala||null,tgl_perbaikan:form.tgl_perbaikan||null,
+      teknisi:form.teknisi,status:form.status};
+    if(editId){
+      const{data,error}=await supabase.from("maintenance_log").update(payload).eq("id",editId).select("*,mesin(nama,kode)").single();
+      if(!error){setMaintenanceList(prev=>prev.map(m=>m.id===editId?data:m));setEditId(null);setShowForm(false);}
+    } else {
+      const{data,error}=await supabase.from("maintenance_log").insert(payload).select("*,mesin(nama,kode)").single();
+      if(!error){setMaintenanceList(prev=>[data,...prev]);setShowForm(false);}
+    }
+    setForm({mesin_id:"",kendala:"",perbaikan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"});
+  };
+
+  const del=async()=>{
+    await supabase.from("maintenance_log").delete().eq("id",delId);
+    setMaintenanceList(prev=>prev.filter(m=>m.id!==delId));setDelId(null);
+  };
+
+  const STATUS_COLOR={open:"#dc2626",in_progress:"#f59e0b",closed:"#16a34a"};
+  const STATUS_LABEL={open:"🔴 Open",in_progress:"🟡 In Progress",closed:"✅ Closed"};
+
+  const filtered=maintenanceList.filter(m=>
+    (filterStatus==="ALL"||m.status===filterStatus)&&
+    (filterMesin==="ALL"||m.mesin_id===Number(filterMesin))
+  );
+
+  const stats=[
+    {l:"Total",v:maintenanceList.length,c:"#2563eb"},
+    {l:"Open",v:maintenanceList.filter(m=>m.status==="open").length,c:"#dc2626"},
+    {l:"In Progress",v:maintenanceList.filter(m=>m.status==="in_progress").length,c:"#f59e0b"},
+    {l:"Closed",v:maintenanceList.filter(m=>m.status==="closed").length,c:"#16a34a"},
+  ];
+
+  return(
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
+        {stats.map((s,i)=>(
+          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
+            <div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div>
+            <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3,marginTop:2}}>{s.l}</div>
+          </Card>
+        ))}
+      </div>
+
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center",justifyContent:"space-between"}}>
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <Sel value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{minWidth:140}}>
+            <option value="ALL">Semua Status</option>
+            <option value="open">Open</option>
+            <option value="in_progress">In Progress</option>
+            <option value="closed">Closed</option>
+          </Sel>
+          <Sel value={filterMesin} onChange={e=>setFilterMesin(e.target.value)} style={{minWidth:160}}>
+            <option value="ALL">Semua Mesin</option>
+            {mesinList.map(m=><option key={m.id} value={m.id}>{m.kode} — {m.nama}</option>)}
+          </Sel>
+        </div>
+        <Btn color="#1d4ed8" onClick={()=>{setShowForm(!showForm);setEditId(null);setForm({mesin_id:"",kendala:"",perbaikan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"});}}>
+          {showForm?"✕ Tutup":"+ Tambah Log"}
+        </Btn>
+      </div>
+
+      {showForm&&(
+        <Card style={{marginBottom:16,border:"2px solid #2563eb"}}>
+          <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>{editId?"✏️ Edit Log":"➕ Tambah Log Maintenance"}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
+            <div><Lbl>Mesin</Lbl>
+              <Sel value={form.mesin_id} onChange={e=>setForm({...form,mesin_id:e.target.value})}>
+                <option value="">-- Pilih Mesin --</option>
+                {mesinList.map(m=><option key={m.id} value={m.id}>{m.kode} — {m.nama}</option>)}
+              </Sel>
+            </div>
+            <div><Lbl>Tanggal Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
+            <div><Lbl>Tanggal Perbaikan</Lbl><Inp type="date" value={form.tgl_perbaikan} onChange={e=>setForm({...form,tgl_perbaikan:e.target.value})}/></div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:12}}>
+            <div><Lbl>Kendala</Lbl>
+              <textarea value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})}
+                placeholder="Deskripsi kendala..."
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",
+                  color:"#1e293b",fontSize:12,resize:"vertical",minHeight:80,fontFamily:"inherit"}}/>
+            </div>
+            <div><Lbl>Perbaikan</Lbl>
+              <textarea value={form.perbaikan} onChange={e=>setForm({...form,perbaikan:e.target.value})}
+                placeholder="Tindakan perbaikan..."
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",
+                  color:"#1e293b",fontSize:12,resize:"vertical",minHeight:80,fontFamily:"inherit"}}/>
+            </div>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr auto",gap:12,alignItems:"flex-end"}}>
+            <div><Lbl>Teknisi</Lbl><Inp value={form.teknisi} onChange={e=>setForm({...form,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
+            <div><Lbl>Status</Lbl>
+              <Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+                <option value="open">Open</option>
+                <option value="in_progress">In Progress</option>
+                <option value="closed">Closed</option>
+              </Sel>
+            </div>
+            <div style={{display:"flex",gap:8,paddingBottom:2}}>
+              <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah"}</Btn>
+              <Btn outline color="#64748b" onClick={()=>{setShowForm(false);setEditId(null);}}>Batal</Btn>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {filtered.length===0?(
+          <div style={{textAlign:"center",padding:"40px",color:"#94a3b8"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🔧</div>
+            <div style={{fontSize:13,fontWeight:600}}>Belum ada log maintenance</div>
+          </div>
+        ):filtered.map(m=>{
+          const sc=STATUS_COLOR[m.status]||"#64748b";
+          return(
+            <div key={m.id} style={{background:"#fff",borderRadius:10,border:`1px solid ${sc}30`,
+              padding:"14px 16px",borderLeft:`4px solid ${sc}`}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap",marginBottom:10}}>
+                <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
+                  <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>{m.mesin?.nama||"—"}</span>
+                  <span style={{fontFamily:"monospace",fontSize:11,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"1px 6px"}}>{m.mesin?.kode}</span>
+                  <span style={{background:sc+"18",color:sc,border:`1px solid ${sc}33`,borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                    {STATUS_LABEL[m.status]}
+                  </span>
+                </div>
+                <div style={{display:"flex",gap:5}}>
+                  <button onClick={()=>{setEditId(m.id);setForm({mesin_id:m.mesin_id?.toString()||"",kendala:m.kendala||"",perbaikan:m.perbaikan||"",tgl_kendala:m.tgl_kendala||"",tgl_perbaikan:m.tgl_perbaikan||"",teknisi:m.teknisi||"",status:m.status});setShowForm(true);}}
+                    style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
+                  <button onClick={()=>setDelId(m.id)}
+                    style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
+                </div>
+              </div>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:8}}>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.3,marginBottom:4}}>Kendala</div>
+                  <div style={{fontSize:12,color:"#374151",background:"#fef2f2",borderRadius:7,padding:"8px 10px",lineHeight:1.5}}>{m.kendala||"—"}</div>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.3,marginBottom:4}}>Perbaikan</div>
+                  <div style={{fontSize:12,color:"#374151",background:"#f0fdf4",borderRadius:7,padding:"8px 10px",lineHeight:1.5}}>{m.perbaikan||"—"}</div>
+                </div>
+              </div>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap",fontSize:11,color:"#64748b"}}>
+                {m.tgl_kendala&&<span>📅 Kendala: <strong>{m.tgl_kendala}</strong></span>}
+                {m.tgl_perbaikan&&<span>✅ Perbaikan: <strong>{m.tgl_perbaikan}</strong></span>}
+                {m.teknisi&&<span>👤 Teknisi: <strong>{m.teknisi}</strong></span>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {delId&&(
+        <Modal title="Hapus Log?" onClose={()=>setDelId(null)} width={360}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:20}}>Log maintenance ini akan dihapus permanen.</div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
+            <Btn color="#dc2626" onClick={del}>Hapus</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 export default function App(){
   const [page,setPage]=useState("landing");
   // Restore admin session
