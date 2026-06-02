@@ -298,7 +298,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-bell{width:26px;height:26px;border:1px solid #e5e8ed;border-radius:5px;background:#f8f9fb;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;position:relative;flex-shrink:0}
 .erp-bell i{font-size:13px}
 .erp-bell-dot{position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%;background:#e53e3e;border:1.5px solid #fff}
-.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 0;background:#f0f2f5}
+.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 4px;background:#f0f2f5}
 .erp-body::-webkit-scrollbar{width:4px}
 .erp-body::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
 .erp-tooltip-el{position:fixed;background:#1a1d23;color:#f1f3f9;font-size:11px;font-weight:500;padding:5px 10px;border-radius:5px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}`;
