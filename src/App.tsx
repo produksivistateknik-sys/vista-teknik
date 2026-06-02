@@ -2711,7 +2711,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center"}}>
                       <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"2px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{row.proses}</span>
                     </td>
-                    <td style={{...td,position:"sticky",left:490,zIndex:2,textAlign:"center"}}>
+                    <td style={{...td,position:"sticky",left:370,zIndex:2,textAlign:"center"}}>
                       <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                         style={{padding:"2px 6px",borderRadius:6,border:`1.5px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:10,fontWeight:700,cursor:"pointer"}}>
                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
