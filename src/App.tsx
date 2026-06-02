@@ -298,7 +298,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-bell{width:26px;height:26px;border:1px solid #e5e8ed;border-radius:5px;background:#f8f9fb;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;position:relative;flex-shrink:0}
 .erp-bell i{font-size:13px}
 .erp-bell-dot{position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%;background:#e53e3e;border:1.5px solid #fff}
-.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 16px;background:#f0f2f5}
+.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:14px 0;background:#f0f2f5}
 .erp-body::-webkit-scrollbar{width:4px}
 .erp-body::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
 .erp-tooltip-el{position:fixed;background:#1a1d23;color:#f1f3f9;font-size:11px;font-weight:500;padding:5px 10px;border-radius:5px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}`;
@@ -773,7 +773,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
         const distTasks=tasks.filter(isDist).length;
-        const thS={background:"#1e3a8a",color:"#fff",padding:"9px 10px",fontWeight:700,fontSize:11,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};
+        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
             <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -807,7 +807,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                     const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
                     const rBg=i%2===0?"#fff":"#f8fafc";
-                    const td={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:dist?"#f0fdf4":rBg,verticalAlign:"middle"};
+                    const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:dist?"#f0fdf4":rBg,verticalAlign:"middle"};
                     return(
                       <tr key={i}>
                         <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{i+1}</td>
@@ -2623,7 +2623,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
   };
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:9.5,whiteSpace:"nowrap",letterSpacing:.4,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
+  const thS={background:"#1e2330",color:"#c8d0e8",padding:"5px 8px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.4,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
 
   return(
     <div className="fi">
@@ -2703,7 +2703,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 const curPanelId=row.panel_id||row.panelId;
                 const isNewPanel=!prevRow||prevPanelId!==curPanelId;
                 const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
-                const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"6px 8px",verticalAlign:"middle",borderTop:panelTopBorder};
+                const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"4px 6px",verticalAlign:"middle",borderTop:panelTopBorder};
                 return(
                   <tr key={row.id}>
                     <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
