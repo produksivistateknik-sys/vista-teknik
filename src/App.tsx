@@ -1038,7 +1038,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   );
 }
 
-function KendalaInbox({kendalaLog,removeKendala}){
+function KendalaInbox({kendalaLog,removeKendala,user}:any){
   const [filterDiv,setFilterDiv]=useState("ALL");
   const [filterProses,setFilterProses]=useState("ALL");
   const [filterTgl,setFilterTgl]=useState("");
@@ -4270,7 +4270,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={log} user={user}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
-              {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala}/>}
+              {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
               {tab==="masteruser"&&<SystemTab user={user} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             </div>
