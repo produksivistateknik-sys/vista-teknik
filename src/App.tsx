@@ -3228,16 +3228,16 @@ function RecycleBinTab({user}:any){
     <div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(120px,1fr))",gap:10,marginBottom:16}}>
         {[{l:"Total Item",v:items.length,c:"#2563eb"},{l:"Kritis 3 hari",v:items.filter((x:any)=>sisa(x.deleted_at)<=3).length,c:"#dc2626"},{l:"Auto-delete",v:"15 hari",c:"#16a34a"},{l:"Kategori",v:Object.keys(CATS).length,c:"#8b5cf6"}].map((s:any,i:number)=>(
-          <Card key={i} style={{padding:"12px 16px",borderLeft:3px solid }}>
+          <Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}>
             <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
             <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3,marginTop:2}}>{s.l}</div>
           </Card>
         ))}
       </div>
       <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
-        <button onClick={()=>setFilterCat("ALL")} style={{padding:"5px 12px",borderRadius:20,border:1.5px solid ,background:filterCat==="ALL"?"#1d4ed8":"#fff",color:filterCat==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({items.length})</button>
+        <button onClick={()=>setFilterCat("ALL")} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${filterCat==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterCat==="ALL"?"#1d4ed8":"#fff",color:filterCat==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({items.length})</button>
         {Object.entries(CATS).map(([k,v]:any)=>counts[k]>0&&(
-          <button key={k} onClick={()=>setFilterCat(filterCat===k?"ALL":k)} style={{padding:"5px 12px",borderRadius:20,border:1.5px solid ,background:filterCat===k?"#1d4ed8":"#fff",color:filterCat===k?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{v.label} ({counts[k]})</button>
+          <button key={k} onClick={()=>setFilterCat(filterCat===k?"ALL":k)} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${filterCat===k?"#1d4ed8":"#e2e8f0"}`,background:filterCat===k?"#1d4ed8":"#fff",color:filterCat===k?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{v.label} ({counts[k]})</button>
         ))}
         <div style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>Item otomatis dihapus setelah 15 hari</div>
       </div>
