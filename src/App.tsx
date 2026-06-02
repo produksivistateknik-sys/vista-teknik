@@ -8,6 +8,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
+import MasterPekerjaInline from './MasterPekerjaInline'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3292,7 +3293,7 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:12,alignItems:"flex-end"}}>
             <div><Lbl>Teknisi</Lbl><Inp value={form.teknisi} onChange={e=>setForm({...form,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
             <div><Lbl>Status</Lbl><Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="closed">Closed</option></Sel></div>
-            <div><Lbl>Catatan Harian</Lbl><Inp value={form.catatan} onChange={e=>setForm({...form,catatan:e.target.value})} placeholder="Catatan perkembangan..."/></div>
+            <div><Lbl>Catatan Harian</Lbl><textarea value={form.catatan} onChange={e=>setForm({...form,catatan:e.target.value})} placeholder="Catatan perkembangan..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#1e293b",fontSize:12,resize:"vertical",minHeight:60,fontFamily:"inherit"}}/></div>
             <div style={{display:"flex",gap:8,paddingBottom:2}}><Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah"}</Btn><Btn outline color="#64748b" onClick={()=>{setShowForm(false);setEditId(null);}}>Batal</Btn></div>
           </div>
         </Card>
@@ -3329,26 +3330,38 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
           })}
         </div>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {filtered.map((m:any)=>{const sc=SC[m.status]||SC.open;return(
-            <div key={m.id} style={{background:"#fff",borderRadius:10,border:`0.5px solid ${sc.border}`,padding:"12px 16px",borderLeft:`3px solid ${sc.color}`,display:"flex",gap:12}}>
-              <div style={{flex:1}}>
-                <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:4}}>
-                  <span style={{fontWeight:700,fontSize:13}}>{m.mesin?.nama||"—"}</span>
-                  <span style={{fontFamily:"monospace",fontSize:11,color:"#64748b",background:"#f1f5f9",borderRadius:4,padding:"1px 6px"}}>{m.mesin?.kode}</span>
-                  <span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{sc.label}</span>
-                </div>
-                <div style={{fontSize:12,color:"#475569",marginBottom:3}}>{m.kendala}</div>
-                {m.perbaikan&&<div style={{fontSize:11,color:"#16a34a",marginBottom:3}}>{m.perbaikan}</div>}
-                {m.catatan&&<div style={{fontSize:11,color:"#2563eb",background:"#eff6ff",borderRadius:5,padding:"2px 8px",marginBottom:3,display:"inline-block"}}>📝 {m.catatan}</div>}
-                <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>{m.teknisi&&<span>👤 {m.teknisi} </span>}{m.tgl_kendala&&<span>📅 {m.tgl_kendala}</span>}{m.tgl_perbaikan&&<span> → ✅ {m.tgl_perbaikan}</span>}</div>
-              </div>
-              <div style={{display:"flex",gap:4,flexShrink:0}}>
-                <button onClick={()=>{setEditId(m.id);setForm({mesin_id:m.mesin_id?.toString()||"",kendala:m.kendala||"",perbaikan:m.perbaikan||"",catatan:m.catatan||"",tgl_kendala:m.tgl_kendala||"",tgl_perbaikan:m.tgl_perbaikan||"",teknisi:m.teknisi||"",status:m.status});setShowForm(true);}} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11}}>✏️</button>
-                <button onClick={()=>setDelId(m.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
-              </div>
-            </div>
-          );})}
+        <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
+          <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+            <thead><tr>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Mesin</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Kendala</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Perbaikan</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Catatan</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Teknisi</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Tgl Kendala</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Tgl Perbaikan</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"center",borderRight:"1px solid #ffffff10"}}>Status</th>
+              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"center"}}>Aksi</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length===0?(<tr><td colSpan={9} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Tidak ada data</td></tr>):filtered.map((m:any,i:number)=>{const sc=SC[m.status]||SC.open;const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"top",fontSize:12};return(
+                <tr key={m.id}>
+                  <td style={{...td,fontWeight:700}}><div style={{color:"#1e293b"}}>{m.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{m.mesin?.kode}</div></td>
+                  <td style={{...td,maxWidth:200,color:"#475569"}}>{m.kendala}</td>
+                  <td style={{...td,maxWidth:200,color:"#16a34a"}}>{m.perbaikan||"—"}</td>
+                  <td style={{...td,maxWidth:160,color:"#2563eb"}}>{m.catatan||"—"}</td>
+                  <td style={{...td,color:"#64748b"}}>{m.teknisi||"—"}</td>
+                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{m.tgl_kendala||"—"}</td>
+                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{m.tgl_perbaikan||"—"}</td>
+                  <td style={{...td,textAlign:"center"}}><span style={{background:sc.bg,color:sc.color,border:`1px solid ${sc.border}`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{sc.label}</span></td>
+                  <td style={{...td,textAlign:"center"}}><div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                    <button onClick={()=>{const t=["LAPORAN MAINTENANCE","Mesin: "+(m.mesin?.nama||"-"),"Kode: "+(m.mesin?.kode||"-"),"Tgl Kendala: "+(m.tgl_kendala||"-"),"Tgl Perbaikan: "+(m.tgl_perbaikan||"-"),"Teknisi: "+(m.teknisi||"-"),"Status: "+m.status,"","Kendala:",m.kendala||"-","","Perbaikan:",m.perbaikan||"-","","Catatan:",m.catatan||"-"].join("\n");const b=new Blob([t],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="maintenance-"+(m.mesin?.kode||m.id)+".txt";a.click();URL.revokeObjectURL(u);}} style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:10,color:"#1d4ed8",fontWeight:700}}>↓ TXT</button>
+                    <button onClick={()=>{setEditId(m.id);setForm({mesin_id:m.mesin_id?.toString()||"",kendala:m.kendala||"",perbaikan:m.perbaikan||"",catatan:m.catatan||"",tgl_kendala:m.tgl_kendala||"",tgl_perbaikan:m.tgl_perbaikan||"",teknisi:m.teknisi||"",status:m.status});setShowForm(true);}} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11}}>✏️</button>
+                    <button onClick={()=>setDelId(m.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
+                  </div></td>
+                </tr>);})}
+            </tbody>
+          </table>
         </div>
       )}
       {delId&&(<Modal title="Hapus Log?" onClose={()=>setDelId(null)} width={360}><div style={{fontSize:13,color:"#475569",marginBottom:20}}>Log ini akan dihapus permanen.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn><Btn color="#dc2626" onClick={del}>Hapus</Btn></div></Modal>)}
@@ -3368,18 +3381,6 @@ function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlam
   const getStatus=(r:any)=>{if(!r.jatuh_tempo)return{label:"Belum dijadwalkan",color:"#64748b",bg:"#f1f5f9"};if(r.jatuh_tempo<today)return{label:"Terlambat",color:"#dc2626",bg:"#fef2f2"};const diff=Math.ceil((new Date(r.jatuh_tempo).getTime()-new Date(today).getTime())/86400000);if(diff===0)return{label:"Hari ini!",color:"#dc2626",bg:"#fef2f2"};if(diff<=3)return{label:diff+"hr lagi",color:"#f59e0b",bg:"#fffbeb"};if(diff<=7)return{label:diff+"hr lagi",color:"#2563eb",bg:"#eff6ff"};return{label:diff+"hr lagi",color:"#16a34a",bg:"#f0fdf4"};};
   const save=async()=>{
     if(!form.mesin_id||!form.jenis_maintenance.trim())return;
-    const jt=form.jatuh_tempo||calcNext(form.terakhir_dilakukan,form.frekuensi);
-    const payload={mesin_id:Number(form.mesin_id),jenis_maintenance:form.jenis_maintenance,frekuensi:form.frekuensi,teknisi:form.teknisi,terakhir_dilakukan:form.terakhir_dilakukan||null,jatuh_tempo:jt||null,catatan:form.catatan,is_active:true};
-    if(editId){
-      const{data,error}=await supabase.from("maintenance_rutin").update(payload).eq("id",editId).select("*,mesin(nama,kode)").single();
-      if(!error){setRutinList((p:any[])=>p.map((r:any)=>r.id===editId?data:r));setEditId(null);setShowForm(false);}
-    } else {
-      const{data,error}=await supabase.from("maintenance_rutin").insert(payload).select("*,mesin(nama,kode)").single();
-      if(!error){setRutinList((p:any[])=>[...p,data]);setShowForm(false);}
-    }
-    setForm({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
-  };
-  const markDone=async(item:any)=>{
     const jt=calcNext(today,item.frekuensi);
     const{data}=await supabase.from("maintenance_rutin").update({terakhir_dilakukan:today,jatuh_tempo:jt}).eq("id",item.id).select("*,mesin(nama,kode)").single();
     if(data){setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));await supabase.from("maintenance_rutin_log").insert({rutin_id:item.id,dilakukan_pada:today,teknisi:item.teknisi,catatan:"Selesai"});}
