@@ -3801,7 +3801,7 @@ function MasterMesinTab({mesinList,setMesinList,user}:any){
       if(!error){setMesinList((prev:any[])=>[...prev,data]);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
     }
   };
-  };
+  const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
 
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
   const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
