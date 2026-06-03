@@ -118,7 +118,7 @@ const DIVISI_PROSES_MAP=Object.fromEntries(
 );
 const QTY_DIVISI = ["mekanik","painting"];
 
-const DIVISI_CONFIG = {
+export const DIVISI_CONFIG = {
   admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",password:"Admin123",   proses:null},
   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
   painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",password:"painting123",proses:["PAINTING"]},
@@ -127,7 +127,7 @@ const DIVISI_CONFIG = {
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
 };
-const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc"];
+export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc"];
 
 const USERS = [
   {id:1, name:"Budi Admin",      divisi:"admin"},
@@ -3606,7 +3606,7 @@ function SystemTab({user,activityLog}){
         <>
           {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user}/>}
           {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
-          {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} user={user}/>}
+
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
         </>
       )}
@@ -3615,7 +3615,7 @@ function SystemTab({user,activityLog}){
 }
 
 function MasterUserTab({admins,setAdmins,user}){
-  const [form,setForm]=useState({nama:"",username:"",password:"",is_active:true});
+  const [form,setForm]=useState({nama:"",username:"",password:"",is_active:true,divisi:"admin"});
   const [editId,setEditId]=useState(null);
   const [delId,setDelId]=useState(null);
   const [showPwd,setShowPwd]=useState({});
@@ -3625,10 +3625,10 @@ function MasterUserTab({admins,setAdmins,user}){
   const save=async()=>{
     if(!form.nama.trim()||!form.username.trim()||!form.password.trim())return;
     if(editId){
-      const{data,error}=await supabase.from("admins").update({nama:form.nama,username:form.username,is_active:form.is_active}).eq("id",editId).select().single();
+      const{data,error}=await supabase.from("admins").update({nama:form.nama,username:form.username,is_active:form.is_active,divisi:form.divisi}).eq("id",editId).select().single();
       if(!error){setAdmins(prev=>prev.map(a=>a.id===editId?data:a));setEditId(null);setForm({nama:"",username:"",password:"",is_active:true});}
     } else {
-      const{data,error}=await supabase.from("admins").insert({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active}).select().single();
+      const{data,error}=await supabase.from("admins").insert({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active,divisi:form.divisi}).select().single();
       if(!error){setAdmins(prev=>[...prev,data]);setForm({nama:"",username:"",password:"",is_active:true});}
     }
   };
@@ -3739,7 +3739,7 @@ function MasterUserTab({admins,setAdmins,user}){
                   <td style={{...td,fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</td>
                   <td style={{...td,textAlign:"center"}}>
                     <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                      <button onClick={()=>{setEditId(a.id);setForm({nama:a.nama,username:a.username,password:a.password,is_active:a.is_active});}}
+                      <button onClick={()=>{setEditId(a.id);setForm({nama:a.nama,username:a.username,password:a.password,is_active:a.is_active,divisi:a.divisi||"admin"});}}
                         style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
                       <button onClick={()=>{setResetId(a.id);setNewPwd("");}}
                         style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#92400e"}}>🔑</button>
@@ -3778,29 +3778,29 @@ function MasterUserTab({admins,setAdmins,user}){
           </div>
         </Modal>
       )}
+      <div style={{marginTop:32,paddingTop:24,borderTop:"2px solid #e2e8f0"}}>
+        <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>User Pekerja</div>
+        <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Kelola akun login untuk Vista Pekerja</div>
+        <MasterPekerjaInline/>
+      </div>
     </div>
   );
 }
 
-function MasterMesinTab({mesinList,setMesinList,user}){
+function MasterMesinTab({mesinList,setMesinList,user}:any){
   const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif"});
-  const [editId,setEditId]=useState(null);
-  const [delId,setDelId]=useState(null);
-
+  const [editId,setEditId]=useState<any>(null);
+  const [delId,setDelId]=useState<any>(null);
   const save=async()=>{
     if(!form.kode.trim()||!form.nama.trim())return;
     if(editId){
       const{data,error}=await supabase.from("mesin").update({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).eq("id",editId).select().single();
-      if(!error){setMesinList(prev=>prev.map(m=>m.id===editId?data:m));setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+      if(!error){setMesinList((prev:any[])=>prev.map(m=>m.id===editId?data:m));setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
     } else {
       const{data,error}=await supabase.from("mesin").insert({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).select().single();
-      if(!error){setMesinList(prev=>[...prev,data]);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+      if(!error){setMesinList((prev:any[])=>[...prev,data]);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
     }
   };
-
-  const del=async()=>{
-    await supabase.from("mesin").update({deleted_at:new Date().toISOString(),deleted_by:user?.name||"Admin"}).eq("id",delId);
-    setMesinList(prev=>prev.filter(m=>m.id!==delId));setDelId(null);
   };
 
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
