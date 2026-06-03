@@ -329,8 +329,8 @@ const RENHAR_SEED=[];
 // CSS
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
-*{box-sizing:border-box;margin:0;padding:0}
-body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12px;font-weight:400;text-align:left}
+*{box-sizing:border-box;margin:0;padding:0}html,body,#root{width:100%;height:100%;overflow-x:hidden}
+body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12px;font-weight:400;text-align:left;overflow-x:hidden}
 h1,h2,h3,h4,h5,h6{font-weight:500;text-align:left}
 th,td{text-align:left;font-weight:400}
 button{font-weight:500}
@@ -343,7 +343,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .fi{animation:fadeIn .2s ease forwards}
 .su{animation:slideUp .18s ease forwards}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
-.erp-wrap{display:flex;height:100vh;width:100vw;overflow:hidden;background:#f0f2f5}
+.erp-wrap{display:flex;height:100vh;overflow:hidden;background:#f0f2f5;position:fixed;top:0;left:0;right:0;bottom:0}
 .erp-sb{width:220px;min-width:220px;height:100vh;background:#1e3a8a;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
 .erp-sb.col{width:52px;min-width:52px}
 .erp-sb-head{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;overflow:hidden;flex-shrink:0;background:#1a3278;border-bottom:1px solid #2d4ba0}
@@ -361,8 +361,8 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;margin:1px 6px;border-radius:6px;cursor:pointer;color:#bfdbfe;font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;transition:all .12s;border:none;background:transparent;width:calc(100% - 12px);text-align:left;font-family:inherit;line-height:1.4}
 .erp-nav-item:hover{background:#2d4ba0;color:#fff}
 .erp-nav-item.active{background:#1d4ed8;color:#fff;font-weight:500}
-.erp-sb.col .erp-nav-item{padding:9px 0;margin:1px 0;border-radius:0;justify-content:center;width:100%;gap:0;display:flex;align-items:center}
-.erp-nav-item i{font-size:15px;flex-shrink:0;width:17px;text-align:center;color:inherit}
+.erp-sb.col .erp-nav-item{padding:0;margin:0;height:38px;border-radius:0;justify-content:center;align-items:center;width:52px;gap:0;display:flex}
+.erp-nav-item i{font-size:15px;flex-shrink:0;width:20px;text-align:center;color:inherit}
 .erp-nav-label{overflow:hidden;flex:1;opacity:1;transition:opacity .12s;font-size:12px}
 .erp-sb.col .erp-nav-label{opacity:0;width:0}
 .erp-nav-badge{background:#e53e3e22;color:#fc8181;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:600;flex-shrink:0;transition:opacity .12s;line-height:1.5}
@@ -1559,7 +1559,7 @@ function KendalaInbox({kendalaLog,removeKendala,user}:any){
 // ─────────────────────────────────────────────────────────────────────────────
 function LandingPage({onEnter}){
   return(
-    <div style={{minHeight:"100vh",background:"#f8fafc",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
+    <div style={{minHeight:"100vh",width:"100%",background:"#f8fafc",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
       <style>{GCss}</style>
       <style>{`
         @keyframes float1{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-12px) rotate(-2deg)}}
@@ -1828,7 +1828,7 @@ function Login({onLogin}){
   `;
 
   return(
-    <div style={{minHeight:"100vh",display:"flex",background:"#f1f5f9"}}>
+    <div style={{minHeight:"100vh",width:"100%",display:"flex",background:"#f1f5f9"}}>
       <style>{GCss}</style>
       <style>{css}</style>
 
@@ -4950,23 +4950,23 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   
   const SIDEBAR_MENUS=[
     {group:"MONITORING",items:[
-      {id:"dashboard",label:"Dashboard",icon:"📊"},
-      {id:"summary",label:"Summary Progress",icon:"📋"},
-      {id:"detail",label:"Detail Progress",icon:"🔍"},
+      {id:"dashboard",label:"Dashboard",icon:"ti ti-layout-dashboard"},
+      {id:"summary",label:"Summary Progress",icon:"ti ti-chart-bar"},
+      {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
     ]},
     {group:"PRODUKSI",items:[
-      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"📅"}]:[]),
-      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"📋"}]:[]),
-      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"📝"}]:[]),
+      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
+      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
+      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
-        {id:"pekerja",label:"Master Pekerja",icon:"👥"},
-        {id:"tracking",label:"Tracking Pekerja",icon:"📈"},
-        {id:"activity",label:"Activity Log",icon:"📊"},
-        {id:"kendala",label:"Kendala",icon:"📝",badge:kendalaLog.length>0?kendalaLog.length:null},
-        {id:"maintenance",label:"Maintenance",icon:"🔧"},
-        {id:"masteruser",label:"System",icon:"⚙️"},
+        {id:"pekerja",label:"Master Pekerja",icon:"ti ti-users"},
+        {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
+        {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
+        {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
+        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool"},
+        {id:"masteruser",label:"System",icon:"ti ti-settings"},
       ]:[]),
     ]},
   ];
@@ -5023,7 +5023,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                       onClick={()=>setTab(item.id)}
                       onMouseEnter={(e:any)=>showTooltip(e,item.label)}
                       onMouseLeave={hideTooltip}>
-                      <span style={{fontSize:14,flexShrink:0,width:18,textAlign:"center" as const}}>{item.icon}</span>
+                      <i className={item.icon} style={{fontSize:18,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
                       <span className="erp-nav-label">{item.label}</span>
                       {item.badge&&<span className="erp-nav-badge">{item.badge}</span>}
                     </button>
