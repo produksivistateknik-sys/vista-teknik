@@ -344,36 +344,36 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .su{animation:slideUp .18s ease forwards}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
 .erp-wrap{display:flex;height:100vh;width:100vw;overflow:hidden;background:#f0f2f5}
-.erp-sb{width:220px;min-width:220px;height:100vh;background:#1e2330;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
+.erp-sb{width:220px;min-width:220px;height:100vh;background:#1e3a8a;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
 .erp-sb.col{width:52px;min-width:52px}
-.erp-sb-head{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;overflow:hidden;flex-shrink:0;background:#171b27;border-bottom:1px solid #2d3348}
+.erp-sb-head{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;overflow:hidden;flex-shrink:0;background:#1a3278;border-bottom:1px solid #2d4ba0}
 .erp-sb.col .erp-sb-head{padding:0;justify-content:center}
-.erp-logo{width:30px;height:30px;min-width:30px;background:#3b5bdb;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
+.erp-logo{width:30px;height:30px;min-width:30px;background:#1d4ed8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
 .erp-brand{overflow:hidden;white-space:nowrap;opacity:1;transition:opacity .15s;min-width:0}
 .erp-sb.col .erp-brand{opacity:0;pointer-events:none;width:0}
-.erp-brand-name{font-weight:600;font-size:12px;color:#f1f3f9;line-height:1.2;letter-spacing:.2px}
-.erp-brand-sub{font-size:9px;color:#6b7694;margin-top:2px;line-height:1.3;letter-spacing:.3px;text-transform:uppercase}
+.erp-brand-name{font-weight:600;font-size:12px;color:#fff;line-height:1.2;letter-spacing:.2px}
+.erp-brand-sub{font-size:9px;color:#93c5fd;margin-top:2px;line-height:1.3;letter-spacing:.3px;text-transform:uppercase}
 .erp-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
 .erp-nav::-webkit-scrollbar{width:2px}
-.erp-nav::-webkit-scrollbar-thumb{background:#2d3348;border-radius:2px}
-.erp-nav-grp{font-size:9px;font-weight:600;color:#4a5270;text-transform:uppercase;letter-spacing:.9px;padding:12px 14px 4px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .12s}
+.erp-nav::-webkit-scrollbar-thumb{background:#2d4ba0;border-radius:2px}
+.erp-nav-grp{font-size:9px;font-weight:600;color:#93c5fd;text-transform:uppercase;letter-spacing:.9px;padding:12px 14px 4px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .12s}
 .erp-sb.col .erp-nav-grp{opacity:0;height:0;padding:0;min-height:0;overflow:hidden}
-.erp-nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;margin:1px 6px;border-radius:6px;cursor:pointer;color:#8892b0;font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;transition:all .12s;border:none;background:transparent;width:calc(100% - 12px);text-align:left;font-family:inherit;line-height:1.4}
-.erp-nav-item:hover{background:#252b3d;color:#c8d0e8}
-.erp-nav-item.active{background:#2d3a6b;color:#7b9cff;font-weight:500}
-.erp-sb.col .erp-nav-item{padding:9px 0;margin:1px 0;border-radius:0;justify-content:center;width:100%;gap:0}
+.erp-nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;margin:1px 6px;border-radius:6px;cursor:pointer;color:#bfdbfe;font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;transition:all .12s;border:none;background:transparent;width:calc(100% - 12px);text-align:left;font-family:inherit;line-height:1.4}
+.erp-nav-item:hover{background:#2d4ba0;color:#fff}
+.erp-nav-item.active{background:#1d4ed8;color:#fff;font-weight:500}
+.erp-sb.col .erp-nav-item{padding:9px 0;margin:1px 0;border-radius:0;justify-content:center;width:100%;gap:0;display:flex;align-items:center}
 .erp-nav-item i{font-size:15px;flex-shrink:0;width:17px;text-align:center;color:inherit}
 .erp-nav-label{overflow:hidden;flex:1;opacity:1;transition:opacity .12s;font-size:12px}
 .erp-sb.col .erp-nav-label{opacity:0;width:0}
 .erp-nav-badge{background:#e53e3e22;color:#fc8181;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:600;flex-shrink:0;transition:opacity .12s;line-height:1.5}
 .erp-sb.col .erp-nav-badge{opacity:0}
-.erp-sb-foot{padding:10px 12px;border-top:1px solid #2d3348;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0;background:#171b27}
+.erp-sb-foot{padding:10px 12px;border-top:1px solid #2d4ba0;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0;background:#1a3278}
 .erp-sb.col .erp-sb-foot{justify-content:center;padding:10px 0;gap:0}
-.erp-foot-av{width:28px;height:28px;min-width:28px;border-radius:6px;background:#2d3a6b;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#7b9cff;flex-shrink:0;border:1px solid #3d4f8a}
+.erp-foot-av{width:28px;height:28px;min-width:28px;border-radius:6px;background:#1d4ed8;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;color:#fff;flex-shrink:0;border:1px solid #3b82f6}
 .erp-foot-info{flex:1;min-width:0;overflow:hidden;opacity:1;transition:opacity .15s}
 .erp-sb.col .erp-foot-info{opacity:0;width:0;pointer-events:none}
-.erp-foot-name{font-size:11.5px;font-weight:600;color:#c8d0e8;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.3px}
-.erp-foot-role{font-size:9.5px;color:#4a5270;margin-top:1px;letter-spacing:.2px}
+.erp-foot-name{font-size:11.5px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;text-transform:uppercase;letter-spacing:.3px}
+.erp-foot-role{font-size:9.5px;color:#93c5fd;margin-top:1px;letter-spacing:.2px}
 .erp-main{flex:1;display:flex;flex-direction:column;overflow:hidden;min-width:0}
 .erp-topbar{height:40px;background:#fff;border-bottom:1px solid #e5e8ed;display:flex;align-items:center;padding:0 14px;gap:8px;flex-shrink:0}
 .erp-toggle{width:26px;height:26px;border-radius:5px;border:1px solid #e5e8ed;background:#f8f9fb;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;flex-shrink:0;transition:all .12s}
@@ -4162,177 +4162,400 @@ function SystemTab({user,activityLog}){
   );
 }
 
-function MasterUserTab({admins,setAdmins,user}){
-  const [form,setForm]=useState({nama:"",username:"",password:"",is_active:true,divisi:"admin"});
-  const [editId,setEditId]=useState(null);
-  const [delId,setDelId]=useState(null);
-  const [showPwd,setShowPwd]=useState({});
-  const [resetId,setResetId]=useState(null);
-  const [newPwd,setNewPwd]=useState("");
+function MasterUserTab({ admins, setAdmins, user }){
+  const [form, setForm] = useState({ nama: "", username: "", password: "", is_active: true });
+  const [editId, setEditId] = useState(null);
+  const [delId, setDelId] = useState(null);
+  const [showPwd, setShowPwd] = useState({});
+  const [resetId, setResetId] = useState(null);
+  const [newPwd, setNewPwd] = useState("");
 
-  const save=async()=>{
-    if(!form.nama.trim()||!form.username.trim()||!form.password.trim())return;
-    if(editId){
-      const{data,error}=await supabase.from("admins").update({nama:form.nama,username:form.username,is_active:form.is_active,divisi:form.divisi}).eq("id",editId).select().single();
-      if(!error){setAdmins(prev=>prev.map(a=>a.id===editId?data:a));setEditId(null);setForm({nama:"",username:"",password:"",is_active:true});}
+  const save = async () => {
+    if (!form.nama.trim() || !form.username.trim()) return;
+    if (editId) {
+      const { data, error } = await supabase
+        .from("admins")
+        .update({ nama: form.nama, username: form.username, is_active: form.is_active })
+        .eq("id", editId).select().single();
+      if (!error) {
+        setAdmins(prev => prev.map(a => a.id === editId ? data : a));
+        setEditId(null);
+        setForm({ nama: "", username: "", password: "", is_active: true });
+      }
     } else {
-      const{data,error}=await supabase.from("admins").insert({nama:form.nama,username:form.username,password:form.password,is_active:form.is_active,divisi:form.divisi}).select().single();
-      if(!error){setAdmins(prev=>[...prev,data]);setForm({nama:"",username:"",password:"",is_active:true});}
+      if (!form.password.trim()) return;
+      const { data, error } = await supabase
+        .from("admins")
+        .insert({ nama: form.nama, username: form.username, password: form.password, is_active: form.is_active })
+        .select().single();
+      if (!error) {
+        setAdmins(prev => [...prev, data]);
+        setForm({ nama: "", username: "", password: "", is_active: true });
+      }
     }
   };
 
-  const resetPwd=async()=>{
-    if(!newPwd.trim())return;
-    const{error}=await supabase.from("admins").update({password:newPwd}).eq("id",resetId);
-    if(!error){setResetId(null);setNewPwd("");}
+  const resetPwd = async () => {
+    if (!newPwd.trim()) return;
+    const { error } = await supabase.from("admins").update({ password: newPwd }).eq("id", resetId);
+    if (!error) { setResetId(null); setNewPwd(""); }
   };
 
-  const toggleActive=async(id,val)=>{
-    await supabase.from("admins").update({is_active:val}).eq("id",id);
-    setAdmins(prev=>prev.map(a=>a.id===id?{...a,is_active:val}:a));
+  const toggleActive = async (id, val) => {
+    await supabase.from("admins").update({ is_active: val }).eq("id", id);
+    setAdmins(prev => prev.map(a => a.id === id ? { ...a, is_active: val } : a));
   };
 
-  const del=async()=>{
-    await supabase.from("admins").delete().eq("id",delId);
-    setAdmins(prev=>prev.filter(a=>a.id!==delId));setDelId(null);
+  const del = async () => {
+    await supabase.from("admins").delete().eq("id", delId);
+    setAdmins(prev => prev.filter(a => a.id !== delId));
+    setDelId(null);
   };
 
-  const fmtTime=(ts)=>{
-    if(!ts)return"—";
-    return new Date(ts).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+
-      new Date(ts).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  const fmtTime = (ts) => {
+    if (!ts) return "\u2014";
+    return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) + " " +
+      new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
   };
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10",position:"sticky",top:0};
+  const thS = {
+    background: "#1e2330", color: "#c8d0e8", padding: "8px 10px",
+    fontWeight: 600, fontSize: 10, textAlign: "left" as const,
+    whiteSpace: "nowrap" as const, borderRight: "1px solid #ffffff10",
+  };
 
-  return(
+  return (
     <div>
-      <Card style={{marginBottom:16}}>
-        <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
-          {editId?"✏️ Edit User":"➕ Tambah Admin Baru"}
+      <div style={{ marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "2px solid #e2e8f0" }}>
+          <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{"⚙️"}</div>
+          <div>
+            <div style={{ fontWeight: 800, fontSize: 15, color: "#1e293b" }}>Admin</div>
+            <div style={{ fontSize: 11, color: "#94a3b8" }}>Akun login untuk dashboard admin Vista Teknik</div>
+          </div>
+          <span style={{ marginLeft: "auto", background: "#eff6ff", color: "#1d4ed8", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700 }}>{admins.length} admin</span>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr auto",gap:12,alignItems:"flex-end",flexWrap:"wrap"}}>
-          <div><Lbl>Nama Lengkap</Lbl>
-            <Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})} placeholder="Nama admin..."/>
-          </div>
-          <div><Lbl>Username</Lbl>
-            <Inp value={form.username} onChange={e=>setForm({...form,username:e.target.value})} placeholder="username_admin"/>
-          </div>
-          {!editId&&(
-            <div><Lbl>Password</Lbl>
-              <Inp type="password" value={form.password} onChange={e=>setForm({...form,password:e.target.value})} placeholder="Password awal..."/>
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit Admin" : "Tambah Admin Baru"}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
+            <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama admin..." /></div>
+            <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_admin" /></div>
+            {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password awal..." /></div>)}
+            <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 2 }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+                <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
+              </label>
+              <Btn color="#1d4ed8" onClick={save}>{editId ? "Simpan" : "+ Tambah"}</Btn>
+              {editId && (<Btn outline color="#64748b" onClick={() => { setEditId(null); setForm({ nama: "", username: "", password: "", is_active: true }); }}>Batal</Btn>)}
             </div>
-          )}
-          <div style={{display:"flex",gap:8,alignItems:"center",paddingBottom:2}}>
-            <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:600,color:"#475569",cursor:"pointer"}}>
-              <input type="checkbox" checked={form.is_active} onChange={e=>setForm({...form,is_active:e.target.checked})}/>
-              Aktif
-            </label>
-            <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"+ Tambah"}</Btn>
-            {editId&&<Btn outline color="#64748b" onClick={()=>{setEditId(null);setForm({nama:"",username:"",password:"",is_active:true});}}>Batal</Btn>}
           </div>
-        </div>
-      </Card>
-
-      <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead>
-            <tr>
+        </Card>
+        <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>
               <th style={thS}>NAMA</th>
               <th style={thS}>USERNAME</th>
               <th style={thS}>PASSWORD</th>
-              <th style={{...thS,textAlign:"center"}}>STATUS</th>
+              <th style={{ ...thS, textAlign: "center" as const }}>STATUS</th>
               <th style={thS}>LAST LOGIN</th>
               <th style={thS}>DIBUAT</th>
-              <th style={{...thS,textAlign:"center"}}>AKSI</th>
-            </tr>
-          </thead>
-          <tbody>
-            {admins.map((a,i)=>{
-              const rBg=i%2===0?"#fff":"#f8fafc";
-              const td={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
-              const isSelf=user?.id===a.id;
-              return(
-                <tr key={a.id}>
-                  <td style={{...td,fontWeight:700,color:"#1e293b"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:28,height:28,borderRadius:7,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#1d4ed8",flexShrink:0}}>
-                        {a.nama?.slice(0,2).toUpperCase()}
+              <th style={{ ...thS, textAlign: "center" as const }}>AKSI</th>
+            </tr></thead>
+            <tbody>
+              {admins.map((a, i) => {
+                const rBg = i % 2 === 0 ? "#fff" : "#f8fafc";
+                const td: any = { padding: "9px 10px", borderBottom: "1px solid #f1f5f9", borderRight: "1px solid #f1f5f9", background: rBg, verticalAlign: "middle" };
+                const isSelf = user?.id === a.id;
+                return (
+                  <tr key={a.id}>
+                    <td style={{ ...td, fontWeight: 700, color: "#1e293b" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 7, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#1d4ed8", flexShrink: 0 }}>{a.nama?.slice(0, 2).toUpperCase()}</div>
+                        {a.nama}
+                        {isSelf && (<span style={{ fontSize: 10, background: "#eff6ff", color: "#1d4ed8", borderRadius: 20, padding: "1px 7px", fontWeight: 700 }}>Saya</span>)}
                       </div>
-                      {a.nama}
-                      {isSelf&&<span style={{fontSize:10,background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"1px 7px",fontWeight:700}}>Saya</span>}
-                    </div>
-                  </td>
-                  <td style={{...td,fontFamily:"monospace",color:"#475569"}}>{a.username}</td>
-                  <td style={{...td}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <span style={{fontFamily:"monospace",fontSize:12,color:"#94a3b8",letterSpacing:2}}>
-                        {showPwd[a.id]?a.password:"••••••••"}
-                      </span>
-                      <button onClick={()=>setShowPwd(prev=>({...prev,[a.id]:!prev[a.id]}))}
-                        style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:13,padding:0}}>
-                        {showPwd[a.id]?"🙈":"👁"}
+                    </td>
+                    <td style={{ ...td, fontFamily: "monospace", color: "#475569" }}>{a.username}</td>
+                    <td style={td}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: "monospace", fontSize: 12, color: "#94a3b8", letterSpacing: 2 }}>{showPwd[a.id] ? a.password : "••••••••"}</span>
+                        <button onClick={() => setShowPwd(prev => ({ ...prev, [a.id]: !prev[a.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>{showPwd[a.id] ? "hide" : "show"}</button>
+                      </div>
+                    </td>
+                    <td style={{ ...td, textAlign: "center" as const }}>
+                      <button onClick={() => !isSelf && toggleActive(a.id, !a.is_active)}
+                        style={{ background: a.is_active ? "#f0fdf4" : "#fef2f2", border: "1px solid "+(a.is_active ? "#bbf7d0" : "#fecaca"), color: a.is_active ? "#16a34a" : "#dc2626", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700, cursor: isSelf ? "not-allowed" : "pointer" }}>
+                        {a.is_active ? "Aktif" : "Nonaktif"}
                       </button>
-                    </div>
-                  </td>
-                  <td style={{...td,textAlign:"center"}}>
-                    <button onClick={()=>!isSelf&&toggleActive(a.id,!a.is_active)}
-                      style={{background:a.is_active?"#f0fdf4":"#fef2f2",border:`1px solid ${a.is_active?"#bbf7d0":"#fecaca"}`,
-                        color:a.is_active?"#16a34a":"#dc2626",borderRadius:20,padding:"2px 12px",
-                        fontSize:11,fontWeight:700,cursor:isSelf?"not-allowed":"pointer"}}>
-                      {a.is_active?"✓ Aktif":"✕ Nonaktif"}
-                    </button>
-                  </td>
-                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{fmtTime(a.last_login)}</td>
-                  <td style={{...td,fontSize:11,color:"#94a3b8"}}>{fmtTime(a.created_at)}</td>
-                  <td style={{...td,textAlign:"center"}}>
-                    <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                      <button onClick={()=>{setEditId(a.id);setForm({nama:a.nama,username:a.username,password:a.password,is_active:a.is_active,divisi:a.divisi||"admin"});}}
-                        style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
-                      <button onClick={()=>{setResetId(a.id);setNewPwd("");}}
-                        style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#92400e"}}>🔑</button>
-                      {!isSelf&&<button onClick={()=>setDelId(a.id)}
-                        style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>}
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+                    </td>
+                    <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(a.last_login)}</td>
+                    <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(a.created_at)}</td>
+                    <td style={{ ...td, textAlign: "center" as const }}>
+                      <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                        <button onClick={() => { setEditId(a.id); setForm({ nama: a.nama, username: a.username, password: a.password, is_active: a.is_active }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#475569" }}>Edit</button>
+                        <button onClick={() => { setResetId(a.id); setNewPwd(""); }} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#92400e" }}>Reset Pwd</button>
+                        {!isSelf && (<button onClick={() => setDelId(a.id)} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#dc2626" }}>Hapus</button>)}
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+              {admins.length === 0 && (<tr><td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Belum ada admin</td></tr>)}
+            </tbody>
+          </table>
+        </div>
       </div>
-
-      {resetId&&(
-        <Modal title="🔑 Reset Password" onClose={()=>setResetId(null)} width={380}>
-          <div style={{fontSize:13,color:"#475569",marginBottom:14}}>
-            Reset password untuk <strong>{admins.find(a=>a.id===resetId)?.nama}</strong>
-          </div>
+      <div style={{ borderTop: "2px dashed #e2e8f0", margin: "8px 0 28px" }} />
+      <MasterPekerjaInline />
+      {resetId && (
+        <Modal title="Reset Password Admin" onClose={() => setResetId(null)} width={380}>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>Reset password untuk <strong>{admins.find(a => a.id === resetId)?.nama}</strong></div>
           <Lbl>Password Baru</Lbl>
-          <Inp type="password" value={newPwd} onChange={e=>setNewPwd(e.target.value)} placeholder="Password baru..." style={{marginBottom:16}}/>
-          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <Btn outline color="#64748b" onClick={()=>setResetId(null)}>Batal</Btn>
+          <Inp type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Password baru..." style={{ marginBottom: 16 }} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn outline color="#64748b" onClick={() => setResetId(null)}>Batal</Btn>
             <Btn color="#f59e0b" onClick={resetPwd}>Reset Password</Btn>
           </div>
         </Modal>
       )}
-      {delId&&(
-        <Modal title="Hapus User?" onClose={()=>setDelId(null)} width={360}>
-          <div style={{fontSize:13,color:"#475569",marginBottom:20}}>
-            User <strong>{admins.find(a=>a.id===delId)?.nama}</strong> akan dihapus permanen.
-          </div>
-          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
+      {delId && (
+        <Modal title="Hapus Admin?" onClose={() => setDelId(null)} width={360}>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>Admin <strong>{admins.find(a => a.id === delId)?.nama}</strong> akan dihapus permanen.</div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn outline color="#64748b" onClick={() => setDelId(null)}>Batal</Btn>
             <Btn color="#dc2626" onClick={del}>Hapus</Btn>
           </div>
         </Modal>
       )}
-      <div style={{marginTop:32,paddingTop:24,borderTop:"2px solid #e2e8f0"}}>
-        <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>User Pekerja</div>
-        <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Kelola akun login untuk Vista Pekerja</div>
-      </div>
     </div>
   );
 }
+
+function MasterPekerjaInline(){
+  const [ops, setOps] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+  const [editId, setEditId] = useState<any>(null);
+  const [delId, setDelId] = useState<any>(null);
+  const [showPwd, setShowPwd] = useState<any>({});
+  const [resetId, setResetId] = useState<any>(null);
+  const [newPwd, setNewPwd] = useState("");
+  const [filterDiv, setFilterDiv] = useState("ALL");
+  const [search, setSearch] = useState("");
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      const { data, error } = await supabase
+        .from("operator_users")
+        .select("*")
+        .order("divisi", { ascending: true })
+        .order("nama", { ascending: true });
+      if (!error) setOps(data ?? []);
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const opDiv = Object.entries(DIVISI_CONFIG)
+    .filter(([k]) => OPERATOR_ROLES.includes(k))
+    .map(([k, v]: any) => ({ key: k, ...v }));
+
+  const save = async () => {
+    if (!form.nama.trim() || !form.username.trim()) return;
+    if (editId) {
+      const { data, error } = await supabase
+        .from("operator_users")
+        .update({ nama: form.nama, username: form.username, divisi: form.divisi, is_active: form.is_active })
+        .eq("id", editId).select().single();
+      if (!error) {
+        setOps(p => p.map((o: any) => o.id === editId ? data : o));
+        setEditId(null);
+        setForm({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+      }
+    } else {
+      if (!form.password.trim()) return;
+      const { data, error } = await supabase
+        .from("operator_users")
+        .insert({ nama: form.nama, username: form.username, password: form.password, divisi: form.divisi, is_active: form.is_active })
+        .select().single();
+      if (!error) {
+        setOps(p => [...p, data]);
+        setForm({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+      }
+    }
+  };
+
+  const resetPwd = async () => {
+    if (!newPwd.trim()) return;
+    const { error } = await supabase.from("operator_users").update({ password: newPwd }).eq("id", resetId);
+    if (!error) { setResetId(null); setNewPwd(""); }
+  };
+
+  const toggleActive = async (id: any, val: boolean) => {
+    await supabase.from("operator_users").update({ is_active: val }).eq("id", id);
+    setOps(p => p.map((o: any) => o.id === id ? { ...o, is_active: val } : o));
+  };
+
+  const del = async () => {
+    await supabase.from("operator_users").delete().eq("id", delId);
+    setOps(p => p.filter((o: any) => o.id !== delId));
+    setDelId(null);
+  };
+
+  const fmtTime = (ts: string) => {
+    if (!ts) return "\u2014";
+    return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) +
+      " " + new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+  };
+
+  const filtered = ops.filter((o: any) =>
+    (filterDiv === "ALL" || o.divisi === filterDiv) &&
+    (!search || o.nama.toLowerCase().includes(search.toLowerCase()) ||
+      o.username.toLowerCase().includes(search.toLowerCase()))
+  );
+
+  const thS: any = {
+    background: "#1e2330", color: "#c8d0e8", padding: "8px 10px",
+    fontWeight: 600, fontSize: 10, textAlign: "left",
+    whiteSpace: "nowrap", borderRight: "1px solid #ffffff10",
+  };
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "2px solid #e2e8f0" }}>
+        <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{"👷"}</div>
+        <div>
+          <div style={{ fontWeight: 800, fontSize: 15, color: "#1e293b" }}>User Pekerja</div>
+          <div style={{ fontSize: 11, color: "#94a3b8" }}>Akun login untuk Vista Pekerja (username + password)</div>
+        </div>
+        <span style={{ marginLeft: "auto", background: "#f0fdf4", color: "#16a34a", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700 }}>{ops.length} pekerja</span>
+      </div>
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit User Pekerja" : "Tambah User Pekerja"}</div>
+        <div style={{ display: "grid", gridTemplateColumns: editId ? "1fr 1fr 1fr auto" : "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
+          <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama pekerja..." /></div>
+          <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_pekerja" /></div>
+          {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Default: 1234" /></div>)}
+          <div><Lbl>Divisi</Lbl>
+            <Sel value={form.divisi} onChange={e => setForm({ ...form, divisi: e.target.value })}>
+              {opDiv.map((d: any) => (<option key={d.key} value={d.key}>{d.icon} {d.label}</option>))}
+            </Sel>
+          </div>
+          <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 2 }}>
+            <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+              <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
+            </label>
+            <Btn color="#16a34a" onClick={save}>{editId ? "Simpan" : "+ Tambah"}</Btn>
+            {editId && (<Btn outline color="#64748b" onClick={() => { setEditId(null); setForm({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true }); }}>Batal</Btn>)}
+          </div>
+        </div>
+      </Card>
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau username..."
+          style={{ height: 30, padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, background: "#f8fafc", outline: "none", color: "#1e293b", fontFamily: "inherit", width: 220 }} />
+        <button onClick={() => setFilterDiv("ALL")}
+          style={{ padding: "4px 14px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 700, border: filterDiv === "ALL" ? "1.5px solid #1d4ed8" : "1.5px solid #e2e8f0", background: filterDiv === "ALL" ? "#1d4ed8" : "#fff", color: filterDiv === "ALL" ? "#fff" : "#64748b" }}>
+          Semua ({ops.length})
+        </button>
+        {opDiv.map((d: any) => {
+          const cnt = ops.filter((o: any) => o.divisi === d.key).length;
+          const isSel = filterDiv === d.key;
+          return (
+            <button key={d.key} onClick={() => setFilterDiv(isSel ? "ALL" : d.key)}
+              style={{ padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 700, border: isSel ? "1.5px solid "+d.color : "1.5px solid #e2e8f0", background: isSel ? d.color+"18" : "#fff", color: isSel ? d.color : "#64748b" }}>
+              {d.icon} {d.label} ({cnt})
+            </button>
+          );
+        })}
+      </div>
+      {loading ? (
+        <div style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Memuat data...</div>
+      ) : (
+        <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+            <thead><tr>
+              <th style={thS}>NAMA</th>
+              <th style={thS}>USERNAME</th>
+              <th style={thS}>PASSWORD</th>
+              <th style={thS}>DIVISI</th>
+              <th style={{ ...thS, textAlign: "center" }}>STATUS</th>
+              <th style={thS}>LAST LOGIN</th>
+              <th style={thS}>DIBUAT</th>
+              <th style={{ ...thS, textAlign: "center" }}>AKSI</th>
+            </tr></thead>
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>{search || filterDiv !== "ALL" ? "Tidak ada pekerja ditemukan" : "Belum ada user pekerja"}</td></tr>
+              ) : filtered.map((o: any, i: number) => {
+                const dc: any = DIVISI_CONFIG[o.divisi] || {};
+                const rBg = i % 2 === 0 ? "#fff" : "#f8fafc";
+                const td: any = { padding: "9px 10px", borderBottom: "1px solid #f1f5f9", borderRight: "1px solid #f1f5f9", background: rBg, verticalAlign: "middle" };
+                return (
+                  <tr key={o.id}>
+                    <td style={{ ...td, fontWeight: 700, color: "#1e293b" }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                        <div style={{ width: 28, height: 28, borderRadius: 7, background: dc.bg || "#f1f5f9", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 800, color: dc.color || "#64748b", flexShrink: 0 }}>{o.nama?.slice(0, 2).toUpperCase()}</div>
+                        {o.nama}
+                      </div>
+                    </td>
+                    <td style={{ ...td, fontFamily: "monospace", color: "#475569" }}>{o.username}</td>
+                    <td style={td}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span style={{ fontFamily: "monospace", color: "#94a3b8", letterSpacing: 2, fontSize: 12 }}>{showPwd[o.id] ? o.password : "••••••••"}</span>
+                        <button onClick={() => setShowPwd((p: any) => ({ ...p, [o.id]: !p[o.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>{showPwd[o.id] ? "hide" : "show"}</button>
+                      </div>
+                    </td>
+                    <td style={td}>{dc.label && (<span style={{ background: dc.bg, color: dc.color, border: "1px solid "+dc.color+"30", borderRadius: 20, padding: "2px 9px", fontSize: 10, fontWeight: 700 }}>{dc.icon} {dc.label}</span>)}</td>
+                    <td style={{ ...td, textAlign: "center" as const }}>
+                      <button onClick={() => toggleActive(o.id, !o.is_active)}
+                        style={{ background: o.is_active ? "#f0fdf4" : "#fef2f2", border: "1px solid "+(o.is_active ? "#bbf7d0" : "#fecaca"), color: o.is_active ? "#16a34a" : "#dc2626", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700, cursor: "pointer" }}>
+                        {o.is_active ? "Aktif" : "Nonaktif"}
+                      </button>
+                    </td>
+                    <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(o.last_login)}</td>
+                    <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(o.created_at)}</td>
+                    <td style={{ ...td, textAlign: "center" as const }}>
+                      <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+                        <button onClick={() => { setEditId(o.id); setForm({ nama: o.nama, username: o.username, password: o.password, divisi: o.divisi, is_active: o.is_active }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#475569" }}>Edit</button>
+                        <button onClick={() => { setResetId(o.id); setNewPwd(""); }} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#92400e" }}>Reset Pwd</button>
+                        <button onClick={() => setDelId(o.id)} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#dc2626" }}>Hapus</button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+      {resetId && (
+        <Modal title="Reset Password Pekerja" onClose={() => setResetId(null)} width={380}>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>Reset password untuk <strong>{ops.find((o: any) => o.id === resetId)?.nama}</strong></div>
+          <Lbl>Password Baru</Lbl>
+          <Inp type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} onKeyDown={(e: any) => e.key === "Enter" && resetPwd()} placeholder="Password baru..." style={{ marginBottom: 16 }} />
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn outline color="#64748b" onClick={() => setResetId(null)}>Batal</Btn>
+            <Btn color="#f59e0b" onClick={resetPwd}>Reset Password</Btn>
+          </div>
+        </Modal>
+      )}
+      {delId && (
+        <Modal title="Hapus User Pekerja?" onClose={() => setDelId(null)} width={360}>
+          <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>User <strong>{ops.find((o: any) => o.id === delId)?.nama}</strong> akan dihapus permanen.</div>
+          <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+            <Btn outline color="#64748b" onClick={() => setDelId(null)}>Batal</Btn>
+            <Btn color="#dc2626" onClick={del}>Hapus</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+
+
+
 
 function MasterMesinTab({mesinList,setMesinList,user}:any){
   const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif"});
