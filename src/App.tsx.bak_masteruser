@@ -117,93 +117,6 @@ const DIVISI_PROSES_MAP=Object.fromEntries(
 );
 const QTY_DIVISI = ["mekanik","painting"];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// MAPPING: KODE KOMPONEN → PROSES YANG RELEVAN
-// ─────────────────────────────────────────────────────────────────────────────
-const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
-  // FS & F3B - WP1
-  "FS.1":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.2":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.3":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.4":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "FS.5":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "FS.6":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "FS.7":  ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
-  "FS.8":  ["POTONG","STEL","PAINTING","RAKIT"],
-  "FS.9":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
-  "FS.10": ["POTONG","BENDING","PAINTING","RAKIT","WIRING POWER"],
-  // FS & F3B - WP2
-  "FS.11": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "FS.12": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.13": ["POTONG","PAINTING","RAKIT"],
-  "FS.14": ["POTONG","PAINTING","RAKIT"],
-  "FS.15": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  // FS & F3B - WP3
-  "FS.16": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.17": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.18": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.19": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.20": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.21": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  // FS & F3B - WP4
-  "FS.22": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.23": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "FS.24": ["POTONG","BENDING","PAINTING","RAKIT"],
-  // F3B tambahan - WP1
-  "F3B.1":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "F3B.2":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.3":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.4":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "F3B.5":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "F3B.6":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.7":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "F3B.8":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "F3B.9":  ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
-  "F3B.10": ["POTONG","STEL","PAINTING","RAKIT"],
-  "F3B.11": ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
-  "F3B.12": ["POTONG","BENDING","PAINTING","RAKIT","WIRING POWER"],
-  // F3B - WP2
-  "F3B.13": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "F3B.14": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.15": ["POTONG","PAINTING","RAKIT"],
-  "F3B.16": ["POTONG","PAINTING","RAKIT"],
-  "F3B.17": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  // F3B - WP3
-  "F3B.18": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.19": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.20": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.21": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.22": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "F3B.23": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  // F3B - WP4
-  "F3B.24": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.25": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "F3B.26": ["POTONG","BENDING","PAINTING","RAKIT"],
-  // WM_MS & WM_POLY - WP1
-  "WM.1": ["POTONG","BENDING","PAINTING","RAKIT","WIRING POWER","BUSBAR"],
-  "WM.2": ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
-  // WM_MS - WP2
-  "WM.3": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "WM.4": ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN"],
-  // WM - WP3
-  "WM.5": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "WM.6": ["POTONG","BENDING","PAINTING","RAKIT"],
-  // WM - WP4
-  "WM.7": ["POTONG","BENDING","PAINTING","RAKIT"],
-  "WM.8": ["POTONG","BENDING","PAINTING","RAKIT"],
-  // WM_POLY - WP5 & WP6 (sama seperti WP4)
-  "WM.9":  ["POTONG","BENDING","PAINTING","RAKIT"],
-  "WM.10": ["POTONG","BENDING","PAINTING","RAKIT"],
-};
-
-// Helper: cek apakah komponen relevan dengan proses tertentu
-const isKomponenRelevant=(kode:string, proses:string):boolean=>{
-  const relevanProses=KOMPONEN_PROSES_MAP[kode];
-  if(!relevanProses) return true; // kalau tidak ada mapping, tampilkan semua
-  return relevanProses.includes(proses);
-};
-
-
 export const DIVISI_CONFIG = {
   admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",password:"Admin123",   proses:null},
   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
@@ -343,7 +256,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .fi{animation:fadeIn .2s ease forwards}
 .su{animation:slideUp .18s ease forwards}
 .hist-cell:hover .hist-tooltip{opacity:1!important;visibility:visible!important}
-.erp-wrap{display:flex;height:100vh;width:100vw;overflow:hidden;background:#f0f2f5}
+.erp-wrap{display:flex;height:100vh;overflow:hidden;background:#f0f2f5}
 .erp-sb{width:220px;min-width:220px;height:100vh;background:#1e2330;display:flex;flex-direction:column;transition:width .2s ease,min-width .2s ease;overflow:hidden;flex-shrink:0}
 .erp-sb.col{width:52px;min-width:52px}
 .erp-sb-head{height:56px;display:flex;align-items:center;padding:0 16px;gap:10px;overflow:hidden;flex-shrink:0;background:#171b27;border-bottom:1px solid #2d3348}
@@ -385,7 +298,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-bell{width:26px;height:26px;border:1px solid #e5e8ed;border-radius:5px;background:#f8f9fb;display:flex;align-items:center;justify-content:center;cursor:pointer;color:#6b7280;position:relative;flex-shrink:0}
 .erp-bell i{font-size:13px}
 .erp-bell-dot{position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%;background:#e53e3e;border:1.5px solid #fff}
-.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px;background:#f0f2f5}
+.erp-body{flex:1;overflow-y:auto;overflow-x:hidden;padding:10px 4px;background:#f0f2f5}
 .erp-body::-webkit-scrollbar{width:4px}
 .erp-body::-webkit-scrollbar-thumb{background:#d1d5db;border-radius:2px}
 .erp-tooltip-el{position:fixed;background:#1a1d23;color:#f1f3f9;font-size:11px;font-weight:500;padding:5px 10px;border-radius:5px;white-space:nowrap;pointer-events:none;z-index:9999;display:none}`;
@@ -495,39 +408,35 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
   const startEdit=(p)=>{setEditId(p.id);setForm({nama:p.nama,divisi:p.divisi});};
   const cancelEdit=()=>{setEditId(null);setForm({nama:"",divisi:"mekanik"});};
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,
-    fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,
-    borderRight:"1px solid #ffffff10",textTransform:"uppercase" as const,letterSpacing:.4};
+  const byDiv=operatorDivisi.map(d=>({
+    ...d, count:pekerja.filter(p=>p.divisi===d.key).length
+  }));
 
   return(
     <div className="fi">
-      {/* Stats row */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(110px,1fr))",gap:8,marginBottom:14}}>
-        {operatorDivisi.map(d=>{
-          const cnt=pekerja.filter(p=>p.divisi===d.key).length;
-          return(
-            <div key={d.key} onClick={()=>setFilterDiv(filterDiv===d.key?"ALL":d.key)}
-              style={{background:filterDiv===d.key?d.bg:"#fff",border:`1px solid ${filterDiv===d.key?d.color:"#e2e8f0"}`,
-                borderLeft:`3px solid ${d.color}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",transition:"all .15s"}}>
-              <div style={{fontSize:18,fontWeight:800,color:d.color}}>{cnt}</div>
-              <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3,marginTop:2}}>{d.label}</div>
-            </div>
-          );
-        })}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:10,marginBottom:20}}>
+        {byDiv.map(d=>(
+          <Card key={d.key} style={{padding:"12px 14px",borderLeft:`3px solid ${d.color}`,cursor:"pointer",
+            background:filterDiv===d.key?d.bg:"#fff"}}
+            onClick={()=>setFilterDiv(filterDiv===d.key?"ALL":d.key)}>
+            <div style={{fontSize:18,marginBottom:4}}>{d.icon}</div>
+            <div style={{fontSize:22,fontWeight:800,color:d.color}}>{d.count}</div>
+            <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3}}>{d.label}</div>
+          </Card>
+        ))}
       </div>
 
-      {/* Form */}
-      <Card style={{marginBottom:14}}>
-        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>
+      <Card style={{marginBottom:18}}>
+        <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
           {editId?"✏️ Edit Pekerja":"➕ Tambah Pekerja Baru"}
         </div>
-        <div style={{display:"flex",gap:10,flexWrap:"wrap" as const,alignItems:"flex-end"}}>
-          <div style={{flex:1,minWidth:180}}>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end"}}>
+          <div style={{flex:1,minWidth:200}}>
             <Lbl>Nama Lengkap</Lbl>
             <Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})}
               placeholder="Nama pekerja..." onKeyDown={e=>e.key==="Enter"&&save()}/>
           </div>
-          <div style={{minWidth:160}}>
+          <div style={{minWidth:180}}>
             <Lbl>Divisi</Lbl>
             <Sel value={form.divisi} onChange={e=>setForm({...form,divisi:e.target.value})}>
               {operatorDivisi.map(d=><option key={d.key} value={d.key}>{d.icon} {d.label}</option>)}
@@ -542,81 +451,55 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
         </div>
       </Card>
 
-      {/* Filter + Search */}
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap" as const,alignItems:"center"}}>
+      <div style={{display:"flex",gap:10,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)}
           placeholder="🔍 Cari nama pekerja..."
-          style={{height:30,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,
-            fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:220}}/>
-        <button onClick={()=>setFilterDiv("ALL")}
-          style={{padding:"4px 12px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:700,
-            border:filterDiv==="ALL"?"1.5px solid #1d4ed8":"1.5px solid #e2e8f0",
-            background:filterDiv==="ALL"?"#1d4ed8":"#fff",
-            color:filterDiv==="ALL"?"#fff":"#64748b"}}>
-          Semua ({pekerja.length})
-        </button>
-        {operatorDivisi.map(d=>{
-          const cnt=pekerja.filter(p=>p.divisi===d.key).length;
-          const isSel=filterDiv===d.key;
-          return(
-            <button key={d.key} onClick={()=>setFilterDiv(isSel?"ALL":d.key)}
-              style={{padding:"4px 12px",borderRadius:20,cursor:"pointer",fontSize:11,fontWeight:700,
-                border:isSel?`1.5px solid ${d.color}`:"1.5px solid #e2e8f0",
-                background:isSel?d.color+"18":"#fff",color:isSel?d.color:"#64748b"}}>
-              {d.label} ({cnt})
-            </button>
-          );
-        })}
-        <span style={{marginLeft:"auto",fontSize:11,color:"#94a3b8"}}>{filtered.length} pekerja</span>
+          style={{padding:"8px 14px",borderRadius:9,border:"1.5px solid #e2e8f0",background:"#fff",
+            fontSize:13,width:260,color:"#1e293b"}}/>
+        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+          <button onClick={()=>setFilterDiv("ALL")}
+            style={{padding:"5px 14px",borderRadius:20,border:`1.5px solid ${filterDiv==="ALL"?"#1d4ed8":"#e2e8f0"}`,
+              background:filterDiv==="ALL"?"#1d4ed8":"#fff",color:filterDiv==="ALL"?"#fff":"#64748b",
+              cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({pekerja.length})</button>
+          {operatorDivisi.map(d=>(
+            <button key={d.key} onClick={()=>setFilterDiv(filterDiv===d.key?"ALL":d.key)}
+              style={{padding:"5px 14px",borderRadius:20,border:`1.5px solid ${filterDiv===d.key?d.color:"#e2e8f0"}`,
+                background:filterDiv===d.key?d.color+"18":"#fff",color:filterDiv===d.key?d.color:"#64748b",
+                cursor:"pointer",fontSize:11,fontWeight:700}}>{d.label} ({pekerja.filter(p=>p.divisi===d.key).length})</button>
+          ))}
+        </div>
       </div>
 
-      {/* Tabel */}
-      <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead>
-            <tr>
-              <th style={{...thS,width:40,textAlign:"center" as const}}>No</th>
-              <th style={thS}>Nama</th>
-              <th style={thS}>Divisi</th>
-              <th style={{...thS,textAlign:"center" as const,width:100}}>Aksi</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.length===0?(
-              <tr><td colSpan={4} style={{textAlign:"center",padding:"32px",color:"#94a3b8",fontSize:13}}>
-                Tidak ada pekerja ditemukan
-              </td></tr>
-            ):filtered.map((p,i)=>{
-              const dc=DIVISI_CONFIG[p.divisi];
-              const rBg=i%2===0?"#fff":"#f8fafc";
-              const isEdit=editId===p.id;
-              const td:any={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",
-                borderRight:"1px solid #f1f5f9",background:isEdit?"#eff6ff":rBg,verticalAlign:"middle"};
-              return(
-                <tr key={p.id}>
-                  <td style={{...td,textAlign:"center",color:"#94a3b8",fontWeight:600}}>{i+1}</td>
-                  <td style={{...td,fontWeight:600,color:"#1e293b"}}>{p.nama}</td>
-                  <td style={td}>
-                    <span style={{background:dc?.bg,color:dc?.color,border:`1px solid ${dc?.color}30`,
-                      borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>
-                      {dc?.icon} {dc?.label}
-                    </span>
-                  </td>
-                  <td style={{...td,textAlign:"center"}}>
-                    <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                      <button onClick={()=>startEdit(p)}
-                        style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,
-                          padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
-                      <button onClick={()=>setDelId(p.id)}
-                        style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,
-                          padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
-                    </div>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:10}}>
+        {filtered.map(p=>{
+          const dc=DIVISI_CONFIG[p.divisi];
+          return(
+            <div key={p.id} style={{background:"#fff",borderRadius:12,border:`1px solid ${editId===p.id?dc.color+"60":"#e2e8f0"}`,
+              padding:"12px 14px",display:"flex",alignItems:"center",gap:12,
+              boxShadow:editId===p.id?`0 0 0 2px ${dc.color}30`:"none",transition:"all .15s"}}>
+              <div style={{width:40,height:40,borderRadius:10,background:dc.bg,display:"flex",
+                alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{dc.icon}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:3}}>{p.nama}</div>
+                <span style={{background:dc.bg,color:dc.color,border:`1px solid ${dc.color}30`,
+                  borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{dc.label}</span>
+              </div>
+              <div style={{display:"flex",gap:5}}>
+                <button onClick={()=>startEdit(p)}
+                  style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:7,
+                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#475569"}}>✏️</button>
+                <button onClick={()=>setDelId(p.id)}
+                  style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:7,
+                    padding:"5px 9px",cursor:"pointer",fontSize:12,color:"#dc2626"}}>🗑</button>
+              </div>
+            </div>
+          );
+        })}
+        {filtered.length===0&&(
+          <div style={{gridColumn:"1/-1",textAlign:"center",padding:"40px",color:"#94a3b8",fontSize:13}}>
+            Tidak ada pekerja ditemukan
+          </div>
+        )}
       </div>
 
       {delId&&(
@@ -634,418 +517,132 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
   );
 }
 
-
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING PEKERJA
 // ─────────────────────────────────────────────────────────────────────────────
-function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
-  const [selPekerja,setSelPekerja]=useState<any>(null);
+function TrackingPekerja({pekerja,renhar}){
+  const [selPekerja,setSelPekerja]=useState(null);
   const [filterDiv,setFilterDiv]=useState("ALL");
-  const [search,setSearch]=useState("");
-  const [dateFrom,setDateFrom]=useState("");
-  const [dateTo,setDateTo]=useState("");
-  const [delId,setDelId]=useState<any>(null);
 
   const operatorDivisi=Object.entries(DIVISI_CONFIG)
     .filter(([k])=>OPERATOR_ROLES.includes(k))
-    .map(([k,v]:any)=>({key:k,...v}));
+    .map(([k,v])=>({key:k,...v}));
 
-  // Ambil tugas pekerja dari renhar
-  const getTugasPerPekerja=(pkrId:number)=>{
-    return renhar.filter(r=>(r.pekerja||[]).includes(pkrId));
-  };
+  const filtered=pekerja.filter(p=>filterDiv==="ALL"||p.divisi===filterDiv);
 
-  // Filter tugas berdasarkan tanggal
-  const filterTugas=(tugas:any[])=>{
-    return tugas.filter(t=>{
-      if(dateFrom&&t.tanggal<dateFrom) return false;
-      if(dateTo&&t.tanggal>dateTo) return false;
-      return true;
-    });
-  };
-
-  // Hitung progress per tugas dari checklist panel
-  const getProgressTugas=(tugas:any)=>{
-    const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>
-      String(p.id)===String(tugas.panel_id||tugas.panelId)
-    );
-    if(!panel||!panel.checklist) return 0;
-    const komps=tugas.komponen||[];
-    if(!komps.length) return 0;
-    const proses=tugas.proses;
-    const vals=komps.map((kode:string)=>{
-      const cl=panel.checklist[kode];
-      if(!cl) return 0;
-      // cek progressByDate untuk tanggal tugas
-      const byDate=cl.progressByDate?.[proses];
-      if(byDate&&byDate[tugas.tanggal]!==undefined) return byDate[tugas.tanggal];
-      return cl.progress?.[proses]||0;
-    });
-    return Math.round(vals.reduce((a:number,b:number)=>a+b,0)/vals.length);
-  };
-
-  // Status berdasarkan progress
-  const getStatus=(pct:number)=>{
-    if(pct>=100) return{label:"Tercapai",color:"#16a34a",bg:"#f0fdf4"};
-    if(pct>0) return{label:"On Progress",color:"#f59e0b",bg:"#fffbeb"};
-    return{label:"Belum",color:"#94a3b8",bg:"#f8fafc"};
-  };
-
-  // Rekap per tanggal untuk pekerja tertentu
-  const getRekapPerTanggal=(pkrId:number)=>{
-    const tugas=filterTugas(getTugasPerPekerja(pkrId));
-    const byDate:{[d:string]:any[]}={};
-    tugas.forEach(t=>{
-      if(!byDate[t.tanggal]) byDate[t.tanggal]=[];
-      byDate[t.tanggal].push(t);
-    });
-    return Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([tgl,tasks])=>{
-      const progList=tasks.map(t=>getProgressTugas(t));
-      const avgProg=progList.length?Math.round(progList.reduce((a,b)=>a+b,0)/progList.length):0;
-      const selesai=progList.filter(p=>p>=100).length;
-      return{tanggal:tgl,tasks,avgProg,selesai,total:tasks.length};
-    });
-  };
-
-  // Stats per pekerja
-  const getStatsPekerja=(pkrId:number)=>{
-    const tugas=filterTugas(getTugasPerPekerja(pkrId));
-    const progList=tugas.map(t=>getProgressTugas(t));
-    const selesai=progList.filter(p=>p>=100).length;
-    const onProg=progList.filter(p=>p>0&&p<100).length;
-    const belum=progList.filter(p=>p===0).length;
-    const avg=progList.length?Math.round(progList.reduce((a,b)=>a+b,0)/progList.length):0;
-    const hariKerja=new Set(tugas.map(t=>t.tanggal)).size;
-    return{total:tugas.length,selesai,onProg,belum,avg,hariKerja};
-  };
-
-  // Download PDF per pekerja
-  const downloadPDF=(pkrId:number)=>{
+  const tugasPerPekerja=(pkrId)=>{
     const pkr=pekerja.find(p=>p.id===pkrId);
-    if(!pkr) return;
-    const dc:any=DIVISI_CONFIG[pkr.divisi]||{};
-    const rekap=getRekapPerTanggal(pkrId);
-    const stats=getStatsPekerja(pkrId);
-    const periodeTxt=dateFrom&&dateTo?dateFrom+' s/d '+dateTo:dateFrom?'Dari '+dateFrom:dateTo?'Sampai '+dateTo:'Semua periode';
-
-    let txt='';
-    txt+='═══════════════════════════════════════════════════\n';
-    txt+='           LAPORAN KINERJA PEKERJA\n';
-    txt+='═══════════════════════════════════════════════════\n\n';
-    txt+='Nama    : '+pkr.nama+'\n';
-    txt+='Divisi  : '+(dc.label||pkr.divisi)+'\n';
-    txt+='Periode : '+periodeTxt+'\n';
-    txt+='Dicetak : '+new Date().toLocaleDateString('id-ID',{weekday:'long',day:'numeric',month:'long',year:'numeric'})+'\n\n';
-
-    txt+='─────────────────────────────────────────────────\n';
-    txt+='RINGKASAN\n';
-    txt+='─────────────────────────────────────────────────\n';
-    txt+='Total Tugas   : '+stats.total+'\n';
-    txt+='Tercapai      : '+stats.selesai+'\n';
-    txt+='On Progress   : '+stats.onProg+'\n';
-    txt+='Belum Mulai   : '+stats.belum+'\n';
-    txt+='Avg Progress  : '+stats.avg+'%\n';
-    txt+='Hari Kerja    : '+stats.hariKerja+' hari\n\n';
-
-    txt+='─────────────────────────────────────────────────\n';
-    txt+='REKAP PER TANGGAL\n';
-    txt+='─────────────────────────────────────────────────\n';
-    rekap.forEach(r=>{
-      txt+='\n📅 '+fmtDate(r.tanggal)+'\n';
-      txt+='   Tugas: '+r.total+' | Selesai: '+r.selesai+' | Avg: '+r.avgProg+'%\n';
-      r.tasks.forEach((t:any,i:number)=>{
-        const pct=getProgressTugas(t);
-        const st=getStatus(pct);
-        txt+='   '+(i+1)+'. '+t.proyek+' - '+t.panel+'\n';
-        txt+='      Proses: '+t.proses+' | WP: '+t.wp+' | Progress: '+pct+'% ['+st.label+']\n';
-        if(t.komponen?.length){
-          const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id||t.panelId));
-          const cfg=panel?PANEL_TYPES[panel.tipe]:null;
-          const namaKomp=(t.komponen||[]).map((k:string)=>cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===k)?.nama||k).join(', ');
-          txt+='      Komponen: '+namaKomp+'\n';
-        }
-      });
-    });
-    txt+='\n═══════════════════════════════════════════════════\n';
-
-    const blob=new Blob([txt],{type:'text/plain;charset=utf-8'});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement('a');
-    a.href=url;
-    a.download='Laporan_'+pkr.nama.replace(/\s+/g,'_')+'_'+new Date().toISOString().slice(0,10)+'.txt';
-    a.click();
-    URL.revokeObjectURL(url);
+    if(!pkr)return[];
+    return renhar.filter(r=>r.divisi===pkr.divisi&&(r.pekerja||[]).includes(pkrId));
   };
 
-  const filteredPekerja=pekerja.filter(p=>
-    (filterDiv==="ALL"||p.divisi===filterDiv)&&
-    p.nama.toLowerCase().includes(search.toLowerCase())
-  );
+  const totalTugas=(pkrId)=>tugasPerPekerja(pkrId).length;
 
-  const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,
-    fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10",
-    textTransform:"uppercase",letterSpacing:.4};
+  const allTugas=selPekerja?tugasPerPekerja(selPekerja):[];
+  const selPkr=pekerja.find(p=>p.id===selPekerja);
+  const dc=selPkr?DIVISI_CONFIG[selPkr.divisi]:null;
 
   return(
-    <div className="fi">
-      {/* Filter bar */}
-      <div style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:"10px 14px",marginBottom:12,display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari nama pekerja..."
-          style={{height:28,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",fontFamily:"inherit",width:200}}/>
-        <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b"}}>
-          <span>Dari:</span>
-          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
-            style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}/>
-          <span>Sampai:</span>
-          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
-            style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}/>
-          {(dateFrom||dateTo)&&(
-            <button onClick={()=>{setDateFrom("");setDateTo("");}}
-              style={{height:28,padding:"0 10px",border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",borderRadius:7,fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-              Reset
-            </button>
-          )}
-        </div>
-        <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginLeft:"auto"}}>
+    <div className="fi" style={{display:"grid",gridTemplateColumns:selPekerja?"1fr 1fr":"1fr",gap:16}}>
+      <div>
+        <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
           <button onClick={()=>setFilterDiv("ALL")}
-            style={{padding:"3px 10px",borderRadius:20,cursor:"pointer",fontSize:10,fontWeight:700,
-              border:filterDiv==="ALL"?"1.5px solid #1d4ed8":"1.5px solid #e2e8f0",
-              background:filterDiv==="ALL"?"#1d4ed8":"#fff",color:filterDiv==="ALL"?"#fff":"#64748b"}}>
-            Semua ({pekerja.length})
-          </button>
-          {operatorDivisi.map((d:any)=>{
-            const cnt=pekerja.filter((p:any)=>p.divisi===d.key).length;
-            const isSel=filterDiv===d.key;
+            style={{padding:"5px 14px",borderRadius:20,border:`1.5px solid ${filterDiv==="ALL"?"#1d4ed8":"#e2e8f0"}`,
+              background:filterDiv==="ALL"?"#1d4ed8":"#fff",color:filterDiv==="ALL"?"#fff":"#64748b",
+              cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
+          {operatorDivisi.map(d=>(
+            <button key={d.key} onClick={()=>setFilterDiv(d.key)}
+              style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${filterDiv===d.key?d.color:"#e2e8f0"}`,
+                background:filterDiv===d.key?d.color+"18":"#fff",color:filterDiv===d.key?d.color:"#64748b",
+                cursor:"pointer",fontSize:11,fontWeight:700}}>{d.label}</button>
+          ))}
+        </div>
+        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          {filtered.map(p=>{
+            const dc=DIVISI_CONFIG[p.divisi];
+            const jml=totalTugas(p.id);
+            const isSel=selPekerja===p.id;
             return(
-              <button key={d.key} onClick={()=>setFilterDiv(isSel?"ALL":d.key)}
-                style={{padding:"3px 10px",borderRadius:20,cursor:"pointer",fontSize:10,fontWeight:700,
-                  border:isSel?`1.5px solid ${d.color}`:"1.5px solid #e2e8f0",
-                  background:isSel?d.color+"18":"#fff",color:isSel?d.color:"#64748b"}}>
-                {d.label} ({cnt})
-              </button>
+              <div key={p.id} onClick={()=>setSelPekerja(isSel?null:p.id)}
+                style={{background:isSel?dc.bg:"#fff",borderRadius:12,border:`1.5px solid ${isSel?dc.color:"#e2e8f0"}`,
+                  padding:"12px 16px",display:"flex",alignItems:"center",gap:12,cursor:"pointer",
+                  transition:"all .15s"}}>
+                <div style={{width:40,height:40,borderRadius:10,background:isSel?"#fff":dc.bg,
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:18,flexShrink:0}}>{dc.icon}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
+                  <div style={{fontSize:11,color:dc.color,fontWeight:600,marginTop:2}}>{dc.label}</div>
+                </div>
+                <div style={{textAlign:"right"}}>
+                  <div style={{fontSize:22,fontWeight:800,color:jml>0?dc.color:"#cbd5e1",fontFamily:"'DM Mono',monospace"}}>{jml}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>tugas</div>
+                </div>
+              </div>
             );
           })}
         </div>
       </div>
 
-      {/* Tabel pekerja */}
-      <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0",marginBottom:12}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead><tr>
-            <th style={{...thS,width:40,textAlign:"center" as const}}>No</th>
-            <th style={thS}>Nama Pekerja</th>
-            <th style={thS}>Divisi</th>
-            <th style={{...thS,textAlign:"center" as const}}>Total Tugas</th>
-            <th style={{...thS,textAlign:"center" as const}}>Tercapai</th>
-            <th style={{...thS,textAlign:"center" as const}}>On Progress</th>
-            <th style={{...thS,textAlign:"center" as const}}>Hari Kerja</th>
-            <th style={{...thS,minWidth:100}}>Avg Progress</th>
-            <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
-          </tr></thead>
-          <tbody>
-            {filteredPekerja.length===0?(
-              <tr><td colSpan={9} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Tidak ada pekerja ditemukan</td></tr>
-            ):filteredPekerja.map((p:any,i:number)=>{
-              const dc:any=DIVISI_CONFIG[p.divisi]||{};
-              const stats=getStatsPekerja(p.id);
-              const isSel=selPekerja?.id===p.id;
-              const rBg=isSel?"#eff6ff":i%2===0?"#fff":"#f8fafc";
-              const td:any={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
-              return(
-                <tr key={p.id} style={{cursor:"pointer"}} onClick={()=>setSelPekerja(isSel?null:p)}>
-                  <td style={{...td,textAlign:"center" as const,color:"#94a3b8",fontWeight:600}}>{i+1}</td>
-                  <td style={{...td,fontWeight:700,color:"#1e293b"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <div style={{width:26,height:26,borderRadius:7,background:dc.bg||"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:dc.color||"#64748b",flexShrink:0}}>
-                        {p.nama?.slice(0,2).toUpperCase()}
-                      </div>
-                      {p.nama}
-                    </div>
-                  </td>
-                  <td style={td}>
-                    <span style={{background:dc.bg,color:dc.color,border:`1px solid ${dc.color}30`,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
-                      {dc.icon} {dc.label}
-                    </span>
-                  </td>
-                  <td style={{...td,textAlign:"center" as const,fontWeight:700,color:"#1e293b"}}>{stats.total}</td>
-                  <td style={{...td,textAlign:"center" as const}}>
-                    <span style={{color:"#16a34a",fontWeight:700}}>{stats.selesai}</span>
-                  </td>
-                  <td style={{...td,textAlign:"center" as const}}>
-                    <span style={{color:"#f59e0b",fontWeight:700}}>{stats.onProg}</span>
-                  </td>
-                  <td style={{...td,textAlign:"center" as const,color:"#64748b"}}>{stats.hariKerja}</td>
-                  <td style={td}>
-                    <div style={{display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{flex:1,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden",minWidth:60}}>
-                        <div style={{width:stats.avg+"%",height:"100%",background:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#ef4444",borderRadius:99}}/>
-                      </div>
-                      <span style={{fontSize:11,fontWeight:700,color:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#ef4444",minWidth:32}}>{stats.avg}%</span>
-                    </div>
-                  </td>
-                  <td style={{...td,textAlign:"center" as const}} onClick={e=>e.stopPropagation()}>
-                    <button onClick={()=>downloadPDF(p.id)}
-                      style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#1d4ed8",fontWeight:600}}>
-                      📄 PDF
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {/* Detail pekerja yang dipilih */}
-      {selPekerja&&(()=>{
-        const dc:any=DIVISI_CONFIG[selPekerja.divisi]||{};
-        const stats=getStatsPekerja(selPekerja.id);
-        const rekap=getRekapPerTanggal(selPekerja.id);
-        return(
-          <div style={{background:"#fff",borderRadius:12,border:"1.5px solid #bfdbfe",overflow:"hidden"}}>
-            {/* Header pekerja */}
-            <div style={{background:"linear-gradient(135deg,#1e3a8a,#2563eb)",padding:"14px 18px",display:"flex",alignItems:"center",gap:12,justifyContent:"space-between",flexWrap:"wrap" as const}}>
-              <div style={{display:"flex",alignItems:"center",gap:12}}>
-                <div style={{width:40,height:40,borderRadius:10,background:"rgba(255,255,255,.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800,color:"#fff"}}>
-                  {selPekerja.nama?.slice(0,2).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{fontWeight:800,fontSize:15,color:"#fff"}}>{selPekerja.nama}</div>
-                  <span style={{background:"rgba(255,255,255,.2)",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:600}}>
-                    {dc.icon} {dc.label}
-                  </span>
-                </div>
+      {selPekerja&&selPkr&&(
+        <div>
+          <Card style={{marginBottom:12,borderLeft:`3px solid ${dc.color}`}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:4}}>
+              <div style={{width:44,height:44,borderRadius:12,background:dc.bg,
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:22}}>{dc.icon}</div>
+              <div>
+                <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{selPkr.nama}</div>
+                <Badge label={dc.label} color={dc.color}/>
               </div>
-              <div style={{display:"flex",gap:16,flexWrap:"wrap" as const}}>
-                {[
-                  {l:"Total Tugas",v:stats.total,c:"#fff"},
-                  {l:"Tercapai",v:stats.selesai,c:"#86efac"},
-                  {l:"On Progress",v:stats.onProg,c:"#fde68a"},
-                  {l:"Hari Kerja",v:stats.hariKerja,c:"#bfdbfe"},
-                  {l:"Avg %",v:stats.avg+"%",c:"#fff"},
-                ].map((s,i)=>(
-                  <div key={i} style={{textAlign:"center" as const}}>
-                    <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
-                    <div style={{fontSize:9,color:"rgba(255,255,255,.7)",fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
-                  </div>
-                ))}
-              </div>
-              <button onClick={()=>setSelPekerja(null)}
-                style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:600}}>
-                ✕ Tutup
-              </button>
             </div>
-
-            {/* Rekap per tanggal */}
-            <div style={{padding:"14px 18px"}}>
-              {rekap.length===0?(
-                <div style={{textAlign:"center",padding:"32px",color:"#94a3b8",fontSize:13}}>
-                  Belum ada data tugas{dateFrom||dateTo?" pada periode ini":""}
-                </div>
-              ):rekap.map((r:any)=>(
-                <div key={r.tanggal} style={{marginBottom:16}}>
-                  {/* Header tanggal */}
-                  <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8,padding:"6px 12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
-                    <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>📅 {fmtDate(r.tanggal)}</span>
-                    <span style={{fontSize:11,color:"#64748b"}}>{r.total} tugas</span>
-                    <span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {r.selesai} selesai</span>
-                    <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
-                      <div style={{width:80,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                        <div style={{width:r.avgProg+"%",height:"100%",background:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#ef4444",borderRadius:99}}/>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginTop:12}}>
+              <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:24,fontWeight:800,color:dc.color}}>{allTugas.length}</div>
+                <div style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>TOTAL TUGAS</div>
+              </div>
+              <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",textAlign:"center"}}>
+                <div style={{fontSize:24,fontWeight:800,color:"#16a34a"}}>{[...new Set(allTugas.map(t=>t.tanggal))].length}</div>
+                <div style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>HARI KERJA</div>
+              </div>
+            </div>
+          </Card>
+          <div style={{fontWeight:700,fontSize:12,color:"#64748b",textTransform:"uppercase",letterSpacing:.5,marginBottom:10}}>
+            Riwayat Tugas
+          </div>
+          {allTugas.length===0?(
+            <div style={{textAlign:"center",padding:"32px",color:"#94a3b8",fontSize:13,background:"#f8fafc",borderRadius:12}}>
+              Belum ada tugas yang didistribusi ke pekerja ini
+            </div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {allTugas.sort((a,b)=>b.tanggal.localeCompare(a.tanggal)).map((t,i)=>{
+                const pc=PROSES_COLOR[t.proses]||"#64748b";
+                const wc=WP_COLOR[t.wp]||"#64748b";
+                return(
+                  <div key={i} style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:"10px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>{fmtDate(t.tanggal)}</div>
+                      <div style={{display:"flex",gap:5}}>
+                        <Badge label={t.proses} color={pc}/>
+                        <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{t.wp}</span>
                       </div>
-                      <span style={{fontSize:11,fontWeight:700,color:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#ef4444"}}>{r.avgProg}%</span>
+                    </div>
+                    <div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>{t.proyek}</div>
+                    <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{t.panel}</div>
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap",marginTop:6}}>
+                      {(t.komponen||[]).map(k=>(
+                        <span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"2px 8px",fontSize:10,color:"#475569",fontWeight:600}}>{k}</span>
+                      ))}
                     </div>
                   </div>
-
-                  {/* Detail tugas per tanggal */}
-                  <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
-                      <thead><tr>
-                        {["No","Proyek","Panel","Proses","WP","Komponen","Progress","Status","Hapus"].map(h=>(
-                          <th key={h} style={{background:"#f1f5f9",color:"#64748b",padding:"6px 8px",fontWeight:600,fontSize:9.5,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #e2e8f0",textTransform:"uppercase" as const,letterSpacing:.3}}>{h}</th>
-                        ))}
-                      </tr></thead>
-                      <tbody>
-                        {r.tasks.map((t:any,ti:number)=>{
-                          const pct=getProgressTugas(t);
-                          const st=getStatus(pct);
-                          const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id||t.panelId));
-                          const cfg=panelData?PANEL_TYPES[panelData.tipe]:null;
-                          const pc=PROSES_COLOR[t.proses]||"#64748b";
-                          const wc=WP_COLOR[t.wp]||"#64748b";
-                          const rBg2=ti%2===0?"#fff":"#f8fafc";
-                          const td2:any={padding:"6px 8px",borderBottom:"1px solid #f5f7fa",borderRight:"1px solid #f5f7fa",background:rBg2,verticalAlign:"middle"};
-                          return(
-                            <tr key={t.id||ti}>
-                              <td style={{...td2,color:"#94a3b8",fontWeight:600,textAlign:"center" as const}}>{ti+1}</td>
-                              <td style={{...td2,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
-                              <td style={{...td2,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
-                              <td style={td2}><span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>{t.proses}</span></td>
-                              <td style={td2}><span style={{background:wc,color:"#fff",borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700}}>{t.wp}</span></td>
-                              <td style={td2}>
-                                <div style={{display:"flex",gap:3,flexWrap:"wrap" as const}}>
-                                  {(t.komponen||[]).map((k:string)=>{
-                                    const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===k);
-                                    return(<span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",fontSize:9.5,color:"#475569",fontWeight:600}}>{item?.nama||k}</span>);
-                                  })}
-                                </div>
-                              </td>
-                              <td style={td2}>
-                                <div style={{display:"flex",alignItems:"center",gap:5}}>
-                                  <div style={{width:50,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                                    <div style={{width:pct+"%",height:"100%",background:pct>=100?"#16a34a":pct>0?"#f59e0b":"#e2e8f0",borderRadius:99}}/>
-                                  </div>
-                                  <span style={{fontSize:10,fontWeight:700,color:pct>=100?"#16a34a":pct>0?"#f59e0b":"#94a3b8"}}>{pct}%</span>
-                                </div>
-                              </td>
-                              <td style={td2}>
-                                <span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 8px",fontSize:9.5,fontWeight:700}}>
-                                  {st.label}
-                                </span>
-                              </td>
-                              <td style={{...td2,textAlign:"center" as const}}>
-                                <button onClick={()=>setDelId(t)}
-                                  style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,padding:"3px 7px",cursor:"pointer",fontSize:10,color:"#dc2626"}}>
-                                  🗑
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
-          </div>
-        );
-      })()}
-
-      {/* Modal hapus */}
-      {delId&&(
-        <Modal title="Hapus Tugas?" onClose={()=>setDelId(null)} width={380}>
-          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>
-            Tugas berikut akan dihapus dari rencana harian:
-          </div>
-          <div style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:20,fontSize:12}}>
-            <div style={{fontWeight:700,color:"#1e293b",marginBottom:4}}>{delId.proyek} — {delId.panel}</div>
-            <div style={{color:"#64748b"}}>{delId.proses} · {delId.wp} · {fmtDate(delId.tanggal)}</div>
-          </div>
-          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-            <Btn color="#dc2626" onClick={async()=>{
-              if(removeRenhar) await removeRenhar(delId.id);
-              if(setRenhar) setRenhar((prev:any[])=>prev.filter((r:any)=>r.id!==delId.id));
-              setDelId(null);
-            }}>Hapus</Btn>
-          </div>
-        </Modal>
+          )}
+        </div>
       )}
     </div>
   );
 }
-
 
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
@@ -1056,29 +653,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const [selProses,setSelProses]=useState("ALL");
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
-  const onDragStart=(e,rawId,fromDate,entries)=>{
-    e.dataTransfer.effectAllowed="move";
-    setDragInfo({rawId,fromDate,entries});
-  };
-
-  const onDragOver=(e,rawId,date)=>{
-    e.preventDefault();
-    e.dataTransfer.dropEffect="move";
-    setDragOverCell({rawId,date});
-  };
-
-  const onDrop=(e,rawId,toDate)=>{
-    e.preventDefault();
-    setDragOverCell(null);
-    if(!dragInfo)return;
-    if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
-    if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
-    setDragMode({...dragInfo,toDate});
-    setDragInfo(null);
-  };
-
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
-  const isSunday=(d:string)=>new Date(d).getDay()===0;
   const allTasks=useMemo(()=>{
     const tasks=[];
     rawData.forEach(row=>{
@@ -2876,36 +2451,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     });
   };
 
-  const onDragStart=(e,rawId,fromDate,entries)=>{
-    e.dataTransfer.effectAllowed="move";
-    setDragInfo({rawId,fromDate,entries});
-  };
-
-  const onDragOver=(e,rawId,date)=>{
-    e.preventDefault();
-    e.dataTransfer.dropEffect="move";
-    setDragOverCell({rawId,date});
-  };
-
-  const onDrop=(e,rawId,toDate)=>{
-    e.preventDefault();
-    setDragOverCell(null);
-    if(!dragInfo)return;
-    if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
-    if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
-    setDragMode({...dragInfo,toDate});
-    setDragInfo(null);
-  };
-
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
-  const isSunday=(d:string)=>new Date(d).getDay()===0;
   const openCellModal=(rawId,date)=>{setCellModal({rawId,date});setModalWp("");setModalKomponen([]);};
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
   const panelCfg=livePanelForCell?PANEL_TYPES[livePanelForCell.tipe]:null;
-  const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
-  const wpItems=wpItemsAll.filter(it=>isKomponenRelevant(it.kode,rawRow?.proses||""));
+  const wpItems=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
 
   const syncRenharKomp=(rawId,date,wp,newKomp)=>{
     setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKomp}:r));
@@ -3073,7 +2625,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
   };
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
+  const thS={background:"#1e2330",color:"#c8d0e8",padding:"5px 8px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.4,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
 
   return(
     <div className="fi">
@@ -3104,18 +2656,24 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         <button onClick={()=>setFilterProses("ALL")} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterProses==="ALL"?"#1d4ed8":"#fff",color:filterProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses===pr;return(<button key={pr} onClick={()=>setFilterProses(isSel?"ALL":pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
-
-      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
-          <thead style={{position:"sticky",top:0,zIndex:10}}>
+      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+        {WP_LIST.map(wp=>(<span key={wp} style={{display:"flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:WP_COLOR[wp],background:WP_COLOR[wp]+"18",border:`1px solid ${WP_COLOR[wp]}33`,borderRadius:20,padding:"2px 10px"}}><span style={{width:7,height:7,borderRadius:"50%",background:WP_COLOR[wp],display:"inline-block"}}/>{wp}</span>))}
+        {PRIORITAS.map(p=><Badge key={p} label={p} color={PRIORITAS_COLOR[p]}/>)}
+        <span style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>✓ Finish</span>
+        <span style={{fontSize:11,color:"#f59e0b",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:20,padding:"2px 10px",fontWeight:700}}>● On Progress</span>
+        <span style={{fontSize:11,color:"#64748b",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:20,padding:"2px 10px",fontWeight:700}}>○ Belum Mulai</span>
+      </div>
+      <div style={{overflowX:"auto",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+          <thead>
             <tr>
-              <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e2330"}}>PROYEK</th>
-              <th style={{...thS,textAlign:"left",minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e2330"}}>PANEL</th>
-              <th style={{...thS,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e2330"}}>PROSES</th>
-              <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e2330"}}>PRIORITAS</th>
+              <th style={{...thS,textAlign:"left",minWidth:120,position:"sticky",left:0,zIndex:5}}>PROYEK</th>
+              <th style={{...thS,textAlign:"left",minWidth:260,position:"sticky",left:120,zIndex:5}}>PANEL</th>
+              <th style={{...thS,minWidth:110,position:"sticky",left:380,zIndex:5}}>PROSES</th>
+              <th style={{...thS,minWidth:90,position:"sticky",left:490,zIndex:5}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
@@ -3147,17 +2705,17 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 const curPanelId=row.panel_id||row.panelId;
                 const isNewPanel=!prevRow||prevPanelId!==curPanelId;
                 const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
-                const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"2px 4px",verticalAlign:"middle",borderTop:panelTopBorder};
+                const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"4px 6px",verticalAlign:"middle",borderTop:panelTopBorder};
                 return(
                   <tr key={row.id}>
-                    <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:rBg,minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.proyek}</td>
-                    <td style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:rBg,minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3}}>{row.panel}</td>
-                    <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center",background:rBg}}>
-                      <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap"}}>{row.proses}</span>
+                    <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{row.proyek}</td>
+                    <td style={{...td,position:"sticky",left:120,zIndex:2,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",minWidth:260}}>{row.panel}</td>
+                    <td style={{...td,position:"sticky",left:380,zIndex:2,textAlign:"center"}}>
+                      <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"2px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap"}}>{row.proses}</span>
                     </td>
-                    <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center",background:rBg}}>
+                    <td style={{...td,position:"sticky",left:370,zIndex:2,textAlign:"center"}}>
                       <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
-                        style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
+                        style={{padding:"2px 6px",borderRadius:6,border:`1.5px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:10,fontWeight:700,cursor:"pointer"}}>
                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
                       </select>
                     </td>
@@ -3166,7 +2724,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
                       const isSelDate=selDate===d;
                       return(
-                        <td key={d} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rBg,outline:isOver?"2px dashed #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} style={{...td,textAlign:"center",padding:"4px",background:isOver?"#eff6ff":isSelDate&&entries.length?"#f0f9ff":rBg,outline:isOver?"2px dashed #2563eb":"none"}}
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
@@ -3178,7 +2736,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:4,padding:"2px 6px",fontSize:10,fontWeight:700,display:"flex",alignItems:"center",gap:3}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                           ):(
@@ -3439,84 +2997,20 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
-        // Update local state dengan data lengkap termasuk panels
-        const newWo={...result.data,panels:np};
-        setWoData(prev=>{
-          // cek duplikat dari realtime
-          if(prev.some(w=>w.id===result.data.id)){
-            return prev.map(w=>w.id===result.data.id?newWo:w);
-          }
-          return [...prev,newWo];
-        });
+        setWoData(prev=>[...prev,{...result.data,panels:np}]);
         if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
       }
     }
     setOpen(false);
   };
-  const [dirtyQty,setDirtyQty]=useState<Record<string,Record<string,{newQty:number,oldQty:number}>>>({});
-  const [origChecklist,setOrigChecklist]=useState<Record<string,any>>({});
-
   const updateItemQty=(woId,panelId,kode,qty)=>{
-    const nq=Number(qty)||0;
-    setOrigChecklist(prev=>{
-      if(prev[String(panelId)])return prev;
-      const panel=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
-      return{...prev,[String(panelId)]:JSON.parse(JSON.stringify(panel?.checklist||{}))};
-    });
-    setDirtyQty(prev=>{
-      const panel=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
-      const oldQty=panel?.checklist?.[kode]?.qty??0;
-      return{...prev,[String(panelId)]:{...prev[String(panelId)],[kode]:{newQty:nq,oldQty}}};
-    });
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
-      const nq2=Number(qty)||0;
-      const nc={...p.checklist,[kode]:{...p.checklist[kode],qty:nq2}};
-      if(nq2===0)nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
+      const nq=Number(qty)||0;
+      const nc={...p.checklist,[kode]:{...p.checklist[kode],qty:nq}};
+      if(nq===0)nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
       return{...p,checklist:nc};
     })}));
-  };
-
-  const cancelQtyEdit=(panelId)=>{
-    const orig=origChecklist[panelId];
-    if(!orig)return;
-    setWoData(prev=>prev.map(wo=>({...wo,panels:wo.panels.map(p=>p.id!==panelId?p:{...p,checklist:orig})})));
-    setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-  };
-
-  const saveQtyEdit=async(woArg,panelId)=>{
-    // ambil data terbaru dari woData state
-    const currentWo=woData.find(w=>w.panels?.some((p:any)=>String(p.id)===String(panelId)))||woArg;
-    const panel=currentWo?.panels?.find((p:any)=>String(p.id)===String(panelId));
-    if(!panel){alert('Panel tidak ditemukan!');return;}
-    console.log('SAVE',panelId,panel.checklist);
-    const{error}=await supabase.from('panels').update({checklist:panel.checklist}).eq('id',panel.id);
-    if(error){alert('Gagal menyimpan: '+error.message);return;}
-    const dirty=dirtyQty[String(panelId)]||{};
-    const changes=Object.entries(dirty)
-      .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
-      .map(([kode,v])=>{
-        const cfg=PANEL_TYPES[panel.tipe];
-        const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-        return nama+': '+(v as any).oldQty+' -> '+(v as any).newQty;
-      });
-    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-    const uname=user?.name||user?.nama||sess?.nama||'Admin';
-    const tgl=new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
-    await activityLogService.insert({
-      user_name:uname,
-      action:'EDIT QTY',
-      description:'['+tgl+'] Edit Qty '+panel.nama+' ('+currentWo.proyek+'): '+changes.join(', '),
-      module:'wo',
-      halaman:'Manajemen WO',
-      proyek:currentWo.proyek||'',
-      panel:panel.nama||'',
-      wo_number:currentWo.wo||'',
-    });
-    setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    alert('Qty berhasil disimpan!');
   };
 
   return(
@@ -3622,18 +3116,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                       ))}
                     </div>
                   )}
-                  {dirtyQty[String(p.id)]&&Object.keys(dirtyQty[String(p.id)]).length>0&&(
-                    <div style={{display:"flex",gap:10,justifyContent:"flex-end",padding:"12px 16px",borderTop:"1px dashed #e2e8f0",marginTop:4,background:"#f8faff"}}>
-                      <button onClick={()=>cancelQtyEdit(String(p.id))}
-                        style={{padding:"8px 20px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
-                        Batal
-                      </button>
-                      <button onClick={()=>saveQtyEdit(wo,String(p.id))}
-                        style={{padding:"8px 24px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",boxShadow:"0 2px 8px #2563eb33"}}>
-                        Simpan Perubahan
-                      </button>
-                    </div>
-                  )}
                 </div>
               );
             })}
@@ -3647,38 +3129,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
             <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
             <div style={{display:"flex",gap:10,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-              <Btn color="#dc2626" onClick={async()=>{
-  const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-  const uname=sess?.nama||sess?.name||'Admin';
-  const woToDelete=woData.find(w=>w.id===delId);
-  // 1. Ambil panel ids
-  const panelIds=(woToDelete?.panels||[]).map((p:any)=>p.id);
-  // 2. Hapus kendala terkait panel
-  if(panelIds.length){
-    await supabase.from('kendala').delete().in('panel_id',panelIds);
-  }
-  // 3. Hapus renhar terkait wo
-  await supabase.from('renhar').delete().eq('wo_id',delId);
-  // 4. Hapus raw_schedule terkait wo
-  await supabase.from('raw_schedule').delete().eq('wo_id',delId);
-  // 5. Hapus panels terkait wo
-  await supabase.from('panels').delete().eq('wo_id',delId);
-  // 6. Hapus work order
-  await supabase.from('work_orders').delete().eq('id',delId);
-  // 7. Activity log
-  await activityLogService.insert({
-    user_name:uname,
-    action:'HAPUS WO',
-    description:'Hapus WO '+woToDelete?.wo+' - '+woToDelete?.proyek+' beserta semua data terkait',
-    module:'wo',
-    halaman:'Manajemen WO',
-    proyek:woToDelete?.proyek||'',
-    wo_number:woToDelete?.wo||'',
-  });
-  // 8. Update local state
-  setWoData(prev=>prev.filter(w=>w.id!==delId));
-  setDelId(null);
-}}>Hapus</Btn>
+              <Btn color="#dc2626" onClick={()=>{setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn><Btn color="#dc2626" onClick={async()=>{const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=sess?.nama||sess?.name||'Admin';await supabase.from('work_orders').update({deleted_at:new Date().toISOString(),deleted_by:uname}).eq('id',delId);setWoData(prev=>prev.filter(w=>w.id!==delId));setDelId(null);}}>Hapus</Btn>
             </div>
           </div>
         </Modal>
@@ -4841,7 +4292,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={log} user={user}/>}
-              {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
+              {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar}/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}

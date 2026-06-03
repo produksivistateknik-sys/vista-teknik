@@ -46,7 +46,7 @@ export function useWorkOrders() {
     try {
       const uname = getUname()
       const result = await workOrderService.create({ ...payload, updated_by: uname }, uname)
-      setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
+      // setData tidak dipanggil di sini - App.tsx handle via setWoData dengan panels
       return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
