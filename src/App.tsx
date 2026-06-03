@@ -351,8 +351,8 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-logo{width:30px;height:30px;min-width:30px;background:#1d4ed8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
 .erp-brand{overflow:hidden;white-space:nowrap;opacity:1;transition:opacity .15s;min-width:0}
 .erp-sb.col .erp-brand{opacity:0;pointer-events:none;width:0}
-.erp-brand-name{font-weight:600;font-size:12px;color:#fff;line-height:1.2;letter-spacing:.2px}
-.erp-brand-sub{font-size:9px;color:#93c5fd;margin-top:2px;line-height:1.3;letter-spacing:.3px;text-transform:uppercase}
+.erp-brand-name{font-weight:800;font-size:14px;color:#fff;line-height:1.2;letter-spacing:1px;text-transform:uppercase}
+.erp-brand-sub{font-size:9px;color:#93c5fd;display:none;margin-top:2px;line-height:1.3;letter-spacing:.3px;text-transform:uppercase}
 .erp-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
 .erp-nav::-webkit-scrollbar{width:2px}
 .erp-nav::-webkit-scrollbar-thumb{background:#2d4ba0;border-radius:2px}
@@ -2640,17 +2640,42 @@ function DetailProgress({woData}:{woData:any[]}){
   const selesai=allPanels.filter(p=>panelOverall(p)===100).length;
   const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverall(p)<100).length;
 
-  const ProsesPctCell=({pct,proses}:{pct:number|undefined,proses:string})=>{
+  const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
     if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
     const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
     const isDone=pct===100;
+    const history=cl?.history?.[proses]||[];
     return(
-      <td style={tdS}>
-        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+      <td style={tdS} className="hist-cell">
+        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
           <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
             <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
           </div>
           <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+          {history.length>0&&(
+            <div className="hist-tooltip" style={{
+              opacity:0,visibility:"hidden" as const,
+              position:"absolute" as const,bottom:"100%",left:"50%",
+              transform:"translateX(-50%)",
+              background:"#1e293b",color:"#f1f5f9",
+              borderRadius:8,padding:"8px 12px",
+              fontSize:10,whiteSpace:"nowrap" as const,
+              zIndex:999,marginBottom:6,
+              boxShadow:"0 4px 16px #00000030",
+              transition:"opacity .15s",
+              minWidth:180,
+            }}>
+
+              {[...history].sort((a:any,b:any)=>a.tanggal?.localeCompare(b.tanggal)).map((h:any,hi:number)=>(
+                <div key={hi} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"2px 0",borderBottom:hi<history.length-1?"1px solid #334155":"none"}}>
+                  <span style={{color:"#94a3b8"}}>📅 {new Date(h.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
+                  <span style={{color:"#fbbf24"}}>Shift {h.shift}</span>
+                  <span style={{color:h.pct>=100?"#4ade80":h.pct>0?"#fb923c":"#94a3b8",fontWeight:700}}>{h.pct}%</span>
+                </div>
+              ))}
+              <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
+            </div>
+          )}
         </div>
       </td>
     );
@@ -2788,18 +2813,7 @@ function DetailProgress({woData}:{woData:any[]}){
                           <td style={{...tdS,background:rowBg,color:"#475569",fontWeight:600}}>{qty}</td>
                           {prosesPanel.map(pr=>{
                             const pct=cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0;
-                            const color=(PROSES_COLOR as any)[pr]||"#94a3b8";
-                            const isDone=pct===100;
-                            return(
-                              <td key={pr} style={{...tdS,background:rowBg}}>
-                                <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
-                                  <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                                    <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
-                                  </div>
-                                  <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
-                                </div>
-                              </td>
-                            );
+                            return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name}/>;
                           })}
                         </tr>
                       );
@@ -2995,6 +3009,21 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
     setDragMode(null);setDragInfo(null);
     if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
+    // Activity log drag & drop
+    const row=rawData.find(r=>r.id===rawId);
+    const wpList=entries.map(e=>e.wp).join(", ");
+    const kompList=entries.flatMap(e=>e.komponen||[]).join(", ");
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({
+      user_name:uname,
+      action:mode==="move"?"PINDAH JADWAL":"COPY JADWAL",
+      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row?.panel+" ("+row?.proyek+") proses "+row?.proses+" WP: "+wpList+" dari "+fromDate+" ke "+toDate,
+      module:"raw",
+      halaman:"Raw Schedule",
+      proyek:row?.proyek||"",
+      panel:row?.panel||"",
+    });
   };
 
   const updatePrioritasPanel=async(panelId,val)=>{
@@ -3807,8 +3836,19 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
     }
     setForm({mesin_id:"",kendala:"",perbaikan:"",catatan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"});
   };
-  const del=async()=>{await supabase.from("maintenance_log").delete().eq("id",delId);setMaintenanceList((p:any[])=>p.filter((m:any)=>m.id!==delId));setDelId(null);};
-  const updateStatus=async(id:any,status:string)=>{await supabase.from("maintenance_log").update({status}).eq("id",id);setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===id?{...m,status}:m));};
+  const del=async()=>{
+  const item=maintenanceList.find((m:any)=>m.id===delId);
+  await supabase.from("maintenance_log").delete().eq("id",delId);
+  setMaintenanceList((p:any[])=>p.filter((m:any)=>m.id!==delId));
+  setDelId(null);
+  await activityLogService.insert({user_name:getUname(),action:"HAPUS LOG MAINTENANCE",description:"Hapus log: "+(item?.mesin?.nama||"-")+" - "+(item?.kendala||"-").slice(0,50),module:"maintenance",halaman:"Maintenance"});
+};
+  const updateStatus=async(id:any,status:string)=>{
+  await supabase.from("maintenance_log").update({status}).eq("id",id);
+  setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===id?{...m,status}:m));
+  const item=maintenanceList.find((m:any)=>m.id===id);
+  await activityLogService.insert({user_name:getUname(),action:"UPDATE STATUS MAINTENANCE",description:"Update status: "+(item?.mesin?.nama||"-")+" -> "+status,module:"maintenance",halaman:"Maintenance"});
+};
   const filtered=filterStatus==="ALL"?maintenanceList:maintenanceList.filter((m:any)=>m.status===filterStatus);
   const stats=[{l:"Open",v:maintenanceList.filter((m:any)=>m.status==="open").length,c:"#dc2626"},{l:"In Progress",v:maintenanceList.filter((m:any)=>m.status==="in_progress").length,c:"#f59e0b"},{l:"Closed",v:maintenanceList.filter((m:any)=>m.status==="closed").length,c:"#16a34a"},{l:"Total Mesin",v:mesinList.length,c:"#2563eb"}];
   return(
@@ -3931,10 +3971,22 @@ function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlam
     if(!form.mesin_id||!form.jenis_maintenance.trim())return;
     const jt=calcNext(today,item.frekuensi);
     const{data}=await supabase.from("maintenance_rutin").update({terakhir_dilakukan:today,jatuh_tempo:jt}).eq("id",item.id).select("*,mesin(nama,kode)").single();
-    if(data){setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));await supabase.from("maintenance_rutin_log").insert({rutin_id:item.id,dilakukan_pada:today,teknisi:item.teknisi,catatan:"Selesai"});}
+    if(data){
+      setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
+      await supabase.from("maintenance_rutin_log").insert({rutin_id:item.id,dilakukan_pada:today,teknisi:item.teknisi,catatan:"Selesai"});
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"MAINTENANCE RUTIN DONE",description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+today+")",module:"maintenance",halaman:"Maintenance"});
+    }
     setDoneId(null);
   };
-  const del=async()=>{await supabase.from("maintenance_rutin").update({is_active:false}).eq("id",delId);setRutinList((p:any[])=>p.filter((r:any)=>r.id!==delId));setDelId(null);};
+  const del=async()=>{
+  const item=rutinList.find((r:any)=>r.id===delId);
+  await supabase.from("maintenance_rutin").update({is_active:false}).eq("id",delId);
+  setRutinList((p:any[])=>p.filter((r:any)=>r.id!==delId));
+  setDelId(null);
+  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+  await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"NONAKTIF MAINTENANCE RUTIN",description:"Nonaktifkan jadwal: "+(item?.jenis_maintenance||"-")+" - "+(item?.mesin?.nama||"-"),module:"maintenance",halaman:"Maintenance"});
+};
   const kepatuhan=rutinList.length>0?Math.round((rutinList.filter((r:any)=>r.terakhir_dilakukan&&r.jatuh_tempo>=today).length/rutinList.length)*100):0;
   const filtered=filterFrek==="ALL"?rutinList:rutinList.filter((r:any)=>r.frekuensi===filterFrek);
   const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
@@ -4045,10 +4097,16 @@ function RecycleBinTab({user}:any){
   const restore=async(item:any)=>{
     await supabase.from(item._cat).update({deleted_at:null,deleted_by:null}).eq("id",item.id);
     setItems(prev=>prev.filter((x:any)=>!(x.id===item.id&&x._cat===item._cat)));
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({user_name:uname,action:"RESTORE DATA",description:"Restore "+item._cat+": "+getTitle(item),module:"general",halaman:"Recycle Bin"});
   };
   const permDel=async(item:any)=>{
     await supabase.from(item._cat).delete().eq("id",item.id);
     setItems(prev=>prev.filter((x:any)=>!(x.id===item.id&&x._cat===item._cat)));
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({user_name:uname,action:"HAPUS PERMANEN",description:"Hapus permanen "+item._cat+": "+getTitle(item),module:"general",halaman:"Recycle Bin"});
   };
   const filtered=filterCat==="ALL"?items:items.filter((x:any)=>x._cat===filterCat);
   const counts:any={};items.forEach((x:any)=>{counts[x._cat]=(counts[x._cat]||0)+1;});
@@ -4107,7 +4165,7 @@ function RecycleBinTab({user}:any){
   );
 }
 
-function SystemTab({user,activityLog}){
+function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity}){
   const [subTab,setSubTab]=useState("masteruser");
   const [admins,setAdmins]=useState([]);
   const [mesinList,setMesinList]=useState([]);
@@ -4155,6 +4213,7 @@ function SystemTab({user,activityLog}){
           {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user}/>}
           {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
 
+          {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={null} user={user}/>}
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
         </>
       )}
@@ -4198,18 +4257,32 @@ function MasterUserTab({ admins, setAdmins, user }){
   const resetPwd = async () => {
     if (!newPwd.trim()) return;
     const { error } = await supabase.from("admins").update({ password: newPwd }).eq("id", resetId);
-    if (!error) { setResetId(null); setNewPwd(""); }
+    if (!error) {
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      const uname=user?.name||user?.nama||sess?.nama||"Admin";
+      const target=admins.find((a:any)=>a.id===resetId);
+      await activityLogService.insert({user_name:uname,action:"RESET PASSWORD ADMIN",description:"Reset password admin: "+(target?.nama||"-"),module:"auth",halaman:"System"});
+      setResetId(null); setNewPwd("");
+    }
   };
 
   const toggleActive = async (id, val) => {
     await supabase.from("admins").update({ is_active: val }).eq("id", id);
     setAdmins(prev => prev.map(a => a.id === id ? { ...a, is_active: val } : a));
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    const target=admins.find((a:any)=>a.id===id);
+    await activityLogService.insert({user_name:uname,action:val?"AKTIFKAN ADMIN":"NONAKTIFKAN ADMIN",description:(val?"Aktifkan":"Nonaktifkan")+" admin: "+(target?.nama||"-"),module:"auth",halaman:"System"});
   };
 
   const del = async () => {
+    const target=admins.find((a:any)=>a.id===delId);
     await supabase.from("admins").delete().eq("id", delId);
     setAdmins(prev => prev.filter(a => a.id !== delId));
     setDelId(null);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({user_name:uname,action:"HAPUS ADMIN",description:"Hapus admin: "+(target?.nama||"-")+" ("+target?.username+")",module:"auth",halaman:"System"});
   };
 
   const fmtTime = (ts) => {
@@ -4389,18 +4462,32 @@ function MasterPekerjaInline(){
   const resetPwd = async () => {
     if (!newPwd.trim()) return;
     const { error } = await supabase.from("operator_users").update({ password: newPwd }).eq("id", resetId);
-    if (!error) { setResetId(null); setNewPwd(""); }
+    if (!error) {
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      const uname=user?.name||user?.nama||sess?.nama||"Admin";
+      const target=ops.find((o:any)=>o.id===resetId);
+      await activityLogService.insert({user_name:uname,action:"RESET PASSWORD PEKERJA",description:"Reset password pekerja: "+(target?.nama||"-"),module:"pekerja",halaman:"System"});
+      setResetId(null); setNewPwd("");
+    }
   };
 
   const toggleActive = async (id: any, val: boolean) => {
     await supabase.from("operator_users").update({ is_active: val }).eq("id", id);
     setOps(p => p.map((o: any) => o.id === id ? { ...o, is_active: val } : o));
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    const target=ops.find((o:any)=>o.id===id);
+    await activityLogService.insert({user_name:uname,action:val?"AKTIFKAN PEKERJA":"NONAKTIFKAN PEKERJA",description:(val?"Aktifkan":"Nonaktifkan")+" user pekerja: "+(target?.nama||"-"),module:"pekerja",halaman:"System"});
   };
 
   const del = async () => {
+    const target=ops.find((o:any)=>o.id===delId);
     await supabase.from("operator_users").delete().eq("id", delId);
     setOps(p => p.filter((o: any) => o.id !== delId));
     setDelId(null);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({user_name:uname,action:"HAPUS USER PEKERJA",description:"Hapus user pekerja: "+(target?.nama||"-")+" ("+target?.username+")",module:"pekerja",halaman:"System"});
   };
 
   const fmtTime = (ts: string) => {
@@ -4565,10 +4652,21 @@ function MasterMesinTab({mesinList,setMesinList,user}:any){
     if(!form.kode.trim()||!form.nama.trim())return;
     if(editId){
       const{data,error}=await supabase.from("mesin").update({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).eq("id",editId).select().single();
-      if(!error){setMesinList((prev:any[])=>prev.map(m=>m.id===editId?data:m));setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+      if(!error){
+        setMesinList((prev:any[])=>prev.map(m=>m.id===editId?data:m));
+        setEditId(null);
+        setForm({kode:"",nama:"",lokasi:"",status:"aktif"});
+        const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+        await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"EDIT MESIN",description:"Edit mesin: "+form.kode+" - "+form.nama,module:"maintenance",halaman:"System"});
+      }
     } else {
       const{data,error}=await supabase.from("mesin").insert({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).select().single();
-      if(!error){setMesinList((prev:any[])=>[...prev,data]);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}
+      if(!error){
+        setMesinList((prev:any[])=>[...prev,data]);
+        setForm({kode:"",nama:"",lokasi:"",status:"aktif"});
+        const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+        await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"TAMBAH MESIN",description:"Tambah mesin: "+form.kode+" - "+form.nama,module:"maintenance",halaman:"System"});
+      }
     }
   };
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
@@ -4961,7 +5059,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
-        {id:"pekerja",label:"Master Pekerja",icon:"ti ti-users"},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
@@ -5063,7 +5160,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
-              {tab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={log} user={user}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
