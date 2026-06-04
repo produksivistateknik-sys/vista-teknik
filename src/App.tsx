@@ -205,31 +205,22 @@ const isKomponenRelevant=(kode:string, proses:string):boolean=>{
 
 
 export const DIVISI_CONFIG = {
-  admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",password:"Admin123",   proses:null},
-  mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
-  painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",password:"painting123",proses:["PAINTING"]},
-  assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",password:"assembling123",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
-  wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
-  wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
-  qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
+  admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",   proses:null},
+  mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb", proses:["POTONG","BENDING","STEL"]},
+  painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:["PAINTING"]},
+  assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
+  wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",  proses:["WIRING CONTROL"]},
+  wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8", proses:["WIRING POWER"]},
+  qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",      proses:["QC TEST","PACKING"]},
 };
 export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc"];
 
-const USERS = [
-  {id:1, name:"Budi Admin",      divisi:"admin"},
-  {id:5, name:"Agus Mekanik",    divisi:"mekanik"},
-  {id:6, name:"Dedi Mekanik",    divisi:"mekanik"},
-  {id:7, name:"Sari Painting",   divisi:"painting"},
-  {id:8, name:"Joko Assembling", divisi:"assembling"},
-  {id:9, name:"Tono WCtrl",      divisi:"wiring_ctrl"},
-  {id:10,name:"Rudi WPwr",       divisi:"wiring_pwr"},
-  {id:11,name:"Dewi QC",         divisi:"qc"},
-];
+// USERS array removed - using Supabase operator_users table
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PEKERJA SEED
 // ─────────────────────────────────────────────────────────────────────────────
-const PEKERJA_SEED=[];
+// PEKERJA_SEED removed
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -4238,6 +4229,82 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
 
   return(
     <div className="fi">
+      {/* Backup Excel Button */}
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:12}}>
+        <button onClick={async()=>{
+          try{
+            // Dynamic import SheetJS
+            const XLSX=await import("https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs" as any);
+            const wb=XLSX.utils.book_new();
+
+            // Sheet 1: Work Orders
+            const woRows:any[]=[];
+            woRows.push(["NO WO","PROYEK","TARGET","TOTAL PANEL","AVG PROGRESS","STATUS"]);
+            (window as any).__vt_woData?.forEach((w:any)=>{
+              const pct=woOverall(w);
+              const status=pct===100?"Selesai":isDelayed(w.target)?"Terlambat":isUrgent(w.target)?"Mendesak":"On Track";
+              woRows.push([w.wo,w.proyek,w.target,(w.panels||[]).length+' panel',pct+'%',status]);
+            });
+            const ws1=XLSX.utils.aoa_to_sheet(woRows);
+            XLSX.utils.book_append_sheet(wb,ws1,"Work Orders");
+
+            // Sheet 2: Detail Progress per Panel
+            const panelRows:any[]=[];
+            panelRows.push(["WO","PROYEK","PANEL","TIPE","QTY","OVERALL",...ALL_PROSES]);
+            (window as any).__vt_woData?.forEach((w:any)=>{
+              (w.panels||[]).forEach((p:any)=>{
+                const pd=calcPanelProgress(p);
+                const overall=panelOverall(p);
+                panelRows.push([w.wo,w.proyek,p.nama||p.name,p.tipe,
+                  Object.values(p.checklist||{}).reduce((a:any,c:any)=>a+(c.qty||0),0),
+                  overall+'%',...ALL_PROSES.map(pr=>(pd[pr]||0)+'%')]);
+              });
+            });
+            const ws2=XLSX.utils.aoa_to_sheet(panelRows);
+            XLSX.utils.book_append_sheet(wb,ws2,"Progress Panel");
+
+            // Sheet 3: Pekerja
+            const pkrRows:any[]=[];
+            pkrRows.push(["NAMA","DIVISI"]);
+            pekerja?.forEach((p:any)=>{
+              const dc=(DIVISI_CONFIG as any)[p.divisi];
+              pkrRows.push([p.nama,dc?.label||p.divisi]);
+            });
+            const ws3=XLSX.utils.aoa_to_sheet(pkrRows);
+            XLSX.utils.book_append_sheet(wb,ws3,"Master Pekerja");
+
+            // Sheet 4: Activity Log
+            const logRows:any[]=[];
+            logRows.push(["WAKTU","USER","AKSI","DESKRIPSI","MODULE","HALAMAN"]);
+            activityLog?.slice(0,200).forEach((l:any)=>{
+              logRows.push([l.created_at,l.user_name,l.action,l.description,l.module,l.halaman]);
+            });
+            const ws4=XLSX.utils.aoa_to_sheet(logRows);
+            XLSX.utils.book_append_sheet(wb,ws4,"Activity Log");
+
+            // Download
+            const tgl=new Date().toISOString().slice(0,10);
+            XLSX.writeFile(wb,`Vista_Teknik_Backup_${tgl}.xlsx`);
+
+            // Activity log
+            const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+            await activityLogService.insert({
+              user_name:user?.name||user?.nama||sess?.nama||"Admin",
+              action:"BACKUP DATA",
+              description:"Export backup data ke Excel",
+              module:"system",halaman:"System"
+            });
+          }catch(e){
+            alert("Gagal export: "+(e as any).message);
+          }
+        }}
+        style={{display:"flex",alignItems:"center",gap:8,padding:"8px 16px",
+          background:"#16a34a",color:"#fff",border:"none",borderRadius:8,
+          cursor:"pointer",fontSize:12,fontWeight:700}}>
+          📥 Backup ke Excel
+        </button>
+      </div>
+
       <div style={{display:"flex",gap:0,marginBottom:20,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
         {subTabs.map(t=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)}
@@ -5029,7 +5096,10 @@ const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, updat
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
 useEffect(() => {
-  if (!woLoading) setWoData(woList)
+  if (!woLoading) {
+    setWoData(woList);
+    (window as any).__vt_woData = woList;
+  }
 }, [woList, woLoading])
 
 useEffect(() => {
@@ -5051,6 +5121,18 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   }}/>;
 
   const isOp=OPERATOR_ROLES.includes(user.divisi);
+
+  // Tutup notif saat klik di luar
+  useEffect(()=>{
+    const handler=(e:MouseEvent)=>{
+      const target=e.target as HTMLElement;
+      if(!target.closest('.erp-bell')&&!target.closest('[data-notif-panel]')){
+        setShowNotif(false);
+      }
+    };
+    if(showNotif) document.addEventListener("mousedown",handler);
+    return()=>document.removeEventListener("mousedown",handler);
+  },[showNotif]);
   // Redirect operator ke vista-pekerja
   if(isOp) return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f1f5f9",padding:20}}>
@@ -5112,6 +5194,24 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
+  const [showNotif,setShowNotif]=useState(false);
+
+  // Data notifikasi lengkap
+  const notifItems=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target)))
+    .map(w=>({
+      id:w.id,
+      wo:w.wo,
+      proyek:w.proyek,
+      target:w.target,
+      pct:woOverall(w),
+      isDelayed:isDelayed(w.target),
+      isUrgent:isUrgent(w.target),
+      daysLeft:daysUntil(w.target),
+    }))
+    .sort((a,b)=>a.daysLeft-b.daysLeft);
+
+  // Kendala belum selesai
+  const kendalaNotif=kendalaLog.filter((k:any)=>k.status!=="selesai").slice(0,5);
   const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
 
   const showTooltip=(e:any,label:string)=>{
@@ -5187,11 +5287,107 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               </button>
               <input className="erp-search" placeholder="Cari work order, panel..."/>
               <div className="erp-topbar-right">
-                <div className="erp-bell">
-                  🔔
-                  {alerts>0&&<div className="erp-bell-dot"/>}
+                <div style={{position:"relative"}}>
+                  <div className="erp-bell" onClick={()=>setShowNotif(p=>!p)}
+                    style={{cursor:"pointer",position:"relative"}}>
+                    <i className="ti ti-bell" style={{fontSize:14}}/>
+                    {(alerts>0||kendalaNotif.length>0)&&(
+                      <div className="erp-bell-dot" style={{top:2,right:2}}/>
+                    )}
+                  </div>
+                  {showNotif&&(
+                    <div style={{position:"absolute",top:34,right:0,width:320,background:"#fff",
+                      borderRadius:12,boxShadow:"0 8px 32px #00000018",border:"1px solid #e2e8f0",
+                      zIndex:999,overflow:"hidden"}}>
+                      {/* Header */}
+                      <div style={{padding:"12px 16px",borderBottom:"1px solid #f1f5f9",display:"flex",
+                        justifyContent:"space-between",alignItems:"center"}}>
+                        <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Notifikasi</span>
+                        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                          {(alerts+kendalaNotif.length)>0&&(
+                            <span style={{background:"#dc2626",color:"#fff",borderRadius:20,
+                              padding:"1px 8px",fontSize:10,fontWeight:700}}>
+                              {alerts+kendalaNotif.length}
+                            </span>
+                          )}
+                          <button onClick={()=>setShowNotif(false)}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:14}}>✕</button>
+                        </div>
+                      </div>
+                      {/* Notif list */}
+                      <div style={{maxHeight:360,overflowY:"auto" as const}}>
+                        {notifItems.length===0&&kendalaNotif.length===0?(
+                          <div style={{padding:"32px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                            <div style={{fontSize:24,marginBottom:8}}>✅</div>
+                            Semua WO on track!
+                          </div>
+                        ):(
+                          <>
+                            {notifItems.map((n:any)=>(
+                              <div key={n.id} onClick={()=>{setTab("wo");setShowNotif(false);}}
+                                style={{padding:"10px 16px",borderBottom:"1px solid #f8fafc",cursor:"pointer",
+                                  background:"#fff",transition:"background .1s"}}
+                                onMouseEnter={e=>(e.currentTarget.style.background="#f8fafc")}
+                                onMouseLeave={e=>(e.currentTarget.style.background="#fff")}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                                  <div style={{flex:1}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                                      <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>WO {n.wo}</span>
+                                      <span style={{background:n.isDelayed?"#fef2f2":"#fffbeb",
+                                        color:n.isDelayed?"#dc2626":"#d97706",
+                                        borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
+                                        {n.isDelayed?"TERLAMBAT":"MENDESAK"}
+                                      </span>
+                                    </div>
+                                    <div style={{fontSize:11,color:"#475569"}}>{n.proyek}</div>
+                                    <div style={{display:"flex",alignItems:"center",gap:8,marginTop:4}}>
+                                      <div style={{flex:1,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                        <div style={{width:n.pct+"%",height:"100%",
+                                          background:n.pct>=75?"#16a34a":n.pct>=50?"#f59e0b":"#ef4444",
+                                          borderRadius:99}}/>
+                                      </div>
+                                      <span style={{fontSize:10,fontWeight:700,color:"#64748b"}}>{n.pct}%</span>
+                                    </div>
+                                  </div>
+                                  <div style={{textAlign:"right" as const,flexShrink:0}}>
+                                    <div style={{fontSize:11,fontWeight:700,
+                                      color:n.isDelayed?"#dc2626":n.daysLeft<=3?"#ef4444":"#d97706"}}>
+                                      {n.isDelayed?`H+${Math.abs(n.daysLeft)}`:`H-${n.daysLeft}`}
+                                    </div>
+                                    <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{n.target}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
+                            {kendalaNotif.map((k:any)=>(
+                              <div key={k.id} onClick={()=>{setTab("kendala");setShowNotif(false);}}
+                                style={{padding:"10px 16px",borderBottom:"1px solid #f8fafc",cursor:"pointer",
+                                  background:"#fff"}}
+                                onMouseEnter={e=>(e.currentTarget.style.background="#f8fafc")}
+                                onMouseLeave={e=>(e.currentTarget.style.background="#fff")}>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,
+                                    padding:"1px 7px",fontSize:9,fontWeight:700}}>KENDALA</span>
+                                  <span style={{fontSize:11,color:"#475569",flex:1}}>{k.deskripsi||k.kendala||"Kendala baru"}</span>
+                                </div>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </div>
+                      {/* Footer */}
+                      {(notifItems.length>0||kendalaNotif.length>0)&&(
+                        <div style={{padding:"8px 16px",borderTop:"1px solid #f1f5f9",textAlign:"center" as const}}>
+                          <button onClick={()=>{setTab("wo");setShowNotif(false);}}
+                            style={{background:"none",border:"none",cursor:"pointer",
+                              fontSize:11,color:"#2563eb",fontWeight:600}}>
+                            Lihat semua WO →
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                {alerts>0&&<span style={{background:"#fffbeb",color:"#d97706",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{alerts} mendesak</span>}
                 <span style={{background:"#f1f5f9",color:"#475569",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{cfg?.label||"Admin"}</span>
                 <div className="erp-foot-av">{(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}</div>
               </div>
