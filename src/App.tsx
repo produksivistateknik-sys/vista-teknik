@@ -4199,7 +4199,7 @@ function RecycleBinTab({user}:any){
   );
 }
 
-function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity}){
+function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
   const [subTab,setSubTab]=useState("masteruser");
   const [admins,setAdmins]=useState([]);
   const [mesinList,setMesinList]=useState([]);
@@ -4234,13 +4234,14 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
         <button onClick={async()=>{
           try{
             // Dynamic import SheetJS
-            const XLSX=await import("https://cdn.sheetjs.com/xlsx-0.20.0/package/xlsx.mjs" as any);
+            const XLSX=(window as any).XLSX;
+            if(!XLSX){alert("SheetJS belum dimuat, coba refresh halaman.");return;}
             const wb=XLSX.utils.book_new();
 
             // Sheet 1: Work Orders
             const woRows:any[]=[];
             woRows.push(["NO WO","PROYEK","TARGET","TOTAL PANEL","AVG PROGRESS","STATUS"]);
-            (window as any).__vt_woData?.forEach((w:any)=>{
+            woData?.forEach((w:any)=>{
               const pct=woOverall(w);
               const status=pct===100?"Selesai":isDelayed(w.target)?"Terlambat":isUrgent(w.target)?"Mendesak":"On Track";
               woRows.push([w.wo,w.proyek,w.target,(w.panels||[]).length+' panel',pct+'%',status]);
@@ -5051,6 +5052,10 @@ function MaintenanceTab({mesinList,maintenanceList,setMaintenanceList,user}){
 
 export default function App(){
   const [page,setPage]=useState("landing");
+  const [user,setUser]=useState(null);
+  const [tab,setTab]=useState("dashboard");
+  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+  const [showNotif,setShowNotif]=useState(false);
   // Restore admin session
   useEffect(()=>{
     const saved=localStorage.getItem("vista_admin_session");
@@ -5060,12 +5065,9 @@ export default function App(){
         setUser({...parsed,name:parsed.name||parsed.nama});
         setPage("app");
         setTab("dashboard");
-      }catch{}
+      }catch(e){ console.error('Session restore error:',e); }
     }
   },[]);
-  const [user,setUser]=useState(null);
-  const [tab,setTab]=useState("dashboard");
-  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
 const [woData, setWoData] = useState<any[]>([]);
 const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
@@ -5098,8 +5100,7 @@ const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw
 useEffect(() => {
   if (!woLoading) {
     setWoData(woList);
-    (window as any).__vt_woData = woList;
-  }
+    }
 }, [woList, woLoading])
 
 useEffect(() => {
@@ -5120,19 +5121,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     setTab("redirect");
   }}/>;
 
-  const isOp=OPERATOR_ROLES.includes(user.divisi);
-
-  // Tutup notif saat klik di luar
-  useEffect(()=>{
-    const handler=(e:MouseEvent)=>{
-      const target=e.target as HTMLElement;
-      if(!target.closest('.erp-bell')&&!target.closest('[data-notif-panel]')){
-        setShowNotif(false);
-      }
-    };
-    if(showNotif) document.addEventListener("mousedown",handler);
-    return()=>document.removeEventListener("mousedown",handler);
-  },[showNotif]);
+  const isOp=OPERATOR_ROLES.includes(user?.divisi);
   // Redirect operator ke vista-pekerja
   if(isOp) return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f1f5f9",padding:20}}>
@@ -5194,8 +5183,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
-  const [showNotif,setShowNotif]=useState(false);
-
   // Data notifikasi lengkap
   const notifItems=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target)))
     .map(w=>({
@@ -5403,7 +5390,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
-              {tab==="masteruser"&&<SystemTab user={user} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
+              {tab==="masteruser"&&<SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}
             </div>
           </div>
         </div>
