@@ -264,6 +264,33 @@ function getLatestProgress(cl, proses){
   return cl?.progress?.[proses]||0;
 }
 
+// Ambil progress dari history (sumber paling akurat dari Vista Pekerja)
+function getProgressFromHistory(cl:any, proses:string):number{
+  const hist=cl?.history?.[proses];
+  if(hist&&hist.length>0){
+    // ambil entry terbaru berdasarkan tanggal + ts
+    const sorted=[...hist].sort((a:any,b:any)=>{
+      const tA=a.ts||a.tanggal||"";
+      const tB=b.ts||b.tanggal||"";
+      return tB.localeCompare(tA);
+    });
+    return sorted[0].pct||0;
+  }
+  return -1; // -1 berarti tidak ada data history
+}
+
+// Ambil progress terbaik: history > progressByDate > progress
+function getBestProgress(cl:any, proses:string):number{
+  // Coba dari history dulu (paling akurat)
+  const fromHist=getProgressFromHistory(cl,proses);
+  if(fromHist>=0) return fromHist;
+  // Fallback ke progressByDate
+  const fromDate=getLatestProgress(cl,proses);
+  if(fromDate>0) return fromDate;
+  // Fallback terakhir ke progress
+  return cl?.progress?.[proses]||0;
+}
+
 function calcPanelProgress(panel): Record<string, number> {
   const cfg=PANEL_TYPES[panel.tipe];
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
@@ -271,7 +298,7 @@ function calcPanelProgress(panel): Record<string, number> {
   if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const prog: Record<string, number> = {};
   ALL_PROSES.forEach(pr=>{
-    const vals=active.map(it=>getLatestProgress(panel.checklist[it.kode],pr));
+    const vals=active.map(it=>getBestProgress(panel.checklist[it.kode],pr));
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });
   return prog;
@@ -289,7 +316,7 @@ function woOverall(wo){
   return Math.round(sum/vals.length);
 }
 
-const TODAY="2026-05-18";
+const TODAY=new Date().toISOString().slice(0,10);
 function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
 function isDelayed(t){ return daysUntil(t)<0; }
 function isUrgent(t){ const d=daysUntil(t); return d>=0&&d<=7; }  // H-7
@@ -2645,6 +2672,7 @@ function DetailProgress({woData}:{woData:any[]}){
     const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
     const isDone=pct===100;
     const history=cl?.history?.[proses]||[];
+    const pctFinal=pct!==undefined&&pct!==null?pct:getBestProgress(cl,proses);
     return(
       <td style={tdS} className="hist-cell">
         <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
@@ -3500,8 +3528,23 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
       if(p.id!==panelId)return p;
       const nq2=Number(qty)||0;
+      const oldQty2=p.checklist[kode]?.qty||1;
       const nc={...p.checklist,[kode]:{...p.checklist[kode],qty:nq2}};
-      if(nq2===0)nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
+      if(nq2===0){
+        // qty 0 → reset semua progress
+        nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
+        nc[kode].progressByDate=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{});
+        nc[kode].history=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:[]}),{});
+      } else if(nq2!==oldQty2 && oldQty2>0){
+        // qty berubah → recalculate progress proporsional
+        const ratio=oldQty2/nq2;
+        const newProgress:any={};
+        ALL_PROSES.forEach(pr=>{
+          const old=nc[kode].progress?.[pr]||0;
+          newProgress[pr]=Math.min(100,Math.round(old*ratio));
+        });
+        nc[kode].progress=newProgress;
+      }
       return{...p,checklist:nc};
     })}));
   };
