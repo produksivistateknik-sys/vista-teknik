@@ -1,0 +1,162 @@
+from pathlib import Path
+import re
+
+# ── Vista Teknik: Update calcPanelProgress + DetailProgress ──
+APP_PATH = Path(r"C:\Users\User\vista-teknik\src\App.tsx")
+content = APP_PATH.read_text(encoding="utf-8")
+
+# Fix 1: Update calcPanelProgress untuk include busbar_progress di BUSBAR
+old_calc = """function calcPanelProgress(panel): Record<string, number> {
+  const cfg=PANEL_TYPES[panel.tipe];
+  if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
+  if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const prog: Record<string, number> = {};
+  ALL_PROSES.forEach(pr=>{
+    const vals=active.map(it=>getBestProgress(panel.checklist[it.kode],pr));
+    prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  });
+  return prog;
+}"""
+
+new_calc = """function calcPanelProgress(panel): Record<string, number> {
+  const cfg=PANEL_TYPES[panel.tipe];
+  if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
+  if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const prog: Record<string, number> = {};
+  ALL_PROSES.forEach(pr=>{
+    const vals=active.map(it=>getBestProgress(panel.checklist[it.kode],pr));
+    // Tambahkan busbar_progress ke kalkulasi BUSBAR
+    if(pr==="BUSBAR"&&panel.busbar_progress){
+      const busbarVals=Object.values(panel.busbar_progress) as number[];
+      if(busbarVals.length>0){
+        const allVals=[...vals,...busbarVals];
+        prog[pr]=Math.round(allVals.reduce((a:number,b:number)=>a+b,0)/allVals.length);
+        return;
+      }
+    }
+    prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  });
+  return prog;
+}"""
+
+if old_calc in content:
+    content = content.replace(old_calc, new_calc)
+    print("✅ calcPanelProgress updated for busbar")
+else:
+    print("❌ calcPanelProgress not found")
+
+# Fix 2: Tambah busbar section di DetailProgress
+old_detail_end = """          </div>
+        </Modal>
+      )}"""
+
+# Cari section komponen table di DetailProgress dan tambah busbar rows
+old_tbody_end = """                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function RawSchedule("""
+
+new_tbody_end = """                  {/* Busbar rows */}
+                  {p.busbar_progress&&Object.keys(p.busbar_progress).length>0&&(
+                    <>
+                      <tr>
+                        <td colSpan={4+prosesPanel.length} style={{background:"#06b6d418",padding:"4px 10px",
+                          borderBottom:"1px solid #e2e8f0",borderTop:"2px solid #06b6d4"}}>
+                          <span style={{fontWeight:700,fontSize:10,color:"#06b6d4",textTransform:"uppercase" as const,letterSpacing:.5}}>
+                            🔌 Komponen Busbar
+                          </span>
+                        </td>
+                      </tr>
+                      {Object.entries(p.busbar_progress).map(([nama,pct]:any)=>(
+                        <tr key={"busbar-"+nama}>
+                          <td style={{...tdS,background:"#f0fdfe"}}></td>
+                          <td style={{...tdSL,background:"#f0fdfe",color:"#0e7490",fontWeight:600}}>{nama}</td>
+                          <td style={{...tdS,background:"#f0fdfe",color:"#94a3b8",fontSize:9}}>BUSBAR</td>
+                          <td style={{...tdS,background:"#f0fdfe"}}>—</td>
+                          {prosesPanel.map(pr=>{
+                            if(pr!=="BUSBAR") return <td key={pr} style={{...tdS,background:"#f0fdfe",color:"#e2e8f0"}}>—</td>;
+                            const isDone=pct>=100;
+                            const color=PROSES_COLOR["BUSBAR"]||"#06b6d4";
+                            return(
+                              <td key={pr} style={tdS}>
+                                <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                                  <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                    <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
+                                  </div>
+                                  <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+                                </div>
+                              </td>
+                            );
+                          })}
+                        </tr>
+                      ))}
+                    </>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+function RawSchedule("""
+
+if old_tbody_end in content:
+    content = content.replace(old_tbody_end, new_tbody_end)
+    print("✅ Busbar rows added to DetailProgress")
+else:
+    print("❌ DetailProgress tbody end not found")
+    # debug
+    lines = content.splitlines()
+    for i, l in enumerate(lines):
+        if 'function RawSchedule(' in l:
+            print(f"  RawSchedule at line {i+1}")
+            for j in range(max(0,i-8), i+1):
+                print(f"  {j+1}: {lines[j][:80]}")
+            break
+
+APP_PATH.write_text(content, encoding="utf-8")
+print("\n✅ Vista Teknik done!")
+
+# ── Vista Pekerja: Save busbar progress ke busbar_progress ──
+PEKERJA_PATH = Path(r"C:\Users\User\vista-pekerja\src\App.tsx")
+pekerja_content = PEKERJA_PATH.read_text(encoding="utf-8")
+
+# Cari dimana progress disimpan di Vista Pekerja
+old_save_progress = "await supabase.from(\"panels\").update({checklist:newChecklist}).eq(\"id\",Number(panelId));"
+new_save_progress = """// Update busbar_progress jika ada busbar tasks
+    const busbarTasks=panelsToSave.filter((t:any)=>t.proses==="BUSBAR"&&String(t.panelId||t.panel_id)===String(panelId));
+    let busbarProgressUpdate:any=null;
+    if(busbarTasks.length>0){
+      const existingBusbarProgress=panel?.busbar_progress||{};
+      const newBusbarProgress={...existingBusbarProgress};
+      busbarTasks.forEach((t:any)=>{
+        (t.komponen||[]).forEach((komp:string)=>{
+          const cl=newChecklist[komp]||{};
+          newBusbarProgress[komp]=cl.progress?.["BUSBAR"]||0;
+        });
+      });
+      busbarProgressUpdate=newBusbarProgress;
+    }
+    await supabase.from("panels").update({
+      checklist:newChecklist,
+      ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})
+    }).eq("id",Number(panelId));"""
+
+if old_save_progress in pekerja_content:
+    pekerja_content = pekerja_content.replace(old_save_progress, new_save_progress)
+    PEKERJA_PATH.write_text(pekerja_content, encoding="utf-8")
+    print("✅ Vista Pekerja busbar_progress save added!")
+else:
+    print("⚠️  Vista Pekerja save progress not found - cek manual")
+

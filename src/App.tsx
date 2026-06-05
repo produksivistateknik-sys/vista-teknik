@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect } from 'react';
+﻿import { useState, useMemo, useEffect, useRef } from 'react';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendala } from './hooks/useKendala'
@@ -197,6 +197,27 @@ const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
 };
 
 // Helper: cek apakah komponen relevan dengan proses tertentu
+// ─────────────────────────────────────────────────────────────────────────────
+// BUSBAR KOMPONEN per tipe panel
+// ─────────────────────────────────────────────────────────────────────────────
+const BUSBAR_KOMPONEN:Record<string,string[]> = {
+  FS:      ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"],
+  F3B:     ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"],
+  WM_MS:   ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
+  WM_POLY: ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
+};
+
+const getBusbarKomponen=(tipe:string):string[]=>{
+  return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
+};
+
+const BUSBAR_COLORS:Record<string,string>={
+  "H-BUS":"#f59e0b","LINE":"#f59e0b",
+  "INCOMING":"#ef4444","OUTGOING":"#3b82f6",
+  "NETRAL":"#8b5cf6","GROUND":"#16a34a",
+  "COUPLER":"#f97316",
+};
+
 const isKomponenRelevant=(kode:string, proses:string):boolean=>{
   const relevanProses=KOMPONEN_PROSES_MAP[kode];
   if(!relevanProses) return true; // kalau tidak ada mapping, tampilkan semua
@@ -290,6 +311,15 @@ function calcPanelProgress(panel): Record<string, number> {
   const prog: Record<string, number> = {};
   ALL_PROSES.forEach(pr=>{
     const vals=active.map(it=>getBestProgress(panel.checklist[it.kode],pr));
+    // Tambahkan busbar_progress ke kalkulasi BUSBAR
+    if(pr==="BUSBAR"&&panel.busbar_progress){
+      const busbarVals=Object.values(panel.busbar_progress) as number[];
+      if(busbarVals.length>0){
+        const allVals=[...vals,...busbarVals];
+        prog[pr]=Math.round(allVals.reduce((a:number,b:number)=>a+b,0)/allVals.length);
+        return;
+      }
+    }
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });
   return prog;
@@ -1109,6 +1139,23 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
           wp:e.wp,komponen:e.komponen,tanggal:selDate,
         });
       });
+      // Tambah busbar tasks dari busbar_schedule
+      if(row.proses==="BUSBAR"){
+        const busbarItems=row.busbar_schedule?.[selDate]||[];
+        if(busbarItems.length>0){
+          // Cek apakah sudah ada dari renhar (hindari duplikat)
+          const alreadyInSchedule=entries.some(e=>e.wp==="BUSBAR");
+          if(!alreadyInSchedule){
+            tasks.push({
+              rawId:row.id,woId:row.wo_id||row.woId,panelId:row.panel_id||row.panelId,
+              proyek:row.proyek,panel:row.panel,proses:row.proses,
+              prioritas:row.prioritas||"Sedang",
+              wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,
+              isBusbar:true,
+            });
+          }
+        }
+      }
     });
     return tasks;
   },[rawData,selDate]);
@@ -2932,7 +2979,15 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
-  const openCellModal=(rawId,date)=>{setCellModal({rawId,date});setModalWp("");setModalKomponen([]);};
+  const [busbarSel,setBusbarSel]=useState<string[]>([]);
+  const openCellModal=(rawId,date)=>{
+    setCellModal({rawId,date});
+    setModalWp("");
+    setModalKomponen([]);
+    // Load existing busbar selections
+    const row=rawData.find(r=>r.id===rawId);
+    setBusbarSel(row?.busbar_schedule?.[date]||[]);
+  };
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
@@ -2967,7 +3022,20 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
     setModalWp('');setModalKomponen([]);
-    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'});
+    const isBusbarRow=rawRow?.proses==="BUSBAR";
+    if(updatedRow){
+      const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'};
+      if(isBusbarRow&&busbarSel!==undefined){
+        const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
+        updatePayload.busbar_schedule=newBusbarSch;
+        // Update local state dengan busbar_schedule
+        setRawData(prev=>prev.map(r=>{
+          if(r.id!==cellModal.rawId)return r;
+          return{...r,schedule:updatedRow.schedule,busbar_schedule:newBusbarSch};
+        }));
+      }
+      await updateRaw(cellModal.rawId,updatePayload);
+    }
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
     const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
     if(isEdit){
@@ -3211,6 +3279,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     </td>
                     {days.map(d=>{
                       const entries=row.schedule?.[d]||[];
+                      const busbarEntries:string[]=row.busbar_schedule?.[d]||[];
                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
                       const isSelDate=selDate===d;
                       return(
@@ -3231,9 +3300,24 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                             </div>
                           ):(
                             <div onClick={()=>openCellModal(row.id,d)}
-                              style={{width:"100%",height:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s"}}
-                              onMouseEnter={e=>{e.target.style.borderColor="#94a3b8";e.target.style.color="#94a3b8";}}
-                              onMouseLeave={e=>{e.target.style.borderColor="#e2e8f0";e.target.style.color="#e2e8f0";}}>+</div>
+                              style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
+                              onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
+                              onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
+                              {row.proses==="BUSBAR"&&busbarEntries.length>0?(
+                                <div style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center"}}>
+                                  {busbarEntries.map((b:string)=>(
+                                    <span key={b} style={{background:(BUSBAR_COLORS[b]||"#64748b")+"22",
+                                      color:BUSBAR_COLORS[b]||"#64748b",
+                                      border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
+                                      borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700}}>
+                                      {b}
+                                    </span>
+                                  ))}
+                                </div>
+                              ):(
+                                <span>+</span>
+                              )}
+                            </div>
                           )}
                         </td>
                       );
@@ -3344,6 +3428,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             </div>
           )}
           <div style={{borderTop:"1px solid #f1f5f9",paddingTop:16}}>
+          {rawRow?.proses!=="BUSBAR"&&(<>
             <Lbl>Tambah WP</Lbl>
             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
               {WP_LIST.map(wp=>{
@@ -3370,9 +3455,102 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>+ Tambah {modalWp} ({modalKomponen.length} komponen)</Btn>
               </>
             )}
+          </>)}
           </div>
+          {/* Busbar Komponen Section */}
+          {rawRow?.proses==="BUSBAR"&&(()=>{
+            const busbarItems=getBusbarKomponen(livePanelForCell?.tipe||"FS");
+            return(
+              <div style={{marginTop:12,padding:"12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:8}}>
+                  🔌 Pilih Komponen Busbar:
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                  {busbarItems.map((b:string)=>{
+                    const isSel=busbarSel.includes(b);
+                    const bc=BUSBAR_COLORS[b]||"#64748b";
+                    return(
+                      <button key={b} onClick={()=>setBusbarSel((p:string[])=>isSel?p.filter((x:string)=>x!==b):[...p,b])}
+                        style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,
+                          border:`1.5px solid ${isSel?bc:"#e2e8f0"}`,
+                          background:isSel?bc+"18":"#fff",color:isSel?bc:"#64748b"}}>
+                        {b}
+                      </button>
+                    );
+                  })}
+                </div>
+                {busbarSel.length>0&&(
+                  <div style={{marginTop:8,fontSize:11,color:"#64748b"}}>
+                    Dipilih: <strong>{busbarSel.join(", ")}</strong>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           <div style={{marginTop:16,display:"flex",justifyContent:"flex-end"}}>
-            <Btn color="#16a34a" onClick={()=>setCellModal(null)}>Selesai</Btn>
+            <Btn color="#16a34a" onClick={async()=>{
+              // Save busbar schedule saat klik Selesai
+              if(rawRow?.proses==="BUSBAR"){
+                const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
+                setRawData(prev=>prev.map(r=>{
+                  if(r.id!==cellModal.rawId)return r;
+                  return{...r,busbar_schedule:newBusbarSch};
+                }));
+                await updateRaw(cellModal.rawId,{busbar_schedule:newBusbarSch});
+                const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+                const uname=user?.name||user?.nama||sess?.nama||'Admin';
+                // Sync ke renhar
+                if(busbarSel.length>0){
+                  const existRenhar=renhar.find((r:any)=>
+                    (r.raw_id||r.rawId)===cellModal.rawId&&
+                    r.tanggal===cellModal.date&&
+                    r.wp==="BUSBAR"
+                  );
+                  const renharPayload={
+                    raw_id:cellModal.rawId,
+                    wo_id:rawRow?.wo_id||rawRow?.woId,
+                    panel_id:rawRow?.panel_id||rawRow?.panelId,
+                    panel:rawRow?.panel,
+                    proyek:rawRow?.proyek,
+                    proses:rawRow?.proses,
+                    wp:"BUSBAR",
+                    komponen:busbarSel,
+                    tanggal:cellModal.date,
+                    divisi:"assembling",
+                    prioritas:rawRow?.prioritas||"Sedang",
+                  };
+                  if(existRenhar){
+                    await updateRenhar(existRenhar.id,{...renharPayload});
+                    setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
+                  } else {
+                    console.log('Creating renhar busbar:', renharPayload);
+                    const res=await createRenhar(renharPayload);
+                    console.log('Renhar result:', res);
+                    if(res?.success&&res?.data) setRenhar((prev:any[])=>[...prev,res.data]);
+                  }
+                } else {
+                  // Hapus renhar busbar jika kosong
+                  const existRenhar=renhar.find((r:any)=>
+                    (r.raw_id||r.rawId)===cellModal.rawId&&
+                    r.tanggal===cellModal.date&&
+                    r.wp==="BUSBAR"
+                  );
+                  if(existRenhar){
+                    await removeRenhar(existRenhar.id);
+                    setRenhar((prev:any[])=>prev.filter((r:any)=>r.id!==existRenhar.id));
+                  }
+                }
+                await activityLogService.insert({
+                  user_name:uname,
+                  action:'JADWAL BUSBAR',
+                  description:`Jadwal busbar ${rawRow?.panel} - ${rawRow?.proyek} (${cellModal?.date}): ${busbarSel.join(', ')||'kosong'}`,
+                  module:'raw',halaman:'Raw Schedule',
+                  proyek:rawRow?.proyek||'',panel:rawRow?.panel||''
+                });
+              }
+              setCellModal(null);
+            }}>Selesai</Btn>
           </div>
         </Modal>
       )}
@@ -5364,12 +5542,202 @@ function MaintenanceTab({mesinList,maintenanceList,setMaintenanceList,user}){
   );
 }
 
+function GlobalSearch({show,onClose,query,setQuery,woData,pekerja,setTab}:any){
+  const ref=useRef<HTMLInputElement>(null);
+
+  useEffect(()=>{
+    if(show) setTimeout(()=>ref.current?.focus(),50);
+    else setQuery("");
+  },[show]);
+
+  useEffect(()=>{
+    const handler=(e:KeyboardEvent)=>{
+      if(e.key==="Escape") onClose();
+    };
+    if(show) window.addEventListener("keydown",handler);
+    return()=>window.removeEventListener("keydown",handler);
+  },[show]);
+
+  const q=query.toLowerCase().trim();
+
+  const woResults=q?(woData||[]).filter((w:any)=>
+    w.wo?.toLowerCase().includes(q)||w.proyek?.toLowerCase().includes(q)
+  ).slice(0,5):[];
+
+  const panelResults=q?(woData||[]).flatMap((w:any)=>
+    (w.panels||[]).filter((p:any)=>
+      p.nama?.toLowerCase().includes(q)||w.proyek?.toLowerCase().includes(q)
+    ).map((p:any)=>({...p,wo:w.wo,proyek:w.proyek,woId:w.id}))
+  ).slice(0,5):[];
+
+  const pekerjaResults=q?(pekerja||[]).filter((p:any)=>
+    p.nama?.toLowerCase().includes(q)
+  ).slice(0,4):[];
+
+  const hasResults=woResults.length>0||panelResults.length>0||pekerjaResults.length>0;
+
+  if(!show) return null;
+
+  return(
+    <div style={{position:"fixed",inset:0,zIndex:9999,display:"flex",alignItems:"flex-start",
+      justifyContent:"center",paddingTop:80,background:"rgba(15,23,42,.6)",backdropFilter:"blur(4px)"}}
+      onClick={onClose}>
+      <div style={{width:"100%",maxWidth:580,background:"#fff",borderRadius:14,
+        boxShadow:"0 24px 64px rgba(0,0,0,.25)",overflow:"hidden"}}
+        onClick={e=>e.stopPropagation()}>
+        {/* Search input */}
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"14px 18px",
+          borderBottom:"1px solid #f1f5f9"}}>
+          <i className="ti ti-search" style={{fontSize:18,color:"#94a3b8",flexShrink:0}}/>
+          <input ref={ref} value={query} onChange={e=>setQuery(e.target.value)}
+            placeholder="Cari work order, panel, proyek, pekerja..."
+            style={{flex:1,border:"none",outline:"none",fontSize:15,color:"#0f172a",
+              fontFamily:"inherit",background:"transparent"}}/>
+          {query&&(
+            <button onClick={()=>setQuery("")}
+              style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:14}}>✕</button>
+          )}
+          <kbd style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:5,
+            padding:"2px 7px",fontSize:11,color:"#64748b",flexShrink:0}}>Esc</kbd>
+        </div>
+
+        {/* Results */}
+        <div style={{maxHeight:420,overflowY:"auto" as const}}>
+          {!query?(
+            <div style={{padding:"32px",textAlign:"center",color:"#94a3b8"}}>
+              <i className="ti ti-search" style={{fontSize:32,display:"block",marginBottom:8}}/>
+              <div style={{fontSize:13}}>Ketik untuk mencari...</div>
+              <div style={{fontSize:11,marginTop:6,color:"#cbd5e1"}}>WO, panel, proyek, pekerja</div>
+            </div>
+          ):!hasResults?(
+            <div style={{padding:"32px",textAlign:"center",color:"#94a3b8"}}>
+              <div style={{fontSize:24,marginBottom:8}}>🔍</div>
+              <div style={{fontSize:13}}>Tidak ada hasil untuk "<strong>{query}</strong>"</div>
+            </div>
+          ):(
+            <div style={{padding:"8px 0"}}>
+              {/* WO Results */}
+              {woResults.length>0&&(
+                <div>
+                  <div style={{padding:"6px 18px 4px",fontSize:10,fontWeight:700,color:"#94a3b8",
+                    textTransform:"uppercase" as const,letterSpacing:.8}}>Work Orders</div>
+                  {woResults.map((w:any)=>{
+                    const pct=woOverall(w);
+                    const color=pct===100?"#16a34a":isDelayed(w.target)?"#dc2626":isUrgent(w.target)?"#f59e0b":"#2563eb";
+                    return(
+                      <div key={w.id} onClick={()=>{setTab("wo");onClose();}}
+                        style={{padding:"10px 18px",cursor:"pointer",display:"flex",
+                          alignItems:"center",gap:12,transition:"background .1s"}}
+                        onMouseEnter={e=>(e.currentTarget.style.background="#f8fafc")}
+                        onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
+                        <div style={{width:32,height:32,borderRadius:8,background:"#eff6ff",
+                          display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <i className="ti ti-file-description" style={{fontSize:16,color:"#2563eb"}}/>
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>
+                            WO {w.wo} — {w.proyek}
+                          </div>
+                          <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
+                            {(w.panels||[]).length} panel · Target: {w.target}
+                          </div>
+                        </div>
+                        <span style={{background:color+"18",color,borderRadius:20,
+                          padding:"2px 8px",fontSize:10,fontWeight:700}}>{pct}%</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {/* Panel Results */}
+              {panelResults.length>0&&(
+                <div>
+                  <div style={{padding:"6px 18px 4px",fontSize:10,fontWeight:700,color:"#94a3b8",
+                    textTransform:"uppercase" as const,letterSpacing:.8}}>Panels</div>
+                  {panelResults.map((p:any,i:number)=>(
+                    <div key={i} onClick={()=>{setTab("detail");onClose();}}
+                      style={{padding:"10px 18px",cursor:"pointer",display:"flex",
+                        alignItems:"center",gap:12}}
+                      onMouseEnter={e=>(e.currentTarget.style.background="#f8fafc")}
+                      onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
+                      <div style={{width:32,height:32,borderRadius:8,background:"#f0fdf4",
+                        display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                        <i className="ti ti-layout-board" style={{fontSize:16,color:"#16a34a"}}/>
+                      </div>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{p.nama}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>
+                          WO {p.wo} · {p.proyek} · {p.tipe}
+                        </div>
+                      </div>
+                      <i className="ti ti-arrow-right" style={{fontSize:14,color:"#cbd5e1"}}/>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Pekerja Results */}
+              {pekerjaResults.length>0&&(
+                <div>
+                  <div style={{padding:"6px 18px 4px",fontSize:10,fontWeight:700,color:"#94a3b8",
+                    textTransform:"uppercase" as const,letterSpacing:.8}}>Pekerja</div>
+                  {pekerjaResults.map((p:any)=>{
+                    const dc=(DIVISI_CONFIG as any)[p.divisi]||{};
+                    return(
+                      <div key={p.id} onClick={()=>{setTab("pekerja");onClose();}}
+                        style={{padding:"10px 18px",cursor:"pointer",display:"flex",
+                          alignItems:"center",gap:12}}
+                        onMouseEnter={e=>(e.currentTarget.style.background="#f8fafc")}
+                        onMouseLeave={e=>(e.currentTarget.style.background="transparent")}>
+                        <div style={{width:32,height:32,borderRadius:8,background:dc.bg||"#f1f5f9",
+                          display:"flex",alignItems:"center",justifyContent:"center",
+                          fontSize:12,fontWeight:800,color:dc.color||"#64748b",flexShrink:0}}>
+                          {p.nama?.slice(0,2).toUpperCase()}
+                        </div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{p.nama}</div>
+                          <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{dc.icon} {dc.label}</div>
+                        </div>
+                        <i className="ti ti-arrow-right" style={{fontSize:14,color:"#cbd5e1"}}/>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div style={{padding:"8px 18px",borderTop:"1px solid #f1f5f9",display:"flex",
+          gap:16,alignItems:"center"}}>
+          <span style={{fontSize:10,color:"#94a3b8",display:"flex",alignItems:"center",gap:4}}>
+            <kbd style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,
+              padding:"1px 5px",fontSize:10}}>↵</kbd> Navigate
+          </span>
+          <span style={{fontSize:10,color:"#94a3b8",display:"flex",alignItems:"center",gap:4}}>
+            <kbd style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,
+              padding:"1px 5px",fontSize:10}}>Esc</kbd> Tutup
+          </span>
+          <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>
+            Vista Teknik Search
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+
 export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState("dashboard");
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
   const [showNotif,setShowNotif]=useState(false);
+  const [showSearch,setShowSearch]=useState(false);
+  const [searchQuery,setSearchQuery]=useState("");
   // Restore admin session
   useEffect(()=>{
     const saved=localStorage.getItem("vista_admin_session");
@@ -5578,15 +5946,18 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 <div className="erp-foot-name">{user?.name||user?.nama}</div>
                 <div className="erp-foot-role">{cfg?.label||"Admin"}</div>
               </div>
-              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:16,flexShrink:0,padding:2}} title="Keluar">✕</button>}
+              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
             </div>
           </div>
           <div className="erp-main">
-            <div className="erp-topbar">
+            <GlobalSearch show={showSearch} onClose={()=>setShowSearch(false)}
+            query={searchQuery} setQuery={setSearchQuery}
+            woData={woData} pekerja={pekerja} setTab={setTab}/>
+          <div className="erp-topbar">
               <button className="erp-toggle" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)}>
                 {sidebarCollapsed?"▶":"◀"}
               </button>
-              <input className="erp-search" placeholder="Cari work order, panel..."/>
+              <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
               <div className="erp-topbar-right">
                 <div style={{position:"relative"}}>
                   <div className="erp-bell" onClick={()=>setShowNotif(p=>!p)}
