@@ -33,6 +33,16 @@ export function useWorkOrders() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'work_orders' },
         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
+        (payload) => {
+          setData(prev => prev.map(wo => ({
+            ...wo,
+            panels: (wo.panels || []).map((p: any) =>
+              p.id === payload.new.id ? { ...p, ...payload.new } : p
+            )
+          })))
+        }
+      )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
   }, [fetch])
