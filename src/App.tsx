@@ -70,10 +70,8 @@ const PANEL_TYPES = {
     wps:[
       { wp:"WP1", range:"WM.1-2", color:"#f59e0b", bg:"#fffbeb", items:[{kode:"WM.1",nama:"Tulangan Groundplate"},{kode:"WM.2",nama:"Groundplate"}]},
       { wp:"WP2", range:"WM.3-4", color:"#22c55e", bg:"#f0fdf4", items:[{kode:"WM.3",nama:"Box (include ambang)"},{kode:"WM.4",nama:"Pintu"}]},
-      { wp:"WP3", range:"WM.5-6", color:"#06b6d4", bg:"#ecfeff", items:[{kode:"WM.5",nama:"Tulangan Cover"},{kode:"WM.6",nama:"Cover Komponen"}]},
+      { wp:"WP3", range:"WM.5-6,9-10", color:"#06b6d4", bg:"#ecfeff", items:[{kode:"WM.5",nama:"Tulangan Cover"},{kode:"WM.6",nama:"Cover Komponen"},{kode:"WM.9",nama:"Tulangan Pintu Dalam"},{kode:"WM.10",nama:"Pintu Dalam"}]},
       { wp:"WP4", range:"WM.7-8", color:"#f97316", bg:"#fff7ed", items:[{kode:"WM.7",nama:"Tutup Atas Bawah"},{kode:"WM.8",nama:"Topi"}]},
-      { wp:"WP5", range:"WM.9",   color:"#a78bfa", bg:"#f5f3ff", items:[{kode:"WM.9",nama:"Tulangan Pintu Dalam"}]},
-      { wp:"WP6", range:"WM.10",  color:"#f472b6", bg:"#fdf2f8", items:[{kode:"WM.10",nama:"Pintu Dalam"}]},
     ]
   },
   WM_POLY: {
@@ -81,10 +79,8 @@ const PANEL_TYPES = {
     wps:[
       { wp:"WP1", range:"WM.1-2", color:"#f59e0b", bg:"#fffbeb", items:[{kode:"WM.1",nama:"Tulangan Groundplate"},{kode:"WM.2",nama:"Groundplate"}]},
       { wp:"WP2", range:"WM.3-4", color:"#22c55e", bg:"#f0fdf4", items:[{kode:"WM.3",nama:"Box (include ambang)"},{kode:"WM.4",nama:"Pintu"}]},
-      { wp:"WP3", range:"WM.5-6", color:"#06b6d4", bg:"#ecfeff", items:[{kode:"WM.5",nama:"Tulangan Cover"},{kode:"WM.6",nama:"Cover Komponen"}]},
+      { wp:"WP3", range:"WM.5-6,9-10", color:"#06b6d4", bg:"#ecfeff", items:[{kode:"WM.5",nama:"Tulangan Cover"},{kode:"WM.6",nama:"Cover Komponen"},{kode:"WM.9",nama:"Tulangan Pintu Dalam"},{kode:"WM.10",nama:"Pintu Dalam"}]},
       { wp:"WP4", range:"WM.7-8", color:"#f97316", bg:"#fff7ed", items:[{kode:"WM.7",nama:"Tutup Atas Bawah"},{kode:"WM.8",nama:"Topi"}]},
-      { wp:"WP5", range:"WM.9",   color:"#a78bfa", bg:"#f5f3ff", items:[{kode:"WM.9",nama:"Tulangan Pintu Dalam"}]},
-      { wp:"WP6", range:"WM.10",  color:"#f472b6", bg:"#fdf2f8", items:[{kode:"WM.10",nama:"Pintu Dalam"}]},
     ]
   },
 };
@@ -123,8 +119,8 @@ const QTY_DIVISI = ["mekanik","painting"];
 const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   // FS & F3B - WP1
   "FS.1":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.2":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "FS.3":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
+  "FS.2":  ["POTONG","BENDING","PAINTING","RAKIT"],
+  "FS.3":  ["POTONG","BENDING","PAINTING","RAKIT"],
   "FS.4":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
   "FS.5":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
   "FS.6":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
@@ -152,9 +148,9 @@ const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   // F3B tambahan - WP1
   "F3B.1":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
   "F3B.2":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.3":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.4":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
-  "F3B.5":  ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
+  "F3B.3":  ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
+  "F3B.4":  ["POTONG","BENDING","PAINTING","RAKIT"],
+  "F3B.5":  ["POTONG","BENDING","PAINTING","RAKIT"],
   "F3B.6":  ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
   "F3B.7":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
   "F3B.8":  ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
@@ -180,20 +176,20 @@ const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   "F3B.25": ["POTONG","BENDING","PAINTING","RAKIT"],
   "F3B.26": ["POTONG","BENDING","PAINTING","RAKIT"],
   // WM_MS & WM_POLY - WP1
-  "WM.1": ["POTONG","BENDING","PAINTING","RAKIT","WIRING POWER","BUSBAR"],
-  "WM.2": ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
+  "WM.1": ["POTONG","BENDING","PAINTING","RAKIT","BUSBAR"],
+  "WM.2": ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
   // WM_MS - WP2
-  "WM.3": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "WM.4": ["POTONG","BENDING","PAINTING","RAKIT","PASANG KOMPONEN"],
+  "WM.3": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
+  "WM.4": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   // WM - WP3
   "WM.5": ["POTONG","BENDING","PAINTING","RAKIT"],
   "WM.6": ["POTONG","BENDING","PAINTING","RAKIT"],
   // WM - WP4
-  "WM.7": ["POTONG","BENDING","PAINTING","RAKIT"],
+  "WM.7": ["POTONG","PAINTING","RAKIT"],
   "WM.8": ["POTONG","BENDING","PAINTING","RAKIT"],
   // WM_POLY - WP5 & WP6 (sama seperti WP4)
   "WM.9":  ["POTONG","BENDING","PAINTING","RAKIT"],
-  "WM.10": ["POTONG","BENDING","PAINTING","RAKIT"],
+  "WM.10": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
 };
 
 // Helper: cek apakah komponen relevan dengan proses tertentu
@@ -378,6 +374,185 @@ const RENHAR_SEED=[];
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}html,body,#root{width:100%;height:100%;overflow-x:hidden}
+
+/* ── DARK MODE ── */
+:root{
+  --bg-primary:#fff;
+  --bg-secondary:#f8fafc;
+  --bg-tertiary:#f1f5f9;
+  --text-primary:#0f172a;
+  --text-secondary:#475569;
+  --text-muted:#94a3b8;
+  --border-color:#e2e8f0;
+  --border-light:#f1f5f9;
+  --card-bg:#fff;
+  --input-bg:#f8fafc;
+  --shadow:0 1px 4px #00000008;
+}
+[data-theme="dark"]{
+  --bg-primary:#0f1117;
+  --bg-secondary:#1a1d27;
+  --bg-tertiary:#222536;
+  --text-primary:#e2e8f0;
+  --text-secondary:#94a3b8;
+  --text-muted:#64748b;
+  --border-color:#2d3148;
+  --border-light:#1e2330;
+  --card-bg:#1a1d27;
+  --input-bg:#222536;
+  --shadow:0 1px 4px #00000030;
+}
+[data-theme="dark"] body{background:var(--bg-primary);color:var(--text-primary)}
+[data-theme="dark"] .erp-wrap{background:var(--bg-primary)}
+[data-theme="dark"] .erp-body{background:var(--bg-primary)}
+[data-theme="dark"] .erp-topbar{background:var(--bg-secondary);border-bottom:1px solid var(--border-color)}
+[data-theme="dark"] .erp-main{background:var(--bg-primary)}
+[data-theme="dark"] .erp-search{background:var(--bg-tertiary);border-color:var(--border-color);color:var(--text-primary)}
+[data-theme="dark"] .erp-bell{background:var(--bg-tertiary);border-color:var(--border-color)}
+[data-theme="dark"] .fi{background:var(--bg-primary)}
+
+/* Cards & panels */
+[data-theme="dark"] .Card,[data-theme="dark"] [class*="card"]{background:var(--card-bg)!important;border-color:var(--border-color)!important}
+[data-theme="dark"] table thead tr{background:var(--bg-tertiary)!important}
+[data-theme="dark"] table tbody tr:nth-child(even) td{background:var(--bg-secondary)!important}
+[data-theme="dark"] table tbody tr:nth-child(odd) td{background:var(--card-bg)!important}
+[data-theme="dark"] table th{background:#1e2330!important;color:#c8d0e8!important;border-color:var(--border-color)!important}
+[data-theme="dark"] table td{border-color:var(--border-light)!important;color:var(--text-primary)!important}
+[data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{
+  background:var(--input-bg)!important;border-color:var(--border-color)!important;
+  color:var(--text-primary)!important}
+[data-theme="dark"] button:not([class*="Btn"]):not([style*="background:#"]):not([style*="background:linear"]){
+  background:var(--bg-tertiary);color:var(--text-primary);border-color:var(--border-color)}
+
+/* Modal */
+[data-theme="dark"] .modal-overlay,[data-theme="dark"] [class*="modal"]{background:var(--card-bg)!important}
+
+/* Landing & Login */
+[data-theme="dark"] .landing-wrap{background:#0f1117!important}
+[data-theme="dark"] .lg-card{background:var(--card-bg)!important;box-shadow:0 4px 24px #00000040!important}
+[data-theme="dark"] .lg-inp{background:var(--input-bg)!important;border-color:var(--border-color)!important;color:var(--text-primary)!important}
+
+/* Nav group text */
+[data-theme="dark"] .erp-nav-grp{color:#4a5270!important}
+[data-theme="dark"] .erp-topbar-right span{background:var(--bg-tertiary)!important;color:var(--text-secondary)!important}
+[data-theme="dark"] .erp-card{background:#1a1d27!important;border-color:#2d3148!important;color:#e2e8f0!important}
+
+/* ── DARK MODE FORCE OVERRIDE ── */
+[data-theme="dark"] .erp-topbar{background:#16181f!important;border-color:#2d3148!important}
+[data-theme="dark"] .erp-search{background:#222536!important;border-color:#2d3148!important;color:#e2e8f0!important}
+
+/* Force semua div putih ke dark */
+[data-theme="dark"] .erp-main div:not([class*="badge"]):not([class*="status"]):not([class*="tag"]) {
+  --local-bg: var(--card-bg);
+}
+
+/* Target spesifik elemen berdasarkan posisi */
+[data-theme="dark"] .fi > div,
+[data-theme="dark"] .fi > div > div:not([style*="background:#"]):not([style*="background:linear"]):not([style*="background:rgb"]) {
+  background-color: var(--card-bg, #1a1d27) !important;
+  color: var(--text-primary, #e2e8f0) !important;
+  border-color: var(--border-color, #2d3148) !important;
+}
+
+/* Modal */
+[data-theme="dark"] div[style*="position:fixed"][style*="inset:0"] > div {
+  background:#1a1d27!important;
+  border-color:#2d3148!important;
+}
+
+/* Override inline background:#fff */
+[data-theme="dark"] div[style*="background:#fff"],
+[data-theme="dark"] div[style*="background: #fff"],
+[data-theme="dark"] div[style*="background:white"] {
+  background:#1a1d27!important;
+}
+[data-theme="dark"] div[style*="background:#f8fafc"] {
+  background:#1e2130!important;
+}
+[data-theme="dark"] div[style*="background:#f1f5f9"] {
+  background:#222536!important;
+}
+[data-theme="dark"] div[style*="background:#f9fafb"],
+[data-theme="dark"] div[style*="background:#fafafa"] {
+  background:#1e2130!important;
+}
+
+/* Force text colors */
+[data-theme="dark"] div[style*="color:#1e293b"],
+[data-theme="dark"] span[style*="color:#1e293b"],
+[data-theme="dark"] td[style*="color:#1e293b"],
+[data-theme="dark"] p[style*="color:#1e293b"] {
+  color:#e2e8f0!important;
+}
+[data-theme="dark"] div[style*="color:#475569"],
+[data-theme="dark"] span[style*="color:#475569"],
+[data-theme="dark"] td[style*="color:#475569"] {
+  color:#94a3b8!important;
+}
+[data-theme="dark"] div[style*="color:#64748b"],
+[data-theme="dark"] span[style*="color:#64748b"],
+[data-theme="dark"] td[style*="color:#64748b"] {
+  color:#64748b!important;
+}
+
+/* Table */
+[data-theme="dark"] table {
+  background:#1a1d27!important;
+}
+[data-theme="dark"] td {
+  background:#1a1d27!important;
+  border-color:#2d3148!important;
+  color:#e2e8f0!important;
+}
+[data-theme="dark"] tr:nth-child(even) td {
+  background:#1e2130!important;
+}
+[data-theme="dark"] th {
+  background:#0f1117!important;
+  color:#94a3b8!important;
+  border-color:#2d3148!important;
+}
+
+/* Input & Select */
+[data-theme="dark"] input[style],
+[data-theme="dark"] select[style],
+[data-theme="dark"] textarea[style] {
+  background:#222536!important;
+  border-color:#2d3148!important;
+  color:#e2e8f0!important;
+}
+[data-theme="dark"] *{color:inherit}
+[data-theme="dark"] .erp-main{background:#0f1117!important}
+
+/* ── DARK MODE COMPREHENSIVE ── */
+[data-theme="dark"] body{background:#0f1117!important;color:#e2e8f0!important}
+[data-theme="dark"] *[style*="background:#fff"]{background:#1a1d27!important}
+[data-theme="dark"] *[style*="background: #fff"]{background:#1a1d27!important}
+[data-theme="dark"] *[style*="background:#ffffff"]{background:#1a1d27!important}
+[data-theme="dark"] *[style*="background:#f8fafc"]{background:#1e2130!important}
+[data-theme="dark"] *[style*="background:#f1f5f9"]{background:#222536!important}
+[data-theme="dark"] *[style*="background:#f9fafb"]{background:#1e2130!important}
+[data-theme="dark"] *[style*="background:#fafafa"]{background:#1e2130!important}
+[data-theme="dark"] *[style*="background:#f0f2f5"]{background:#16181f!important}
+[data-theme="dark"] *[style*="background:white"]{background:#1a1d27!important}
+[data-theme="dark"] *[style*="color:#1e293b"]{color:#e2e8f0!important}
+[data-theme="dark"] *[style*="color:#0f172a"]{color:#e2e8f0!important}
+[data-theme="dark"] *[style*="color:#334155"]{color:#cbd5e1!important}
+[data-theme="dark"] *[style*="color:#374151"]{color:#cbd5e1!important}
+[data-theme="dark"] *[style*="color:#111827"]{color:#e2e8f0!important}
+[data-theme="dark"] *[style*="color:#1a1d23"]{color:#e2e8f0!important}
+[data-theme="dark"] *[style*="border:1px solid #e2e8f0"]{border-color:#2d3148!important}
+[data-theme="dark"] *[style*="border-bottom:1px solid #e2e8f0"]{border-bottom-color:#2d3148!important}
+[data-theme="dark"] *[style*="border-top:1px solid #e2e8f0"]{border-top-color:#2d3148!important}
+[data-theme="dark"] *[style*="border:1px solid #f1f5f9"]{border-color:#1e2130!important}
+[data-theme="dark"] *[style*="borderBottom:1px solid #f1f5f9"]{border-bottom-color:#1e2130!important}
+[data-theme="dark"] input:not([type="range"]){background:#222536!important;border-color:#2d3148!important;color:#e2e8f0!important}
+[data-theme="dark"] select{background:#222536!important;border-color:#2d3148!important;color:#e2e8f0!important}
+[data-theme="dark"] textarea{background:#222536!important;border-color:#2d3148!important;color:#e2e8f0!important}
+[data-theme="dark"] *[style*="boxShadow"]{box-shadow:0 4px 24px rgba(0,0,0,0.4)!important}
+[data-theme="dark"] ::-webkit-scrollbar-track{background:#1a1d27}
+[data-theme="dark"] ::-webkit-scrollbar-thumb{background:#3d4468}
+
 body{background:#f0f2f5;color:#1a1d23;font-family:Inter,sans-serif;font-size:12px;font-weight:400;text-align:left;overflow-x:hidden}
 h1,h2,h3,h4,h5,h6{font-weight:500;text-align:left}
 th,td{text-align:left;font-weight:400}
@@ -451,19 +626,19 @@ function PBar({pct,h=6}){
   </div>;
 }
 function Card({children,style={}}){
-  return <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+  return <div className="erp-card" style={{background:"var(--card-bg,#fff)",borderRadius:12,border:"1px solid var(--border-color,#e2e8f0)",
     padding:16,boxShadow:"0 1px 3px #00000008",...style}}>{children}</div>;
 }
 function Lbl({children}){
   return <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,marginBottom:5}}>{children}</div>;
 }
 function Inp({style={},...p}){
-  return <input style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-    background:"#f8fafc",color:"#1e293b",fontSize:13,...style}} {...p}/>;
+  return <input style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid var(--border-color,#e2e8f0)",
+    background:"var(--input-bg,#f8fafc)",color:"var(--text-primary,#1e293b)",fontSize:13,...style}} {...p}/>;
 }
 function Sel({style={},children,...p}){
-  return <select style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-    background:"#f8fafc",color:"#1e293b",fontSize:13,...style}} {...p}>{children}</select>;
+  return <select style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid var(--border-color,#e2e8f0)",
+    background:"var(--input-bg,#f8fafc)",color:"var(--text-primary,#1e293b)",fontSize:13,...style}} {...p}>{children}</select>;
 }
 function Btn({children,color="#2563eb",outline=false,style={},...p}){
   return <button style={{padding:"8px 18px",borderRadius:8,
@@ -837,9 +1012,9 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
   return(
     <div className="fi">
       {/* Filter bar */}
-      <div style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",padding:"10px 14px",marginBottom:12,display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
+      <div style={{background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",padding:"10px 14px",marginBottom:12,display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari nama pekerja..."
-          style={{height:28,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",fontFamily:"inherit",width:200}}/>
+          style={{height:28,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-primary,#1e293b)",fontFamily:"inherit",width:200}}/>
         <div style={{display:"flex",alignItems:"center",gap:6,fontSize:11,color:"#64748b"}}>
           <span>Dari:</span>
           <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
@@ -1433,18 +1608,18 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   ];
   const isReset=filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search;
   const selSt={height:26,padding:"0 8px",border:"0.5px solid #d1d5db",borderRadius:5,fontSize:11,background:"#fff",color:"#374151",outline:"none",cursor:"pointer",fontFamily:"inherit"};
-  const thS={background:"#f8f9fb",color:"#6b7280",fontWeight:600,padding:"7px 12px",textAlign:"left",fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,borderBottom:"0.5px solid #e5e8ed",whiteSpace:"nowrap"};
+  const thS={background:"var(--bg-secondary,#f8f9fb)",color:"var(--text-muted,#6b7280)",fontWeight:600,padding:"7px 12px",textAlign:"left",fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,borderBottom:"0.5px solid #e5e8ed",whiteSpace:"nowrap"};
   return(
     <div className="fi">
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>
         {stats.map((s,i)=>(
-          <div key={i} style={{background:"#fff",border:"0.5px solid #e5e8ed",borderRadius:8,padding:"10px 12px",borderLeft:"3px solid "+s.c}}>
+          <div key={i} style={{background:"var(--card-bg,#fff)",border:"0.5px solid var(--border-color,#e5e8ed)",borderRadius:8,padding:"10px 12px",borderLeft:"3px solid "+s.c}}>
             <div style={{fontSize:20,fontWeight:500,color:s.c,lineHeight:1}}>{s.v}</div>
             <div style={{fontSize:9.5,color:"#9ca3af",marginTop:3,fontWeight:600,textTransform:"uppercase",letterSpacing:.4}}>{s.l}</div>
           </div>
         ))}
       </div>
-      <div style={{background:"#fff",border:"0.5px solid #e5e8ed",borderRadius:8,marginBottom:10,overflow:"hidden"}}>
+      <div style={{background:"var(--card-bg,#fff)",border:"0.5px solid var(--border-color,#e5e8ed)",borderRadius:8,marginBottom:10,overflow:"hidden"}}>
         <div style={{padding:"8px 12px",borderBottom:"0.5px solid #e5e8ed",display:"flex",gap:6,flexWrap:"wrap",alignItems:"center",background:"#f8f9fb"}}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari aktivitas, admin, WO..."
             style={{height:26,padding:"0 10px 0 26px",border:"0.5px solid #d1d5db",borderRadius:5,fontSize:11,background:"#fff",color:"#1a1d23",outline:"none",width:200,fontFamily:"inherit",backgroundImage:"url(\"data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='11' height='11' viewBox='0 0 24 24' fill='none' stroke='%23a0aec0' stroke-width='2'%3E%3Ccircle cx='11' cy='11' r='8'/%3E%3Cpath d='m21 21-4.35-4.35'/%3E%3C/svg%3E\")",backgroundRepeat:"no-repeat",backgroundPosition:"7px center"}}/>
@@ -1494,14 +1669,14 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                 const panelNo=a.panel||"";
                 const proyekNo=a.proyek||"";
                 return(
-                  <tr key={a.id||i} style={{borderBottom:i<filtered.length-1?"0.5px solid #f0f2f5":"none",cursor:"default"}}
-                    onMouseEnter={e=>e.currentTarget.style.background="#f8f9fb"}
+                  <tr key={a.id||i} style={{borderBottom:i<filtered.length-1?"0.5px solid var(--border-light,#f0f2f5)":"none",cursor:"default"}}
+                    onMouseEnter={e=>e.currentTarget.style.background="var(--bg-secondary,#f8f9fb)"}
                     onMouseLeave={e=>e.currentTarget.style.background="transparent"}>
                     <td style={{padding:"8px 12px",verticalAlign:"middle"}}>
                       <div style={{width:30,height:30,borderRadius:6,background:mc.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,flexShrink:0}}>{mc.icon}</div>
                     </td>
                     <td style={{padding:"8px 12px",verticalAlign:"middle"}}>
-                      <div style={{fontSize:12,fontWeight:500,color:"#1a1d23",marginBottom:3}}>{desc}</div>
+                      <div style={{fontSize:12,fontWeight:500,color:"var(--text-primary,#1a1d23)",marginBottom:3}}>{desc}</div>
                       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                         <span style={{fontSize:10.5,color:"#6b7280"}}>{adminName}</span>
                         {woNo&&<span style={{fontSize:10,color:"#0c447c",fontWeight:500,background:"#e6f1fb",borderRadius:3,padding:"1px 5px",fontFamily:"monospace"}}>WO-{woNo}</span>}
@@ -1586,7 +1761,7 @@ function KendalaInbox({kendalaLog,removeKendala,user}:any){
             const dc=DIVISI_CONFIG[k.divisi];
             const pc=PROSES_COLOR[k.proses]||"#64748b";
             return(
-              <div key={k.id} style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+              <div key={k.id} style={{background:"var(--card-bg,#fff)",borderRadius:12,border:"1px solid var(--border-color,#e2e8f0)",
                 padding:"14px 16px",borderLeft:`4px solid ${dc?.color||"#64748b"}`}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
@@ -2187,9 +2362,9 @@ function Dashboard({woData}){
   };
 
   const inpS={height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 8px",
-    fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",fontFamily:"inherit"};
+    fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-primary,#1e293b)",fontFamily:"inherit"};
   const selS={height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
-    fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",cursor:"pointer",fontFamily:"inherit"};
+    fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-secondary,#475569)",cursor:"pointer",fontFamily:"inherit"};
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -2224,7 +2399,7 @@ function Dashboard({woData}){
           {n:avgOverall+"%",l:"Avg Progress",c:avgOverall>=70?"#16a34a":avgOverall>=40?"#d97706":"#dc2626",w:avgOverall},
           {n:alerts.length,l:"Perlu Perhatian",c:"#dc2626",w:Math.min(alerts.length*25,100)},
         ].map((s,i)=>(
-          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"12px 14px"}}>
+          <div key={i} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,padding:"12px 14px"}}>
             <div style={{fontSize:22,fontWeight:700,color:s.c,lineHeight:1}}>{s.n}</div>
             <div style={{fontSize:9,color:"#94a3b8",marginTop:4,fontWeight:500,textTransform:"uppercase",letterSpacing:.4}}>{s.l}</div>
             <div style={{height:3,background:"#e2e8f0",borderRadius:99,marginTop:10,overflow:"hidden"}}>
@@ -2235,10 +2410,10 @@ function Dashboard({woData}){
       </div>
 
       {/* Table Card */}
-      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,overflow:"hidden"}}>
+      <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,overflow:"hidden"}}>
 
         {/* Tabs */}
-        <div style={{display:"flex",borderBottom:"1px solid #eaecf0",padding:"0 5px"}}>
+        <div style={{display:"flex",borderBottom:"1px solid var(--border-color,#eaecf0)",padding:"0 5px",background:"var(--card-bg,#fff)"}}>
           {[
             {id:"wo",label:"Work Order"},
             {id:"panel",label:"Panel List"},
@@ -2473,7 +2648,7 @@ function SummaryProgress({woData}:{woData:any[]}){
           {n:mendesak,l:"Mendesak H-7",c:"#d97706",bc:"#d97706"},
           {n:terlambat,l:"Terlambat",c:"#dc2626",bc:"#dc2626"},
         ].map((s,i)=>(
-          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
+          <div key={i} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
             <div style={{fontSize:20,fontWeight:700,color:s.c}}>{s.n}</div>
             <div style={{fontSize:9,color:"#94a3b8",marginTop:3,fontWeight:500,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
           </div>
@@ -2481,11 +2656,11 @@ function SummaryProgress({woData}:{woData:any[]}){
       </div>
 
       {/* Filter bar */}
-      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
+      <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
         <input placeholder="🔍 Cari WO / proyek / panel..."
           value={search} onChange={e=>setSearch(e.target.value)}
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 10px",
-            fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",
+            fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-primary,#1e293b)",
             fontFamily:"inherit",flex:1,minWidth:180}}/>
         <div style={{display:"flex",gap:5,flexWrap:"wrap" as const}}>
           {[
@@ -2507,12 +2682,12 @@ function SummaryProgress({woData}:{woData:any[]}){
           })}
         </div>
         <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{filtered.reduce((a,w)=>a+(w.panels||[]).length,0)} panel · {filtered.length} WO</span>
-        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"#f1f5f9",borderRadius:5}}>👁 Read-only</span>
+        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"var(--bg-tertiary,#f1f5f9)",borderRadius:5}}>👁 Read-only</span>
       </div>
 
       {/* Table per WO */}
       {filtered.length===0&&(
-        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
+        <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
           Tidak ada data yang sesuai filter
         </div>
       )}
@@ -2546,14 +2721,14 @@ function SummaryProgress({woData}:{woData:any[]}){
         };
 
         return(
-          <div key={wo.id} style={{background:"#fff",border:"1px solid #eaecf0",
+          <div key={wo.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",
             borderRadius:8,overflow:"hidden",borderLeft:"3px solid "+borderColor}}>
 
             {/* WO Header */}
             <div style={{padding:"9px 13px",borderBottom:"1px solid #eaecf0",
-              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const,background:"#fafbfc"}}>
+              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const,background:"var(--bg-secondary,#fafbfc)"}}>
               <span style={{color:"#2563eb",fontWeight:800,fontFamily:"ui-monospace,monospace",fontSize:12}}>WO {wo.wo}</span>
-              <span style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{wo.proyek}</span>
+              <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:13}}>{wo.proyek}</span>
               <span style={{fontSize:11,color:"#94a3b8"}}>📅 {wo.target}</span>
               {!done&&<span style={{fontSize:11,fontWeight:600,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
                 {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
@@ -2760,7 +2935,7 @@ function DetailProgress({woData}:{woData:any[]}){
           {n:selesai,l:"Panel Selesai",c:"#16a34a",bc:"#16a34a"},
           {n:terlambat,l:"Panel Terlambat",c:"#dc2626",bc:"#dc2626"},
         ].map((s,i)=>(
-          <div key={i} style={{background:"#fff",border:"1px solid #eaecf0",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
+          <div key={i} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
             <div style={{fontSize:20,fontWeight:700,color:s.c}}>{s.n}</div>
             <div style={{fontSize:9,color:"#94a3b8",marginTop:3,fontWeight:500,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
           </div>
@@ -2768,21 +2943,21 @@ function DetailProgress({woData}:{woData:any[]}){
       </div>
 
       {/* Filter bar */}
-      <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
+      <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,padding:"10px 13px",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
         <input placeholder="🔍 Cari panel, proyek, WO..."
           value={search} onChange={e=>setSearch(e.target.value)}
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 10px",
-            fontSize:11,background:"#f8fafc",outline:"none",color:"#1e293b",
+            fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-primary,#1e293b)",
             fontFamily:"inherit",flex:1,minWidth:160}}/>
         <select value={woFilter} onChange={e=>setWoFilter(e.target.value)}
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
-            fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",cursor:"pointer",fontFamily:"inherit"}}>
+            fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-secondary,#475569)",cursor:"pointer",fontFamily:"inherit"}}>
           <option value="semua">Semua WO</option>
           {woData.map(w=><option key={w.id} value={w.wo}>WO {w.wo} — {w.proyek}</option>)}
         </select>
         <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
-            fontSize:11,background:"#f8fafc",outline:"none",color:"#475569",cursor:"pointer",fontFamily:"inherit"}}>
+            fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-secondary,#475569)",cursor:"pointer",fontFamily:"inherit"}}>
           <option value="semua">Semua Status</option>
           <option value="ontrack">On Track</option>
           <option value="mendesak">Mendesak</option>
@@ -2790,12 +2965,12 @@ function DetailProgress({woData}:{woData:any[]}){
           <option value="selesai">Selesai</option>
         </select>
         <span style={{fontSize:10,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} panel</span>
-        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"#f1f5f9",borderRadius:5}}>👁 Read-only</span>
+        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"var(--bg-tertiary,#f1f5f9)",borderRadius:5}}>👁 Read-only</span>
       </div>
 
       {/* Panel cards dengan komponen */}
       {filtered.length===0?(
-        <div style={{background:"#fff",border:"1px solid #eaecf0",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
+        <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
           Tidak ada data yang sesuai filter
         </div>
       ):filtered.map((p:any,pi:number)=>{
@@ -2817,16 +2992,16 @@ function DetailProgress({woData}:{woData:any[]}){
         });
 
         return(
-          <div key={pi} style={{background:"#fff",border:"1px solid #eaecf0",
+          <div key={pi} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",
             borderRadius:8,overflow:"hidden",borderLeft:"3px solid "+borderColor}}>
 
             {/* Panel header */}
-            <div style={{padding:"9px 13px",borderBottom:"1px solid #eaecf0",
-              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const,background:"#fafbfc"}}>
+            <div style={{padding:"9px 13px",borderBottom:"1px solid var(--border-color,#eaecf0)",
+              display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const,background:"var(--bg-secondary,#fafbfc)"}}>
               <span style={{color:"#2563eb",fontWeight:800,fontFamily:"ui-monospace,monospace",fontSize:12}}>WO {p.wo}</span>
-              <span style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{p.proyek}</span>
+              <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:13}}>{p.proyek}</span>
               <span style={{color:"#94a3b8",fontSize:11}}>|</span>
-              <span style={{fontWeight:600,color:"#1e293b",fontSize:12}}>{p.nama||"Panel "+(pi+1)}</span>
+              <span style={{fontWeight:600,color:"var(--text-primary,#1e293b)",fontSize:12}}>{p.nama||"Panel "+(pi+1)}</span>
               {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
               <span style={{fontSize:11,color:"#94a3b8"}}>📅 {p.target}</span>
               {!done&&<span style={{fontSize:11,fontWeight:600,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
@@ -2867,7 +3042,7 @@ function DetailProgress({woData}:{woData:any[]}){
                     return activeItems.map((it:any,ii:number)=>{
                       const cl=p.checklist?.[it.kode];
                       const qty=cl?.qty||it.qty||1;
-                      const rowBg=wp.wp==="WP1"?"#fffbeb":wp.wp==="WP2"?"#f0fdf4":wp.wp==="WP3"?"#eff6ff":wp.wp==="WP4"?"#fff7ed":"#fafbfc";
+                      const rowBg=wp.wp==="WP1"?"var(--wp1-bg,#fffbeb)":wp.wp==="WP2"?"var(--wp2-bg,#f0fdf4)":wp.wp==="WP3"?"var(--wp3-bg,#eff6ff)":wp.wp==="WP4"?"#fff7ed":"#fafbfc";
                       return(
                         <tr key={it.kode}>
                           {ii===0&&(
@@ -3720,17 +3895,18 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(editId, np);
-        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:np}:w));
+        const{data:freshPanelsEdit}=await supabase.from("panels").select("*").eq("wo_id",editId).order("no_pnl",{ascending:true});
+        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:freshPanelsEdit??np}:w));
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
       }
     } else {
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
-        // Update local state dengan data lengkap termasuk panels
-        const newWo={...result.data,panels:np};
+        // Refetch panels dengan id yang benar dari database
+        const{data:freshPanels}=await supabase.from("panels").select("*").eq("wo_id",result.data.id).order("no_pnl",{ascending:true});
+        const newWo={...result.data,panels:freshPanels??np};
         setWoData(prev=>{
-          // cek duplikat dari realtime
           if(prev.some(w=>w.id===result.data.id)){
             return prev.map(w=>w.id===result.data.id?newWo:w);
           }
@@ -3860,7 +4036,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{fontWeight:800,fontSize:15,fontFamily:"'DM Mono',monospace",color:"#1d4ed8"}}>WO {wo.wo}</span>
-                    <span style={{color:"#1e293b",fontWeight:700}}>{wo.proyek}</span>
+                    <span style={{color:"var(--text-primary,#1e293b)",fontWeight:700}}>{wo.proyek}</span>
                     <span style={{color:"#94a3b8",fontSize:12}}>📅 {wo.target}</span>
                     {pct<100&&<span style={{fontSize:11,color:st.color,fontWeight:600}}>
                       {isDelayed(wo.target)?`⚠️ -${Math.abs(d)}hr`:`H-${d}`}
@@ -3880,7 +4056,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
               </div>
             </div>
-            {isExp&&wo.panels.map(p=>{
+            {isExp&&(wo.panels||[]).map(p=>{
               const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=PANEL_TYPES[p.tipe];
               return(
                 <div key={p.id} style={{borderBottom:"1px solid #f1f5f9"}}>
@@ -3891,7 +4067,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
                         <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.noPnl}</span>
-                        <span style={{fontWeight:700,color:"#1e293b",fontSize:13}}>{p.nama}</span>
+                        <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:13}}>{p.nama}</span>
                       </div>
                       <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>
                         <Badge label={cfg?.label||p.tipe} color={cfg?.color||"#64748b"}/>
@@ -3917,7 +4093,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                                   borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",
                                   background:isLocked?"#fffbfb":ii%2===0?wpDef.bg+"66":"#fff",opacity:isLocked?.6:1}}>
                                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8",minWidth:44}}>{item.kode}</span>
-                                  <span style={{fontSize:12,fontWeight:600,color:"#374151",flex:1}}>
+                                  <span style={{fontSize:12,fontWeight:600,color:"var(--text-primary,#374151)",flex:1}}>
                                     {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#fca5a5"}}>🔒</span>}
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
@@ -3928,7 +4104,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                                       style={{width:56,padding:"4px 6px",borderRadius:6,
                                         border:`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
                                         background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
-                                        fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"#1e293b"}}/>
+                                        fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"var(--text-primary,#1e293b)"}}/>
                                   </div>
                                 </div>
                               );
@@ -4002,7 +4178,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       {open&&(
         <Card style={{marginBottom:16,border:"2px solid #2563eb",background:"#f8faff"}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
-            <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{editId?"✏️ Edit WO":"📝 Tambah WO Baru"}</div>
+            <div style={{fontWeight:800,fontSize:16,color:"var(--text-primary,#1e293b)"}}>{editId?"✏️ Edit WO":"📝 Tambah WO Baru"}</div>
             <button onClick={()=>setOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
@@ -4078,7 +4254,7 @@ function MaintenancePageTab({user}:any){
   });
   return(
     <div className="fi">
-      <div style={{display:"flex",gap:0,marginBottom:16,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden",width:"fit-content"}}>
+      <div style={{display:"flex",gap:0,marginBottom:16,background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden",width:"fit-content"}}>
         {[{id:"kerusakan",label:"Kerusakan"},{id:"rutin",label:"Maintenance Rutin"}].map((t:any)=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)}
             style={{padding:"9px 20px",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -4155,7 +4331,7 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
       </div>
       {showForm&&(
         <Card style={{marginBottom:14,border:"2px solid #2563eb"}}>
-          <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:12}}>{editId?"✏️ Edit Log":"➕ Tambah Log Maintenance"}</div>
+          <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)",marginBottom:12}}>{editId?"✏️ Edit Log":"➕ Tambah Log Maintenance"}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:12,marginBottom:12}}>
             <div><Lbl>Mesin</Lbl><Sel value={form.mesin_id} onChange={e=>setForm({...form,mesin_id:e.target.value})}><option value="">-- Pilih Mesin --</option>{mesinList.map((m:any)=><option key={m.id} value={m.id}>{m.kode} — {m.nama}</option>)}</Sel></div>
             <div><Lbl>Tgl Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
@@ -4183,13 +4359,13 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
                 <span style={{fontSize:11,background:sc.border,color:sc.color,borderRadius:20,padding:"1px 8px",fontWeight:700}}>{items.length}</span>
               </div>
               {items.map((m:any)=>(
-                <div key={m.id} style={{background:"#fff",border:`0.5px solid ${sc.border}`,borderRadius:10,padding:12,marginBottom:8,borderLeft:`3px solid ${sc.color}`}}>
+                <div key={m.id} style={{background:"var(--card-bg,#fff)",border:`0.5px solid ${sc.border}`,borderRadius:10,padding:12,marginBottom:8,borderLeft:`3px solid ${sc.color}`}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
-                    <div><div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{m.mesin?.nama||"—"}</div><div style={{fontSize:11,color:"#64748b",fontFamily:"monospace"}}>{m.mesin?.kode}</div></div>
+                    <div><div style={{fontWeight:700,fontSize:13,color:"var(--text-primary,#1e293b)"}}>{m.mesin?.nama||"—"}</div><div style={{fontSize:11,color:"#64748b",fontFamily:"monospace"}}>{m.mesin?.kode}</div></div>
                     <select value={m.status} onChange={e=>updateStatus(m.id,e.target.value)} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${sc.color}`,background:sc.bg,color:sc.color,cursor:"pointer",fontWeight:700}}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="closed">Closed</option></select>
                   </div>
                   <div style={{fontSize:12,color:"#475569",marginBottom:6,lineHeight:1.5}}>{m.kendala}</div>
-                  {m.perbaikan&&<div style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",borderRadius:6,padding:"5px 8px",marginBottom:6,lineHeight:1.4}}>{m.perbaikan}</div>}
+                  {m.perbaikan&&<div style={{fontSize:11,color:"#16a34a",background:"var(--wp2-bg,#f0fdf4)",borderRadius:6,padding:"5px 8px",marginBottom:6,lineHeight:1.4}}>{m.perbaikan}</div>}
                   {m.catatan&&<div style={{fontSize:11,color:"#2563eb",background:"#eff6ff",borderRadius:6,padding:"5px 8px",marginBottom:8,lineHeight:1.4,borderLeft:"2px solid #93c5fd"}}>📝 {m.catatan}</div>}
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                     <div style={{fontSize:11,color:"#94a3b8"}}>{m.teknisi&&<span>👤 {m.teknisi}</span>}{m.tgl_kendala&&<span style={{marginLeft:6}}>📅 {m.tgl_kendala}</span>}</div>
@@ -4221,7 +4397,7 @@ function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
             <tbody>
               {filtered.length===0?(<tr><td colSpan={9} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Tidak ada data</td></tr>):filtered.map((m:any,i:number)=>{const sc=SC[m.status]||SC.open;const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"top",fontSize:12};return(
                 <tr key={m.id}>
-                  <td style={{...td,fontWeight:700}}><div style={{color:"#1e293b"}}>{m.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{m.mesin?.kode}</div></td>
+                  <td style={{...td,fontWeight:700}}><div style={{color:"var(--text-primary,#1e293b)"}}>{m.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{m.mesin?.kode}</div></td>
                   <td style={{...td,maxWidth:200,color:"#475569"}}>{m.kendala}</td>
                   <td style={{...td,maxWidth:200,color:"#16a34a"}}>{m.perbaikan||"—"}</td>
                   <td style={{...td,maxWidth:160,color:"#2563eb"}}>{m.catatan||"—"}</td>
@@ -4472,7 +4648,21 @@ function KomponenStokTab({user,activityLog}:any){
     return user?.name||user?.nama||sess?.nama||"Admin";
   };
 
-  useEffect(()=>{fetchAll();},[]);
+  useEffect(()=>{
+    fetchAll();
+    // Realtime listener untuk komponen_stok
+    const ch=supabase.channel("realtime-komponen-stok")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"komponen_stok"},
+        (payload)=>{setStokList(prev=>prev.map(s=>s.id===payload.new.id?{...s,...payload.new}:s));})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok"},
+        (payload)=>{setStokList(prev=>prev.some(s=>s.id===payload.new.id)?prev:[...prev,payload.new]);})
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"komponen_stok"},
+        (payload)=>{setStokList(prev=>prev.filter(s=>s.id!==payload.old.id));})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_masuk"},
+        (payload)=>{setMasukList(prev=>prev.some(m=>m.id===payload.new.id)?prev:[payload.new,...prev]);})
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
 
   const fetchAll=async()=>{
     setLoading(true);
@@ -4784,7 +4974,7 @@ function KomponenStokTab({user,activityLog}:any){
       )}
 
       {/* Riwayat Transaksi */}
-      <div style={{background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+      <div style={{background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden"}}>
         <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📋 Riwayat Transaksi</span>
           <select value={filterTipe} onChange={e=>setFilterTipe(e.target.value)}
@@ -4944,6 +5134,21 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
       setLoading(false);
     };
     fetchAll();
+    const ch=supabase.channel("realtime-maintenance-log")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"maintenance_log"},
+        async(payload)=>{
+          const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
+          if(data) setMaintenanceList(prev=>prev.some(m=>m.id===data.id)?prev:[data,...prev]);
+        })
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"maintenance_log"},
+        async(payload)=>{
+          const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
+          if(data) setMaintenanceList(prev=>prev.map(m=>m.id===data.id?data:m));
+        })
+      .on("postgres_changes",{event:"DELETE",schema:"public",table:"maintenance_log"},
+        (payload)=>{setMaintenanceList(prev=>prev.filter(m=>m.id!==payload.old.id));})
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
   },[]);
 
   const subTabs=[
@@ -5033,7 +5238,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
         </button>
       </div>
 
-      <div style={{display:"flex",gap:0,marginBottom:20,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+      <div style={{display:"flex",gap:0,marginBottom:20,background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden"}}>
         {subTabs.map(t=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)}
             style={{flex:1,padding:"10px 16px",border:"none",cursor:"pointer",fontSize:12,fontWeight:700,
@@ -5974,6 +6179,9 @@ export default function App(){
   const [showNotif,setShowNotif]=useState(false);
   const [showSearch,setShowSearch]=useState(false);
   const [searchQuery,setSearchQuery]=useState("");
+  const [darkMode,setDarkMode]=useState(()=>{
+    return localStorage.getItem("vista_dark_mode")==="true";
+  });
   // Restore admin session
   useEffect(()=>{
     const saved=localStorage.getItem("vista_admin_session");
@@ -6040,6 +6248,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   }}/>;
 
   const isOp=OPERATOR_ROLES.includes(user?.divisi);
+
+  // Apply dark mode langsung tanpa useEffect
+  localStorage.setItem("vista_dark_mode", String(darkMode));
+  document.documentElement.setAttribute("data-theme", darkMode?"dark":"light");
   // Redirect operator ke vista-pekerja
   if(isOp) return(
     <div style={{minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",background:"#f1f5f9",padding:20}}>
@@ -6195,6 +6407,16 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               </button>
               <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
               <div className="erp-topbar-right">
+                {/* Dark mode toggle */}
+                <button onClick={()=>setDarkMode(p=>!p)}
+                  title={darkMode?"Light Mode":"Dark Mode"}
+                  style={{width:26,height:26,border:"1px solid var(--border-color,#e5e8ed)",
+                    borderRadius:5,background:"var(--bg-secondary,#f8f9fb)",
+                    display:"flex",alignItems:"center",justifyContent:"center",
+                    cursor:"pointer",color:"var(--text-secondary,#64748b)"}}>
+                  <i className={darkMode?"ti ti-sun":"ti ti-moon"} style={{fontSize:13}}/>
+                </button>
+
                 <div style={{position:"relative"}}>
                   <div className="erp-bell" onClick={()=>setShowNotif(p=>!p)}
                     style={{cursor:"pointer",position:"relative"}}>
