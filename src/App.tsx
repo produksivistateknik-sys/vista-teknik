@@ -86,7 +86,7 @@ const PANEL_TYPES = {
 };
 
 const ALL_PROSES = ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
-const WP_LIST    = ["WP1","WP2","WP3","WP4","WP5","WP6"];
+const WP_LIST    = ["WP1","WP2","WP3","WP4"];
 const PCT_STEPS  = [25,50,75,90,100];
 const PCT_MANUAL = [10,20,30,40,50,60,70,80,90,100];
 const PRIORITAS  = ["Tinggi","Sedang","Rendah"];
@@ -189,7 +189,7 @@ const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   "WM.8": ["POTONG","BENDING","PAINTING","RAKIT"],
   // WM_POLY - WP5 & WP6 (sama seperti WP4)
   "WM.9":  ["POTONG","BENDING","PAINTING","RAKIT"],
-  "WM.10": ["POTONG","BENDING","STEL","PAINTING","RAKIT"],
+  "WM.10": ["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
 };
 
 // Helper: cek apakah komponen relevan dengan proses tertentu
@@ -1276,6 +1276,10 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
 function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
+  const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
+  const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
+  const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
+  const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [selProses,setSelProses]=useState("ALL");
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
@@ -3134,6 +3138,10 @@ function DetailProgress({woData}:{woData:any[]}){
 
 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
   const [weekStart,setWeekStart]=useState(TODAY);
+  const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
+  const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
+  const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
+  const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [cellModal,setCellModal]=useState(null);
   const [dragInfo,setDragInfo]=useState(null);
   const [dragOverCell,setDragOverCell]=useState(null);
@@ -3217,6 +3225,155 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
+
+  // Keyboard handler Ctrl+C / Ctrl+V / Esc / Delete
+  useEffect(()=>{
+    const handler=(e:KeyboardEvent)=>{
+      if((e.ctrlKey||e.metaKey)&&e.key==="c"){
+        if(selectedCells.length>0){e.preventDefault();copySelected();}
+      }
+      if((e.ctrlKey||e.metaKey)&&e.key==="v"){
+        if(copiedCells.length>0&&lastSelected){
+          e.preventDefault();
+          pasteToCell(lastSelected.rawId,lastSelected.date);
+        }
+      }
+      if(e.key==="Escape"){setSelectedCells([]);setCopiedCells([]);}
+    };
+    window.addEventListener("keydown",handler);
+    return()=>window.removeEventListener("keydown",handler);
+  },[selectedCells,copiedCells,lastSelected,rawData,woData]);
+  // ── COPY PASTE FUNCTIONS ──
+  const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
+    setCtxMenu(null);
+    if(e.shiftKey&&lastSelected){
+      // Select range - hanya di row yang sama (seperti spreadsheet horizontal)
+      const allDays=days;
+      const startDayIdx=allDays.indexOf(lastSelected.date);
+      const endDayIdx=allDays.indexOf(date);
+      const minDay=Math.min(startDayIdx,endDayIdx);
+      const maxDay=Math.max(startDayIdx,endDayIdx);
+      // Jika row berbeda, select semua row di antara keduanya
+      const rows=rawData;
+      const startRowIdx=rows.findIndex(r=>r.id===lastSelected.rawId);
+      const endRowIdx=rows.findIndex(r=>r.id===rawId);
+      const minRow=Math.min(startRowIdx,endRowIdx);
+      const maxRow=Math.max(startRowIdx,endRowIdx);
+      const newSelected:any[]=[];
+      for(let r=minRow;r<=maxRow;r++){
+        for(let d=minDay;d<=maxDay;d++){
+          newSelected.push({rawId:rows[r].id,date:allDays[d]});
+        }
+      }
+      setSelectedCells(newSelected);
+    } else if(e.altKey){
+      // Alt+klik = toggle individual cell (multi select tidak berurutan)
+      setSelectedCells(prev=>{
+        const exists=prev.some((c:any)=>c.rawId===rawId&&c.date===date);
+        return exists?prev.filter((c:any)=>!(c.rawId===rawId&&c.date===date)):[...prev,{rawId,date}];
+      });
+      setLastSelected({rawId,date});
+    } else {
+      // Klik biasa tanpa modifier
+      if(selectedCells.length>0||copiedCells.length>0){
+        // Ada selection/copied → clear dan mulai fresh atau buka modal
+        if(copiedCells.length>0){
+          // Dalam mode paste → set anchor
+          setSelectedCells([{rawId,date}]);
+          setLastSelected({rawId,date});
+        } else {
+          // Clear selection, buka modal
+          setSelectedCells([]);
+          setLastSelected(null);
+          openCellModal(rawId,date);
+        }
+      } else {
+        // Tidak ada selection → buka modal
+        openCellModal(rawId,date);
+      }
+    }
+  };
+
+  const handleContextMenu=(rawId:number,date:string,e:React.MouseEvent)=>{
+    e.preventDefault();
+    setCtxMenu({x:e.clientX,y:e.clientY,rawId,date});
+    // Jika cell belum ter-select, select dulu
+    if(!selectedCells.some(c=>c.rawId===rawId&&c.date===date)){
+      setSelectedCells([{rawId,date}]);
+      setLastSelected({rawId,date});
+    }
+  };
+
+  const deleteSelected=async()=>{
+    if(!selectedCells.length)return;
+    const batchUpdates:Record<number,any>={};
+    for(const cell of selectedCells){
+      const row=rawData.find(r=>r.id===cell.rawId);
+      if(!row)continue;
+      if(!batchUpdates[row.id]){
+        batchUpdates[row.id]={schedule:{...row.schedule},busbar_schedule:{...(row.busbar_schedule||{})}};
+      }
+      delete batchUpdates[row.id].schedule[cell.date];
+      delete batchUpdates[row.id].busbar_schedule[cell.date];
+    }
+    for(const[rowId,data] of Object.entries(batchUpdates)){
+      const id=Number(rowId);
+      setRawData((prev:any[])=>prev.map(r=>r.id===id?{...r,...data}:r));
+      await updateRaw(id,data);
+    }
+    setSelectedCells([]);
+  };
+
+  const copySelected=()=>{
+    if(!selectedCells.length)return;
+    const copied=selectedCells.map(c=>{
+      const row=rawData.find(r=>r.id===c.rawId);
+      return{
+        rawId:c.rawId,date:c.date,
+        entries:row?.schedule?.[c.date]||[],
+        busbar:row?.busbar_schedule?.[c.date]||[],
+      };
+    });
+    setCopiedCells(copied);
+  };
+
+  const pasteToCell=async(targetRawId:number,targetDate:string)=>{
+    if(!copiedCells.length)return;
+    const allDays=days;
+    const targetDayIdx=allDays.indexOf(targetDate);
+    if(targetDayIdx===-1)return;
+    const targetRowIdx=rawData.findIndex(r=>r.id===targetRawId);
+    const srcRowIds=[...new Set(copiedCells.map((c:any)=>c.rawId))];
+    const minSrcDayIdx=Math.min(...copiedCells.map((c:any)=>allDays.indexOf(c.date)));
+    const minSrcRowIdx=Math.min(...srcRowIds.map((id:any)=>rawData.findIndex(r=>r.id===id)));
+    const batchUpdates:Record<number,any>={};
+    for(const cell of copiedCells){
+      const srcDayIdx=allDays.indexOf(cell.date);
+      const srcRowIdx=rawData.findIndex(r=>r.id===cell.rawId);
+      const dayOffset=srcDayIdx-minSrcDayIdx;
+      const rowOffset=srcRowIdx-minSrcRowIdx;
+      const destDayIdx=targetDayIdx+dayOffset;
+      const destRowIdx=targetRowIdx+rowOffset;
+      if(destDayIdx<0||destDayIdx>=allDays.length)continue;
+      if(destRowIdx<0||destRowIdx>=rawData.length)continue;
+      const destDate=allDays[destDayIdx];
+      const destRow=rawData[destRowIdx];
+      if(!destRow)continue;
+      if(!batchUpdates[destRow.id]){
+        batchUpdates[destRow.id]={schedule:{...destRow.schedule},busbar_schedule:{...(destRow.busbar_schedule||{})}};
+      }
+      if(cell.entries.length>0) batchUpdates[destRow.id].schedule[destDate]=cell.entries;
+      if(cell.busbar.length>0) batchUpdates[destRow.id].busbar_schedule[destDate]=cell.busbar;
+    }
+    for(const[rowId,data] of Object.entries(batchUpdates)){
+      const id=Number(rowId);
+      setRawData((prev:any[])=>prev.map(r=>r.id===id?{...r,...data}:r));
+      await updateRaw(id,data);
+    }
+    setSelectedCells([]);
+    setCopiedCells([]);
+  };
+
   const openCellModal=(rawId,date)=>{
     setCellModal({rawId,date});
     setModalWp("");
@@ -3379,11 +3536,25 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const dateTasks=useMemo(()=>{
     if(!selDate)return[];
-    return rawData.flatMap(r=>(r.schedule?.[selDate]||[]).map(e=>({
-      rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
-      proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
-      wp:e.wp,komponen:e.komponen,tanggal:selDate
-    })));
+    const tasks:any[]=[];
+    rawData.forEach(r=>{
+      // WP biasa dari schedule
+      (r.schedule?.[selDate]||[]).forEach((e:any)=>{
+        tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+          proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+          wp:e.wp,komponen:e.komponen,tanggal:selDate});
+      });
+      // Busbar dari busbar_schedule
+      if(r.proses==="BUSBAR"){
+        const busbarItems=r.busbar_schedule?.[selDate]||[];
+        if(busbarItems.length>0){
+          tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+            proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+            wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,isBusbar:true});
+        }
+      }
+    });
+    return tasks;
   },[rawData,selDate]);
 
   const openAssign=(task)=>{
@@ -3520,13 +3691,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
                       const isSelDate=selDate===d;
                       return(
-                        <td key={d} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rBg,outline:isOver?"2px dashed #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
                           {entries.length>0?(
                             <div draggable onDragStart={e=>onDragStart(e,row.id,d,entries)}
-                              onClick={()=>openCellModal(row.id,d)}
+                               onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:"grab",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
@@ -3536,7 +3707,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               })}
                             </div>
                           ):(
-                            <div onClick={()=>openCellModal(row.id,d)}
+                            <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
                               onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
                               onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
@@ -3870,6 +4041,60 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
         </Modal>
       )}
+    {/* Context Menu */}
+    {ctxMenu&&(
+      <>
+        <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={()=>setCtxMenu(null)}/>
+        <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9999,
+          background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,
+          boxShadow:"0 4px 16px #00000020",padding:"4px 0",minWidth:180}}>
+          {selectedCells.length>0&&copiedCells.length===0&&(
+            <button onClick={()=>{copySelected();setCtxMenu(null);}}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 14px",
+                border:"none",background:"none",cursor:"pointer",fontSize:12,color:"var(--text-primary,#1e293b)",textAlign:"left" as const}}
+              onMouseEnter={(e:any)=>e.currentTarget.style.background="var(--bg-secondary,#f8fafc)"}
+              onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+              📋 Copy ({selectedCells.length} cell dipilih)
+            </button>
+          )}
+          {copiedCells.length>0&&(
+            <button onClick={()=>{pasteToCell(ctxMenu.rawId,ctxMenu.date);setCtxMenu(null);}}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 14px",
+                border:"none",background:"none",cursor:"pointer",fontSize:12,color:"#1d4ed8",textAlign:"left" as const}}
+              onMouseEnter={(e:any)=>e.currentTarget.style.background="#eff6ff"}
+              onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+              📌 Paste di sini ({copiedCells.length} cell)
+            </button>
+          )}
+          {selectedCells.length===0&&copiedCells.length===0&&(
+            <button onClick={()=>{openCellModal(ctxMenu.rawId,ctxMenu.date);setCtxMenu(null);}}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 14px",
+                border:"none",background:"none",cursor:"pointer",fontSize:12,color:"var(--text-primary,#1e293b)",textAlign:"left" as const}}
+              onMouseEnter={(e:any)=>e.currentTarget.style.background="var(--bg-secondary,#f8fafc)"}
+              onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+              ✏️ Edit Jadwal
+            </button>
+          )}
+          {selectedCells.length>0&&(
+            <button onClick={()=>{deleteSelected();setCtxMenu(null);}}
+              style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 14px",
+                border:"none",background:"none",cursor:"pointer",fontSize:12,color:"#dc2626",textAlign:"left" as const}}
+              onMouseEnter={(e:any)=>e.currentTarget.style.background="#fef2f2"}
+              onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+              🗑 Hapus ({selectedCells.length} cell)
+            </button>
+          )}
+          <div style={{borderTop:"1px solid var(--border-light,#f1f5f9)",margin:"4px 0"}}/>
+          <button onClick={()=>{setSelectedCells([]);setCopiedCells([]);setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:8,width:"100%",padding:"8px 14px",
+              border:"none",background:"none",cursor:"pointer",fontSize:12,color:"#94a3b8",textAlign:"left" as const}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="var(--bg-secondary,#f8fafc)"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            ✕ Tutup
+          </button>
+        </div>
+      </>
+    )}
     </div>
   );
 }
