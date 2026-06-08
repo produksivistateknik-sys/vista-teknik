@@ -1,0 +1,171 @@
+======================================================================
+EXTRACT: Review Harian / dateTasks dari App.tsx
+======================================================================
+
+--- Baris 3544 s/d 3648 ---
+ 3544	    await refetchRaw();
+ 3545	    if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
+ 3546	    setAddModal(false);setAddForm({woId:"",panelId:"",prioritas:"Sedang"});
+ 3547	  };
+ 3548	
+ 3549	  const dateTasks=useMemo(()=>{
+ 3550	    if(!selDate)return[];
+ 3551	    const tasks:any[]=[];
+ 3552	    rawData.forEach(r=>{
+ 3553	      // WP biasa dari schedule
+ 3554	      (r.schedule?.[selDate]||[]).forEach((e:any)=>{
+ 3555	        tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+ 3556	          proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+ 3557	          wp:e.wp,komponen:e.komponen,tanggal:selDate});
+ 3558	      });
+ 3559	      // Busbar dari busbar_schedule
+ 3560	      if(r.proses==="BUSBAR"){
+ 3561	        const busbarItems=r.busbar_schedule?.[selDate]||[];
+ 3562	        if(busbarItems.length>0){
+ 3563	          tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+ 3564	            proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+ 3565	            wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,isBusbar:true});
+ 3566	        }
+ 3567	      }
+ 3568	    });
+ 3569	    return tasks;
+ 3570	  },[rawData,selDate]);
+ 3571	
+ 3572	  const openAssign=(task)=>{
+ 3573	    const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+ 3574	    const existing=renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+ 3575	    setSelPekerja(existing?.pekerja||[]);
+ 3576	    setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
+ 3577	  };
+ 3578	
+ 3579	  const confirmDistribute=async()=>{
+ 3580	    if(!assignModal)return;
+ 3581	    const{task,divisi,existing}=assignModal;
+ 3582	    if(existing){
+ 3583	      await updateRenhar(existing.id,{pekerja:selPekerja});
+ 3584	      setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
+ 3585	    } else {
+ 3586	      const result=await createRenhar({
+ 3587	        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+ 3588	        proyek:task.proyek,panel:task.panel,proses:task.proses,
+ 3589	        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+ 3590	        tanggal:task.tanggal,divisi,pekerja:selPekerja,
+ 3591	      });
+ 3592	      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+ 3593	    }
+ 3594	    if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
+ 3595	    setAssignModal(null);setSelPekerja([]);
+ 3596	  };
+ 3597	
+ 3598	  const distributeAll=async()=>{
+ 3599	    for(const task of dateTasks){
+ 3600	      const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+ 3601	      if(renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal))continue;
+ 3602	      const result=await createRenhar({
+ 3603	        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+ 3604	        proyek:task.proyek,panel:task.panel,proses:task.proses,
+ 3605	        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+ 3606	        tanggal:task.tanggal,divisi,pekerja:[],
+ 3607	      });
+ 3608	      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+ 3609	    }
+ 3610	  };
+ 3611	
+ 3612	  const thS={background:"#1e2330",color:"#c8d0e8",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
+ 3613	
+ 3614	  return(
+ 3615	    <div className="fi">
+ 3616	      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+ 3617	        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+ 3618	          <button onClick={()=>setWeekStart(addDays(weekStart,-7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
+ 3619	          <button onClick={()=>setWeekStart(TODAY)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:weekStart===TODAY?"#eff3ff":"#fff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
+ 3620	          <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+ 3621	        </div>
+ 3622	        <button onClick={()=>setAddModal(true)} style={{height:28,padding:"0 14px",borderRadius:5,border:"none",background:"#3b5bdb",color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Panel</button>
+ 3623	      </div>
+ 3624	      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+ 3625	        <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
+ 3626	        <select value={filterProyek} onChange={e=>{setFilterProyek(e.target.value);setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer"}}>
+ 3627	          <option value="ALL">Semua Proyek</option>
+ 3628	          {[...new Set(rawData.map(r=>r.proyek))].map(p=><option key={p} value={p}>{p}</option>)}
+ 3629	        </select>
+ 3630	        <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer",maxWidth:260}}>
+ 3631	          <option value="ALL">Semua Panel</option>
+ 3632	          {[...new Set(rawData.filter(r=>filterProyek==="ALL"||r.proyek===filterProyek).map(r=>r.panel))].map(p=>(<option key={p} value={p}>{p}</option>))}
+ 3633	        </select>
+ 3634	        {(filterProyek!=="ALL"||filterPanel!=="ALL")&&(
+ 3635	          <button onClick={()=>{setFilterProyek("ALL");setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Reset</button>
+ 3636	        )}
+ 3637	      </div>
+ 3638	      <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
+ 3639	        <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
+ 3640	        <button onClick={()=>setFilterProses("ALL")} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterProses==="ALL"?"#1d4ed8":"#fff",color:filterProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
+ 3641	        {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses===pr;return(<button key={pr} onClick={()=>setFilterProses(isSel?"ALL":pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
+ 3642	      </div>
+ 3643	
+ 3644	      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
+ 3645	        <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
+ 3646	          <thead style={{position:"sticky",top:0,zIndex:10}}>
+ 3647	            <tr>
+ 3648	              <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e2330"}}>PROYEK</th>
+
+--- Baris 3756 s/d 3814 ---
+ 3756	      {selDate&&(
+ 3757	        <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#f0f8ff"}} className="su">
+ 3758	          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+ 3759	            <div>
+ 3760	              <div style={{fontWeight:800,fontSize:15,color:"#1d4ed8"}}>📋 {fmtDateFull(selDate)}</div>
+ 3761	              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{dateTasks.length} pekerjaan · Distribusi dilakukan di tab Rencana Harian</div>
+ 3762	            </div>
+ 3763	            <button onClick={()=>setSelDate(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:20}}>✕</button>
+ 3764	          </div>
+ 3765	          {dateTasks.map((t,i)=>{
+ 3766	            const pc=PROSES_COLOR[t.proses]||"#475569";
+ 3767	            const wc=WP_COLOR[t.wp]||"#64748b";
+ 3768	            const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+ 3769	            const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
+ 3770	            const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
+ 3771	            const status=getTaskStatus(t,t.tanggal,t.wp,t.komponen);
+ 3772	            const statusColor=status==="finish"?"#16a34a":status==="on_progress"?"#f59e0b":"#64748b";
+ 3773	            const statusLabel=status==="finish"?"✓ Finish":status==="on_progress"?"● On Progress":"○ Belum Mulai";
+ 3774	            const taskKey=`${t.rawId}-${t.wp}-${t.tanggal}`;
+ 3775	            const isExpanded=expandedTasks[taskKey];
+ 3776	            const grouped={finish:[],on_progress:[],belum_mulai:[]};
+ 3777	            t.komponen.forEach(k=>{
+ 3778	              const s=getKomponenStatus(t.panelId,t.proses,k);
+ 3779	              const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
+ 3780	              grouped[s].push({kode:k,nama:item?.nama||k});
+ 3781	            });
+ 3782	            const statusGroups=[
+ 3783	              {key:"finish",label:"✓ Finish",color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
+ 3784	              {key:"on_progress",label:"● On Progress",color:"#f59e0b",bg:"#fffbeb",border:"#fde68a"},
+ 3785	              {key:"belum_mulai",label:"○ Belum Mulai",color:"#64748b",bg:"#f8fafc",border:"#e2e8f0"},
+ 3786	            ];
+ 3787	            return(
+ 3788	              <div key={i} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,background:"#fff",border:`1px solid ${statusColor}30`}}>
+ 3789	                <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",marginBottom:6}}>
+ 3790	                  <div style={{flex:1,minWidth:160}}>
+ 3791	                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{t.proyek}</div>
+ 3792	                    <div style={{fontSize:11,color:"#64748b"}}>{t.panel}</div>
+ 3793	                  </div>
+ 3794	                  <div style={{display:"flex",gap:5,flexWrap:"wrap",alignItems:"center"}}>
+ 3795	                    <Badge label={t.proses} color={pc}/>
+ 3796	                    <span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 9px",fontSize:11,fontWeight:700}}>{t.wp}</span>
+ 3797	                    <Badge label={t.prioritas||"Sedang"} color={priColor}/>
+ 3798	                    <span style={{fontSize:11,fontWeight:700,color:statusColor}}>{statusLabel}</span>
+ 3799	                  </div>
+ 3800	                </div>
+ 3801	                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+ 3802	                  <div style={{display:"flex",gap:4,flexWrap:"wrap",flex:1}}>
+ 3803	                    {t.komponen.map(k=>{const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===k);return <span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"2px 8px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||k}</span>;})}
+ 3804	                  </div>
+ 3805	                  <button onClick={()=>setExpandedTasks(prev=>({...prev,[taskKey]:!prev[taskKey]}))}
+ 3806	                    style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#475569",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap"}}>
+ 3807	                    {isExpanded?"▲ Tutup":"▼ Detail Status"}
+ 3808	                  </button>
+ 3809	                </div>
+ 3810	                {isExpanded&&(
+ 3811	                  <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #e2e8f0",display:"flex",flexDirection:"column",gap:8}}>
+ 3812	                    {statusGroups.filter(g=>grouped[g.key].length>0).map(g=>(
+ 3813	                      <div key={g.key} style={{background:g.bg,border:`1px solid ${g.border}`,borderRadius:8,padding:"8px 12px"}}>
+ 3814	                        <div style={{fontWeight:800,fontSize:11,color:g.color,marginBottom:6,letterSpacing:.3}}>{g.label} ({grouped[g.key].length})</div>

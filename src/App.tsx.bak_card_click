@@ -2834,7 +2834,7 @@ function SummaryProgress({woData}:{woData:any[]}){
   );
 }
 
-function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
+function DetailProgress({woData}:{woData:any[]}){
   const [search,setSearch]=useState("");
   const [woFilter,setWoFilter]=useState("semua");
   const [statusFilter,setStatusFilter]=useState("semua");
@@ -2990,11 +2990,8 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
         const borderColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#e2e8f0";
         const cfg=(PANEL_TYPES as any)[p.tipe];
         const wps=cfg?.wps||[];
-        // Tampilkan BUSBAR jika tipe panel punya komponen busbar (WM) atau ada progress
-        const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
-        const hasBusbar=BUSBAR_TIPE.includes(p.tipe)||Object.keys(p.busbar_progress||{}).length>0;
         const prosesPanel=PROSES_LIST.filter(pr=>{
-          if(pr==="BUSBAR") return hasBusbar;
+          if(pr==="BUSBAR") return p.pd[pr]>=0||(p.busbar_progress&&Object.keys(p.busbar_progress).length>0);
           return p.pd[pr]!==undefined&&p.pd[pr]>=0;
         });
 
@@ -3070,19 +3067,8 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                       );
                     });
                   })}
-                  {/* Busbar rows - dari busbar_schedule + busbar_progress */}
-                  {(()=>{
-                    // Kumpulkan komponen busbar dari raw_schedule busbar_schedule
-                    const scheduled=(rawData||[])
-                      .filter((r:any)=>r.proses==="BUSBAR"&&Number(r.panel_id||r.panelId)===Number(p.id))
-                      .flatMap((r:any)=>Object.values(r.busbar_schedule||{}).flat() as string[]);
-                    const fromProgress=Object.keys(p.busbar_progress||{});
-                    const busbarKomps=[...new Set([...scheduled,...fromProgress])];
-                    if(!busbarKomps.length) return null;
-                    const busbarData=Object.fromEntries(busbarKomps.map((k:string)=>
-                      [k,(p.busbar_progress||{})[k]||0]
-                    ));
-                    return(
+                  {/* Busbar rows */}
+                  {p.busbar_progress&&Object.keys(p.busbar_progress).length>0&&(
                     <>
                       <tr>
                         <td colSpan={4+prosesPanel.length} style={{background:"#06b6d418",padding:"4px 10px",
@@ -3093,7 +3079,7 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                           </span>
                         </td>
                       </tr>
-                      {Object.entries(busbarData).map(([nama,pct]:any)=>(
+                      {Object.entries(p.busbar_progress).map(([nama,pct]:any)=>(
                         <tr key={"busbar-"+nama}>
                           <td style={{...tdS,background:"#f0fdfe"}}></td>
                           <td style={{...tdSL,background:"#f0fdfe",color:"#0e7490",fontWeight:600}}>{nama}</td>
@@ -3139,8 +3125,7 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                         </tr>
                       ))}
                     </>
-                    );
-                  })()}
+                  )}
                 </tbody>
               </table>
             </div>
@@ -3795,7 +3780,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               const stColor=overallSt==="finish"?"#16a34a":overallSt==="on_progress"?"#f59e0b":"#64748b";
               const stLabel=overallSt==="finish"?"✓ Finish":overallSt==="on_progress"?"● On Progress":"○ Belum Mulai";
               return(
-                <div key={gi} onClick={()=>setExpandedTasks(prev=>({...prev,[cardKey]:!prev[cardKey]}))} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,background:"#fff",border:`1.5px solid ${stColor}40`,cursor:"pointer",userSelect:"none" as "none"}}>
+                <div key={gi} style={{padding:"10px 14px",borderRadius:10,marginBottom:8,background:"#fff",border:`1.5px solid ${stColor}40`}}>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <div style={{flex:1,minWidth:160}}>
                       <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{t0.proyek}</div>
@@ -3818,7 +3803,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       <Badge label={t0.prioritas||"Sedang"} color={PRIORITAS_COLOR[t0.prioritas]||"#64748b"}/>
                       <span style={{fontSize:11,fontWeight:700,color:stColor,whiteSpace:"nowrap"}}>{stLabel}</span>
                     </div>
-                    <span style={{color:"#94a3b8",fontSize:14,flexShrink:0,marginLeft:4}}>{isExpanded?"▲":"▼"}</span>
+                    <button onClick={()=>setExpandedTasks(prev=>({...prev,[cardKey]:!prev[cardKey]}))}
+                      style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#475569",borderRadius:7,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600,display:"flex",alignItems:"center",gap:4,whiteSpace:"nowrap",flexShrink:0}}>
+                      {isExpanded?"▲ Tutup":"▼ Detail"}
+                    </button>
                   </div>
                   {isExpanded&&(
                     <div style={{marginTop:10,paddingTop:10,borderTop:"1px dashed #e2e8f0",display:"flex",flexDirection:"column",gap:8}}>
@@ -6808,7 +6796,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             <div className="erp-body">
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
-              {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData}/>}
+              {tab==="detail"&&<DetailProgress woData={woData}/>}
               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
