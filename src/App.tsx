@@ -3136,7 +3136,7 @@ function DetailProgress({woData}:{woData:any[]}){
   );
 }
 
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user}){
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
   const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
@@ -3389,11 +3389,23 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
   const wpItems=wpItemsAll.filter(it=>isKomponenRelevant(it.kode,rawRow?.proses||""));
 
-  const syncRenharKomp=(rawId,date,wp,newKomp)=>{
-    setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKomp}:r));
+  const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
+    const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
+    if(existing){
+      await updateRenhar(existing.id,{komponen:newKomp});
+      if(refetchRenhar) await refetchRenhar();
+    } else {
+      setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKomp}:r));
+    }
   };
-  const syncRenharDel=(rawId,date,wp)=>{
-    setRenhar(prev=>prev.filter(r=>!((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)));
+  const syncRenharDel=async(rawId,date,wp)=>{
+    const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
+    if(existing){
+      await removeRenhar(existing.id);
+      if(refetchRenhar) await refetchRenhar();
+    } else {
+      setRenhar(prev=>prev.filter(r=>!((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)));
+    }
   };
 
   const addEntry=async()=>{
@@ -3446,17 +3458,17 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     }
   };
   const removeEntry=async(wp)=>{
-    let updatedRow=null;
-    setRawData(prev=>prev.map(r=>{
-      if(r.id!==cellModal.rawId)return r;
-      const newSch={...r.schedule};
-      const updated=(newSch[cellModal.date]||[]).filter(e=>e.wp!==wp);
-      if(!updated.length)delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
-      updatedRow={...r,schedule:newSch};
-      return updatedRow;
-    }));
+    // Hitung new schedule dulu sebelum update state
+    const currentRow=rawData.find(r=>r.id===cellModal.rawId);
+    if(!currentRow)return;
+    const newSch={...currentRow.schedule};
+    const updated=(newSch[cellModal.date]||[]).filter((e:any)=>e.wp!==wp);
+    if(!updated.length) delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
+    const updatedRow={...currentRow,schedule:newSch};
+    // Update state dan Supabase
+    setRawData(prev=>prev.map(r=>r.id===cellModal.rawId?updatedRow:r));
+    await updateRaw(cellModal.rawId,{schedule:newSch});
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
-    if(updatedRow) await updateRaw(cellModal.rawId,{schedule:updatedRow.schedule});
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";
     await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+rawRow?.panel+" - "+rawRow?.proyek+" ("+cellModal?.date+")",module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""});
   };
@@ -6446,7 +6458,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 
-const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar } = useRenhar()
+const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
 useEffect(() => {
   if (!woLoading) {
@@ -6751,7 +6763,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData}/>}
-              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
