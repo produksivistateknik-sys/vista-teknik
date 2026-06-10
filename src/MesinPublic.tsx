@@ -18,7 +18,7 @@ export default function MesinPublic(){
   const fetchData=async()=>{
     const [{data:m},{data:r},{data:l}]=await Promise.all([
       supabase.from("mesin").select("*").eq("id",mesinId).single(),
-      supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinId).eq("aktif",true).order("jatuh_tempo",{ascending:true}),
+      supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinId).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
       supabase.from("maintenance_log").select("*").eq("mesin_id",mesinId).order("created_at",{ascending:false}).limit(5),
     ])
     if(!m){setNotFound(true);setLoading(false);return}
