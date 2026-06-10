@@ -4782,26 +4782,6 @@ function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlam
   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
   await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"NONAKTIF MAINTENANCE RUTIN",description:"Nonaktifkan jadwal: "+(item?.jenis_maintenance||"-")+" - "+(item?.mesin?.nama||"-"),module:"maintenance",halaman:"Maintenance"});
 };
-
-  const markDone=async(item:any)=>{
-    const todayStr=new Date().toISOString().slice(0,10);
-    const nextDate=calcNext(todayStr,item.frekuensi);
-    const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
-    const{data}=await supabase.from("maintenance_rutin").update({
-      terakhir_dilakukan:todayStr,
-      jatuh_tempo:nextDate,
-    }).eq("id",item.id).select("*,mesin(nama,kode)").single();
-    if(data){
-      setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
-      await activityLogService.insert({
-        user_name:uname,
-        action:"MAINTENANCE RUTIN DONE",
-        description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
-        module:"maintenance",halaman:"Maintenance"
-      });
-    }
-    setDoneId(null);
-  };
   const kepatuhan=rutinList.length>0?Math.round((rutinList.filter((r:any)=>r.terakhir_dilakukan&&r.jatuh_tempo>=today).length/rutinList.length)*100):0;
   const filtered=filterFrek==="ALL"?rutinList:rutinList.filter((r:any)=>r.frekuensi===filterFrek);
   const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
