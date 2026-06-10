@@ -6454,13 +6454,13 @@ function MasterMesinTab({mesinList,setMesinList,user}:any){
               <canvas ref={(canvas:any)=>{
                 if(canvas&&!(canvas as any).__qr_done){
                   (canvas as any).__qr_done=true;
-                  const url=window.location.origin+"/mesin?id="+printQR.id;
+                  const url="https://vista-teknik-new.vercel.app/mesin?id="+printQR.id;
                   QRCode.toCanvas(canvas,url,{width:180,margin:2,color:{dark:"#1e293b",light:"#ffffff"}},(err:any)=>{if(err)console.error(err);});
                 }
               }}/>
             </div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:4,fontFamily:"monospace",wordBreak:"break-all" as const,padding:"0 8px"}}>
-              {window.location.origin+"/mesin?id="+printQR.id}
+              {"https://vista-teknik-new.vercel.app/mesin?id="+printQR.id}
             </div>
             <div style={{fontSize:11,color:"#64748b",marginBottom:20}}>
               {printQR.kode} · {printQR.nama}
@@ -6468,7 +6468,7 @@ function MasterMesinTab({mesinList,setMesinList,user}:any){
             <div style={{display:"flex",gap:8,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setPrintQR(null)}>Tutup</Btn>
               <Btn color="#1d4ed8" onClick={async()=>{
-                const url=window.location.origin+"/mesin?id="+printQR.id;
+                const url="https://vista-teknik-new.vercel.app/mesin?id="+printQR.id;
                 const dataUrl=await QRCode.toDataURL(url,{width:200,margin:2,color:{dark:"#1e293b",light:"#ffffff"}});
                 const w=window.open("","_blank","width=420,height=520");
                 if(!w)return;
