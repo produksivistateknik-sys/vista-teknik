@@ -1,0 +1,161 @@
+    4	import { useKendala } from './hooks/useKendala'
+  436	[data-theme="dark"] .erp-nav-grp{color:#4a5270!important}
+  579	.erp-nav{flex:1;overflow-y:auto;overflow-x:hidden;padding:8px 0}
+  580	.erp-nav::-webkit-scrollbar{width:2px}
+  581	.erp-nav::-webkit-scrollbar-thumb{background:#2d4ba0;border-radius:2px}
+  582	.erp-nav-grp{font-size:9px;font-weight:600;color:#93c5fd;text-transform:uppercase;letter-spacing:.9px;padding:12px 14px 4px;white-space:nowrap;overflow:hidden;opacity:1;transition:opacity .12s}
+  583	.erp-sb.col .erp-nav-grp{opacity:0;height:0;padding:0;min-height:0;overflow:hidden}
+  584	.erp-nav-item{display:flex;align-items:center;gap:9px;padding:7px 10px;margin:1px 6px;border-radius:6px;cursor:pointer;color:#bfdbfe;font-size:12px;font-weight:400;white-space:nowrap;overflow:hidden;transition:all .12s;border:none;background:transparent;width:calc(100% - 12px);text-align:left;font-family:inherit;line-height:1.4}
+  585	.erp-nav-item:hover{background:#2d4ba0;color:#fff}
+  586	.erp-nav-item.active{background:#1d4ed8;color:#fff;font-weight:500}
+  587	.erp-sb.col .erp-nav-item{padding:0;margin:0;height:38px;border-radius:0;justify-content:center;align-items:center;width:52px;gap:0;display:flex}
+  588	.erp-nav-item i{font-size:15px;flex-shrink:0;width:20px;text-align:center;color:inherit}
+  589	.erp-nav-label{overflow:hidden;flex:1;opacity:1;transition:opacity .12s;font-size:12px}
+  590	.erp-sb.col .erp-nav-label{opacity:0;width:0}
+  591	.erp-nav-badge{background:#e53e3e22;color:#fc8181;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:600;flex-shrink:0;transition:opacity .12s;line-height:1.5}
+  592	.erp-sb.col .erp-nav-badge{opacity:0}
+ 1282	  const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
+ 1374	    if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
+ 1436	          <div style={{fontSize:12,marginTop:4}}>Tambahkan jadwal di Raw Schedule terlebih dahulu</div>
+ 1569	    raw:     {label:"Raw Schedule",color:"#633806",bg:"#FAEEDA",icon:"📅"},
+ 1572	    kendala: {label:"Kendala",     color:"#791F1F",bg:"#FCEBEB",icon:"⚠️"},
+ 1575	    maintenance:{label:"Maintenance",color:"#27500A",bg:"#eaf3de",icon:"🔧"},
+ 1710	function KendalaInbox({kendalaLog,removeKendala,user}:any){
+ 1780	                  <button onClick={()=>removeKendala(k.id, user?.name||user?.nama||'Admin')}
+ 2172	              {i:"📅",t:"Raw Schedule & Rencana Harian"},
+ 2297	function Dashboard({woData}){
+ 2298	  const [activeTab,setActiveTab]=useState("wo");
+ 2310	      <div style={{fontSize:12,marginTop:4}}>Tambahkan WO di Manajemen WO terlebih dahulu</div>
+ 2426	            <div key={t.id} onClick={()=>setActiveTab(t.id)}
+ 2427	              style={{padding:"9px 14px",fontSize:12,fontWeight:activeTab===t.id?600:500,
+ 2428	                color:activeTab===t.id?"#2563eb":"#64748b",cursor:"pointer",
+ 2429	                borderBottom:activeTab===t.id?"2px solid #2563eb":"2px solid transparent",
+ 2437	        {activeTab==="wo"&&<>
+ 2495	        {activeTab==="panel"&&<>
+ 2544	        {activeTab==="alert"&&<>
+ 3185	  const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
+ 3289	    setCtxMenu(null);
+ 3338	  const handleContextMenu=(rawId:number,date:string,e:React.MouseEvent)=>{
+ 3340	    setCtxMenu({x:e.clientX,y:e.clientY,rawId,date});
+ 3495	      await activityLogService.insert({user_name:uname,action:'EDIT WP RAW SCHEDULE',description:'Edit '+modalWp+' '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+'): '+desc,module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+ 3498	      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+ 3514	    await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+rawRow?.panel+" - "+rawRow?.proyek+" ("+cellModal?.date+")",module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""});
+ 3557	      halaman:"Raw Schedule",
+ 3586	    if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
+ 3635	    if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
+ 3753	                               onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+ 3763	                            <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+ 3787	                      <button onClick={async()=>{const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";await removeRaw(row.id);await activityLogService.insert({user_name:uname,action:"HAPUS RAW SCHEDULE",description:"Hapus proses "+row.proses+" - "+row.panel+" ("+row.proyek+")",module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||""});setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+ 3802	              <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{dateTasks.length} pekerjaan · Distribusi dilakukan di tab Rencana Harian</div>
+ 4040	                  module:'raw',halaman:'Raw Schedule',
+ 4102	        <Modal title="Tambah Panel ke Raw Schedule" onClose={()=>setAddModal(false)} width={480}>
+ 4128	    {/* Context Menu */}
+ 4129	    {ctxMenu&&(
+ 4131	        <div style={{position:"fixed",inset:0,zIndex:9998}} onClick={()=>setCtxMenu(null)}/>
+ 4132	        <div style={{position:"fixed",left:ctxMenu.x,top:ctxMenu.y,zIndex:9999,
+ 4136	            <button onClick={()=>{copySelected();setCtxMenu(null);}}
+ 4145	            <button onClick={()=>{pasteToCell(ctxMenu.rawId,ctxMenu.date);setCtxMenu(null);}}
+ 4154	            <button onClick={()=>{openCellModal(ctxMenu.rawId,ctxMenu.date);setCtxMenu(null);}}
+ 4163	            <button onClick={()=>{deleteSelected();setCtxMenu(null);}}
+ 4172	          <button onClick={()=>{setSelectedCells([]);setCopiedCells([]);setCtxMenu(null);}}
+ 4209	        if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+ 4224	        if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+ 4313	      halaman:'Manajemen WO',
+ 4475	    halaman:'Manajemen WO',
+ 4540	function MaintenancePageTab({user}:any){
+ 4543	  const [maintenanceList,setMaintenanceList]=useState<any[]>([]);
+ 4554	      setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setLoading(false);
+ 4567	        {[{id:"kerusakan",label:"Kerusakan"},{id:"rutin",label:"Maintenance Rutin"}].map((t:any)=>(
+ 4579	        <KerusakanTab mesinList={mesinList} maintenanceList={maintenanceList} setMaintenanceList={setMaintenanceList} user={user}/>:
+ 4580	        <MaintenanceRutinTab mesinList={mesinList} rutinList={rutinList} setRutinList={setRutinList} user={user} today={today} terlambat={terlambat} mingguIni={mingguIni}/>
+ 4586	function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}:any){
+ 4600	      if(!error){setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===editId?data:m));setEditId(null);setShowForm(false);}
+ 4604	        setMaintenanceList((p:any[])=>[data,...p]);
+ 4605	        await activityLogService.insert({user_name:getUname(),action:"TAMBAH MAINTENANCE",description:"Tambah log maintenance "+data.mesin?.nama,module:"maintenance",halaman:"Maintenance"});
+ 4614	  setMaintenanceList((p:any[])=>p.filter((m:any)=>m.id!==delId));
+ 4616	  await activityLogService.insert({user_name:getUname(),action:"HAPUS LOG MAINTENANCE",description:"Hapus log: "+(item?.mesin?.nama||"-")+" - "+(item?.kendala||"-").slice(0,50),module:"maintenance",halaman:"Maintenance"});
+ 4620	  setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===id?{...m,status}:m));
+ 4622	  await activityLogService.insert({user_name:getUname(),action:"UPDATE STATUS MAINTENANCE",description:"Update status: "+(item?.mesin?.nama||"-")+" -> "+status,module:"maintenance",halaman:"Maintenance"});
+ 4643	          <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)",marginBottom:12}}>{editId?"✏️ Edit Log":"➕ Tambah Log Maintenance"}</div>
+ 4646	            <div><Lbl>Tgl Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
+ 4650	            <div><Lbl>Kendala</Lbl><textarea value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})} placeholder="Deskripsi kendala..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#1e293b",fontSize:12,resize:"vertical",minHeight:72,fontFamily:"inherit"}}/></div>
+ 4697	              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Kendala</th>
+ 4701	              <th style={{background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",borderRight:"1px solid #ffffff10"}}>Tgl Kendala</th>
+ 4718	                    <button onClick={()=>{const t=["LAPORAN MAINTENANCE","Mesin: "+(m.mesin?.nama||"-"),"Kode: "+(m.mesin?.kode||"-"),"Tgl Kendala: "+(m.tgl_kendala||"-"),"Tgl Perbaikan: "+(m.tgl_perbaikan||"-"),"Teknisi: "+(m.teknisi||"-"),"Status: "+m.status,"","Kendala:",m.kendala||"-","","Perbaikan:",m.perbaikan||"-","","Catatan:",m.catatan||"-"].join("\n");const b=new Blob([t],{type:"text/plain"});const u=URL.createObjectURL(b);const a=document.createElement("a");a.href=u;a.download="maintenance-"+(m.mesin?.kode||m.id)+".txt";a.click();URL.revokeObjectURL(u);}} style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:10,color:"#1d4ed8",fontWeight:700}}>↓ TXT</button>
+ 4732	function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlambat,mingguIni}:any){
+ 4750	      await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"MAINTENANCE RUTIN DONE",description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+today+")",module:"maintenance",halaman:"Maintenance"});
+ 4760	  await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"NONAKTIF MAINTENANCE RUTIN",description:"Nonaktifkan jadwal: "+(item?.jenis_maintenance||"-")+" - "+(item?.mesin?.nama||"-"),module:"maintenance",halaman:"Maintenance"});
+ 4796	            <div><Lbl>Jenis Maintenance</Lbl><Inp value={form.jenis_maintenance} onChange={e=>setForm({...form,jenis_maintenance:e.target.value})} placeholder="Pelumasan, ganti oli..."/></div>
+ 4812	          <thead><tr>{["Mesin","Jenis Maintenance","Frekuensi","Teknisi","Terakhir","Jatuh Tempo","Status","Aksi"].map((h:string)=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+ 4846	  const CATS:any={work_orders:{label:"Work Order"},mesin:{label:"Mesin"},pekerja:{label:"Pekerja"},raw_schedule:{label:"Raw Schedule"},renhar:{label:"Rencana Harian"},kendala:{label:"Kendala"}};
+ 4940	function KomponenStokTab({user,activityLog}:any){
+ 5431	  const [maintenanceList,setMaintenanceList]=useState([]);
+ 5442	      setAdmins(ad??[]);setMesinList(ms??[]);setMaintenanceList(ml??[]);
+ 5450	          if(data) setMaintenanceList(prev=>prev.some(m=>m.id===data.id)?prev:[data,...prev]);
+ 5455	          if(data) setMaintenanceList(prev=>prev.map(m=>m.id===data.id?data:m));
+ 5458	        (payload)=>{setMaintenanceList(prev=>prev.filter(m=>m.id!==payload.old.id));})
+ 5467	    {id:"stok",label:"📦 Stok Komponen"},
+ 5518	            // Sheet 4: Activity Log
+ 5525	            XLSX.utils.book_append_sheet(wb,ws4,"Activity Log");
+ 5569	          {subTab==="stok"&&<KomponenStokTab user={user} activityLog={activityLog}/>}
+ 6043	              <option value="maintenance">Maintenance</option>
+ 6120	function MaintenanceTab({mesinList,maintenanceList,setMaintenanceList,user}){
+ 6135	      if(!error){setMaintenanceList(prev=>prev.map(m=>m.id===editId?data:m));setEditId(null);setShowForm(false);}
+ 6138	      if(!error){setMaintenanceList(prev=>[data,...prev]);setShowForm(false);}
+ 6145	    setMaintenanceList(prev=>prev.filter(m=>m.id!==delId));setDelId(null);
+ 6194	          <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>{editId?"✏️ Edit Log":"➕ Tambah Log Maintenance"}</div>
+ 6202	            <div><Lbl>Tanggal Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
+ 6206	            <div><Lbl>Kendala</Lbl>
+ 6264	                  <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.3,marginBottom:4}}>Kendala</div>
+ 6273	                {m.tgl_kendala&&<span>📅 Kendala: <strong>{m.tgl_kendala}</strong></span>}
+ 6295	function GlobalSearch({show,onClose,query,setQuery,woData,pekerja,setTab}:any){
+ 6378	                      <div key={w.id} onClick={()=>{setTab("wo");onClose();}}
+ 6409	                    <div key={i} onClick={()=>{setTab("detail");onClose();}}
+ 6438	                      <div key={p.id} onClick={()=>{setTab("pekerja");onClose();}}
+ 6486	  const [tab,setTab]=useState("dashboard");
+ 6487	  const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+ 6502	        setTab("dashboard");
+ 6510	  const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
+ 6556	    setTab("redirect");
+ 6596	  const canKendala=["admin"].includes(user.divisi);
+ 6603	    {group:"MONITORING",items:[
+ 6604	      {id:"dashboard",label:"Dashboard",icon:"ti ti-layout-dashboard"},
+ 6608	    {group:"PRODUKSI",items:[
+ 6609	      ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
+ 6610	      ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
+ 6611	      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
+ 6613	    {group:"SYSTEM",items:[
+ 6615	        {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
+ 6616	        {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
+ 6617	        {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
+ 6618	        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool"},
+ 6639	  // Kendala belum selesai
+ 6641	  const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
+ 6644	    if(!sidebarCollapsed)return;
+ 6669	            <OperatorView woData={woData} setWoData={setWoData} user={user} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createKendala={createKendala}/>
+ 6674	          <div className={"erp-sb"+(sidebarCollapsed?" col":"")}>
+ 6682	            <div className="erp-nav">
+ 6685	                  <div className="erp-nav-grp">{group.group}</div>
+ 6688	                      className={"erp-nav-item"+(tab===item.id?" active":"")}
+ 6689	                      onClick={()=>setTab(item.id)}
+ 6693	                      <span className="erp-nav-label">{item.label}</span>
+ 6694	                      {item.badge&&<span className="erp-nav-badge">{item.badge}</span>}
+ 6706	              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
+ 6712	            woData={woData} pekerja={pekerja} setTab={setTab}/>
+ 6714	              <button className="erp-toggle" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)}>
+ 6715	                {sidebarCollapsed?"▶":"◀"}
+ 6766	                              <div key={n.id} onClick={()=>{setTab("wo");setShowNotif(false);}}
+ 6802	                              <div key={k.id} onClick={()=>{setTab("kendala");setShowNotif(false);}}
+ 6810	                                  <span style={{fontSize:11,color:"#475569",flex:1}}>{k.deskripsi||k.kendala||"Kendala baru"}</span>
+ 6820	                          <button onClick={()=>{setTab("wo");setShowNotif(false);}}
+ 6835	              {tab==="dashboard"&&<Dashboard woData={woData}/>}
+ 6836	              {tab==="summary"&&<SummaryProgress woData={woData}/>}
+ 6837	              {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData}/>}
+ 6838	              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+ 6839	              {tab==="rencana"&&<RencanaHarian rawData={rawData} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+ 6840	              {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+ 6841	              {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
+ 6842	              {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
+ 6843	              {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
+ 6844	              {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
+ 6845	              {tab==="masteruser"&&<SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}

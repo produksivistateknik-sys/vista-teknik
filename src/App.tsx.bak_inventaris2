@@ -4937,27 +4937,7 @@ function RecycleBinTab({user}:any){
   );
 }
 
-function InventarisWrapper({user,activityLog}:any){
-  const [invTab,setInvTab]=useState("data");
-  const btnS=(active:boolean):any=>({
-    padding:"8px 18px",fontSize:12,fontWeight:active?700:500,
-    color:active?"#1d4ed8":"#64748b",cursor:"pointer",
-    background:active?"#eff6ff":"transparent",
-    border:"none",borderBottom:active?"2px solid #1d4ed8":"2px solid transparent",
-    fontFamily:"inherit",borderRadius:"6px 6px 0 0",
-  });
-  return(
-    <div>
-      <div style={{display:"flex",gap:2,marginBottom:14,borderBottom:"1px solid #e2e8f0"}}>
-        <button style={btnS(invTab==="data")} onClick={()=>setInvTab("data")}>📋 Data Komponen</button>
-        <button style={btnS(invTab==="riwayat")} onClick={()=>setInvTab("riwayat")}>🕒 Riwayat Transaksi</button>
-      </div>
-      <KomponenStokTab user={user} activityLog={activityLog} invTab={invTab}/>
-    </div>
-  );
-}
-
-function KomponenStokTab({user,activityLog,invTab="data"}:any){
+function KomponenStokTab({user,activityLog}:any){
   const [stokList,setStokList]=useState<any[]>([]);
   const [masuklist,setMasukList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
@@ -5176,7 +5156,7 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
       </div>
 
       {/* Form tambah/edit */}
-      <Card style={{marginBottom:14,display:invTab==="data"?"block":"none"}}>
+      <Card style={{marginBottom:14}}>
         <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>
           {editId?"✏️ Edit Komponen":"➕ Tambah Komponen"}
         </div>
@@ -5204,7 +5184,7 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
       </Card>
 
       {/* Filter + Search */}
-      <div style={{display:invTab==="data"?"flex":"none",gap:8,marginBottom:10,flexWrap:"wrap" as const,alignItems:"center"}}>
+      <div style={{display:"flex",gap:8,marginBottom:10,flexWrap:"wrap" as const,alignItems:"center"}}>
         <select value={filterKode} onChange={e=>setFilterKode(e.target.value)}
           style={{height:30,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,
             fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:150}}>
@@ -5218,7 +5198,6 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
       </div>
 
       {/* Tabel Komponen */}
-      <div style={{display:invTab==="data"?"block":"none"}}>
       {loading?(
         <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Memuat...</div>
       ):(
@@ -5302,10 +5281,9 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
           </table>
         </div>
       )}
-      </div>
 
       {/* Riwayat Transaksi */}
-      <div style={{background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden",display:invTab==="riwayat"?"block":"none"}}>
+      <div style={{background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden"}}>
         <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📋 Riwayat Transaksi</span>
           <select value={filterTipe} onChange={e=>setFilterTipe(e.target.value)}
@@ -5769,7 +5747,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
     {id:"masteruser",label:"👤 Master User"},
     {id:"mesin",label:"⚙️ Master Mesin"},
     {id:"pekerja",label:"👥 Master Pekerja"},
-    {id:"stok",label:"📦 Inventaris"},
+    {id:"stok",label:"📦 Stok Komponen"},
     {id:"recycle",label:"🗑 Recycle Bin"},
   ];
 
@@ -5871,7 +5849,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
           {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
 
           {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={null} user={user}/>}
-          {subTab==="stok"&&<InventarisWrapper user={user} activityLog={activityLog}/>}
+          {subTab==="stok"&&<KomponenStokTab user={user} activityLog={activityLog}/>}
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
         </>
       )}

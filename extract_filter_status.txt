@@ -1,0 +1,262 @@
+  219	  if(!relevanProses) return true; // kalau tidak ada mapping, tampilkan semua
+  341	  if(pct===100) return {label:"SELESAI",   color:"#16a34a", bg:"#dcfce7"};
+  342	  if(isDelayed(t)) return {label:"TERLAMBAT",color:"#dc2626", bg:"#fee2e2"};
+  343	  if(isUrgent(t))  return {label:"MENDESAK", color:"#ea580c", bg:"#ffedd5"};
+  444	/* Force semua div putih ke dark */
+  695	  const [filterDiv,setFilterDiv]=useState("ALL");
+  732	            <div key={d.key} onClick={()=>setFilterDiv(filterDiv===d.key?"ALL":d.key)}
+  750	            <Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})}
+  755	            <Sel value={form.divisi} onChange={e=>setForm({...form,divisi:e.target.value})}>
+  770	        <input value={search} onChange={e=>setSearch(e.target.value)}
+  774	        <button onClick={()=>setFilterDiv("ALL")}
+  779	          Semua ({pekerja.length})
+  785	            <button key={d.key} onClick={()=>setFilterDiv(isSel?"ALL":d.key)}
+  866	  const [filterDiv,setFilterDiv]=useState("ALL");
+  928	      const selesai=progList.filter(p=>p>=100).length;
+  929	      return{tanggal:tgl,tasks,avgProg,selesai,total:tasks.length};
+  937	    const selesai=progList.filter(p=>p>=100).length;
+  942	    return{total:tugas.length,selesai,onProg,belum,avg,hariKerja};
+  952	    const periodeTxt=dateFrom&&dateTo?dateFrom+' s/d '+dateTo:dateFrom?'Dari '+dateFrom:dateTo?'Sampai '+dateTo:'Semua periode';
+  967	    txt+='Tercapai      : '+stats.selesai+'\n';
+  978	      txt+='   Tugas: '+r.total+' | Selesai: '+r.selesai+' | Avg: '+r.avgProg+'%\n';
+ 1016	        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari nama pekerja..."
+ 1020	          <input type="date" value={dateFrom} onChange={e=>setDateFrom(e.target.value)}
+ 1023	          <input type="date" value={dateTo} onChange={e=>setDateTo(e.target.value)}
+ 1033	          <button onClick={()=>setFilterDiv("ALL")}
+ 1037	            Semua ({pekerja.length})
+ 1043	              <button key={d.key} onClick={()=>setFilterDiv(isSel?"ALL":d.key)}
+ 1095	                    <span style={{color:"#16a34a",fontWeight:700}}>{stats.selesai}</span>
+ 1145	                  {l:"Tercapai",v:stats.selesai,c:"#86efac"},
+ 1174	                    <span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {r.selesai} selesai</span>
+ 1421	          {!allDist&&filteredTasks.length>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>✓ Distribusi Semua</Btn>}
+ 1422	          {allDist&&filteredTasks.length>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Terdistribusi</span>}
+ 1426	        <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length})</button>
+ 1560	  const [filterAdmin,setFilterAdmin]=useState("ALL");
+ 1561	  const [filterModule,setFilterModule]=useState("ALL");
+ 1562	  const [filterAction,setFilterAction]=useState("ALL");
+ 1563	  const [filterTgl,setFilterTgl]=useState("");
+ 1628	          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari aktivitas, admin, WO..."
+ 1630	          <select value={filterAdmin} onChange={e=>setFilterAdmin(e.target.value)} style={selSt}>
+ 1631	            <option value="ALL">Semua Admin</option>
+ 1634	          <select value={filterModule} onChange={e=>setFilterModule(e.target.value)} style={selSt}>
+ 1635	            <option value="ALL">Semua Module</option>
+ 1638	          <select value={filterAction} onChange={e=>setFilterAction(e.target.value)} style={selSt}>
+ 1639	            <option value="ALL">Semua Action</option>
+ 1642	          <input type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={selSt}/>
+ 1644	            <button onClick={()=>{setFilterAdmin("ALL");setFilterModule("ALL");setFilterAction("ALL");setFilterTgl("");setSearch("");}}
+ 1711	  const [filterDiv,setFilterDiv]=useState("ALL");
+ 1712	  const [filterProses,setFilterProses]=useState("ALL");
+ 1713	  const [filterTgl,setFilterTgl]=useState("");
+ 1729	          <Sel value={filterDiv} onChange={e=>setFilterDiv(e.target.value)} style={{minWidth:160}}>
+ 1730	            <option value="ALL">Semua Divisi</option>
+ 1736	          <Sel value={filterProses} onChange={e=>setFilterProses(e.target.value)} style={{minWidth:160}}>
+ 1737	            <option value="ALL">Semua Proses</option>
+ 1743	          <Inp type="date" value={filterTgl} onChange={e=>setFilterTgl(e.target.value)} style={{minWidth:160}}/>
+ 1747	            onClick={()=>{setFilterDiv("ALL");setFilterProses("ALL");setFilterTgl("");}}>
+ 2173	              {i:"⚡",t:"Status H-7 mendesak otomatis"},
+ 2217	                    onChange={e=>{setUsername(e.target.value);setErr("");}}
+ 2227	                    onChange={e=>{setPwd(e.target.value);setErr("");}}
+ 2239	                  <select className="lg-sel" value={div} onChange={e=>{setDiv(e.target.value);setErr("");}}>
+ 2248	                  <select className="lg-sel" value={selNama} onChange={e=>setSelNama(e.target.value)}>
+ 2260	                    onChange={e=>{setPwd(e.target.value);setErr("");}}
+ 2300	  const [woStatus,setWoStatus]=useState("semua");
+ 2302	  const [panelWO,setPanelWO]=useState("semua");
+ 2303	  const [panelProgress,setPanelProgress]=useState("semua");
+ 2304	  const [alertType,setAlertType]=useState("semua");
+ 2320	    const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
+ 2321	    const matchS=woStatus==="semua"||(woStatus==="ontrack"&&s==="ontrack")||(woStatus==="mendesak"&&s==="mendesak")||(woStatus==="terlambat"&&s==="terlambat")||(woStatus==="selesai"&&s==="selesai");
+ 2329	    const matchWO=panelWO==="semua"||(p.wo||"")===panelWO;
+ 2331	    const matchP=panelProgress==="semua"||(panelProgress==="0-25"&&pct<=25)||(panelProgress==="26-50"&&pct>25&&pct<=50)||(panelProgress==="51-75"&&pct>50&&pct<=75)||(panelProgress==="76-100"&&pct>75);
+ 2336	    if(alertType==="semua") return true;
+ 2337	    if(alertType==="terlambat") return isDelayed(w.target);
+ 2338	    if(alertType==="mendesak") return isUrgent(w.target)&&!isDelayed(w.target);
+ 2350	    const s=pct===100?"Selesai":isDelayed(w.target)?"Terlambat":isUrgent(w.target)?"Mendesak":"On Track";
+ 2387	              {late?"Terlambat "+Math.abs(d)+" hari":"H-"+d+" Mendesak"} · Target: {w.target}
+ 2392	              {late?"Terlambat":"Mendesak"}
+ 2442	                placeholder="Cari WO atau proyek..." value={woSearch} onChange={e=>setWoSearch(e.target.value)}/>
+ 2443	              <select style={selS} value={woStatus} onChange={e=>setWoStatus(e.target.value)}>
+ 2444	                <option value="semua">Semua Status</option>
+ 2445	                <option value="ontrack">On Track</option>
+ 2446	                <option value="mendesak">Mendesak</option>
+ 2447	                <option value="terlambat">Terlambat</option>
+ 2448	                <option value="selesai">Selesai</option>
+ 2500	                placeholder="Cari panel..." value={panelSearch} onChange={e=>setPanelSearch(e.target.value)}/>
+ 2501	              <select style={selS} value={panelWO} onChange={e=>setPanelWO(e.target.value)}>
+ 2502	                <option value="semua">Semua WO</option>
+ 2505	              <select style={selS} value={panelProgress} onChange={e=>setPanelProgress(e.target.value)}>
+ 2506	                <option value="semua">Semua Progress</option>
+ 2525	                  const s=pct===100?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
+ 2547	            <select style={selS} value={alertType} onChange={e=>setAlertType(e.target.value)}>
+ 2548	              <option value="semua">Semua Tipe</option>
+ 2549	              <option value="terlambat">Terlambat</option>
+ 2550	              <option value="mendesak">Mendesak</option>
+ 2571	                        {late?"Terlambat "+Math.abs(d)+" hari dari target":"H-"+d+" mendekati deadline"}
+ 2576	                          {late?"Terlambat":"Mendesak"}
+ 2593	  const [statusFilter,setStatusFilter]=useState("semua");
+ 2599	    const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
+ 2600	    const matchS=statusFilter==="semua"||statusFilter===s;
+ 2624	  const selesai=woData.filter(w=>woOverall(w)===100).length;
+ 2625	  const mendesak=woData.filter(w=>woOverall(w)<100&&isUrgent(w.target)&&!isDelayed(w.target)).length;
+ 2626	  const terlambat=woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length;
+ 2651	          {n:selesai,l:"Selesai",c:"#16a34a",bc:"#16a34a"},
+ 2652	          {n:mendesak,l:"Mendesak H-7",c:"#d97706",bc:"#d97706"},
+ 2653	          {n:terlambat,l:"Terlambat",c:"#dc2626",bc:"#dc2626"},
+ 2665	          value={search} onChange={e=>setSearch(e.target.value)}
+ 2671	            {v:"semua",l:"Semua"},{v:"selesai",l:"✓ Selesai"},
+ 2672	            {v:"ontrack",l:"● On Track"},{v:"mendesak",l:"● Mendesak H-7"},{v:"terlambat",l:"● Terlambat"},
+ 2674	            const colors:any={semua:"#2563eb",selesai:"#16a34a",ontrack:"#2563eb",mendesak:"#d97706",terlambat:"#dc2626"};
+ 2675	            const bgs:any={semua:"#eff6ff",selesai:"#f0fdf4",ontrack:"#eff6ff",mendesak:"#fffbeb",terlambat:"#fef2f2"};
+ 2676	            const on=statusFilter===f.v;
+ 2678	              <button key={f.v} onClick={()=>setStatusFilter(f.v)}
+ 2689	        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"var(--bg-tertiary,#f1f5f9)",borderRadius:5}}>👁 Read-only</span>
+ 2705	        const statusLabel=done?"Selesai":late?"Terlambat":urg?"Mendesak H-7":"On Track";
+ 2738	                {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
+ 2778	                      const ps=ppct===100?"Selesai":ppct>=70?"On Track":ppct>=40?"On Track":"On Track";
+ 2839	  const [woFilter,setWoFilter]=useState("semua");
+ 2840	  const [statusFilter,setStatusFilter]=useState("semua");
+ 2855	    const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
+ 2856	    const matchS=statusFilter==="semua"||statusFilter===s;
+ 2857	    const matchWO=woFilter==="semua"||p.wo===woFilter;
+ 2884	  const selesai=allPanels.filter(p=>panelOverall(p)===100).length;
+ 2885	  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverall(p)<100).length;
+ 2939	          {n:selesai,l:"Panel Selesai",c:"#16a34a",bc:"#16a34a"},
+ 2940	          {n:terlambat,l:"Panel Terlambat",c:"#dc2626",bc:"#dc2626"},
+ 2952	          value={search} onChange={e=>setSearch(e.target.value)}
+ 2956	        <select value={woFilter} onChange={e=>setWoFilter(e.target.value)}
+ 2959	          <option value="semua">Semua WO</option>
+ 2962	        <select value={statusFilter} onChange={e=>setStatusFilter(e.target.value)}
+ 2965	          <option value="semua">Semua Status</option>
+ 2966	          <option value="ontrack">On Track</option>
+ 2967	          <option value="mendesak">Mendesak</option>
+ 2968	          <option value="terlambat">Terlambat</option>
+ 2969	          <option value="selesai">Selesai</option>
+ 2972	        <span style={{fontSize:10,color:"#94a3b8",padding:"2px 8px",background:"var(--bg-tertiary,#f1f5f9)",borderRadius:5}}>👁 Read-only</span>
+ 2987	        const statusLabel=done?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
+ 3015	                {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
+ 3169	  const [filterProses,setFilterProses]=useState("ALL");
+ 3170	  const [filterProyek,setFilterProyek]=useState("ALL");
+ 3171	  const [filterPanel,setFilterPanel]=useState("ALL");
+ 3271	      // Jika row berbeda, select semua row di antara keduanya
+ 3552	    if(!toAdd.length){alert("Semua proses panel ini sudah ada!");return;}
+ 3641	        <select value={filterProyek} onChange={e=>{setFilterProyek(e.target.value);setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer"}}>
+ 3642	          <option value="ALL">Semua Proyek</option>
+ 3645	        <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer",maxWidth:260}}>
+ 3646	          <option value="ALL">Semua Panel</option>
+ 3649	        {(filterProyek!=="ALL"||filterPanel!=="ALL")&&(
+ 3650	          <button onClick={()=>{setFilterProyek("ALL");setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Reset</button>
+ 3655	        <button onClick={()=>setFilterProses("ALL")} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterProses==="ALL"?"#1d4ed8":"#fff",color:filterProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
+ 3656	        {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses===pr;return(<button key={pr} onClick={()=>setFilterProses(isSel?"ALL":pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
+ 3684	                (filterPanel==="ALL"||row.panel===filterPanel)
+ 3710	                      <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+ 3907	                    {wpDone?(<><span>✅</span>{wp}<span style={{fontSize:10,color:"#16a34a"}}>Selesai</span></>):(<><span style={{width:8,height:8,borderRadius:"50%",background:added?"#e2e8f0":wc}}/>{wp} {added?"(terjadwal)":sel?"✓":""}</>)}
+ 3959	              // Save busbar schedule saat klik Selesai
+ 4019	            }}>Selesai</Btn>
+ 4079	              <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelId:""})}>
+ 4085	              <Sel value={addForm.panelId} onChange={e=>setAddForm({...addForm,panelId:e.target.value})}>
+ 4091	              <Sel value={addForm.prioritas} onChange={e=>setAddForm({...addForm,prioritas:e.target.value})}>
+ 4224	        // qty 0 → reset semua progress
+ 4385	                                      onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
+ 4447	    description:'Hapus WO '+woToDelete?.wo+' - '+woToDelete?.proyek+' beserta semua data terkait',
+ 4468	            <div><Lbl>No WO</Lbl><Inp placeholder="016" value={form.wo} onChange={e=>setForm({...form,wo:e.target.value})}/></div>
+ 4469	            <div><Lbl>Nama Proyek</Lbl><Inp placeholder="Bali Tennis Court" value={form.proyek} onChange={e=>setForm({...form,proyek:e.target.value})}/></div>
+ 4470	            <div><Lbl>Target Tanggal</Lbl><Inp type="date" value={form.target} onChange={e=>setForm({...form,target:e.target.value})}/></div>
+ 4476	                <div><Lbl>No</Lbl><Inp value={p.noPnl} onChange={e=>{const n=[...panels];n[i]={...n[i],noPnl:e.target.value};setPanels(n);}} placeholder="1"/></div>
+ 4477	                <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={e=>{const n=[...panels];n[i]={...n[i],nama:e.target.value};setPanels(n);}} placeholder="Nama panel..."/></div>
+ 4479	                  <Sel value={p.tipe} onChange={e=>{const n=[...panels];n[i]={...n[i],tipe:e.target.value};setPanels(n);}}>
+ 4483	                <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={e=>{const n=[...panels];n[i]={...n[i],qty:e.target.value};setPanels(n);}}/></div>
+ 4532	  const terlambat=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<today);
+ 4554	        <MaintenanceRutinTab mesinList={mesinList} rutinList={rutinList} setRutinList={setRutinList} user={user} today={today} terlambat={terlambat} mingguIni={mingguIni}/>
+ 4565	  const [filterStatus,setFilterStatus]=useState("ALL");
+ 4598	  const filtered=filterStatus==="ALL"?maintenanceList:maintenanceList.filter((m:any)=>m.status===filterStatus);
+ 4607	          {["ALL","open","in_progress","closed"].map((s:string)=>(<button key={s} onClick={()=>setFilterStatus(s)} style={{padding:"5px 12px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:filterStatus===s?"#1d4ed8":"#fff",color:filterStatus===s?"#fff":"#64748b",borderRight:"1px solid #e2e8f0"}}>{s==="ALL"?"Semua":SC[s]?.label}</button>))}
+ 4619	            <div><Lbl>Mesin</Lbl><Sel value={form.mesin_id} onChange={e=>setForm({...form,mesin_id:e.target.value})}><option value="">-- Pilih Mesin --</option>{mesinList.map((m:any)=><option key={m.id} value={m.id}>{m.kode} — {m.nama}</option>)}</Sel></div>
+ 4620	            <div><Lbl>Tgl Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
+ 4621	            <div><Lbl>Tgl Perbaikan</Lbl><Inp type="date" value={form.tgl_perbaikan} onChange={e=>setForm({...form,tgl_perbaikan:e.target.value})}/></div>
+ 4624	            <div><Lbl>Kendala</Lbl><textarea value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})} placeholder="Deskripsi kendala..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#1e293b",fontSize:12,resize:"vertical",minHeight:72,fontFamily:"inherit"}}/></div>
+ 4625	            <div><Lbl>Perbaikan</Lbl><textarea value={form.perbaikan} onChange={e=>setForm({...form,perbaikan:e.target.value})} placeholder="Tindakan perbaikan..." style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#1e293b",fontSize:12,resize:"vertical",minHeight:72,fontFamily:"inherit"}}/></div>
+ 4628	            <div><Lbl>Teknisi</Lbl><Inp value={form.teknisi} onChange={e=>setForm({...form,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
+ 4629	            <div><Lbl>Status</Lbl><Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="closed">Closed</option></Sel></div>
+ 4630	            <div><Lbl>Catatan Harian</Lbl><textarea value={form.catatan} onChange={e=>setForm({...form,catatan:e.target.value})} placeholder="Catatan perkembangan..." style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#1e293b",fontSize:12,resize:"vertical",minHeight:60,fontFamily:"inherit"}}/></div>
+ 4648	                    <select value={m.status} onChange={e=>updateStatus(m.id,e.target.value)} style={{fontSize:10,padding:"2px 6px",borderRadius:6,border:`1px solid ${sc.color}`,background:sc.bg,color:sc.color,cursor:"pointer",fontWeight:700}}><option value="open">Open</option><option value="in_progress">In Progress</option><option value="closed">Closed</option></select>
+ 4706	function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlambat,mingguIni}:any){
+ 4712	  const [filterFrek,setFilterFrek]=useState("ALL");
+ 4715	  const getStatus=(r:any)=>{if(!r.jatuh_tempo)return{label:"Belum dijadwalkan",color:"#64748b",bg:"#f1f5f9"};if(r.jatuh_tempo<today)return{label:"Terlambat",color:"#dc2626",bg:"#fef2f2"};const diff=Math.ceil((new Date(r.jatuh_tempo).getTime()-new Date(today).getTime())/86400000);if(diff===0)return{label:"Hari ini!",color:"#dc2626",bg:"#fef2f2"};if(diff<=3)return{label:diff+"hr lagi",color:"#f59e0b",bg:"#fffbeb"};if(diff<=7)return{label:diff+"hr lagi",color:"#2563eb",bg:"#eff6ff"};return{label:diff+"hr lagi",color:"#16a34a",bg:"#f0fdf4"};};
+ 4722	      await supabase.from("maintenance_rutin_log").insert({rutin_id:item.id,dilakukan_pada:today,teknisi:item.teknisi,catatan:"Selesai"});
+ 4724	      await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"MAINTENANCE RUTIN DONE",description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+today+")",module:"maintenance",halaman:"Maintenance"});
+ 4742	        {[{l:"Terlambat",v:terlambat.length,c:"#dc2626"},{l:"Jatuh tempo minggu ini",v:mingguIni.length,c:"#f59e0b"},{l:"Total jadwal",v:rutinList.length,c:"#2563eb"},{l:"Kepatuhan",v:kepatuhan+"%",c:"#16a34a"}].map((s:any,i:number)=>(<Card key={i} style={{padding:"12px 16px",borderLeft:`3px solid ${s.c}`}}><div style={{fontSize:22,fontWeight:800,color:s.c}}>{s.v}</div><div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3,marginTop:2}}>{s.l}</div></Card>))}
+ 4744	      {([...terlambat,...mingguIni]).length>0&&(
+ 4748	            {[...terlambat,...mingguIni].slice(0,4).map((r:any)=>{const st=getStatus(r);const fc=FC[r.frekuensi]||FC.bulanan;return(
+ 4753	                <button onClick={()=>setDoneId(r)} style={{background:"#1d4ed8",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:11,color:"#fff",fontWeight:700}}>Selesai</button>
+ 4761	          {["ALL","harian","mingguan","bulanan","3bulan","tahunan"].map((f:string)=>(<button key={f} onClick={()=>setFilterFrek(f)} style={{padding:"5px 10px",border:"none",cursor:"pointer",fontSize:11,fontWeight:700,background:filterFrek===f?"#1d4ed8":"#fff",color:filterFrek===f?"#fff":"#64748b",borderRight:"1px solid #e2e8f0"}}>{f==="ALL"?"Semua":FC[f]?.label}</button>))}
+ 4769	            <div><Lbl>Mesin</Lbl><Sel value={form.mesin_id} onChange={e=>setForm({...form,mesin_id:e.target.value})}><option value="">-- Pilih --</option>{mesinList.map((m:any)=><option key={m.id} value={m.id}>{m.kode} — {m.nama}</option>)}</Sel></div>
+ 4770	            <div><Lbl>Jenis Maintenance</Lbl><Inp value={form.jenis_maintenance} onChange={e=>setForm({...form,jenis_maintenance:e.target.value})} placeholder="Pelumasan, ganti oli..."/></div>
+ 4771	            <div><Lbl>Frekuensi</Lbl><Sel value={form.frekuensi} onChange={e=>setForm({...form,frekuensi:e.target.value})}>{Object.entries(FC).map(([k,v]:any)=><option key={k} value={k}>{v.label}</option>)}</Sel></div>
+ 4774	            <div><Lbl>Teknisi</Lbl><Inp value={form.teknisi} onChange={e=>setForm({...form,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
+ 4775	            <div><Lbl>Terakhir Dilakukan</Lbl><Inp type="date" value={form.terakhir_dilakukan} onChange={e=>setForm({...form,terakhir_dilakukan:e.target.value,jatuh_tempo:calcNext(e.target.value,form.frekuensi)})}/></div>
+ 4776	            <div><Lbl>Jatuh Tempo</Lbl><Inp type="date" value={form.jatuh_tempo} onChange={e=>setForm({...form,jatuh_tempo:e.target.value})}/></div>
+ 4779	            <div><Lbl>Catatan</Lbl><Inp value={form.catatan} onChange={e=>setForm({...form,catatan:e.target.value})} placeholder="Catatan tambahan..."/></div>
+ 4810	      {doneId&&(<Modal title="Tandai Selesai?" onClose={()=>setDoneId(null)} width={400}><div style={{fontSize:13,color:"#475569",marginBottom:8}}><strong>{doneId.jenis_maintenance}</strong> — {doneId.mesin?.nama}</div><div style={{fontSize:12,color:"#064e3b",background:"#f0fdf4",borderRadius:8,padding:"10px 12px",marginBottom:20}}>Jadwal berikutnya otomatis dihitung dari hari ini.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDoneId(null)}>Batal</Btn><Btn color="#16a34a" onClick={()=>markDone(doneId)}>Selesai</Btn></div></Modal>)}
+ 4819	  const [filterCat,setFilterCat]=useState("ALL");
+ 4871	        <button onClick={()=>setFilterCat("ALL")} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${filterCat==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterCat==="ALL"?"#1d4ed8":"#fff",color:filterCat==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({items.length})</button>
+ 4873	          <button key={k} onClick={()=>setFilterCat(filterCat===k?"ALL":k)} style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${filterCat===k?"#1d4ed8":"#e2e8f0"}`,background:filterCat===k?"#1d4ed8":"#fff",color:filterCat===k?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{v.label} ({counts[k]})</button>
+ 4878	        <div style={{textAlign:"center",padding:"60px",color:"#94a3b8"}}><div style={{fontSize:32,marginBottom:8}}>🗑</div><div style={{fontSize:13,fontWeight:600}}>Recycle bin kosong</div><div style={{fontSize:12,marginTop:4}}>Semua data aktif</div></div>
+ 4921	  const [filterKode,setFilterKode]=useState("ALL");
+ 4922	  const [filterTipe,setFilterTipe]=useState("ALL");
+ 5140	            <Inp value={form.kode} onChange={(e:any)=>setForm({...form,kode:e.target.value})}
+ 5145	            <Inp value={form.nama} onChange={(e:any)=>setForm({...form,nama:e.target.value})}
+ 5151	              onChange={(e:any)=>setForm({...form,stok:e.target.value})}/>
+ 5162	        <select value={filterKode} onChange={e=>setFilterKode(e.target.value)}
+ 5165	          {kodeList.map(k=><option key={k} value={k}>{k==="ALL"?"Semua Kode":k}</option>)}
+ 5167	        <input value={search} onChange={e=>setSearch(e.target.value)}
+ 5263	          <select value={filterTipe} onChange={e=>setFilterTipe(e.target.value)}
+ 5266	            <option value="ALL">Semua Tipe</option>
+ 5328	                onChange={(e:any)=>setMasukForm({...masukForm,jumlah:e.target.value})}/>
+ 5333	                onChange={(e:any)=>setMasukForm({...masukForm,tanggal:e.target.value})}/>
+ 5338	                onChange={(e:any)=>setMasukForm({...masukForm,keterangan:e.target.value})}
+ 5359	                onChange={(e:any)=>setKeluarForm({...keluarForm,jumlah:e.target.value})}/>
+ 5363	              <Inp value={keluarForm.proyek} onChange={(e:any)=>setKeluarForm({...keluarForm,proyek:e.target.value})}
+ 5368	              <Inp value={keluarForm.panel} onChange={(e:any)=>setKeluarForm({...keluarForm,panel:e.target.value})}
+ 5373	              <Inp value={keluarForm.keterangan} onChange={(e:any)=>setKeluarForm({...keluarForm,keterangan:e.target.value})}
+ 5388	            Komponen <strong>{stokList.find(s=>s.id===delId)?.nama}</strong> dan semua riwayat masuknya akan dihapus permanen.
+ 5461	              const status=pct===100?"Selesai":isDelayed(w.target)?"Terlambat":isUrgent(w.target)?"Mendesak":"On Track";
+ 5641	            <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama admin..." /></div>
+ 5642	            <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_admin" /></div>
+ 5643	            {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password awal..." /></div>)}
+ 5646	                <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
+ 5714	          <Inp type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Password baru..." style={{ marginBottom: 16 }} />
+ 5743	  const [filterDiv, setFilterDiv] = useState("ALL");
+ 5851	          <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama pekerja..." /></div>
+ 5852	          <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_pekerja" /></div>
+ 5853	          {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Default: 1234" /></div>)}
+ 5855	            <Sel value={form.divisi} onChange={e => setForm({ ...form, divisi: e.target.value })}>
+ 5861	              <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
+ 5869	        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau username..."
+ 5871	        <button onClick={() => setFilterDiv("ALL")}
+ 5873	          Semua ({ops.length})
+ 5879	            <button key={d.key} onClick={() => setFilterDiv(isSel ? "ALL" : d.key)}
+ 5950	          <Inp type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} onKeyDown={(e: any) => e.key === "Enter" && resetPwd()} placeholder="Password baru..." style={{ marginBottom: 16 }} />
+ 6011	          <div><Lbl>Kode</Lbl><Inp value={form.kode} onChange={e=>setForm({...form,kode:e.target.value})} placeholder="MSN-001"/></div>
+ 6012	          <div><Lbl>Nama Mesin</Lbl><Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})} placeholder="Nama mesin..."/></div>
+ 6013	          <div><Lbl>Lokasi</Lbl><Inp value={form.lokasi} onChange={e=>setForm({...form,lokasi:e.target.value})} placeholder="Lantai 1 / Area B..."/></div>
+ 6015	            <Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+ 6098	  const [filterStatus,setFilterStatus]=useState("ALL");
+ 6099	  const [filterMesin,setFilterMesin]=useState("ALL");
+ 6126	    (filterStatus==="ALL"||m.status===filterStatus)&&
+ 6150	          <Sel value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} style={{minWidth:140}}>
+ 6151	            <option value="ALL">Semua Status</option>
+ 6156	          <Sel value={filterMesin} onChange={e=>setFilterMesin(e.target.value)} style={{minWidth:160}}>
+ 6157	            <option value="ALL">Semua Mesin</option>
+ 6171	              <Sel value={form.mesin_id} onChange={e=>setForm({...form,mesin_id:e.target.value})}>
+ 6176	            <div><Lbl>Tanggal Kendala</Lbl><Inp type="date" value={form.tgl_kendala} onChange={e=>setForm({...form,tgl_kendala:e.target.value})}/></div>
+ 6177	            <div><Lbl>Tanggal Perbaikan</Lbl><Inp type="date" value={form.tgl_perbaikan} onChange={e=>setForm({...form,tgl_perbaikan:e.target.value})}/></div>
+ 6181	              <textarea value={form.kendala} onChange={e=>setForm({...form,kendala:e.target.value})}
+ 6187	              <textarea value={form.perbaikan} onChange={e=>setForm({...form,perbaikan:e.target.value})}
+ 6194	            <div><Lbl>Teknisi</Lbl><Inp value={form.teknisi} onChange={e=>setForm({...form,teknisi:e.target.value})} placeholder="Nama teknisi..."/></div>
+ 6196	              <Sel value={form.status} onChange={e=>setForm({...form,status:e.target.value})}>
+ 6316	          <input ref={ref} value={query} onChange={e=>setQuery(e.target.value)}
+ 6613	  // Kendala belum selesai
+ 6614	  const kendalaNotif=kendalaLog.filter((k:any)=>k.status!=="selesai").slice(0,5);
+ 6691	              <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
+ 6735	                            Semua WO on track!
+ 6752	                                        {n.isDelayed?"TERLAMBAT":"MENDESAK"}
+ 6797	                            Lihat semua WO →
