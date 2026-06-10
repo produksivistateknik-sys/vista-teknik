@@ -4741,37 +4741,15 @@ function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlam
   const getStatus=(r:any)=>{if(!r.jatuh_tempo)return{label:"Belum dijadwalkan",color:"#64748b",bg:"#f1f5f9"};if(r.jatuh_tempo<today)return{label:"Terlambat",color:"#dc2626",bg:"#fef2f2"};const diff=Math.ceil((new Date(r.jatuh_tempo).getTime()-new Date(today).getTime())/86400000);if(diff===0)return{label:"Hari ini!",color:"#dc2626",bg:"#fef2f2"};if(diff<=3)return{label:diff+"hr lagi",color:"#f59e0b",bg:"#fffbeb"};if(diff<=7)return{label:diff+"hr lagi",color:"#2563eb",bg:"#eff6ff"};return{label:diff+"hr lagi",color:"#16a34a",bg:"#f0fdf4"};};
   const save=async()=>{
     if(!form.mesin_id||!form.jenis_maintenance.trim())return;
-    const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
-    if(editId){
-      const{data}=await supabase.from("maintenance_rutin").update({
-        mesin_id:Number(form.mesin_id),jenis_maintenance:form.jenis_maintenance.trim(),
-        frekuensi:form.frekuensi,teknisi:form.teknisi,
-        terakhir_dilakukan:form.terakhir_dilakukan||null,
-        jatuh_tempo:form.jatuh_tempo||null,catatan:form.catatan,
-      }).eq("id",editId).select("*,mesin(nama,kode)").single();
-      if(data){
-        setRutinList((p:any[])=>p.map((r:any)=>r.id===editId?data:r));
-        await activityLogService.insert({user_name:uname,action:"EDIT MAINTENANCE RUTIN",
-          description:"Edit jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
-          module:"maintenance",halaman:"Maintenance"});
-      }
-    } else {
-      const{data}=await supabase.from("maintenance_rutin").insert({
-        mesin_id:Number(form.mesin_id),jenis_maintenance:form.jenis_maintenance.trim(),
-        frekuensi:form.frekuensi,teknisi:form.teknisi,
-        terakhir_dilakukan:form.terakhir_dilakukan||null,
-        jatuh_tempo:form.jatuh_tempo||null,catatan:form.catatan,
-        aktif:true,
-      }).select("*,mesin(nama,kode)").single();
-      if(data){
-        setRutinList((p:any[])=>[...p,data]);
-        await activityLogService.insert({user_name:uname,action:"TAMBAH MAINTENANCE RUTIN",
-          description:"Tambah jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
-          module:"maintenance",halaman:"Maintenance"});
-      }
+    const jt=calcNext(today,item.frekuensi);
+    const{data}=await supabase.from("maintenance_rutin").update({terakhir_dilakukan:today,jatuh_tempo:jt}).eq("id",item.id).select("*,mesin(nama,kode)").single();
+    if(data){
+      setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
+      await supabase.from("maintenance_rutin_log").insert({rutin_id:item.id,dilakukan_pada:today,teknisi:item.teknisi,catatan:"Selesai"});
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"MAINTENANCE RUTIN DONE",description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+today+")",module:"maintenance",halaman:"Maintenance"});
     }
-    setShowForm(false);setEditId(null);
-    setForm({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
+    setDoneId(null);
   };
   const del=async()=>{
   const item=rutinList.find((r:any)=>r.id===delId);
