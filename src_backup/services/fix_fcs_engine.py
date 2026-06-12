@@ -1,4 +1,6 @@
-import { supabase } from '../lib/supabase'
+target = r"C:\Users\User\vista-teknik\src\services\fcsService.ts"
+
+content = r"""import { supabase } from '../lib/supabase'
 
 interface FCSKapasitas {
   jenis_pekerjaan: string
@@ -319,3 +321,8 @@ function addDays(tanggal: string, n: number): string {
   d.setDate(d.getDate() + n)
   return d.toISOString().slice(0, 10)
 }
+"""
+
+with open(target, "w", encoding="utf-8") as f:
+    f.write(content)
+print(f"[OK] fcsService.ts diupdate dengan in-memory capacity tracking")
