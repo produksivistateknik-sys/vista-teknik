@@ -380,7 +380,6 @@ export async function syncFCSToRawSchedule(
         .from('raw_schedule')
         .update({
           schedule: newSchedule,
-          updated_by: syncBy,
         })
         .eq('id', rawRow.id)
 
