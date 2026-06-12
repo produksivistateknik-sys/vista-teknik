@@ -4533,6 +4533,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           </div>
         </Card>
       )}
+    </div>
+  );
       {fcsModal&&(
         <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);}} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
@@ -4614,8 +4616,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           )}
         </Modal>
       )}
-    </div>
-  );
 
 }
 // ─────────────────────────────────────────────────────────────────────────────
