@@ -314,11 +314,6 @@ export async function updateFCSStatus(id: number, status: string, approvedBy?: s
   return { success: !error, error }
 }
 
-function addDays(tanggal: string, n: number): string {
-  const d = new Date(tanggal)
-  d.setDate(d.getDate() + n)
-  return d.toISOString().slice(0, 10)
-}
 
 export async function syncFCSToRawSchedule(
   woNumber: string,
