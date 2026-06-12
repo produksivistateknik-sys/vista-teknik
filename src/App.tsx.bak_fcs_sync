@@ -9,7 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, syncFCSToRawSchedule } from './services/fcsService'
+import { generateFCSSchedule } from './services/fcsService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7310,7 +7310,6 @@ function FCSScheduleTab({woData,user}:any){
   const [filterStatus,setFilterStatus]=useState("ALL");
   const [weekStart,setWeekStart]=useState(new Date().toISOString().slice(0,10));
   const [approveId,setApproveId]=useState<any>(null);
-  const [syncing,setSyncing]=useState(false);
 
   const ALL_STATUS=["planning","released","in_progress","completed","cancelled"];
   const STATUS_COLOR:any={
@@ -7449,24 +7448,6 @@ function FCSScheduleTab({woData,user}:any){
           {ALL_STATUS.map(s=><option key={s} value={s}>{STATUS_COLOR[s]?.label||s}</option>)}
         </select>
         <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} jadwal</span>
-        <button onClick={async()=>{
-          if(!window.confirm("Sync jadwal FCS ke Raw Schedule? Data schedule yang ada akan diupdate."))return;
-          setSyncing(true);
-          const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-          const uname=user?.name||user?.nama||sess?.nama||"Admin";
-          const woNumbers=[...new Set(scheduleList.map((s:any)=>s.wo_number))];
-          let sukses=0;let gagal=0;
-          for(const woNum of woNumbers){
-            const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname);
-            if(res.success)sukses++;else gagal++;
-          }
-          setSyncing(false);
-          alert("Sync selesai! "+sukses+" WO berhasil"+(gagal>0?", "+gagal+" gagal":""));
-          fetchAll();
-        }} disabled={syncing||scheduleList.length===0}
-          style={{height:28,padding:"0 14px",borderRadius:6,border:"none",background:syncing?"#94a3b8":"#7c3aed",color:"#fff",fontSize:11,fontWeight:700,cursor:syncing||scheduleList.length===0?"not-allowed":"pointer",fontFamily:"inherit"}}>
-          {syncing?"⏳ Syncing...":"⇄ Sync ke Raw Schedule"}
-        </button>
         <button onClick={fetchAll}
           style={{height:28,padding:"0 12px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
           ↻ Refresh

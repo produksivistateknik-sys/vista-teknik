@@ -326,3 +326,97 @@ function addDays(tanggal: string, n: number): string {
 with open(target, "w", encoding="utf-8") as f:
     f.write(content)
 print(f"[OK] fcsService.ts diupdate dengan in-memory capacity tracking")
+
+# Tambah fungsi sync ke fcsService.ts
+target = r"C:\Users\User\vista-teknik\src\services\fcsService.ts"
+
+with open(target, "r", encoding="utf-8") as f:
+    content = f.read()
+
+SYNC_FUNC = """
+export async function syncFCSToRawSchedule(
+  woNumber: string,
+  jenisPekerjaan: string,
+  syncBy: string
+): Promise<{ success: boolean; updated: number; error?: string }> {
+  try {
+    // 1. Ambil semua FCS schedule untuk WO + pekerjaan ini
+    const { data: fcsData } = await supabase
+      .from('fcs_schedule')
+      .select('*')
+      .eq('wo_number', woNumber)
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+      .neq('status', 'cancelled')
+      .order('tanggal', { ascending: true })
+
+    if (!fcsData || fcsData.length === 0) {
+      return { success: false, updated: 0, error: 'Tidak ada FCS schedule untuk WO ini' }
+    }
+
+    // 2. Group by panel_id -> tanggal -> wp -> komponen
+    const panelScheduleMap: Record<number, Record<string, Record<string, string[]>>> = {}
+
+    fcsData.forEach((row: any) => {
+      const panelId = row.panel_id
+      const tanggal = row.tanggal
+      const wp = row.wp
+      const kode = row.kode_komponen
+
+      if (!panelScheduleMap[panelId]) panelScheduleMap[panelId] = {}
+      if (!panelScheduleMap[panelId][tanggal]) panelScheduleMap[panelId][tanggal] = {}
+      if (!panelScheduleMap[panelId][tanggal][wp]) panelScheduleMap[panelId][tanggal][wp] = []
+      panelScheduleMap[panelId][tanggal][wp].push(kode)
+    })
+
+    let updatedCount = 0
+
+    // 3. Update raw_schedule per panel per pekerjaan
+    for (const [panelIdStr, tanggalMap] of Object.entries(panelScheduleMap)) {
+      const panelId = Number(panelIdStr)
+
+      // Cari raw_schedule yang sesuai
+      const { data: rawRow } = await supabase
+        .from('raw_schedule')
+        .select('id, schedule')
+        .eq('panel_id', panelId)
+        .eq('proses', jenisPekerjaan)
+        .single()
+
+      if (!rawRow) continue
+
+      // Build schedule JSON baru
+      const newSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
+
+      for (const [tanggal, wpMap] of Object.entries(tanggalMap)) {
+        newSchedule[tanggal] = []
+        for (const [wp, komponen] of Object.entries(wpMap)) {
+          newSchedule[tanggal].push({ wp, komponen })
+        }
+      }
+
+      // Update ke DB
+      const { error } = await supabase
+        .from('raw_schedule')
+        .update({
+          schedule: newSchedule,
+          updated_by: syncBy,
+        })
+        .eq('id', rawRow.id)
+
+      if (!error) updatedCount++
+    }
+
+    return { success: true, updated: updatedCount }
+  } catch (err: any) {
+    return { success: false, updated: 0, error: err.message }
+  }
+}
+"""
+
+if 'syncFCSToRawSchedule' not in content:
+    content = content + SYNC_FUNC
+    with open(target, "w", encoding="utf-8") as f:
+        f.write(content)
+    print("[OK] syncFCSToRawSchedule ditambah ke fcsService.ts")
+else:
+    print("[SKIP] syncFCSToRawSchedule sudah ada")
