@@ -1013,29 +1013,6 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
 
   return(
     <div className="fi">
-      {deliverySim.length>0&&(
-        <div style={{background:'var(--card-bg,#fff)',border:'1px solid var(--border-color,#e2e8f0)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase' as const,letterSpacing:.4,marginBottom:10}}>
-            Simulasi Delivery
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-            {deliverySim.map((d:any)=>{
-              const cm:any={early:{bg:'#f0fdf4',br:'#bbf7d0',c:'#16a34a',ic:'OK',lb:'Lebih Awal'},ontime:{bg:'#eff6ff',br:'#bfdbfe',c:'#1d4ed8',ic:'ON',lb:'On Time'},warning:{bg:'#fffbeb',br:'#fde68a',c:'#d97706',ic:'!!',lb:'Hampir Terlambat'},late:{bg:'#fef2f2',br:'#fecaca',c:'#dc2626',ic:'!!',lb:'Terlambat'},no_target:{bg:'#f8fafc',br:'#e2e8f0',c:'#94a3b8',ic:'?',lb:'No Target'}};
-              const cf=cm[d.status]||cm.no_target;
-              return(
-                <div key={d.woNum} style={{background:cf.bg,border:`1.5px solid ${cf.br}`,borderRadius:10,padding:'10px 14px',minWidth:180}}>
-                  <div style={{fontSize:11,fontWeight:700,color:cf.c,marginBottom:4}}>{cf.lb}</div>
-                  <div style={{fontSize:12,fontWeight:700,color:'#1e293b',marginBottom:2}}>WO {d.woNum}</div>
-                  <div style={{fontSize:11,color:'#64748b',marginBottom:6}}>{d.proyek}</div>
-                  <div style={{fontSize:10,color:'#94a3b8'}}>Selesai FCS: <strong style={{color:'#475569'}}>{new Date(d.selesaiFCS).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}</strong></div>
-                  {d.target&&<div style={{fontSize:10,color:'#94a3b8',marginTop:2}}>Target: <strong style={{color:'#475569'}}>{new Date(d.target).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}</strong></div>}
-                  {d.target&&<div style={{marginTop:6,fontSize:11,fontWeight:700,color:cf.c}}>{d.selisih<0?`${Math.abs(d.selisih)} hari lebih awal`:d.selisih===0?'Tepat waktu':`${d.selisih} hari terlambat`}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
       {/* Filter bar */}
       <div style={{background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",padding:"10px 14px",marginBottom:12,display:"flex",gap:8,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari nama pekerja..."
@@ -7334,7 +7311,6 @@ function FCSScheduleTab({woData,user}:any){
   const [weekStart,setWeekStart]=useState(new Date().toISOString().slice(0,10));
   const [approveId,setApproveId]=useState<any>(null);
   const [syncing,setSyncing]=useState(false);
-  const [deliverySim,setDeliverySim]=useState<any[]>([]);
 
   const ALL_STATUS=["planning","released","in_progress","completed","cancelled"];
   const STATUS_COLOR:any={
@@ -7358,19 +7334,8 @@ function FCSScheduleTab({woData,user}:any){
         .eq("jenis_pekerjaan",filterPekerjaan)
         .single(),
     ]);
-    const sd=s??[];
-    setScheduleList(sd);
+    setScheduleList(s??[]);
     setKapasitasList(k?[k]:[]);
-    const wm:Record<string,string>={};
-    sd.forEach((r:any)=>{if(!wm[r.wo_number]||r.tanggal>wm[r.wo_number])wm[r.wo_number]=r.tanggal;});
-    const sim=Object.entries(wm).map(([wn,sf])=>{
-      const w=woData?.find((x:any)=>x.wo===wn);
-      const tg=w?.target||null;
-      let st='no_target';let sl=0;
-      if(tg){sl=Math.ceil((new Date(sf).getTime()-new Date(tg).getTime())/86400000);if(sl<=-7)st='early';else if(sl<=0)st='ontime';else if(sl<=3)st='warning';else st='late';}
-      return{woNum:wn,selesaiFCS:sf,target:tg,status:st,selisih:sl,proyek:w?.proyek||wn};
-    });
-    setDeliverySim(sim);
     setLoading(false);
   };
 
