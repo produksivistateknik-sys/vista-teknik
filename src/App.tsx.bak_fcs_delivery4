@@ -7363,20 +7363,14 @@ function FCSScheduleTab({woData,user}:any){
     setKapasitasList(k?[k]:[]);
     const wm:Record<string,string>={};
     sd.forEach((r:any)=>{if(!wm[r.wo_number]||r.tanggal>wm[r.wo_number])wm[r.wo_number]=r.tanggal;});
-    const woNums=Object.keys(wm);
-    if(woNums.length>0){
-      const{data:woRows}=await supabase.from('work_orders').select('wo,proyek,target').in('wo',woNums);
-      const woMap2:Record<string,any>={};
-      (woRows||[]).forEach((w:any)=>{woMap2[w.wo]=w;});
-      const sim=Object.entries(wm).map(([wn,sf])=>{
-        const w=woMap2[wn];
-        const tg=w?.target||null;
-        let st='no_target';let sl=0;
-        if(tg){sl=Math.ceil((new Date(sf).getTime()-new Date(tg).getTime())/86400000);if(sl<=-7)st='early';else if(sl<=0)st='ontime';else if(sl<=3)st='warning';else st='late';}
-        return{woNum:wn,selesaiFCS:sf,target:tg,status:st,selisih:sl,proyek:w?.proyek||wn};
-      });
-      setDeliverySim(sim);
-    }
+    const sim=Object.entries(wm).map(([wn,sf])=>{
+      const w=woData?.find((x:any)=>x.wo===wn);
+      const tg=w?.target||null;
+      let st='no_target';let sl=0;
+      if(tg){sl=Math.ceil((new Date(sf).getTime()-new Date(tg).getTime())/86400000);if(sl<=-7)st='early';else if(sl<=0)st='ontime';else if(sl<=3)st='warning';else st='late';}
+      return{woNum:wn,selesaiFCS:sf,target:tg,status:st,selisih:sl,proyek:w?.proyek||wn};
+    });
+    setDeliverySim(sim);
     setLoading(false);
   };
 
