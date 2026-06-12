@@ -7345,7 +7345,7 @@ function FCSScheduleTab({woData,user}:any){
     cancelled:{bg:"#fef2f2",color:"#dc2626",label:"Cancelled"},
   };
 
-  useEffect(()=>{fetchAll();},[filterPekerjaan,woData]);
+  useEffect(()=>{fetchAll();},[filterPekerjaan]);
 
   const fetchAll=async()=>{
     setLoading(true);
