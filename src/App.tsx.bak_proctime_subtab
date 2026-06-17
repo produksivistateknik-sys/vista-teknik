@@ -5097,7 +5097,7 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const [editId,setEditId]=useState<any>(null);
   const [search,setSearch]=useState("");
   const [filterKode,setFilterKode]=useState("ALL");
-  const [filterTipe,setFilterTipe]=useState("FS");
+  const [filterTipe,setFilterTipe]=useState("ALL");
   const [showKeluar,setShowKeluar]=useState<any>(null);
   const [showMasuk,setShowMasuk]=useState<any>(null);
   const [keluarForm,setKeluarForm]=useState({jumlah:1,proyek:"",panel:"",keterangan:""});
@@ -5870,7 +5870,7 @@ function KapasitasPekerjaanTab(){
   const [editProc,setEditProc]=useState<any>(null);
   const [showAddProc,setShowAddProc]=useState(false);
   const [procForm,setProcForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
-  const [filterTipe,setFilterTipe]=useState("FS");
+  const [filterTipe,setFilterTipe]=useState("ALL");
   const [filterPekerjaan,setFilterPekerjaan]=useState("ALL");
   const [search,setSearch]=useState("");
 
@@ -6062,38 +6062,23 @@ function KapasitasPekerjaanTab(){
       {/* TAB: Process Time */}
       {activeTab==="processtime"&&(
         <div>
-          {/* Sub-tab tipe panel */}
-          <div style={{display:"flex",gap:2,marginBottom:14,background:"#f1f5f9",borderRadius:8,padding:3,width:"fit-content"}}>
-            {ALL_TIPE.map(t=>{
-              const cnt=processList.filter((p:any)=>p.tipe_panel===t).length;
-              return(
-                <button key={t} onClick={()=>setFilterTipe(t)}
-                  style={{padding:"7px 16px",borderRadius:6,border:"none",cursor:"pointer",fontSize:12,
-                    fontWeight:filterTipe===t?700:500,
-                    background:filterTipe===t?"#fff":"transparent",
-                    color:filterTipe===t?"#1d4ed8":"#64748b",
-                    boxShadow:filterTipe===t?"0 1px 3px #00000015":"none",
-                    fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
-                  {t}
-                  <span style={{background:filterTipe===t?"#eff6ff":"#e2e8f0",color:filterTipe===t?"#1d4ed8":"#94a3b8",
-                    borderRadius:20,padding:"1px 7px",fontSize:10,fontWeight:700}}>{cnt}</span>
-                </button>
-              );
-            })}
-          </div>
-
           {/* Toolbar */}
           <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap" as const,alignItems:"center"}}>
             <input value={search} onChange={e=>setSearch(e.target.value)}
               placeholder="🔍 Cari komponen..."
               style={{height:30,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:11,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:200}}/>
+            <select value={filterTipe} onChange={e=>setFilterTipe(e.target.value)}
+              style={{height:30,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:11,background:"#fff",outline:"none",fontFamily:"inherit"}}>
+              <option value="ALL">Semua Tipe</option>
+              {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
             <select value={filterPekerjaan} onChange={e=>setFilterPekerjaan(e.target.value)}
               style={{height:30,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:11,background:"#fff",outline:"none",fontFamily:"inherit"}}>
               <option value="ALL">Semua Pekerjaan</option>
               {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
             </select>
             <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filteredProcess.length} komponen</span>
-            <button onClick={()=>{setShowAddProc(true);setEditProc(null);setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipe==="ALL"?"FS":filterTipe,wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});}}
+            <button onClick={()=>{setShowAddProc(true);setEditProc(null);setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});}}
               style={{height:30,padding:"0 14px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
               + Tambah
             </button>
@@ -6167,11 +6152,7 @@ function KapasitasPekerjaanTab(){
               </tr></thead>
               <tbody>
                 {filteredProcess.length===0?(
-                  <tr><td colSpan={7} style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
-                    <div style={{fontSize:28,marginBottom:8}}>📋</div>
-                    <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Belum ada data process time untuk {filterTipe}</div>
-                    <div style={{fontSize:11}}>Klik tombol + Tambah untuk input data manual</div>
-                  </td></tr>
+                  <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada data</td></tr>
                 ):filteredProcess.map((p:any,i:number)=>{
                   const rBg=i%2===0?"#fff":"#f8fafc";
                   const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
