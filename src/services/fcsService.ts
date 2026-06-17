@@ -355,15 +355,33 @@ export async function syncFCSToRawSchedule(
     for (const [panelIdStr, tanggalMap] of Object.entries(panelScheduleMap)) {
       const panelId = Number(panelIdStr)
 
-      // Cari raw_schedule yang sesuai
+      // Cari raw_schedule yang sesuai - cari by wo_id + proses
+      const { data: woRow } = await supabase
+        .from('work_orders')
+        .select('id')
+        .eq('wo', woNumber)
+        .single()
+      
+      if (!woRow) continue
+
       const { data: rawRow } = await supabase
         .from('raw_schedule')
         .select('id, schedule')
+        .eq('wo_id', woRow.id)
         .eq('panel_id', panelId)
         .eq('proses', jenisPekerjaan)
-        .single()
+        .maybeSingle()
+      
+      // Kalau tidak ketemu by panel_id, coba cari by wo_id + proses saja
+      const finalRawRow = rawRow || (await supabase
+        .from('raw_schedule')
+        .select('id, schedule')
+        .eq('wo_id', woRow.id)
+        .eq('proses', jenisPekerjaan)
+        .maybeSingle()
+      ).data
 
-      if (!rawRow) continue
+      if (!finalRawRow) continue
 
       // Build schedule JSON baru
       const newSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
@@ -381,7 +399,7 @@ export async function syncFCSToRawSchedule(
         .update({
           schedule: newSchedule,
         })
-        .eq('id', rawRow.id)
+        .eq('id', finalRawRow.id)
 
       if (!error) updatedCount++
     }
