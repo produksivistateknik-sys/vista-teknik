@@ -7599,26 +7599,12 @@ function FCSScheduleTab({woData,user}:any){
                       <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,border:`1px solid ${sc.color}30`}}>{sc.label}</span>
                     </td>
                     <td style={{...td,textAlign:"center" as const}}>
-                      {s.status==="planning"&&(
-                        <span style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#1d4ed8",fontWeight:700,display:"inline-block"}}>
-                          Release
-                        </span>
-                      )}
-                      {s.status==="released"&&(
-                        <span style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#d97706",fontWeight:700,display:"inline-block"}}>
-                          Mulai
-                        </span>
-                      )}
-                      {s.status==="in_progress"&&(
-                        <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#16a34a",fontWeight:700,display:"inline-block"}}>
-                          Selesai
-                        </span>
-                      )}
-                      {s.status==="completed"&&(
-                        <span style={{fontSize:10,color:"#16a34a",fontWeight:700}}>
-                          ✓ Completed
-                        </span>
-                      )}
+                      <span style={{fontSize:9,color:"#94a3b8"}}>
+                        {s.status==="planning"&&"Menunggu Renhar"}
+                        {s.status==="released"&&"Menunggu Mulai"}
+                        {s.status==="in_progress"&&"Sedang Dikerjakan"}
+                        {s.status==="completed"&&"✓ Otomatis"}
+                      </span>
                     </td>
                   </tr>
                 );

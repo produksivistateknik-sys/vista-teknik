@@ -5365,7 +5365,7 @@ function KomponenStokTab({user,activityLog,invTab="data"}:any){
               <th style={{...thS,textAlign:"center" as const}}>Jml Masuk</th>
               <th style={{...thS,textAlign:"center" as const}}>Tgl Keluar</th>
               <th style={{...thS,textAlign:"center" as const}}>Jml Keluar</th>
-              <th style={{...thS,textAlign:"center" as const}}>Progress</th>
+              <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
             </tr></thead>
             <tbody>
               {filtered.length===0?(
@@ -7573,7 +7573,7 @@ function FCSScheduleTab({woData,user}:any){
               <th style={{...thS,textAlign:"center" as const}}>Mnt/Pcs</th>
               <th style={{...thS,textAlign:"center" as const}}>Total Mnt</th>
               <th style={{...thS,textAlign:"center" as const}}>Status</th>
-              <th style={{...thS,textAlign:"center" as const}}>Progress</th>
+              <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
             </tr></thead>
             <tbody>
               {filtered.map((s:any,i:number)=>{
@@ -7600,24 +7600,22 @@ function FCSScheduleTab({woData,user}:any){
                     </td>
                     <td style={{...td,textAlign:"center" as const}}>
                       {s.status==="planning"&&(
-                        <span style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#1d4ed8",fontWeight:700,display:"inline-block"}}>
+                        <button onClick={()=>setApproveId(s)}
+                          style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#1d4ed8",fontWeight:700}}>
                           Release
-                        </span>
+                        </button>
                       )}
                       {s.status==="released"&&(
-                        <span style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#d97706",fontWeight:700,display:"inline-block"}}>
+                        <button onClick={()=>updateStatus(s.id,"in_progress")}
+                          style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#d97706",fontWeight:700}}>
                           Mulai
-                        </span>
+                        </button>
                       )}
                       {s.status==="in_progress"&&(
-                        <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#16a34a",fontWeight:700,display:"inline-block"}}>
+                        <button onClick={()=>updateStatus(s.id,"completed")}
+                          style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#16a34a",fontWeight:700}}>
                           Selesai
-                        </span>
-                      )}
-                      {s.status==="completed"&&(
-                        <span style={{fontSize:10,color:"#16a34a",fontWeight:700}}>
-                          ✓ Completed
-                        </span>
+                        </button>
                       )}
                     </td>
                   </tr>
@@ -7628,6 +7626,26 @@ function FCSScheduleTab({woData,user}:any){
         </div>
       )}
 
+      {/* Modal Approve/Release */}
+      {approveId&&(
+        <Modal title="Release Schedule?" onClose={()=>setApproveId(null)} width={400}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:8}}>
+            <strong>{approveId.nama_komponen}</strong> — {approveId.panel_nama}
+          </div>
+          <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
+            Tanggal: <strong>{fmtDate(approveId.tanggal)}</strong> · {approveId.qty_hari} pcs · {approveId.total_menit} menit
+          </div>
+          <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#1d4ed8"}}>
+            Status akan berubah dari <strong>Planning</strong> ke <strong>Released</strong>. Jadwal ini tidak dapat diubah setelah di-release.
+          </div>
+          <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+            <button onClick={()=>setApproveId(null)}
+              style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+            <button onClick={()=>updateStatus(approveId.id,"released")}
+              style={{padding:"8px 20px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Release</button>
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
