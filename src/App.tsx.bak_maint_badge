@@ -7659,37 +7659,8 @@ const [woData, setWoData] = useState<any[]>([]);
 const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
-  const { data: kendalaLog, create: createKendala, remove: removeKendala, refetch: refetchKendala } = useKendala()
-  const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
-  useEffect(() => {
-    const fetchMaintAlert = async () => {
-      const h3 = new Date(); h3.setDate(h3.getDate() + 3)
-      const { data } = await supabase.from('maintenance_rutin').select('id,jatuh_tempo').eq('is_active', true).lte('jatuh_tempo', h3.toISOString().slice(0,10))
-      setMaintenanceOverdueCount(data?.length || 0)
-    }
-    fetchMaintAlert()
-    const ch = supabase.channel('realtime-maint-alert')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_rutin' }, fetchMaintAlert)
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [])
-  const { data: activityLog, refetch: refetchActivityLog } = useActivityLog()
-  const [isRefreshing, setIsRefreshing] = useState(false)
-  const refreshAll = async () => {
-    setIsRefreshing(true)
-    try {
-      await Promise.all([
-        refetchWO?.(),
-        refetchRaw?.(),
-        refetchRenhar?.(),
-        refetchKendala?.(),
-        refetchPekerja?.(),
-        refetchActivityLog?.(),
-      ])
-    } finally {
-      setTimeout(() => setIsRefreshing(false), 400)
-    }
-  }
+  const { data: kendalaLog, create: createKendala, remove: removeKendala } = useKendala()
+  const { data: activityLog } = useActivityLog()
   const logActivity = null
   const logAct = null
   const log = async (action:string, description:string, module:string, extra?:any) => {
@@ -7708,8 +7679,8 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 
 
 
-const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO, refetch: refetchWO } = useWorkOrders()
-const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
+const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO } = useWorkOrders()
+const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja } = usePekerja()
 
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
@@ -7798,7 +7769,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
-        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool"},
         {id:"masteruser",label:"System",icon:"ti ti-settings"},
       ]:[]),
     ]},
@@ -7899,17 +7870,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               </button>
               <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
               <div className="erp-topbar-right">
-                {/* Refresh global */}
-                <button onClick={refreshAll} disabled={isRefreshing}
-                  title="Refresh semua data"
-                  style={{width:26,height:26,border:"1px solid var(--border-color,#e5e8ed)",
-                    borderRadius:5,background:"var(--bg-secondary,#f8f9fb)",
-                    display:"flex",alignItems:"center",justifyContent:"center",
-                    cursor:isRefreshing?"not-allowed":"pointer",color:"var(--text-secondary,#64748b)"}}>
-                  <i className="ti ti-refresh" style={{fontSize:13,display:"inline-block",
-                    animation:isRefreshing?"spin .6s linear infinite":"none"}}/>
-                </button>
-
                 {/* Dark mode toggle */}
                 <button onClick={()=>setDarkMode(p=>!p)}
                   title={darkMode?"Light Mode":"Dark Mode"}
