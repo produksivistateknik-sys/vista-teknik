@@ -173,14 +173,14 @@ export async function generateFCSSchedule(params: {
     const processTimeMap: Record<string, FCSProcessTime> = {}
     ptData.forEach((pt: FCSProcessTime) => { processTimeMap[pt.kode_komponen] = pt })
 
-    // 2. Hapus SEMUA schedule lama untuk panel+proses ini (semua status, termasuk completed)
-    // Generate ulang dianggap sumber kebenaran baru - qty/komponen terbaru menggantikan total
+    // 2. Hapus schedule lama (hanya planning)
     await supabase
       .from('fcs_schedule')
       .delete()
       .eq('wo_id', woId)
       .eq('panel_id', panelId)
       .eq('jenis_pekerjaan', jenisPekerjaan)
+      .eq('status', 'planning')
 
     // 3. Ambil kapasitas dari OVERRIDE (bukan default lagi), 60 hari ke depan
     const tanggalAkhirCari = addDays(tanggalMulai, 60)
