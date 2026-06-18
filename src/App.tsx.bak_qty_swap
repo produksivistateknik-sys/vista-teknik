@@ -4192,7 +4192,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     onChange={()=>setSwapSelected(prev=>checked?prev.filter(id=>id!==o.fcs_id):[...prev,o.fcs_id])}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.qty_hari} pcs · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
                   </div>
                   {hasProgress&&(
                     <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
