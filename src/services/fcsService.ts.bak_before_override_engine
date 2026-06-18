@@ -1,5 +1,11 @@
 import { supabase } from '../lib/supabase'
 
+interface FCSKapasitas {
+  jenis_pekerjaan: string
+  kapasitas_menit_hari: number
+  hari_kerja: number[]
+}
+
 interface FCSProcessTime {
   kode_komponen: string
   nama_komponen: string
@@ -38,62 +44,80 @@ interface KomponenKebutuhan {
   menit_per_pcs: number
 }
 
+function isHariKerja(tanggal: string, hariKerja: number[]): boolean {
+  const d = new Date(tanggal)
+  const hari = d.getDay() === 0 ? 7 : d.getDay()
+  return hariKerja.includes(hari)
+}
+
 function addDays(tanggal: string, n: number): string {
   const d = new Date(tanggal)
   d.setDate(d.getDate() + n)
   return d.toISOString().slice(0, 10)
 }
 
-// Cari tanggal berikutnya (setelah `dari`, exclusive) yang ADA di kapasitasMap dan masih > 0
-function nextTanggalDenganKapasitas(dari: string, kapasitasMap: Record<string, number>, batasHari = 60): string | null {
-  let cur = dari
-  for (let i = 0; i < batasHari; i++) {
-    if (kapasitasMap[cur] !== undefined && kapasitasMap[cur] > 0) return cur
-    cur = addDays(cur, 1)
+function nextHariKerja(tanggal: string, hariKerja: number[]): string {
+  let next = addDays(tanggal, 1)
+  let safety = 0
+  while (!isHariKerja(next, hariKerja) && safety < 14) {
+    next = addDays(next, 1)
+    safety++
   }
-  return null
+  return next
 }
 
-// CORE: FCS dengan in-memory capacity tracking, kapasitas dari override per tanggal
+// Hitung kapasitas terpakai dari DB (untuk tanggal yang sudah ada sebelum generate)
+async function getKapasitasTerpakaiDB(
+  tanggal: string,
+  jenisPekerjaan: string
+): Promise<number> {
+  const { data } = await supabase
+    .from('fcs_schedule')
+    .select('total_menit')
+    .eq('tanggal', tanggal)
+    .eq('jenis_pekerjaan', jenisPekerjaan)
+    .neq('status', 'cancelled')
+  if (!data || data.length === 0) return 0
+  return data.reduce((sum: number, row: any) => sum + Number(row.total_menit), 0)
+}
+
+// CORE: FCS dengan in-memory capacity tracking
 function generateFCSBatch(
   komponenList: KomponenKebutuhan[],
   tanggalMulai: string,
-  jenisPekerjaan: string,
-  kapasitasMap: Record<string, number>, // {tanggal: kapasitas_menit} dari override
-  kapasitasTerpakaiAwal: Record<string, number>, // dari DB sebelum generate (WO lain)
+  kapasitas: FCSKapasitas,
+  kapasitasTerpakaiAwal: Record<string, number>, // dari DB sebelum generate
   woInfo: { wo_id: number; wo_number: string; proyek: string; panel_id: number; panel_nama: string; tipe_panel: string },
   generatedBy: string
-): { items: FCSScheduleItem[]; tanggalHabis: boolean } {
+): FCSScheduleItem[] {
   const result: FCSScheduleItem[] = []
+  
+  // In-memory tracker kapasitas - mulai dari yang sudah ada di DB
   const kapTracker: Record<string, number> = { ...kapasitasTerpakaiAwal }
-  let tanggalHabis = false
 
   const getKapTerpakai = (tgl: string) => kapTracker[tgl] || 0
   const addKap = (tgl: string, menit: number) => {
     kapTracker[tgl] = (kapTracker[tgl] || 0) + menit
   }
 
-  // Cari tanggal mulai yang valid (ada kapasitas)
-  let tanggalAwalValid = kapasitasMap[tanggalMulai] !== undefined && kapasitasMap[tanggalMulai] > 0
-    ? tanggalMulai
-    : nextTanggalDenganKapasitas(addDays(tanggalMulai, 1), kapasitasMap)
-
-  if (!tanggalAwalValid) {
-    return { items: [], tanggalHabis: true }
+  // Skip ke hari kerja pertama
+  let tanggalMulaiKerja = tanggalMulai
+  while (!isHariKerja(tanggalMulaiKerja, kapasitas.hari_kerja)) {
+    tanggalMulaiKerja = nextHariKerja(tanggalMulaiKerja, kapasitas.hari_kerja)
   }
 
   for (const komponen of komponenList) {
     let sisaQty = komponen.qty_total
-    let tanggal: string | null = tanggalAwalValid
+    let tanggal = tanggalMulaiKerja
     let urutan = 1
 
-    while (sisaQty > 0 && tanggal) {
-      const kapasitasHari = kapasitasMap[tanggal] || 0
+    while (sisaQty > 0) {
       const terpakai = getKapTerpakai(tanggal)
-      const sisaKapasitas = kapasitasHari - terpakai
+      const sisaKapasitas = kapasitas.kapasitas_menit_hari - terpakai
 
       if (sisaKapasitas < komponen.menit_per_pcs) {
-        tanggal = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+        // Kapasitas tidak cukup untuk 1 pcs - geser hari berikutnya
+        tanggal = nextHariKerja(tanggal, kapasitas.hari_kerja)
         continue
       }
 
@@ -111,7 +135,7 @@ function generateFCSBatch(
         kode_komponen: komponen.kode_komponen,
         nama_komponen: komponen.nama_komponen,
         wp: komponen.wp,
-        jenis_pekerjaan: jenisPekerjaan,
+        jenis_pekerjaan: kapasitas.jenis_pekerjaan,
         tanggal,
         qty_total: komponen.qty_total,
         qty_hari: qtyHariIni,
@@ -122,25 +146,21 @@ function generateFCSBatch(
         generated_by: generatedBy,
       })
 
+      // Update in-memory tracker
       addKap(tanggal, totalMenitHariIni)
+
       sisaQty -= qtyHariIni
       urutan++
 
       if (sisaQty > 0) {
-        tanggal = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
-        if (!tanggal) {
-          tanggalHabis = true
-          break
-        }
+        tanggal = nextHariKerja(tanggal, kapasitas.hari_kerja)
       }
 
       if (urutan > 90) break
     }
-
-    if (!tanggal && sisaQty > 0) tanggalHabis = true
   }
 
-  return { items: result, tanggalHabis }
+  return result
 }
 
 export async function generateFCSSchedule(params: {
@@ -154,11 +174,21 @@ export async function generateFCSSchedule(params: {
   jenisPekerjaan: string
   tanggalMulai: string
   generatedBy: string
-}): Promise<{ success: boolean; count: number; error?: string; tanggalHabis?: boolean }> {
+}): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const { woId, woNumber, proyek, panelId, panelNama, tipePanel, checklist, jenisPekerjaan, tanggalMulai, generatedBy } = params
 
-    // 1. Ambil process time
+    // 1. Ambil kapasitas
+    const { data: kapData } = await supabase
+      .from('fcs_kapasitas_pekerjaan')
+      .select('*')
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+      .eq('is_active', true)
+      .single()
+
+    if (!kapData) return { success: false, count: 0, error: 'Kapasitas pekerjaan tidak ditemukan' }
+
+    // 2. Ambil process time
     const { data: ptData } = await supabase
       .from('fcs_process_time')
       .select('*')
@@ -173,7 +203,7 @@ export async function generateFCSSchedule(params: {
     const processTimeMap: Record<string, FCSProcessTime> = {}
     ptData.forEach((pt: FCSProcessTime) => { processTimeMap[pt.kode_komponen] = pt })
 
-    // 2. Hapus schedule lama (hanya planning)
+    // 3. Hapus schedule lama (hanya planning)
     await supabase
       .from('fcs_schedule')
       .delete()
@@ -182,36 +212,18 @@ export async function generateFCSSchedule(params: {
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .eq('status', 'planning')
 
-    // 3. Ambil kapasitas dari OVERRIDE (bukan default lagi), 60 hari ke depan
-    const tanggalAkhirCari = addDays(tanggalMulai, 60)
-    const { data: overrideData } = await supabase
-      .from('fcs_kapasitas_override')
-      .select('tanggal, kapasitas_menit')
-      .eq('jenis_pekerjaan', jenisPekerjaan)
-      .gte('tanggal', tanggalMulai)
-      .lte('tanggal', tanggalAkhirCari)
-
-    const kapasitasMap: Record<string, number> = {}
-    ;(overrideData || []).forEach((row: any) => {
-      kapasitasMap[row.tanggal] = Number(row.kapasitas_menit)
-    })
-
-    if (Object.keys(kapasitasMap).length === 0) {
-      return {
-        success: false, count: 0,
-        error: `Tidak ada kapasitas ${jenisPekerjaan} yang diatur dalam 60 hari ke depan dari ${tanggalMulai}. Silakan isi Override Tanggal dulu di System > Kapasitas Pekerjaan.`
-      }
-    }
-
-    // 4. Ambil kapasitas yang sudah terpakai dari DB (WO lain) di rentang tanggal yang sama
+    // 4. Ambil kapasitas yang sudah terpakai dari DB (WO lain)
+    // Query semua tanggal yang mungkin dipakai (30 hari ke depan)
+    const tanggalAkhir = addDays(tanggalMulai, 60)
     const { data: existingData } = await supabase
       .from('fcs_schedule')
       .select('tanggal, total_menit')
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .gte('tanggal', tanggalMulai)
-      .lte('tanggal', tanggalAkhirCari)
+      .lte('tanggal', tanggalAkhir)
       .neq('status', 'cancelled')
 
+    // Build kapasitas terpakai dari DB
     const kapasitasTerpakaiAwal: Record<string, number> = {}
     if (existingData) {
       existingData.forEach((row: any) => {
@@ -239,27 +251,18 @@ export async function generateFCSSchedule(params: {
       return { success: false, count: 0, error: 'Tidak ada komponen dengan qty > 0 dan process time terdefinisi' }
     }
 
+    // Sort WP1 dulu
     kebutuhan.sort((a, b) => a.wp.localeCompare(b.wp) || a.kode_komponen.localeCompare(b.kode_komponen))
 
-    // 6. Generate FCS dengan kapasitas dari override
+    // 6. Generate FCS dengan in-memory tracking
     const woInfo = { wo_id: woId, wo_number: woNumber, proyek, panel_id: panelId, panel_nama: panelNama, tipe_panel: tipePanel }
-    const { items: allItems, tanggalHabis } = generateFCSBatch(
-      kebutuhan, tanggalMulai, jenisPekerjaan, kapasitasMap, kapasitasTerpakaiAwal, woInfo, generatedBy
-    )
+    const allItems = generateFCSBatch(kebutuhan, tanggalMulai, kapData, kapasitasTerpakaiAwal, woInfo, generatedBy)
 
-    if (allItems.length === 0) {
-      return { success: false, count: 0, error: 'Tidak ada jadwal yang berhasil digenerate. Kapasitas mungkin sudah penuh untuk semua tanggal yang diatur.' }
-    }
+    if (allItems.length === 0) return { success: false, count: 0, error: 'Tidak ada jadwal yang berhasil digenerate' }
 
+    // 7. Insert ke DB
     const { error: insertError } = await supabase.from('fcs_schedule').insert(allItems)
     if (insertError) return { success: false, count: 0, error: insertError.message }
-
-    if (tanggalHabis) {
-      return {
-        success: true, count: allItems.length, tanggalHabis: true,
-        error: `Sebagian komponen belum terjadwal sepenuhnya - kapasitas ${jenisPekerjaan} belum diatur untuk tanggal setelah jadwal terakhir. Tambahkan Override Tanggal lebih lanjut.`
-      }
-    }
 
     return { success: true, count: allItems.length }
   } catch (err: any) {
@@ -272,26 +275,21 @@ export async function getKapasitasSummary(
   tanggalMulai: string,
   tanggalAkhir: string
 ): Promise<Record<string, { terpakai: number; kapasitas: number; pct: number }>> {
-  const [{ data: schedData }, { data: overrideData }] = await Promise.all([
+  const [{ data: schedData }, { data: kapData }] = await Promise.all([
     supabase.from('fcs_schedule').select('tanggal, total_menit').eq('jenis_pekerjaan', jenisPekerjaan).gte('tanggal', tanggalMulai).lte('tanggal', tanggalAkhir).neq('status', 'cancelled'),
-    supabase.from('fcs_kapasitas_override').select('tanggal, kapasitas_menit').eq('jenis_pekerjaan', jenisPekerjaan).gte('tanggal', tanggalMulai).lte('tanggal', tanggalAkhir)
+    supabase.from('fcs_kapasitas_pekerjaan').select('kapasitas_menit_hari').eq('jenis_pekerjaan', jenisPekerjaan).single()
   ])
-
-  const kapasitasPerTanggal: Record<string, number> = {}
-  ;(overrideData || []).forEach((row: any) => { kapasitasPerTanggal[row.tanggal] = Number(row.kapasitas_menit) })
-
+  const kapasitas = kapData?.kapasitas_menit_hari || 420
   const summary: Record<string, { terpakai: number; kapasitas: number; pct: number }> = {}
   if (schedData) {
     schedData.forEach((row: any) => {
-      const kap = kapasitasPerTanggal[row.tanggal] || 0
-      if (!summary[row.tanggal]) summary[row.tanggal] = { terpakai: 0, kapasitas: kap, pct: 0 }
+      if (!summary[row.tanggal]) summary[row.tanggal] = { terpakai: 0, kapasitas, pct: 0 }
       summary[row.tanggal].terpakai += Number(row.total_menit)
     })
     Object.keys(summary).forEach(tgl => {
-      summary[tgl].pct = summary[tgl].kapasitas > 0 ? Math.round((summary[tgl].terpakai / summary[tgl].kapasitas) * 100) : 0
+      summary[tgl].pct = Math.round((summary[tgl].terpakai / kapasitas) * 100)
     })
   }
-
   return summary
 }
 
@@ -316,12 +314,14 @@ export async function updateFCSStatus(id: number, status: string, approvedBy?: s
   return { success: !error, error }
 }
 
+
 export async function syncFCSToRawSchedule(
   woNumber: string,
   jenisPekerjaan: string,
   syncBy: string
 ): Promise<{ success: boolean; updated: number; error?: string }> {
   try {
+    // 1. Ambil semua FCS schedule untuk WO + pekerjaan ini
     const { data: fcsData } = await supabase
       .from('fcs_schedule')
       .select('*')
@@ -334,6 +334,7 @@ export async function syncFCSToRawSchedule(
       return { success: false, updated: 0, error: 'Tidak ada FCS schedule untuk WO ini' }
     }
 
+    // 2. Group by panel_id -> tanggal -> wp -> komponen
     const panelScheduleMap: Record<number, Record<string, Record<string, string[]>>> = {}
 
     fcsData.forEach((row: any) => {
@@ -350,15 +351,17 @@ export async function syncFCSToRawSchedule(
 
     let updatedCount = 0
 
+    // 3. Update raw_schedule per panel per pekerjaan
     for (const [panelIdStr, tanggalMap] of Object.entries(panelScheduleMap)) {
       const panelId = Number(panelIdStr)
 
+      // Cari raw_schedule yang sesuai - cari by wo_id + proses
       const { data: woRow } = await supabase
         .from('work_orders')
         .select('id')
         .eq('wo', woNumber)
         .single()
-
+      
       if (!woRow) continue
 
       const { data: rawRow } = await supabase
@@ -368,7 +371,8 @@ export async function syncFCSToRawSchedule(
         .eq('panel_id', panelId)
         .eq('proses', jenisPekerjaan)
         .maybeSingle()
-
+      
+      // Kalau tidak ketemu by panel_id, coba cari by wo_id + proses saja
       const finalRawRow = rawRow || (await supabase
         .from('raw_schedule')
         .select('id, schedule')
@@ -379,6 +383,7 @@ export async function syncFCSToRawSchedule(
 
       if (!finalRawRow) continue
 
+      // Build schedule JSON baru
       const newSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
 
       for (const [tanggal, wpMap] of Object.entries(tanggalMap)) {
@@ -388,9 +393,12 @@ export async function syncFCSToRawSchedule(
         }
       }
 
+      // Update ke DB
       const { error } = await supabase
         .from('raw_schedule')
-        .update({ schedule: newSchedule })
+        .update({
+          schedule: newSchedule,
+        })
         .eq('id', finalRawRow.id)
 
       if (!error) updatedCount++

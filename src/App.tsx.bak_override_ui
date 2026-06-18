@@ -1292,7 +1292,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     const fetchCap=async()=>{
       const [{data:s},{data:k}]=await Promise.all([
         supabase.from("fcs_schedule").select("tanggal,jenis_pekerjaan,total_menit").neq("status","cancelled"),
-        supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit"),
+        supabase.from("fcs_kapasitas_pekerjaan").select("jenis_pekerjaan,kapasitas_menit_hari"),
       ]);
       setFcsCapData(s??[]);
       setFcsKapasitas(k??[]);
@@ -1300,7 +1300,6 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     fetchCap();
     const ch=supabase.channel("realtime-fcs-cap-raw")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
@@ -3226,7 +3225,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const fetchCap=async()=>{
       const [{data:s},{data:k}]=await Promise.all([
         supabase.from("fcs_schedule").select("tanggal,jenis_pekerjaan,total_menit").neq("status","cancelled"),
-        supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit"),
+        supabase.from("fcs_kapasitas_pekerjaan").select("jenis_pekerjaan,kapasitas_menit_hari"),
       ]);
       setFcsCapData(s??[]);
       setFcsKapasitas(k??[]);
@@ -3234,7 +3233,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     fetchCap();
     const ch=supabase.channel("realtime-fcs-cap-raw")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
@@ -3730,31 +3728,25 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
               const prosesToShow=filterProses==="ALL"?ALL_PROSES:[filterProses];
-              let terpakaiTotal=0;let kapasitasTotal=0;let adaOverrideCount=0;
+              let terpakaiTotal=0;let kapasitasTotal=0;
               prosesToShow.forEach((pr:string)=>{
-                const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
-                if(ov){adaOverrideCount++;kapasitasTotal+=Number(ov.kapasitas_menit);}
+                const kap=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr);
+                const kapVal=kap?.kapasitas_menit_hari||420;
+                kapasitasTotal+=kapVal;
                 const terpakai=fcsCapData.filter((s:any)=>s.tanggal===d&&s.jenis_pekerjaan===pr).reduce((sum:number,s:any)=>sum+Number(s.total_menit),0);
                 terpakaiTotal+=terpakai;
               });
-              const adaOverride=adaOverrideCount>0;
               const pct=kapasitasTotal>0?Math.min(Math.round((terpakaiTotal/kapasitasTotal)*100),100):0;
-              const color=!adaOverride?"#94a3b8":pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
-              const bg=!adaOverride?"#f8fafc":pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
+              const color=pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
+              const bg=pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
               return(
                 <div key={d} style={{background:bg,border:`1px solid ${color}30`,borderRadius:8,padding:"8px 12px",minWidth:100,textAlign:"center" as const}}>
                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{getDayLabel(d)}</div>
-                  {!adaOverride?(
-                    <div style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4}}>⚠ Belum diatur</div>
-                  ):(
-                    <>
-                      <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
-                        <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
-                      </div>
-                      <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>{Math.round(terpakaiTotal)}/{kapasitasTotal} mnt</div>
-                    </>
-                  )}
+                  <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
+                    <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
+                  <div style={{fontSize:9,color:"#94a3b8"}}>{Math.round(terpakaiTotal)}/{kapasitasTotal} mnt</div>
                 </div>
               );
             })}
@@ -5969,14 +5961,6 @@ function KapasitasPekerjaanTab(){
 
   const saveOverride=async()=>{
     if(!overrideForm.tanggal||!overrideForm.jam_kerja)return;
-    if(!editOverride){
-      const existing=overrideList.find((o:any)=>o.tanggal===overrideForm.tanggal&&o.jenis_pekerjaan===overrideForm.jenis_pekerjaan);
-      if(existing){
-        setEditOverride(existing);
-        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:existing.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,keterangan:overrideForm.keterangan});
-        return;
-      }
-    }
     if(editOverride){
       const{error}=await supabase.from("fcs_kapasitas_override").update({
         jam_kerja:Number(overrideForm.jam_kerja),
@@ -6347,108 +6331,6 @@ function KapasitasPekerjaanTab(){
               <div style={{fontSize:11}}>Klik tombol + Tambah untuk input data manual</div>
             </div>
           )}
-        </div>
-      )}
-
-      {/* TAB: Override Tanggal */}
-      {activeTab==="override"&&(
-        <div>
-          <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>
-            Atur jam kerja khusus per tanggal per jenis pekerjaan. Tanggal tanpa override dianggap tidak ada kapasitas (0 menit).
-          </div>
-
-          <div style={{background:"#f0f8ff",borderRadius:10,border:"1.5px solid #bfdbfe",padding:"14px 16px",marginBottom:16}}>
-            <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>{editOverride?"✏️ Edit Override":"➕ Tambah Override"}</div>
-            <div style={{display:"grid",gridTemplateColumns:"140px 160px 100px 100px 1fr",gap:10,alignItems:"flex-end"}}>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Tanggal</div>
-                <input type="date" value={overrideForm.tanggal} disabled={!!editOverride}
-                  onChange={e=>setOverrideForm({...overrideForm,tanggal:e.target.value})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff"}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
-                <select value={overrideForm.jenis_pekerjaan} disabled={!!editOverride}
-                  onChange={e=>setOverrideForm({...overrideForm,jenis_pekerjaan:e.target.value})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff"}}>
-                  {["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jam Kerja</div>
-                <input type="number" min="0" step="0.5" value={overrideForm.jam_kerja}
-                  onChange={e=>setOverrideForm({...overrideForm,jam_kerja:parseFloat(e.target.value)||0})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Efekt. %</div>
-                <input type="number" min="0" max="100" step="1" value={overrideForm.efektivitas_pct}
-                  onChange={e=>setOverrideForm({...overrideForm,efektivitas_pct:parseFloat(e.target.value)||0})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Keterangan</div>
-                <input value={overrideForm.keterangan} onChange={e=>setOverrideForm({...overrideForm,keterangan:e.target.value})}
-                  placeholder="opsional..."
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}/>
-              </div>
-            </div>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
-              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                {overrideForm.jam_kerja} jam × 60 × {overrideForm.efektivitas_pct}% = <strong>{Math.round(overrideForm.jam_kerja*60*overrideForm.efektivitas_pct/100)} menit</strong>
-              </div>
-              <div style={{display:"flex",gap:8}}>
-                {editOverride&&(
-                  <button onClick={()=>{setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});}}
-                    style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
-                )}
-                <button onClick={saveOverride}
-                  style={{padding:"7px 18px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editOverride?"Simpan":"+ Tambah"}</button>
-              </div>
-            </div>
-          </div>
-
-          <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
-            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-              <thead><tr>
-                <th style={thS}>Tanggal</th>
-                <th style={thS}>Jenis Pekerjaan</th>
-                <th style={{...thS,textAlign:"center" as const}}>Jam</th>
-                <th style={{...thS,textAlign:"center" as const}}>Efekt.</th>
-                <th style={{...thS,textAlign:"right" as const}}>Kapasitas</th>
-                <th style={thS}>Keterangan</th>
-                <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
-              </tr></thead>
-              <tbody>
-                {overrideList.length===0?(
-                  <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Belum ada override. Tanggal tanpa override = 0 kapasitas.</td></tr>
-                ):overrideList.map((o:any,i:number)=>{
-                  const rBg=i%2===0?"#fff":"#f8fafc";
-                  const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
-                  return(
-                    <tr key={o.id}>
-                      <td style={{...td,fontWeight:700,color:"#1e293b"}}>{new Date(o.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</td>
-                      <td style={td}><span style={{background:"#f1f5f9",borderRadius:6,padding:"2px 10px",fontSize:11,fontWeight:700,color:"#475569"}}>{o.jenis_pekerjaan}</span></td>
-                      <td style={{...td,textAlign:"center" as const}}>{o.jam_kerja}</td>
-                      <td style={{...td,textAlign:"center" as const,color:"#64748b"}}>{o.efektivitas_pct}%</td>
-                      <td style={{...td,textAlign:"right" as const,fontWeight:800,color:"#1d4ed8"}}>{Math.round(o.kapasitas_menit)} mnt</td>
-                      <td style={{...td,fontSize:11,color:"#64748b"}}>{o.keterangan||"—"}</td>
-                      <td style={{...td,textAlign:"center" as const}}>
-                        <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:o.jam_kerja,efektivitas_pct:o.efektivitas_pct,keterangan:o.keterangan||""});}}
-                            style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
-                          <button onClick={()=>deleteOverride(o.id)}
-                            style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
         </div>
       )}
     </div>
@@ -7595,13 +7477,13 @@ function FCSScheduleTab({woData,user}:any){
         .eq("jenis_pekerjaan",filterPekerjaan)
         .order("tanggal",{ascending:true})
         .order("wp",{ascending:true}),
-      supabase.from("fcs_kapasitas_override").select("*")
+      supabase.from("fcs_kapasitas_pekerjaan").select("*")
         .eq("jenis_pekerjaan",filterPekerjaan)
-        .order("tanggal",{ascending:true}),
+        .single(),
     ]);
     const sd=s??[];
     setScheduleList(sd);
-    setKapasitasList(k??[]);
+    setKapasitasList(k?[k]:[]);
     const wm:Record<string,string>={};
     sd.forEach((r:any)=>{if(!wm[r.wo_number]||r.tanggal>wm[r.wo_number])wm[r.wo_number]=r.tanggal;});
     const woNums=Object.keys(wm);
@@ -7621,11 +7503,7 @@ function FCSScheduleTab({woData,user}:any){
     setLoading(false);
   };
 
-  const kapasitasOverrideMap=useMemo(()=>{
-    const map:Record<string,number>={};
-    kapasitasList.forEach((k:any)=>{map[k.tanggal]=Number(k.kapasitas_menit);});
-    return map;
-  },[kapasitasList]);
+  const kapasitasHarian=kapasitasList[0]?.kapasitas_menit_hari||420;
 
   // Hitung kapasitas per tanggal
   const kapPerTanggal=useMemo(()=>{
@@ -7693,30 +7571,22 @@ function FCSScheduleTab({woData,user}:any){
       {tanggalList.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
-            ⚡ Capacity Utilization — {filterPekerjaan} (dari Override Tanggal)
+            ⚡ Capacity Utilization — {filterPekerjaan} ({kapasitasHarian} mnt/hari)
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {tanggalList.slice(0,14).map(tgl=>{
               const terpakai=kapPerTanggal[tgl]||0;
-              const kapHari=kapasitasOverrideMap[tgl]||0;
-              const adaOverride=kapasitasOverrideMap[tgl]!==undefined;
-              const pct=kapHari>0?Math.min(Math.round((terpakai/kapHari)*100),100):0;
-              const color=!adaOverride?"#94a3b8":pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
-              const bg=!adaOverride?"#f8fafc":pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
+              const pct=Math.min(Math.round((terpakai/kapasitasHarian)*100),100);
+              const color=pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
+              const bg=pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
               return(
                 <div key={tgl} style={{background:bg,border:`1px solid ${color}30`,borderRadius:8,padding:"8px 12px",minWidth:100,textAlign:"center" as const}}>
                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{fmtDate(tgl)}</div>
-                  {!adaOverride?(
-                    <div style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4}}>⚠ Belum diatur</div>
-                  ):(
-                    <>
-                      <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
-                        <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
-                      </div>
-                      <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>{terpakai}/{kapHari} mnt</div>
-                    </>
-                  )}
+                  <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
+                    <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
+                  </div>
+                  <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
+                  <div style={{fontSize:9,color:"#94a3b8"}}>{terpakai}/{kapasitasHarian} mnt</div>
                 </div>
               );
             })}
