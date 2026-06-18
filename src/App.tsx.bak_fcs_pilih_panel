@@ -4271,7 +4271,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const [fcsLoading,setFcsLoading]=useState(false);
   const [fcsResult,setFcsResult]=useState<any>(null);
   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
-  const [selectedPanelIds,setSelectedPanelIds]=useState<number[]>([]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -4446,7 +4445,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty})));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});setSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
+                <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
                 <button onClick={()=>setDelId(wo.id)}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
@@ -4616,30 +4615,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           </div>
           {!fcsResult?(
             <div>
-              <div style={{marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({selectedPanelIds.length}/{(fcsModal.panels||[]).length})</div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>setSelectedPanelIds((fcsModal.panels||[]).map((p:any)=>p.id))}
-                      style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
-                    <button onClick={()=>setSelectedPanelIds([])}
-                      style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
-                  </div>
-                </div>
-                <div style={{maxHeight:140,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
-                  {(fcsModal.panels||[]).map((p:any)=>{
-                    const checked=selectedPanelIds.includes(p.id);
-                    return(
-                      <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",cursor:"pointer",borderRadius:6,background:checked?"#eff6ff":"transparent"}}>
-                        <input type="checkbox" checked={checked}
-                          onChange={()=>setSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
-                        <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
-                        <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
               <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:16}}>
                 <div>
                   <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:6}}>Tanggal Mulai</div>
@@ -4663,11 +4638,11 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                 <button onClick={()=>setFcsModal(null)}
                   style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
-                <button disabled={fcsLoading||selectedPanelIds.length===0} onClick={async()=>{
+                <button disabled={fcsLoading} onClick={async()=>{
                   setFcsLoading(true);
                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  const panels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
+                  const panels=fcsModal.panels||[];
                   let totalCount=0;const errors:string[]=[];
                   for(const panel of panels){
                     const res=await generateFCSSchedule({
@@ -4684,8 +4659,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   setFcsResult({totalCount,errors,panels:panels.length});
                   setFcsLoading(false);
                 }}
-                  style={{padding:"8px 20px",borderRadius:8,border:"none",background:(fcsLoading||selectedPanelIds.length===0)?"#94a3b8":"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:(fcsLoading||selectedPanelIds.length===0)?"not-allowed":"pointer",fontFamily:"inherit"}}>
-                  {fcsLoading?"Generating...":selectedPanelIds.length===0?"Pilih panel dulu":"⏱ Generate Schedule ("+selectedPanelIds.length+" panel)"}
+                  style={{padding:"8px 20px",borderRadius:8,border:"none",background:fcsLoading?"#94a3b8":"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:fcsLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  {fcsLoading?"Generating...":"⏱ Generate Schedule"}
                 </button>
               </div>
             </div>
