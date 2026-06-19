@@ -4328,6 +4328,123 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         </Modal>
       )}
 
+      {swapOrangModal&&(
+        <Modal title={"Kuota Orang Penuh — "+swapOrangModal.tanggal} onClose={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}} width={540}>
+          <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#991b1b",display:"flex",gap:8,alignItems:"flex-start"}}>
+            <span>⚠️</span>
+            <span>Kuota {swapOrangModal.proses} tanggal {fmtDate(swapOrangModal.tanggal)}: {Math.round(swapOrangModal.terpakaiSaatIni)}/{Math.round(swapOrangModal.kuotaHari)} orang sudah terisi. Komponen baru butuh {Math.round(swapOrangModal.orangDibutuhkan)} orang lagi (total jadi {Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}). Pilih salah satu:</span>
+          </div>
+
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+            <button onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"geser"}))}
+              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="geser"?"#1d4ed8":"#e2e8f0"}`,background:swapOrangModal.pilihan==="geser"?"#eff6ff":"#fff",cursor:"pointer"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#1d4ed8",marginBottom:4}}>📅 Geser ke Hari Lain</div>
+              <div style={{fontSize:11,color:"#64748b"}}>Pindahkan komponen lain ke hari berikutnya untuk beri ruang</div>
+            </button>
+            <button onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"lembur"}))}
+              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="lembur"?"#d97706":"#e2e8f0"}`,background:swapOrangModal.pilihan==="lembur"?"#fffbeb":"#fff",cursor:"pointer"}}>
+              <div style={{fontWeight:700,fontSize:13,color:"#d97706",marginBottom:4}}>⏰ Ajukan Lembur</div>
+              <div style={{fontSize:11,color:"#64748b"}}>Naikkan kuota orang hari ini ({Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)} orang)</div>
+            </button>
+          </div>
+
+          {swapOrangModal.pilihan==="geser"&&(
+            <div>
+              <Lbl>Komponen Terjadwal di {fmtDate(swapOrangModal.tanggal)} (pilih untuk dipindah)</Lbl>
+              <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14,maxHeight:240,overflowY:"auto" as const}}>
+                {swapOrangModal.opsiSwap.map((o:any)=>{
+                  const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
+                  const checked=swapOrangSelected.includes(swapKey);
+                  const hasProgress=o.progress>0;
+                  return(
+                    <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                      <input type="checkbox" checked={checked} style={{marginTop:2}}
+                        onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
+                      <div style={{flex:1}}>
+                        <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
+                        <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.jumlah_orang} orang · progress {o.progress}%</div>
+                      </div>
+                      {hasProgress&&(
+                        <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
+                      )}
+                    </label>
+                  );
+                })}
+              </div>
+              {(()=>{
+                const orangDipindah=swapOrangModal.opsiSwap.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).reduce((s:number,o:any)=>s+Number(o.jumlah_orang),0);
+                const sisaSetelahSwap=swapOrangModal.sisaKuota+orangDipindah;
+                const cukupSetelahSwap=sisaSetelahSwap>=swapOrangModal.orangDibutuhkan;
+                return(
+                  <div style={{background:cukupSetelahSwap?"#f0fdf4":"#fffbeb",border:`1px solid ${cukupSetelahSwap?"#bbf7d0":"#fde68a"}`,borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:cukupSetelahSwap?"#16a34a":"#92400e"}}>
+                    {cukupSetelahSwap?"✅ Setelah pindah, kuota cukup":"Pilih komponen lagi, masih belum cukup"}
+                  </div>
+                );
+              })()}
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <button onClick={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}}
+                  style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+                <button disabled={swapOrangLoading||swapOrangSelected.length===0} onClick={async()=>{
+                  const itemsToMove=swapOrangModal.opsiSwap.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,jumlah_orang:o.jumlah_orang}));
+                  const orangDipindah=itemsToMove.reduce((s:number,it:any)=>s+Number(it.jumlah_orang),0);
+                  const sisaSetelahSwap=swapOrangModal.sisaKuota+orangDipindah;
+                  if(sisaSetelahSwap<swapOrangModal.orangDibutuhkan){alert("Kuota masih belum cukup, pilih komponen tambahan");return;}
+                  setSwapOrangLoading(true);
+                  const res=await executeSwapKomponenOrang({items:itemsToMove,jenisPekerjaan:swapOrangModal.proses,tanggalAsal:swapOrangModal.tanggal});
+                  setSwapOrangLoading(false);
+                  if(!res.success){alert("Gagal memindahkan: "+(res.error||"Error tidak diketahui"));return;}
+                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
+                  await activityLogService.insert({
+                    user_name:uname,action:"SWAP ORANG KAPASITAS",
+                    description:"Pindahkan "+swapOrangSelected.length+" komponen dari "+fmtDate(swapOrangModal.tanggal)+" ("+swapOrangModal.proses+") ke hari berikutnya untuk beri ruang kuota orang",
+                    module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""
+                  });
+                  setSwapOrangModal(null);setSwapOrangSelected([]);
+                  await addEntry();
+                }}
+                  style={{padding:"8px 18px",borderRadius:8,border:"none",background:(swapOrangLoading||swapOrangSelected.length===0)?"#94a3b8":"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:(swapOrangLoading||swapOrangSelected.length===0)?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  {swapOrangLoading?"⏳ Memindahkan...":"Pindahkan & Tambah Komponen"}
+                </button>
+              </div>
+            </div>
+          )}
+
+          {swapOrangModal.pilihan==="lembur"&&(
+            <div>
+              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"12px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>
+                Kuota orang tanggal {fmtDate(swapOrangModal.tanggal)} untuk {swapOrangModal.proses} akan dinaikkan dari <strong>{Math.round(swapOrangModal.kuotaHari)}</strong> menjadi <strong>{Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}</strong> orang.
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <button onClick={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}}
+                  style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+                <button disabled={lemburLoading} onClick={async()=>{
+                  setLemburLoading(true);
+                  const kuotaBaru=Math.ceil(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan);
+                  const{data:existingOv}=await supabase.from("fcs_kapasitas_override").select("id").eq("tanggal",swapOrangModal.tanggal).eq("jenis_pekerjaan",swapOrangModal.proses).maybeSingle();
+                  if(existingOv){
+                    await supabase.from("fcs_kapasitas_override").update({jumlah_orang:kuotaBaru}).eq("id",existingOv.id);
+                  }
+                  setLemburLoading(false);
+                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
+                  await activityLogService.insert({
+                    user_name:uname,action:"LEMBUR KUOTA ORANG",
+                    description:"Naikkan kuota "+swapOrangModal.proses+" tanggal "+fmtDate(swapOrangModal.tanggal)+" dari "+Math.round(swapOrangModal.kuotaHari)+" jadi "+kuotaBaru+" orang (lembur)",
+                    module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""
+                  });
+                  setSwapOrangModal(null);setSwapOrangSelected([]);
+                  await addEntry();
+                }}
+                  style={{padding:"8px 18px",borderRadius:8,border:"none",background:lemburLoading?"#94a3b8":"#d97706",color:"#fff",fontSize:12,fontWeight:700,cursor:lemburLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+                  {lemburLoading?"⏳ Menyimpan...":"⏰ Konfirmasi Lembur & Tambah Komponen"}
+                </button>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+
       {assignModal&&(()=>{
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
