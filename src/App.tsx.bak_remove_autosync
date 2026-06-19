@@ -4811,6 +4811,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                     if(res.success)totalCount+=res.count;
                     else errors.push(panel.nama+": "+(res.error||"Error"));
                   }
+                  if(totalCount>0){
+                    await syncFCSToRawSchedule(fcsModal.wo,fcsForm.jenisPekerjaan,uname);
+                  }
                   setFcsResult({totalCount,errors,panels:panels.length});
                   setFcsLoading(false);
                 }}
