@@ -349,7 +349,6 @@ export async function syncFCSToRawSchedule(
     })
 
     let updatedCount = 0
-    const skippedPanels: string[] = []
 
     for (const [panelIdStr, tanggalMap] of Object.entries(panelScheduleMap)) {
       const panelId = Number(panelIdStr)
@@ -370,15 +369,31 @@ export async function syncFCSToRawSchedule(
         .eq('proses', jenisPekerjaan)
         .maybeSingle()
 
-      const finalRawRow = rawRow
+      let finalRawRow = rawRow
 
       if (!finalRawRow) {
-        // Panel ini belum ditambahkan ke Raw Schedule (planner belum klik "+ Tambah Panel")
-        // JANGAN auto-create dan JANGAN hapus data FCS - biarkan tetap di FCS Schedule untuk sync ulang nanti
+        // Baris raw_schedule belum ada untuk panel+proses ini - buat baru otomatis
+        // Ambil info proyek dan nama panel dari fcs_schedule yang sedang disync
         const sampleFcsRow = fcsData.find((r: any) => r.panel_id === panelId)
-        skippedPanels.push(sampleFcsRow?.panel_nama || `panel_id ${panelId}`)
-        continue
+        const { data: created, error: createError } = await supabase
+          .from('raw_schedule')
+          .insert({
+            wo_id: woRow.id,
+            panel_id: panelId,
+            proyek: sampleFcsRow?.proyek || '',
+            panel: sampleFcsRow?.panel_nama || '',
+            proses: jenisPekerjaan,
+            prioritas: 'Sedang',
+            schedule: {},
+          })
+          .select('id, schedule')
+          .single()
+
+        if (createError || !created) continue
+        finalRawRow = created
       }
+
+      if (!finalRawRow) continue
 
       // Merge dengan schedule existing (jangan timpa total, gabung unik per WP per tanggal)
       const existingSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = finalRawRow.schedule || {}
@@ -435,12 +450,6 @@ export async function syncFCSToRawSchedule(
       }
     }
 
-    if (skippedPanels.length > 0 && updatedCount === 0) {
-      return { success: false, updated: 0, error: `Panel belum ditambahkan ke Raw Schedule: ${skippedPanels.join(', ')}. Klik "+ Tambah Panel" dulu sebelum sync.` }
-    }
-    if (skippedPanels.length > 0) {
-      return { success: true, updated: updatedCount, error: `Sebagian berhasil. Panel yang dilewati (belum di Tambah Panel): ${skippedPanels.join(', ')}` }
-    }
     return { success: true, updated: updatedCount }
   } catch (err: any) {
     return { success: false, updated: 0, error: err.message }
