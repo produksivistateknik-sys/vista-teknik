@@ -782,8 +782,7 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
     for (const entry of entries) {
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
-        const orang = orangMap[kode] || 0
-        if (orang <= 0) continue
+        const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
         terpakaiSaatIni += orang
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
 
@@ -826,7 +825,7 @@ async function hitungTerpakaiOrangRawSchedule(tanggal: string, jenisPekerjaan: s
     for (const entry of entries) {
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
-        total += orangMap[kode] || 0
+        total += (orangMap[kode] !== undefined ? orangMap[kode] : 1)
       }
     }
   }
