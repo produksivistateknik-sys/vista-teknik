@@ -6108,7 +6108,9 @@ function KapasitasPekerjaanTab(){
   const [procForm,setProcForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
   const [overrideList,setOverrideList]=useState<any[]>([]);
   const [editOverride,setEditOverride]=useState<any>(null);
-  const [overrideForm,setOverrideForm]=useState({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});
+  const [overrideForm,setOverrideForm]=useState({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+  const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
+  const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
   const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});
   const [rentangSaving,setRentangSaving]=useState(false);
@@ -6173,34 +6175,34 @@ function KapasitasPekerjaanTab(){
   };
 
   const saveOverride=async()=>{
-    if(!overrideForm.tanggal||!overrideForm.jam_kerja)return;
+    const isOrang=isProsesOrang(overrideForm.jenis_pekerjaan);
+    if(!overrideForm.tanggal)return;
+    if(isOrang&&!overrideForm.jumlah_orang)return;
+    if(!isOrang&&!overrideForm.jam_kerja)return;
     if(!editOverride){
       const existing=overrideList.find((o:any)=>o.tanggal===overrideForm.tanggal&&o.jenis_pekerjaan===overrideForm.jenis_pekerjaan);
       if(existing){
         setEditOverride(existing);
-        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:existing.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,keterangan:overrideForm.keterangan});
+        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:existing.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:overrideForm.keterangan});
         return;
       }
     }
+    const payload:any=isOrang
+      ?{tipe_kapasitas:"orang",jumlah_orang:Number(overrideForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100,keterangan:overrideForm.keterangan}
+      :{tipe_kapasitas:"jam",jam_kerja:Number(overrideForm.jam_kerja),efektivitas_pct:Number(overrideForm.efektivitas_pct),jumlah_orang:null,keterangan:overrideForm.keterangan};
     if(editOverride){
-      const{error}=await supabase.from("fcs_kapasitas_override").update({
-        jam_kerja:Number(overrideForm.jam_kerja),
-        efektivitas_pct:Number(overrideForm.efektivitas_pct),
-        keterangan:overrideForm.keterangan,
-      }).eq("id",editOverride.id);
-      if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});}
+      const{error}=await supabase.from("fcs_kapasitas_override").update(payload).eq("id",editOverride.id);
+      if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
       else alert("Gagal simpan: "+error.message);
     } else {
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
       const{error}=await supabase.from("fcs_kapasitas_override").insert({
         tanggal:overrideForm.tanggal,
         jenis_pekerjaan:overrideForm.jenis_pekerjaan,
-        jam_kerja:Number(overrideForm.jam_kerja),
-        efektivitas_pct:Number(overrideForm.efektivitas_pct),
-        keterangan:overrideForm.keterangan,
+        ...payload,
         created_by:sess?.nama||sess?.name||"Admin",
       });
-      if(!error){await fetchOverride();setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});}
+      if(!error){await fetchOverride();setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
       else alert("Gagal simpan: "+(error.message.includes("duplicate")?"Tanggal + pekerjaan ini sudah ada overridenya":error.message));
     }
   };
@@ -6575,18 +6577,29 @@ function KapasitasPekerjaanTab(){
                   ))}
                 </select>
               </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jam Kerja</div>
-                <input type="number" min="0" step="0.5" value={overrideForm.jam_kerja}
-                  onChange={e=>setOverrideForm({...overrideForm,jam_kerja:parseFloat(e.target.value)||0})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
-              </div>
-              <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Efekt. %</div>
-                <input type="number" min="0" max="100" step="1" value={overrideForm.efektivitas_pct}
-                  onChange={e=>setOverrideForm({...overrideForm,efektivitas_pct:parseFloat(e.target.value)||0})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
-              </div>
+              {isProsesOrang(overrideForm.jenis_pekerjaan)?(
+                <div style={{gridColumn:"span 2"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>👥 Jumlah Orang</div>
+                  <input type="number" min="0" step="1" value={overrideForm.jumlah_orang}
+                    onChange={e=>setOverrideForm({...overrideForm,jumlah_orang:parseFloat(e.target.value)||0})}
+                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #93c5fd",fontSize:12,textAlign:"center" as const,background:"#eff6ff"}}/>
+                </div>
+              ):(
+                <>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jam Kerja</div>
+                    <input type="number" min="0" step="0.5" value={overrideForm.jam_kerja}
+                      onChange={e=>setOverrideForm({...overrideForm,jam_kerja:parseFloat(e.target.value)||0})}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Efekt. %</div>
+                    <input type="number" min="0" max="100" step="1" value={overrideForm.efektivitas_pct}
+                      onChange={e=>setOverrideForm({...overrideForm,efektivitas_pct:parseFloat(e.target.value)||0})}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
+                  </div>
+                </>
+              )}
               <div>
                 <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Keterangan</div>
                 <input value={overrideForm.keterangan} onChange={e=>setOverrideForm({...overrideForm,keterangan:e.target.value})}
@@ -6596,7 +6609,11 @@ function KapasitasPekerjaanTab(){
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
               <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                {overrideForm.jam_kerja} jam × 60 × {overrideForm.efektivitas_pct}% = <strong>{Math.round(overrideForm.jam_kerja*60*overrideForm.efektivitas_pct/100)} menit</strong>
+                {isProsesOrang(overrideForm.jenis_pekerjaan)?(
+                  <>{overrideForm.jumlah_orang} orang = <strong>{overrideForm.jumlah_orang} panel/hari</strong></>
+                ):(
+                  <>{overrideForm.jam_kerja} jam × 60 × {overrideForm.efektivitas_pct}% = <strong>{Math.round(overrideForm.jam_kerja*60*overrideForm.efektivitas_pct/100)} menit</strong></>
+                )}
               </div>
               <div style={{display:"flex",gap:8}}>
                 {editOverride&&(
