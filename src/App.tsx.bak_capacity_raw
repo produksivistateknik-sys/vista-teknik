@@ -9,7 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2 } from './services/fcsService'
+import { generateFCSSchedule, syncFCSToRawSchedule, checkKapasitasDanKomponenSwap, executeSwapKomponen } from './services/fcsService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3222,7 +3222,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [swapModal,setSwapModal]=useState<any>(null);
-  const [swapSelected,setSwapSelected]=useState<string[]>([]);
+  const [swapSelected,setSwapSelected]=useState<number[]>([]);
   const [swapLoading,setSwapLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
 
@@ -3517,11 +3517,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         menitDibutuhkan+=qty*menitPcs;
       }
       if(adaDataProcessTime&&menitDibutuhkan>0){
-        const cek=await checkKapasitasDanKomponenSwapV2({
+        const panelChecklistMap:Record<number,any>={};
+        woData.flatMap((w:any)=>w.panels||[]).forEach((p:any)=>{panelChecklistMap[p.id]=p.checklist||{};});
+        const cek=await checkKapasitasDanKomponenSwap({
           tanggal:cellModal.date,
           jenisPekerjaan:prosesCek,
           menitDibutuhkan,
-          excludeRawId:cellModal.rawId,
+          panelChecklistMap,
         });
         if(!cek.cukup){
           if(cek.opsiSwap.length>0){
@@ -3767,10 +3769,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses===pr;return(<button key={pr} onClick={()=>setFilterProses(isSel?"ALL":pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
-      {fcsKapasitas.length>0&&(
+      {fcsCapData.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
-            ⚡ Capacity Utilization {filterProses!=="ALL"?"— "+filterProses:"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+            ⚡ Capacity Utilization {filterProses!=="ALL"?"— "+filterProses:"(semua proses)"}
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
@@ -3779,19 +3781,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               prosesToShow.forEach((pr:string)=>{
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
                 if(ov){adaOverrideCount++;kapasitasTotal+=Number(ov.kapasitas_menit);}
-                rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
-                  const panelId=r.panel_id||r.panelId;
-                  const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
-                  if(!panelData)return;
-                  const entries=r.schedule?.[d]||[];
-                  entries.forEach((e:any)=>{
-                    (e.komponen||[]).forEach((kode:string)=>{
-                      const qty=panelData.checklist?.[kode]?.qty||0;
-                      const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
-                      terpakaiTotal+=qty*menitPcs;
-                    });
-                  });
-                });
+                const terpakai=fcsCapData.filter((s:any)=>s.tanggal===d&&s.jenis_pekerjaan===pr).reduce((sum:number,s:any)=>sum+Number(s.total_menit),0);
+                terpakaiTotal+=terpakai;
               });
               const adaOverride=adaOverrideCount>0;
               const pct=kapasitasTotal>0?Math.min(Math.round((terpakaiTotal/kapasitasTotal)*100),100):0;
@@ -4193,16 +4184,15 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           <Lbl>Komponen Terjadwal di {fmtDate(swapModal.tanggal)} (pilih untuk dipindah)</Lbl>
           <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14,maxHeight:280,overflowY:"auto" as const}}>
             {swapModal.opsiSwap.map((o:any)=>{
-              const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
-              const checked=swapSelected.includes(swapKey);
+              const checked=swapSelected.includes(o.fcs_id);
               const hasProgress=o.progress>0;
               return(
-                <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                <label key={o.fcs_id} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
                   <input type="checkbox" checked={checked} style={{marginTop:2}}
-                    onChange={()=>setSwapSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
+                    onChange={()=>setSwapSelected(prev=>checked?prev.filter(id=>id!==o.fcs_id):[...prev,o.fcs_id])}/>
                   <div style={{flex:1}}>
                     <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.qty} pcs · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.qty_hari} pcs · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
                   </div>
                   {hasProgress&&(
                     <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
@@ -4213,7 +4203,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
 
           {(()=>{
-            const menitDipindah=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).reduce((s:number,o:any)=>s+Number(o.total_menit),0);
+            const menitDipindah=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.fcs_id)).reduce((s:number,o:any)=>s+Number(o.total_menit),0);
             const sisaSetelahSwap=swapModal.sisaKapasitas+menitDipindah;
             const cukupSetelahSwap=sisaSetelahSwap>=swapModal.menitDibutuhkan;
             return(
@@ -4228,20 +4218,24 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             <button onClick={()=>{setSwapModal(null);setSwapSelected([]);}}
               style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
             <button disabled={swapLoading||swapSelected.length===0} onClick={async()=>{
-              const itemsToMove=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,total_menit:o.total_menit}));
-              const menitDipindah=itemsToMove.reduce((s:number,it:any)=>s+Number(it.total_menit),0);
+              const menitDipindah=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.fcs_id)).reduce((s:number,o:any)=>s+Number(o.total_menit),0);
               const sisaSetelahSwap=swapModal.sisaKapasitas+menitDipindah;
               if(sisaSetelahSwap<swapModal.menitDibutuhkan){alert("Kapasitas masih belum cukup, pilih komponen tambahan");return;}
               setSwapLoading(true);
               const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
               const uname=user?.name||user?.nama||sess?.nama||"Admin";
-              const res=await executeSwapKomponenV2({
-                items:itemsToMove,
+              const res=await executeSwapKomponen({
+                fcsIdsToMove:swapSelected,
                 jenisPekerjaan:swapModal.proses,
                 tanggalAsal:swapModal.tanggal,
+                generatedBy:uname,
               });
               setSwapLoading(false);
               if(!res.success){alert("Gagal memindahkan: "+(res.error||"Error tidak diketahui"));return;}
+              const woNumbersAffected=[...new Set(swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.fcs_id)).map((o:any)=>o.wo_number))];
+              for(const wn of woNumbersAffected){
+                await syncFCSToRawSchedule(wn,swapModal.proses,uname);
+              }
               await activityLogService.insert({
                 user_name:uname,action:"SWAP KOMPONEN KAPASITAS",
                 description:"Pindahkan "+swapSelected.length+" komponen dari "+fmtDate(swapModal.tanggal)+" ("+swapModal.proses+") ke hari berikutnya untuk beri ruang komponen baru",
