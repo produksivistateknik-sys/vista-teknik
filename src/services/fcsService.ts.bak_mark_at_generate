@@ -254,20 +254,6 @@ export async function generateFCSSchedule(params: {
     const { error: insertError } = await supabase.from('fcs_schedule').insert(allItems)
     if (insertError) return { success: false, count: 0, error: insertError.message }
 
-    // Tandai panel ini sudah pernah generate FCS untuk proses ini (untuk filter dropdown Tambah Panel)
-    const { data: panelRow } = await supabase
-      .from('panels')
-      .select('synced_proses')
-      .eq('id', panelId)
-      .single()
-    const currentSynced: string[] = panelRow?.synced_proses || []
-    if (!currentSynced.includes(jenisPekerjaan)) {
-      await supabase
-        .from('panels')
-        .update({ synced_proses: [...currentSynced, jenisPekerjaan] })
-        .eq('id', panelId)
-    }
-
     if (tanggalHabis) {
       return {
         success: true, count: allItems.length, tanggalHabis: true,
@@ -433,6 +419,19 @@ export async function syncFCSToRawSchedule(
           .eq('panel_id', panelId)
           .eq('jenis_pekerjaan', jenisPekerjaan)
 
+        // Tandai bahwa panel+proses ini sudah pernah lewat FCS (untuk filter dropdown Tambah Panel)
+        const { data: panelRow } = await supabase
+          .from('panels')
+          .select('synced_proses')
+          .eq('id', panelId)
+          .single()
+        const currentSynced: string[] = panelRow?.synced_proses || []
+        if (!currentSynced.includes(jenisPekerjaan)) {
+          await supabase
+            .from('panels')
+            .update({ synced_proses: [...currentSynced, jenisPekerjaan] })
+            .eq('id', panelId)
+        }
       }
     }
 
