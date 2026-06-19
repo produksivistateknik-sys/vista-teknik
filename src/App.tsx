@@ -9,7 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2 } from './services/fcsService'
+import { generateFCSSchedule, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang } from './services/fcsService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -3213,6 +3213,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [addForm,setAddForm]=useState({woId:"",panelId:"",prioritas:"Sedang"});
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
+  const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
+  const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
   const [filterProses,setFilterProses]=useState("ALL");
   const [filterProyek,setFilterProyek]=useState("ALL");
   const [filterPanel,setFilterPanel]=useState("ALL");
@@ -3224,6 +3226,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [swapModal,setSwapModal]=useState<any>(null);
   const [swapSelected,setSwapSelected]=useState<string[]>([]);
   const [swapLoading,setSwapLoading]=useState(false);
+  const [swapOrangModal,setSwapOrangModal]=useState<any>(null);
+  const [swapOrangSelected,setSwapOrangSelected]=useState<string[]>([]);
+  const [swapOrangLoading,setSwapOrangLoading]=useState(false);
+  const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
 
   useEffect(()=>{
@@ -3504,10 +3510,32 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const addEntry=async()=>{
     if(!modalWp||!modalKomponen.length)return;
 
-    // Validasi kapasitas sebelum tambah (hanya jika data FCS process time tersedia)
     const tipePanelCek=livePanelForCell?.tipe;
     const prosesCek=rawRow?.proses;
-    if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"){
+
+    // Validasi kuota ORANG (khusus WIRING POWER/CONTROL)
+    if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
+      const orangDibutuhkan=modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0);
+      const cekOrang=await checkKuotaOrangDanKomponenSwap({
+        tanggal:cellModal.date,
+        jenisPekerjaan:prosesCek,
+        orangDibutuhkan,
+        excludeRawId:cellModal.rawId,
+      });
+      if(!cekOrang.cukup){
+        if(cekOrang.opsiSwap.length>0){
+          setSwapOrangModal({tanggal:cellModal.date,proses:prosesCek,orangDibutuhkan,...cekOrang});
+          setSwapOrangSelected([]);
+          return;
+        } else {
+          alert("Kuota orang "+prosesCek+" tanggal ini sudah penuh dan tidak ada komponen lain yang bisa dipindah.\n"+(cekOrang.error||""));
+          return;
+        }
+      }
+    }
+
+    // Validasi kapasitas MENIT (proses lain selain wiring, hanya jika data FCS process time tersedia)
+    if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"&&!PROSES_ORANG_RAW.includes(prosesCek)){
       let menitDibutuhkan=0;
       let adaDataProcessTime=false;
       for(const kode of modalKomponen){
@@ -3540,20 +3568,27 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     let updatedRow=null;
     let oldKomp:string[]=[];
     let isEdit=false;
+    const isProsesOrangRow=prosesCek&&PROSES_ORANG_RAW.includes(prosesCek);
     setRawData(prev=>prev.map(r=>{
       if(r.id!==cellModal.rawId)return r;
       const newSch={...r.schedule};
       const existing=newSch[cellModal.date]||[];
       const wpEntry=existing.find(e=>e.wp===modalWp);
       let updated;
-      if(wpEntry){oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});}
-      else{updated=[...existing,{wp:modalWp,komponen:modalKomponen}];}
+      if(wpEntry){
+        oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+        const newOrangMap=isProsesOrangRow?{...(wpEntry.orangPerKomponen||{}),...modalOrangPerKomponen}:wpEntry.orangPerKomponen;
+        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
+      }
+      else{
+        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
+      }
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
-    setModalWp('');setModalKomponen([]);
+    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});
     const isBusbarRow=rawRow?.proses==="BUSBAR";
     if(updatedRow){
       const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'};
@@ -4078,13 +4113,45 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             {modalWp&&wpItems.length>0&&(
               <>
                 <Lbl>Pilih Komponen {modalWp}</Lbl>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
-                  {wpItems.map(it=>{
-                    const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
-                    return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>{sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></button>);
-                  })}
-                </div>
-                <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>+ Tambah {modalWp} ({modalKomponen.length} komponen)</Btn>
+                {PROSES_ORANG_RAW.includes(rawRow?.proses||"")?(
+                  <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14}}>
+                    {wpItems.map(it=>{
+                      const sel=modalKomponen.includes(it.kode);
+                      const kl=livePanelForCell?.checklist?.[it.kode];
+                      const progress=kl?.progress?.[rawRow?.proses||""]||0;
+                      return(
+                        <label key={it.kode} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",background:sel?"#eff6ff":"#fff"}}>
+                          <input type="checkbox" checked={sel} onChange={()=>{
+                            if(sel){setModalKomponen(prev=>prev.filter(k=>k!==it.kode));}
+                            else{setModalKomponen(prev=>[...prev,it.kode]);setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));}
+                          }}/>
+                          <span style={{flex:1,fontSize:12,color:"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
+                          <span style={{fontSize:10,color:"#94a3b8"}}>progress {progress}%</span>
+                          {sel&&(
+                            <div style={{display:"flex",alignItems:"center",gap:4}}>
+                              <i className="ti ti-users" style={{fontSize:13,color:"#1d4ed8"}}/>
+                              <input type="number" min="1" step="1" value={modalOrangPerKomponen[it.kode]||1}
+                                onChange={e=>setModalOrangPerKomponen(prev=>({...prev,[it.kode]:parseInt(e.target.value)||1}))}
+                                style={{width:48,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #93c5fd",fontSize:12}}/>
+                            </div>
+                          )}
+                        </label>
+                      );
+                    })}
+                  </div>
+                ):(
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
+                    {wpItems.map(it=>{
+                      const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
+                      return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>{sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></button>);
+                    })}
+                  </div>
+                )}
+                <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
+                  {PROSES_ORANG_RAW.includes(rawRow?.proses||"")
+                    ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0)+" orang)"
+                    :"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen)"}
+                </Btn>
               </>
             )}
           </>)}
