@@ -6100,11 +6100,9 @@ function StokMonitoringTab({user,activityLog}:any){
 }
 
 function KapasitasPekerjaanTab(){
-  const [kapasitasList,setKapasitasList]=useState<any[]>([]);
   const [processList,setProcessList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   const [activeTab,setActiveTab]=useState("processtime");
-  const [editKap,setEditKap]=useState<any>(null);
   const [editProc,setEditProc]=useState<any>(null);
   const [showAddProc,setShowAddProc]=useState(false);
   const [procForm,setProcForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
@@ -6214,25 +6212,9 @@ function KapasitasPekerjaanTab(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const [{data:k},{data:p}]=await Promise.all([
-      supabase.from("fcs_kapasitas_pekerjaan").select("*").order("id"),
-      supabase.from("fcs_process_time").select("*").order("tipe_panel,wp,kode_komponen"),
-    ]);
-    setKapasitasList(k??[]);
+    const{data:p}=await supabase.from("fcs_process_time").select("*").order("tipe_panel,wp,kode_komponen");
     setProcessList(p??[]);
     setLoading(false);
-  };
-
-  const saveKapasitas=async(item:any)=>{
-    const{error}=await supabase.from("fcs_kapasitas_pekerjaan").update({
-      kapasitas_menit_hari:Number(item.kapasitas_menit_hari),
-      hari_kerja:item.hari_kerja,
-      keterangan:item.keterangan,
-    }).eq("id",item.id);
-    if(!error){
-      setKapasitasList(prev=>prev.map(k=>k.id===item.id?{...k,...item}:k));
-      setEditKap(null);
-    }
   };
 
   const saveProcess=async()=>{
