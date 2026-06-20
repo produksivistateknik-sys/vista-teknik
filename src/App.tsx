@@ -3214,6 +3214,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
   const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
+  const [modalRentangTanggal,setModalRentangTanggal]=useState<Record<string,{mulai:string,selesai:string}>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
   const [filterProses,setFilterProses]=useState<string[]>([]);
   const toggleFilterProses=(pr:string)=>{
@@ -3590,17 +3591,18 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       if(wpEntry){
         oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
         const newOrangMap=isProsesOrangRow?{...(wpEntry.orangPerKomponen||{}),...modalOrangPerKomponen}:wpEntry.orangPerKomponen;
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
+        const newRentangMap=isProsesOrangRow?{...(wpEntry.rentangTanggal||{}),...modalRentangTanggal}:wpEntry.rentangTanggal;
+        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap,rentangTanggal:newRentangMap}:{})});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
+        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen,rentangTanggal:modalRentangTanggal}:{})}];
       }
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
-    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});
+    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});setModalRentangTanggal({});
     const isBusbarRow=rawRow?.proses==="BUSBAR";
     if(updatedRow){
       const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'};
@@ -4142,22 +4144,40 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       const kl=livePanelForCell?.checklist?.[it.kode];
                       const progress=kl?.progress?.[rawRow?.proses||""]||0;
                       return(
-                        <label key={it.kode} style={{display:"flex",alignItems:"center",gap:10,border:`1px solid ${sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",cursor:"pointer",background:sel?"#eff6ff":"#fff"}}>
-                          <input type="checkbox" checked={sel} onChange={()=>{
-                            if(sel){setModalKomponen(prev=>prev.filter(k=>k!==it.kode));}
-                            else{setModalKomponen(prev=>[...prev,it.kode]);setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));}
-                          }}/>
-                          <span style={{flex:1,fontSize:12,color:"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
-                          <span style={{fontSize:10,color:"#94a3b8"}}>progress {progress}%</span>
+                        <div key={it.kode} style={{border:`1px solid ${sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",background:sel?"#eff6ff":"#fff"}}>
+                          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
+                            <input type="checkbox" checked={sel} onChange={()=>{
+                              if(sel){setModalKomponen(prev=>prev.filter(k=>k!==it.kode));}
+                              else{
+                                setModalKomponen(prev=>[...prev,it.kode]);
+                                setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));
+                                setModalRentangTanggal(prev=>({...prev,[it.kode]:prev[it.kode]||{mulai:cellModal.date,selesai:cellModal.date}}));
+                              }
+                            }}/>
+                            <span style={{flex:1,fontSize:12,color:"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
+                            <span style={{fontSize:10,color:"#94a3b8"}}>progress {progress}%</span>
+                            {sel&&(
+                              <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                <i className="ti ti-users" style={{fontSize:13,color:"#1d4ed8"}}/>
+                                <input type="number" min="1" step="1" value={modalOrangPerKomponen[it.kode]||1}
+                                  onChange={e=>setModalOrangPerKomponen(prev=>({...prev,[it.kode]:parseInt(e.target.value)||1}))}
+                                  style={{width:48,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #93c5fd",fontSize:12}}/>
+                              </div>
+                            )}
+                          </label>
                           {sel&&(
-                            <div style={{display:"flex",alignItems:"center",gap:4}}>
-                              <i className="ti ti-users" style={{fontSize:13,color:"#1d4ed8"}}/>
-                              <input type="number" min="1" step="1" value={modalOrangPerKomponen[it.kode]||1}
-                                onChange={e=>setModalOrangPerKomponen(prev=>({...prev,[it.kode]:parseInt(e.target.value)||1}))}
-                                style={{width:48,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #93c5fd",fontSize:12}}/>
+                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingLeft:26}}>
+                              <i className="ti ti-calendar-time" style={{fontSize:13,color:"#64748b"}}/>
+                              <input type="date" value={modalRentangTanggal[it.kode]?.mulai||cellModal.date}
+                                onChange={e=>setModalRentangTanggal(prev=>({...prev,[it.kode]:{mulai:e.target.value,selesai:prev[it.kode]?.selesai||e.target.value}}))}
+                                style={{fontSize:11,padding:"3px 6px",borderRadius:6,border:"1px solid #cbd5e1"}}/>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>s/d</span>
+                              <input type="date" value={modalRentangTanggal[it.kode]?.selesai||cellModal.date}
+                                onChange={e=>setModalRentangTanggal(prev=>({...prev,[it.kode]:{mulai:prev[it.kode]?.mulai||cellModal.date,selesai:e.target.value}}))}
+                                style={{fontSize:11,padding:"3px 6px",borderRadius:6,border:"1px solid #cbd5e1"}}/>
                             </div>
                           )}
-                        </label>
+                        </div>
                       );
                     })}
                   </div>
