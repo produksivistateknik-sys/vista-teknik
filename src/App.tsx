@@ -3216,6 +3216,23 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
   const [modalRentangTanggal,setModalRentangTanggal]=useState<Record<string,{mulai:string,selesai:string}>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
+
+  const getRentangInfoUntukTanggal=(row:any,tanggal:string)=>{
+    if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+    for(const entries of Object.values(row.schedule||{}) as any[]){
+      for(const entry of entries){
+        if(!entry.rentangTanggal)continue;
+        for(const kode of entry.komponen||[]){
+          const rentang=entry.rentangTanggal[kode];
+          if(!rentang)continue;
+          if(tanggal>=rentang.mulai&&tanggal<=rentang.selesai){
+            return{wp:entry.wp,kode,mulai:rentang.mulai,selesai:rentang.selesai,isStart:tanggal===rentang.mulai};
+          }
+        }
+      }
+    }
+    return null;
+  };
   const [filterProses,setFilterProses]=useState<string[]>([]);
   const toggleFilterProses=(pr:string)=>{
     setFilterProses(prev=>prev.includes(pr)?prev.filter(p=>p!==pr):[...prev,pr]);
@@ -3938,24 +3955,31 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       </select>
                     </td>
                     {days.map(d=>{
+                      const rentangInfo=getRentangInfoUntukTanggal(row,d);
+                      if(rentangInfo&&!rentangInfo.isStart)return null;
+                      let colSpanCount=1;
+                      if(rentangInfo&&rentangInfo.isStart){
+                        colSpanCount=days.filter(dd=>dd>=rentangInfo.mulai&&dd<=rentangInfo.selesai).length;
+                      }
                       const entries=row.schedule?.[d]||[];
                       const busbarEntries:string[]=row.busbar_schedule?.[d]||[];
                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
                       const isSelDate=selDate===d;
+                      const isDraggableEntry=!rentangInfo;
                       return(
-                        <td key={d} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
                           {entries.length>0?(
-                            <div draggable onDragStart={e=>onDragStart(e,row.id,d,entries)}
+                            <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
-                              style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:"grab",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
+                              style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span>{rentangInfo&&<span style={{fontSize:8,opacity:.7,marginLeft:2}}>📅{rentangInfo.mulai.slice(8,10)}-{rentangInfo.selesai.slice(8,10)}</span>}</div>);
                               })}
                             </div>
                           ):(
