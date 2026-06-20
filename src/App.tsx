@@ -3219,30 +3219,18 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number)=>{
     const aktif=tanggal>=komp.mulai&&tanggal<=komp.selesai;
-    if(!aktif){
-      return(
-        <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
-          style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff"}}>
-          <span style={{color:"#e2e8f0",fontSize:14}}>+</span>
-        </td>
-      );
-    }
-    const isUjungKiri=tanggal===komp.mulai;
-    const isUjungKanan=tanggal===komp.selesai;
+    const wc=WP_COLOR[komp.wp]||"#64748b";
     return(
       <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
-        style={{borderBottom:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:"#fff",
-          borderRight:isUjungKanan?"1px solid #f1f5f9":"none"}}>
-        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3,padding:"5px 2px",minHeight:26,
-          background:"#bfdbfe",
-          borderTop:"2px solid #3b82f6",borderBottom:"2px solid #3b82f6",
-          borderLeft:isUjungKiri?"2px solid #3b82f6":"none",
-          borderRight:isUjungKanan?"2px solid #3b82f6":"none",
-          borderTopLeftRadius:isUjungKiri?6:0,borderBottomLeftRadius:isUjungKiri?6:0,
-          borderTopRightRadius:isUjungKanan?6:0,borderBottomRightRadius:isUjungKanan?6:0}}>
-          {isUjungKiri&&(<span style={{fontSize:9,fontWeight:700,color:"#1e3a8a"}}>{komp.jumlahOrang}<i className="ti ti-users" style={{fontSize:9,marginLeft:2}}/></span>)}
-          {isUjungKanan&&(<i className="ti ti-flag-filled" style={{fontSize:11,color:"#1d4ed8"}}/>)}
-        </div>
+        style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff"}}>
+        {aktif?(
+          <div style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"2px 6px"}}>
+            <span style={{fontSize:9,fontWeight:700}}>{komp.wp}</span>
+            <span style={{fontSize:8,display:"flex",alignItems:"center",gap:2}}><i className="ti ti-users" style={{fontSize:8}}/>{komp.jumlahOrang}</span>
+          </div>
+        ):(
+          <span style={{color:"#e2e8f0",fontSize:14}}>+</span>
+        )}
       </td>
     );
   };
