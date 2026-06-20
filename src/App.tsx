@@ -3972,6 +3972,25 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
                           {entries.length>0?(
+                            rentangInfo?(
+                              <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
+                                style={{display:"flex",flexDirection:"column" as const,gap:4,padding:"8px 10px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:48}}>
+                                {entries.map(e=>(
+                                  <div key={e.wp} style={{display:"flex",flexDirection:"column" as const,gap:2}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap" as const}}>
+                                      <span style={{background:"#1d4ed8",color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.wp}</span>
+                                      {e.komponen.map((kode:string)=>(
+                                        <span key={kode} style={{fontSize:10,fontWeight:600,color:"#1e3a8a"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
+                                      ))}
+                                    </div>
+                                    <div style={{fontSize:9,color:"#3b82f6",display:"flex",alignItems:"center",gap:3}}>
+                                      <i className="ti ti-calendar" style={{fontSize:11}}/>
+                                      {fmtDate(rentangInfo.mulai)} — {fmtDate(rentangInfo.selesai)}
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            ):(
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
@@ -3979,9 +3998,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span>{rentangInfo&&<span style={{fontSize:8,opacity:.7,marginLeft:2}}>📅{rentangInfo.mulai.slice(8,10)}-{rentangInfo.selesai.slice(8,10)}</span>}</div>);
+                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
+                            )
                           ):(
                             <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
