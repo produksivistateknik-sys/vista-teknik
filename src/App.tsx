@@ -3219,6 +3219,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const getRentangInfoUntukTanggal=(row:any,tanggal:string)=>{
     if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+    // Cari SEMUA komponen (lintas WP) yang rentangnya mencakup tanggal ini
+    const semuaKomponenAktif:any[]=[];
     for(const entries of Object.values(row.schedule||{}) as any[]){
       for(const entry of entries){
         if(!entry.rentangTanggal)continue;
@@ -3226,12 +3228,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           const rentang=entry.rentangTanggal[kode];
           if(!rentang)continue;
           if(tanggal>=rentang.mulai&&tanggal<=rentang.selesai){
-            return{wp:entry.wp,kode,mulai:rentang.mulai,selesai:rentang.selesai,isStart:tanggal===rentang.mulai};
+            semuaKomponenAktif.push({wp:entry.wp,kode,mulai:rentang.mulai,selesai:rentang.selesai});
           }
         }
       }
     }
-    return null;
+    if(semuaKomponenAktif.length===0)return null;
+    // Union: cari mulai paling awal dan selesai paling akhir dari SEMUA komponen yg overlap di tanggal ini
+    const unionMulai=semuaKomponenAktif.reduce((min,k)=>k.mulai<min?k.mulai:min,semuaKomponenAktif[0].mulai);
+    const unionSelesai=semuaKomponenAktif.reduce((max,k)=>k.selesai>max?k.selesai:max,semuaKomponenAktif[0].selesai);
+    return{mulai:unionMulai,selesai:unionSelesai,isStart:tanggal===unionMulai,komponenList:semuaKomponenAktif};
   };
   const [filterProses,setFilterProses]=useState<string[]>([]);
   const toggleFilterProses=(pr:string)=>{
@@ -3974,18 +3980,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           {entries.length>0?(
                             rentangInfo?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
-                                style={{display:"flex",flexDirection:"column" as const,gap:4,padding:"8px 10px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:48}}>
-                                {entries.map(e=>(
-                                  <div key={e.wp} style={{display:"flex",flexDirection:"column" as const,gap:2}}>
+                                style={{display:"flex",flexDirection:"column" as const,gap:6,padding:"8px 10px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:48}}>
+                                {rentangInfo.komponenList.map((k:any,ki:number)=>(
+                                  <div key={k.wp+k.kode+ki} style={{display:"flex",flexDirection:"column" as const,gap:2,paddingBottom:ki<rentangInfo.komponenList.length-1?5:0,borderBottom:ki<rentangInfo.komponenList.length-1?"1px solid #93c5fd":"none"}}>
                                     <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap" as const}}>
-                                      <span style={{background:"#1d4ed8",color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{e.wp}</span>
-                                      {e.komponen.map((kode:string)=>(
-                                        <span key={kode} style={{fontSize:10,fontWeight:600,color:"#1e3a8a"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
-                                      ))}
+                                      <span style={{background:"#1d4ed8",color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{k.wp}</span>
+                                      <span style={{fontSize:10,fontWeight:600,color:"#1e3a8a"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,k.kode)}</span>
                                     </div>
                                     <div style={{fontSize:9,color:"#3b82f6",display:"flex",alignItems:"center",gap:3}}>
                                       <i className="ti ti-calendar" style={{fontSize:11}}/>
-                                      {fmtDate(rentangInfo.mulai)} — {fmtDate(rentangInfo.selesai)}
+                                      {fmtDate(k.mulai)} — {fmtDate(k.selesai)}
                                     </div>
                                   </div>
                                 ))}
