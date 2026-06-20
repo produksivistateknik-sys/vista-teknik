@@ -3215,7 +3215,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalKomponen,setModalKomponen]=useState([]);
   const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
-  const [filterProses,setFilterProses]=useState("ALL");
+  const [filterProses,setFilterProses]=useState<string[]>([]);
+  const toggleFilterProses=(pr:string)=>{
+    setFilterProses(prev=>prev.includes(pr)?prev.filter(p=>p!==pr):[...prev,pr]);
+  };
   const [filterProyek,setFilterProyek]=useState("ALL");
   const [filterPanel,setFilterPanel]=useState("ALL");
   const [expandedTasks,setExpandedTasks]=useState({});
@@ -3811,18 +3814,18 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       </div>
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
         <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
-        <button onClick={()=>setFilterProses("ALL")} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:filterProses==="ALL"?"#1d4ed8":"#fff",color:filterProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
-        {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses===pr;return(<button key={pr} onClick={()=>setFilterProses(isSel?"ALL":pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
+        <button onClick={()=>setFilterProses([])} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses.length===0?"#1d4ed8":"#e2e8f0"}`,background:filterProses.length===0?"#1d4ed8":"#fff",color:filterProses.length===0?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
+        {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
       {fcsKapasitas.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
-            ⚡ Capacity Utilization {filterProses!=="ALL"?"— "+filterProses:"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+            ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
-              const prosesToShow=filterProses==="ALL"?ALL_PROSES:[filterProses];
+              const prosesToShow=filterProses.length===0?ALL_PROSES:filterProses;
               let terpakaiTotal=0;let kapasitasTotal=0;let adaOverrideCount=0;
               prosesToShow.forEach((pr:string)=>{
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
@@ -3889,7 +3892,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             {(()=>{
               const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
               const visibleRows=rawData.filter(row=>
-                (filterProses==="ALL"||row.proses===filterProses)&&
+                (filterProses.length===0||filterProses.includes(row.proses))&&
                 (filterProyek==="ALL"||row.proyek===filterProyek)&&
                 (filterPanel==="ALL"||row.panel===filterPanel)
               ).sort((a,b)=>{
