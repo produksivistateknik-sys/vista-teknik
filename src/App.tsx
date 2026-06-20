@@ -3902,6 +3902,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 if(aId!==bId)return aId-bId;
                 return 0;
               });
+              const panelRowCount:Record<string,number>={};
+              visibleRows.forEach(row=>{
+                const pid=String(row.panel_id||row.panelId);
+                panelRowCount[pid]=(panelRowCount[pid]||0)+1;
+              });
               return visibleRows.map((row,ri)=>{
                 const pc=PROSES_COLOR[row.proses]||"#64748b";
                 const priColor=PRIORITAS_COLOR[row.prioritas]||"#64748b";
@@ -3912,10 +3917,15 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 const isNewPanel=!prevRow||prevPanelId!==curPanelId;
                 const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
                 const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"2px 4px",verticalAlign:"middle",borderTop:panelTopBorder};
+                const rowSpanCount=panelRowCount[String(curPanelId)]||1;
                 return(
                   <tr key={row.id}>
-                    <td style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:rBg,minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{row.proyek}</td>
-                    <td style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:rBg,minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3}}>{row.panel}</td>
+                    {isNewPanel&&(
+                      <>
+                        <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:"#fff",minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center" as const,verticalAlign:"middle"}}>{row.proyek}</td>
+                        <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>{row.panel}</td>
+                      </>
+                    )}
                     <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center",background:rBg}}>
                       <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap"}}>{row.proses}</span>
                     </td>
