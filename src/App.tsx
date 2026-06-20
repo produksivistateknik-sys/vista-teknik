@@ -3521,6 +3521,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         jenisPekerjaan:prosesCek,
         orangDibutuhkan,
         excludeRawId:cellModal.rawId,
+        excludeWp:modalWp,
       });
       if(!cekOrang.cukup){
         if(cekOrang.kuotaHari===0&&cekOrang.opsiSwap.length===0){
@@ -3549,6 +3550,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           jenisPekerjaan:prosesCek,
           menitDibutuhkan,
           excludeRawId:cellModal.rawId,
+          excludeWp:modalWp,
         });
         if(!cek.cukup){
           if(cek.opsiSwap.length>0){

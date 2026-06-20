@@ -473,6 +473,7 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
   jenisPekerjaan: string
   menitDibutuhkan: number
   excludeRawId?: number
+  excludeWp?: string
 }): Promise<{
   cukup: boolean
   kapasitasHari: number
@@ -534,12 +535,12 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
   const opsiSwap: KomponenSwapOptionV2[] = []
 
   for (const row of rawRows || []) {
-    if (params.excludeRawId && row.id === params.excludeRawId) continue
     const entries = row.schedule?.[tanggal] || []
     const panel = panelMap[row.panel_id]
     if (!panel) continue
 
     for (const entry of entries) {
+      if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
       for (const kode of (entry.komponen || [])) {
         const qty = panel.checklist?.[kode]?.qty || 0
         const pt = ptMap[`${panel.tipe}|${kode}`]
@@ -723,6 +724,7 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
   jenisPekerjaan: string
   orangDibutuhkan: number
   excludeRawId?: number
+  excludeWp?: string
 }): Promise<{
   cukup: boolean
   kuotaHari: number
@@ -774,12 +776,12 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
   const opsiSwap: KomponenSwapOptionOrang[] = []
 
   for (const row of rawRows || []) {
-    if (params.excludeRawId && row.id === params.excludeRawId) continue
     const entries = row.schedule?.[tanggal] || []
     const panel = panelMap[row.panel_id]
     if (!panel) continue
 
     for (const entry of entries) {
+      if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
         const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
