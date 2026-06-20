@@ -8108,6 +8108,8 @@ function FCSScheduleTab({woData,user}:any){
         return{woNum:wn,selesaiFCS:sf,target:tg,status:st,selisih:sl,proyek:w?.proyek||wn};
       });
       setDeliverySim(sim);
+    } else {
+      setDeliverySim([]);
     }
     setLoading(false);
   };
