@@ -3217,15 +3217,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalRentangTanggal,setModalRentangTanggal]=useState<Record<string,{mulai:string,selesai:string}>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
-  const renderKotakWiring=(komp:any,tanggal:string,rowId:number)=>{
+  const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
     const aktif=tanggal>=komp.mulai&&tanggal<=komp.selesai;
     const wc=WP_COLOR[komp.wp]||"#64748b";
+    const namaKomp=getNamaKomponenDariKode(panelId,komp.kode);
     return(
       <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
         style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff"}}>
         {aktif?(
-          <div style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"2px 6px"}}>
-            <span style={{fontSize:9,fontWeight:700}}>{komp.wp}</span>
+          <div style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"2px 6px",maxWidth:"100%"}}>
+            <span style={{fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:64}}>{namaKomp}</span>
             <span style={{fontSize:8,display:"flex",alignItems:"center",gap:2}}><i className="ti ti-users" style={{fontSize:8}}/>{komp.jumlahOrang}</span>
           </div>
         ):(
