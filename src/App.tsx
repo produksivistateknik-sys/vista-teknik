@@ -3251,6 +3251,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
+  const getNamaKomponenDariKode=(panelId:number,kode:string):string=>{
+    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+    const tipe=panelData?.tipe;
+    if(!tipe)return kode;
+    const item=(PANEL_TYPES as any)[tipe]?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+    return item?.nama||kode;
+  };
+
   const getMenitPerPcs=(tipePanel:string,proses:string,kode:string):number=>{
     const pt=processTimeList.find((p:any)=>p.tipe_panel===tipePanel&&p.jenis_pekerjaan===proses&&p.kode_komponen===kode);
     return pt?Number(pt.menit_per_pcs):0;
@@ -4362,7 +4370,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       <input type="checkbox" checked={checked} style={{marginTop:2}}
                         onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
                       <div style={{flex:1}}>
-                        <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
+                        <div style={{fontSize:12,color:"#1e293b"}}>{getNamaKomponenDariKode(o.panel_id,o.kode_komponen)}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({o.kode_komponen})</span></div>
                         <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.jumlah_orang} orang · progress {o.progress}%</div>
                       </div>
                       {hasProgress&&(
