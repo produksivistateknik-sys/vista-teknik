@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect, useRef } from 'react';
+﻿import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
 import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
@@ -3994,6 +3994,41 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
                 const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"2px 4px",verticalAlign:"middle",borderTop:panelTopBorder};
                 const rowSpanCount=panelRowCount[String(curPanelId)]||1;
+                const subBarisKomponen=getSemuaKomponenSebagaiSubBaris(row);
+
+                if(subBarisKomponen&&subBarisKomponen.length>0){
+                  return(
+                    <Fragment key={row.id}>
+                      {subBarisKomponen.map((komp:any,ki:number)=>(
+                        <tr key={row.id+"-"+komp.wp+"-"+komp.kode}>
+                          {isNewPanel&&ki===0&&(
+                            <>
+                              <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:"#fff",minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center" as const,verticalAlign:"middle"}}>{row.proyek}</td>
+                              <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>{row.panel}</td>
+                            </>
+                          )}
+                          <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff"}}>
+                            <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
+                            <div style={{fontSize:8,color:"#94a3b8",marginTop:2}}>{komp.wp} {getNamaKomponenDariKode(row.panel_id||row.panelId,komp.kode)}</div>
+                          </td>
+                          <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff"}}>
+                            <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+                              style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
+                              {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+                            </select>
+                          </td>
+                          {days.map(d=>renderKotakWiring(komp,d,row.id))}
+                          <td style={{...td,textAlign:"center" as const,position:"sticky",right:0,zIndex:2,background:"#fff"}}>
+                            {ki===0&&(
+                              <button onClick={async()=>{const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";await removeRaw(row.id);await activityLogService.insert({user_name:uname,action:"HAPUS RAW SCHEDULE",description:"Hapus proses "+row.proses+" - "+row.panel+" ("+row.proyek+")",module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||""});setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </Fragment>
+                  );
+                }
+
                 return(
                   <tr key={row.id}>
                     {isNewPanel&&(
