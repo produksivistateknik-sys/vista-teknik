@@ -3995,16 +3995,20 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>{row.panel}</td>
                             </>
                           )}
-                          <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff"}}>
-                            <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
-                            <div style={{fontSize:8,color:"#94a3b8",marginTop:2}}>{komp.wp} {getNamaKomponenDariKode(row.panel_id||row.panelId,komp.kode)}</div>
-                          </td>
-                          <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff"}}>
-                            <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
-                              style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
-                              {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
-                            </select>
-                          </td>
+                          {ki===0&&(
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"middle"}}>
+                              <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
+                            </td>
+                          )}
+                          <td style={{...td,fontSize:8,color:"#64748b",textAlign:"left" as const,padding:"2px 6px"}}>{komp.wp} {getNamaKomponenDariKode(row.panel_id||row.panelId,komp.kode)}</td>
+                          {ki===0&&(
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"middle"}}>
+                              <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+                                style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
+                                {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+                              </select>
+                            </td>
+                          )}
                           {days.map(d=>renderKotakWiring(komp,d,row.id))}
                           <td style={{...td,textAlign:"center" as const,position:"sticky",right:0,zIndex:2,background:"#fff"}}>
                             {ki===0&&(
