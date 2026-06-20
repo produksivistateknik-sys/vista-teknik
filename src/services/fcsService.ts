@@ -767,10 +767,18 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
   const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
   const { data: panelRows } = await supabase
     .from('panels')
-    .select('id, nama, checklist')
+    .select('id, nama, tipe, checklist')
     .in('id', panelIds.length > 0 ? panelIds : [-1])
   const panelMap: Record<number, any> = {}
   ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
+
+  const { data: ptData } = await supabase
+    .from('fcs_process_time')
+    .select('tipe_panel, kode_komponen, nama_komponen')
+    .eq('jenis_pekerjaan', jenisPekerjaan)
+    .eq('is_active', true)
+  const ptNamaMap: Record<string, string> = {}
+  ;(ptData || []).forEach((pt: any) => { ptNamaMap[`${pt.tipe_panel}|${pt.kode_komponen}`] = pt.nama_komponen })
 
   let terpakaiSaatIni = 0
   const opsiSwap: KomponenSwapOptionOrang[] = []
@@ -796,7 +804,7 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
           panel_nama: panel.nama,
           wp: entry.wp,
           kode_komponen: kode,
-          nama_komponen: kode,
+          nama_komponen: ptNamaMap[`${panel.tipe}|${kode}`] || kode,
           jumlah_orang: orang,
           progress,
         })
