@@ -3223,11 +3223,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const namaKomp=getNamaKomponenDariKode(panelId,komp.kode);
     return(
       <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
-        style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff"}}>
+        style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"1px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff",height:22}}>
         {aktif?(
-          <div style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"2px 6px",maxWidth:"100%"}}>
-            <span style={{fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:64}}>{namaKomp}</span>
-            <span style={{fontSize:8,display:"flex",alignItems:"center",gap:2}}><i className="ti ti-users" style={{fontSize:8}}/>{komp.jumlahOrang}</span>
+          <div style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+            <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:60}}>{namaKomp}</span>
+            <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{komp.jumlahOrang}</span>
           </div>
         ):(
           <span style={{color:"#e2e8f0",fontSize:14}}>+</span>
@@ -3997,13 +3997,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                             </>
                           )}
                           {ki===0&&(
-                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"middle"}}>
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
                               <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
                             </td>
                           )}
                           <td style={{...td,fontSize:8,color:"#64748b",textAlign:"left" as const,padding:"2px 6px"}}>{komp.wp} {getNamaKomponenDariKode(row.panel_id||row.panelId,komp.kode)}</td>
                           {ki===0&&(
-                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"middle"}}>
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
                               <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                                 style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
                                 {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
