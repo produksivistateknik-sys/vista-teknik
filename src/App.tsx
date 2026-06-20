@@ -3217,6 +3217,55 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalRentangTanggal,setModalRentangTanggal]=useState<Record<string,{mulai:string,selesai:string}>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
+  const renderKotakWiring=(komp:any,tanggal:string,rowId:number)=>{
+    const aktif=tanggal>=komp.mulai&&tanggal<=komp.selesai;
+    if(!aktif){
+      return(
+        <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
+          style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff"}}>
+          <span style={{color:"#e2e8f0",fontSize:14}}>+</span>
+        </td>
+      );
+    }
+    const isUjungKiri=tanggal===komp.mulai;
+    const isUjungKanan=tanggal===komp.selesai;
+    return(
+      <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
+        style={{borderBottom:"1px solid #f1f5f9",padding:"2px",textAlign:"center" as const,cursor:"pointer",background:"#fff",
+          borderRight:isUjungKanan?"1px solid #f1f5f9":"none"}}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:3,padding:"5px 2px",minHeight:26,
+          background:"#bfdbfe",
+          borderTop:"2px solid #3b82f6",borderBottom:"2px solid #3b82f6",
+          borderLeft:isUjungKiri?"2px solid #3b82f6":"none",
+          borderRight:isUjungKanan?"2px solid #3b82f6":"none",
+          borderTopLeftRadius:isUjungKiri?6:0,borderBottomLeftRadius:isUjungKiri?6:0,
+          borderTopRightRadius:isUjungKanan?6:0,borderBottomRightRadius:isUjungKanan?6:0}}>
+          {isUjungKiri&&(<span style={{fontSize:9,fontWeight:700,color:"#1e3a8a"}}>{komp.jumlahOrang}<i className="ti ti-users" style={{fontSize:9,marginLeft:2}}/></span>)}
+          {isUjungKanan&&(<i className="ti ti-flag-filled" style={{fontSize:11,color:"#1d4ed8"}}/>)}
+        </div>
+      </td>
+    );
+  };
+
+  const getSemuaKomponenSebagaiSubBaris=(row:any):any[]|null=>{
+    if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+    const semuaKomponen:any[]=[];
+    for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+      for(const entry of entries){
+        for(const kode of entry.komponen||[]){
+          const sudahAda=semuaKomponen.some(k=>k.wp===entry.wp&&k.kode===kode);
+          if(sudahAda)continue;
+          const rentang=entry.rentangTanggal?.[kode];
+          const jmlOrang=entry.orangPerKomponen?.[kode]||1;
+          semuaKomponen.push({wp:entry.wp,kode,mulai:rentang?.mulai||tglKey,selesai:rentang?.selesai||tglKey,jumlahOrang:jmlOrang});
+        }
+      }
+    }
+    if(semuaKomponen.length===0)return null;
+    semuaKomponen.sort((a,b)=>a.mulai.localeCompare(b.mulai)||a.wp.localeCompare(b.wp));
+    return semuaKomponen;
+  };
+
   const getRentangInfoUntukTanggal=(row:any,tanggal:string)=>{
     if(!PROSES_ORANG_RAW.includes(row.proses))return null;
     // Cari SEMUA komponen (lintas WP) yang rentangnya mencakup tanggal ini
@@ -3930,7 +3979,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               const panelRowCount:Record<string,number>={};
               visibleRows.forEach(row=>{
                 const pid=String(row.panel_id||row.panelId);
-                panelRowCount[pid]=(panelRowCount[pid]||0)+1;
+                const subBarisRow=getSemuaKomponenSebagaiSubBaris(row);
+                const jmlBarisFisik=subBarisRow&&subBarisRow.length>0?subBarisRow.length:1;
+                panelRowCount[pid]=(panelRowCount[pid]||0)+jmlBarisFisik;
               });
               return visibleRows.map((row,ri)=>{
                 const pc=PROSES_COLOR[row.proses]||"#64748b";
