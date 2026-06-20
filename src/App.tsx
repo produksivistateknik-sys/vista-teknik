@@ -3523,14 +3523,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         excludeRawId:cellModal.rawId,
       });
       if(!cekOrang.cukup){
-        if(cekOrang.opsiSwap.length>0){
-          setSwapOrangModal({tanggal:cellModal.date,proses:prosesCek,orangDibutuhkan,...cekOrang});
-          setSwapOrangSelected([]);
-          return;
-        } else {
-          alert("Kuota orang "+prosesCek+" tanggal ini sudah penuh dan tidak ada komponen lain yang bisa dipindah.\n"+(cekOrang.error||""));
+        if(cekOrang.kuotaHari===0&&cekOrang.opsiSwap.length===0){
+          alert("Kuota orang "+prosesCek+" tanggal ini belum diatur sama sekali.\n"+(cekOrang.error||"Silakan atur Override Tanggal dulu."));
           return;
         }
+        setSwapOrangModal({tanggal:cellModal.date,proses:prosesCek,orangDibutuhkan,...cekOrang});
+        setSwapOrangSelected([]);
+        return;
       }
     }
 
@@ -4336,10 +4335,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
 
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <button onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"geser"}))}
-              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="geser"?"#1d4ed8":"#e2e8f0"}`,background:swapOrangModal.pilihan==="geser"?"#eff6ff":"#fff",cursor:"pointer"}}>
+            <button disabled={swapOrangModal.opsiSwap.length===0} onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"geser"}))}
+              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="geser"?"#1d4ed8":"#e2e8f0"}`,background:swapOrangModal.opsiSwap.length===0?"#f8fafc":swapOrangModal.pilihan==="geser"?"#eff6ff":"#fff",cursor:swapOrangModal.opsiSwap.length===0?"not-allowed":"pointer",opacity:swapOrangModal.opsiSwap.length===0?0.5:1}}>
               <div style={{fontWeight:700,fontSize:13,color:"#1d4ed8",marginBottom:4}}>📅 Geser ke Hari Lain</div>
-              <div style={{fontSize:11,color:"#64748b"}}>Pindahkan komponen lain ke hari berikutnya untuk beri ruang</div>
+              <div style={{fontSize:11,color:"#64748b"}}>{swapOrangModal.opsiSwap.length===0?"Tidak ada komponen lain yang bisa dipindah":"Pindahkan komponen lain ke hari berikutnya untuk beri ruang"}</div>
             </button>
             <button onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"lembur"}))}
               style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="lembur"?"#d97706":"#e2e8f0"}`,background:swapOrangModal.pilihan==="lembur"?"#fffbeb":"#fff",cursor:"pointer"}}>
