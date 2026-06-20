@@ -6310,6 +6310,15 @@ function KapasitasPekerjaanTab(){
   const [rentangResult,setRentangResult]=useState<{sukses:number;skip:number}|null>(null);
 
   const HARI_LABEL_OV:any={1:"Sen",2:"Sel",3:"Rab",4:"Kam",5:"Jum",6:"Sab",7:"Min"};
+  const [filterProsesOverride,setFilterProsesOverride]=useState<string[]>([]);
+
+  const overrideListFiltered=useMemo(()=>{
+    if(filterProsesOverride.length===0)return overrideList;
+    return overrideList.filter((o:any)=>filterProsesOverride.includes(o.jenis_pekerjaan));
+  },[overrideList,filterProsesOverride]);
+
+  const overrideJam=overrideListFiltered.filter((o:any)=>o.tipe_kapasitas!=="orang");
+  const overrideOrang=overrideListFiltered.filter((o:any)=>o.tipe_kapasitas==="orang");
 
   const toggleHariRentang=(h:number)=>{
     setRentangForm(prev=>({...prev,hariAktif:prev.hariAktif.includes(h)?prev.hariAktif.filter(x=>x!==h):[...prev.hariAktif,h].sort()}));
@@ -6820,7 +6829,28 @@ function KapasitasPekerjaanTab(){
           </div>
           )}
 
-          <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,alignItems:"center",marginBottom:14}}>
+            <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
+            {filterProsesOverride.map((p:string)=>(
+              <span key={p} style={{fontSize:11,background:"#eff6ff",color:"#1d4ed8",padding:"3px 10px",borderRadius:7,display:"flex",alignItems:"center",gap:4}}>
+                {p}
+                <button onClick={()=>setFilterProsesOverride(prev=>prev.filter(x=>x!==p))} style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:11,padding:0}}>✕</button>
+              </span>
+            ))}
+            <select value="" onChange={e=>{if(e.target.value)setFilterProsesOverride(prev=>[...prev,e.target.value]);}}
+              style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}>
+              <option value="">+ Tambah proses...</option>
+              {["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].filter((p:string)=>!filterProsesOverride.includes(p)).map((p:string)=>(
+                <option key={p} value={p}>{p}</option>
+              ))}
+            </select>
+            {filterProsesOverride.length>0&&(
+              <button onClick={()=>setFilterProsesOverride([])} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Reset</button>
+            )}
+          </div>
+
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>⏱ Berbasis Jam Kerja</div>
+          <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0",marginBottom:20}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead><tr>
                 <th style={thS}>Tanggal</th>
@@ -6832,9 +6862,9 @@ function KapasitasPekerjaanTab(){
                 <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
               </tr></thead>
               <tbody>
-                {overrideList.length===0?(
-                  <tr><td colSpan={7} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Belum ada override. Tanggal tanpa override = 0 kapasitas.</td></tr>
-                ):overrideList.map((o:any,i:number)=>{
+                {overrideJam.length===0?(
+                  <tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"#94a3b8"}}>Belum ada override jam kerja.</td></tr>
+                ):overrideJam.map((o:any,i:number)=>{
                   const rBg=i%2===0?"#fff":"#f8fafc";
                   const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
                   return(
@@ -6847,7 +6877,44 @@ function KapasitasPekerjaanTab(){
                       <td style={{...td,fontSize:11,color:"#64748b"}}>{o.keterangan||"—"}</td>
                       <td style={{...td,textAlign:"center" as const}}>
                         <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:o.jam_kerja,efektivitas_pct:o.efektivitas_pct,keterangan:o.keterangan||""});}}
+                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:o.jam_kerja,efektivitas_pct:o.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:o.keterangan||""});}}
+                            style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
+                          <button onClick={()=>deleteOverride(o.id)}
+                            style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>👥 Berbasis Jumlah Orang</div>
+          <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead><tr>
+                <th style={thS}>Tanggal</th>
+                <th style={thS}>Jenis Pekerjaan</th>
+                <th style={{...thS,textAlign:"right" as const}}>Jumlah Orang</th>
+                <th style={thS}>Keterangan</th>
+                <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
+              </tr></thead>
+              <tbody>
+                {overrideOrang.length===0?(
+                  <tr><td colSpan={5} style={{textAlign:"center",padding:24,color:"#94a3b8"}}>Belum ada override jumlah orang.</td></tr>
+                ):overrideOrang.map((o:any,i:number)=>{
+                  const rBg=i%2===0?"#fff":"#f8fafc";
+                  const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
+                  return(
+                    <tr key={o.id}>
+                      <td style={{...td,fontWeight:700,color:"#1e293b"}}>{new Date(o.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</td>
+                      <td style={td}><span style={{background:"#eff6ff",borderRadius:6,padding:"2px 10px",fontSize:11,fontWeight:700,color:"#1d4ed8"}}>{o.jenis_pekerjaan}</span></td>
+                      <td style={{...td,textAlign:"right" as const,fontWeight:800,color:"#1d4ed8"}}>{o.jumlah_orang} orang</td>
+                      <td style={{...td,fontSize:11,color:"#64748b"}}>{o.keterangan||"—"}</td>
+                      <td style={{...td,textAlign:"center" as const}}>
+                        <div style={{display:"flex",gap:5,justifyContent:"center"}}>
+                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:o.jumlah_orang,keterangan:o.keterangan||""});}}
                             style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
                           <button onClick={()=>deleteOverride(o.id)}
                             style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
