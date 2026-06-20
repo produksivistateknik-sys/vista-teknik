@@ -3980,19 +3980,20 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           {entries.length>0?(
                             rentangInfo?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
-                                style={{display:"flex",flexDirection:"column" as const,gap:6,padding:"8px 10px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:48}}>
-                                {rentangInfo.komponenList.map((k:any,ki:number)=>(
-                                  <div key={k.wp+k.kode+ki} style={{display:"flex",flexDirection:"column" as const,gap:2,paddingBottom:ki<rentangInfo.komponenList.length-1?5:0,borderBottom:ki<rentangInfo.komponenList.length-1?"1px solid #93c5fd":"none"}}>
-                                    <div style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap" as const}}>
+                                style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"6px 8px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:36}}>
+                                {rentangInfo.komponenList.map((k:any,ki:number)=>{
+                                  const wpEntryForKode=(row.schedule?.[k.mulai]||[]).find((e:any)=>e.wp===k.wp);
+                                  const jmlOrang=wpEntryForKode?.orangPerKomponen?.[k.kode]||1;
+                                  return(
+                                    <div key={k.wp+k.kode+ki} style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap" as const,paddingBottom:ki<rentangInfo.komponenList.length-1?3:0,borderBottom:ki<rentangInfo.komponenList.length-1?"1px solid #93c5fd":"none"}}>
                                       <span style={{background:"#1d4ed8",color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{k.wp}</span>
                                       <span style={{fontSize:10,fontWeight:600,color:"#1e3a8a"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,k.kode)}</span>
+                                      <span style={{fontSize:9,color:"#3b82f6",display:"flex",alignItems:"center",gap:2,marginLeft:"auto"}}>
+                                        <i className="ti ti-users" style={{fontSize:11}}/>{jmlOrang}
+                                      </span>
                                     </div>
-                                    <div style={{fontSize:9,color:"#3b82f6",display:"flex",alignItems:"center",gap:3}}>
-                                      <i className="ti ti-calendar" style={{fontSize:11}}/>
-                                      {fmtDate(k.mulai)} — {fmtDate(k.selesai)}
-                                    </div>
-                                  </div>
-                                ))}
+                                  );
+                                })}
                               </div>
                             ):(
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
