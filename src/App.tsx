@@ -4504,21 +4504,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             <span>Kuota {swapOrangModal.proses} tanggal {fmtDate(swapOrangModal.tanggal)}: {Math.round(swapOrangModal.terpakaiSaatIni)}/{Math.round(swapOrangModal.kuotaHari)} orang sudah terisi. Komponen baru butuh {Math.round(swapOrangModal.orangDibutuhkan)} orang lagi (total jadi {Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}). Pilih salah satu:</span>
           </div>
 
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
-            <button disabled={swapOrangModal.opsiSwap.length===0} onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"geser"}))}
-              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="geser"?"#1d4ed8":"#e2e8f0"}`,background:swapOrangModal.opsiSwap.length===0?"#f8fafc":swapOrangModal.pilihan==="geser"?"#eff6ff":"#fff",cursor:swapOrangModal.opsiSwap.length===0?"not-allowed":"pointer",opacity:swapOrangModal.opsiSwap.length===0?0.5:1}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#1d4ed8",marginBottom:4}}>📅 Geser ke Hari Lain</div>
-              <div style={{fontSize:11,color:"#64748b"}}>{swapOrangModal.opsiSwap.length===0?"Tidak ada komponen lain yang bisa dipindah":"Pindahkan komponen lain ke hari berikutnya untuk beri ruang"}</div>
-            </button>
-            <button onClick={()=>setSwapOrangModal((prev:any)=>({...prev,pilihan:"lembur"}))}
-              style={{textAlign:"left" as const,padding:"14px",borderRadius:10,border:`1.5px solid ${swapOrangModal.pilihan==="lembur"?"#d97706":"#e2e8f0"}`,background:swapOrangModal.pilihan==="lembur"?"#fffbeb":"#fff",cursor:"pointer"}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#d97706",marginBottom:4}}>⏰ Ajukan Lembur</div>
-              <div style={{fontSize:11,color:"#64748b"}}>Naikkan kuota orang hari ini ({Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)} orang)</div>
-            </button>
-          </div>
-
-          {swapOrangModal.pilihan==="geser"&&(
-            <div>
+          <div>
               <Lbl>Komponen Terjadwal di {fmtDate(swapOrangModal.tanggal)} (pilih untuk dipindah)</Lbl>
               <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14,maxHeight:240,overflowY:"auto" as const}}>
                 {swapOrangModal.opsiSwap.map((o:any)=>{
@@ -4577,40 +4563,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 </button>
               </div>
             </div>
-          )}
-
-          {swapOrangModal.pilihan==="lembur"&&(
-            <div>
-              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"12px 14px",marginBottom:14,fontSize:12,color:"#92400e"}}>
-                Kuota orang tanggal {fmtDate(swapOrangModal.tanggal)} untuk {swapOrangModal.proses} akan dinaikkan dari <strong>{Math.round(swapOrangModal.kuotaHari)}</strong> menjadi <strong>{Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}</strong> orang.
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-                <button onClick={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}}
-                  style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
-                <button disabled={lemburLoading} onClick={async()=>{
-                  setLemburLoading(true);
-                  const kuotaBaru=Math.ceil(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan);
-                  const{data:existingOv}=await supabase.from("fcs_kapasitas_override").select("id").eq("tanggal",swapOrangModal.tanggal).eq("jenis_pekerjaan",swapOrangModal.proses).maybeSingle();
-                  if(existingOv){
-                    await supabase.from("fcs_kapasitas_override").update({jumlah_orang:kuotaBaru}).eq("id",existingOv.id);
-                  }
-                  setLemburLoading(false);
-                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  await activityLogService.insert({
-                    user_name:uname,action:"LEMBUR KUOTA ORANG",
-                    description:"Naikkan kuota "+swapOrangModal.proses+" tanggal "+fmtDate(swapOrangModal.tanggal)+" dari "+Math.round(swapOrangModal.kuotaHari)+" jadi "+kuotaBaru+" orang (lembur)",
-                    module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""
-                  });
-                  setSwapOrangModal(null);setSwapOrangSelected([]);
-                  await addEntry();
-                }}
-                  style={{padding:"8px 18px",borderRadius:8,border:"none",background:lemburLoading?"#94a3b8":"#d97706",color:"#fff",fontSize:12,fontWeight:700,cursor:lemburLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
-                  {lemburLoading?"⏳ Menyimpan...":"⏰ Konfirmasi Lembur & Tambah Komponen"}
-                </button>
-              </div>
-            </div>
-          )}
         </Modal>
       )}
 
