@@ -4001,7 +4001,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
                             </td>
                           )}
-                          <td style={{...td,fontSize:8,color:"#64748b",textAlign:"left" as const,padding:"2px 6px"}}>{komp.wp} {getNamaKomponenDariKode(row.panel_id||row.panelId,komp.kode)}</td>
                           {ki===0&&(
                             <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
                               <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
