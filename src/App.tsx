@@ -3219,14 +3219,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
     const aktif=tanggal>=komp.mulai&&tanggal<=komp.selesai;
-    const wc=WP_COLOR[komp.wp]||"#64748b";
+    const isTerlambat=komp.terlambat&&tanggal===komp.selesai;
+    const wc=isTerlambat?"#dc2626":WP_COLOR[komp.wp]||"#64748b";
     const namaKomp=getNamaKomponenDariKode(panelId,komp.kode);
     return(
       <td key={tanggal} onClick={(e:any)=>{e.stopPropagation();handleCellClick(rowId,tanggal,e);}}
         style={{borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",padding:"1px",textAlign:"center" as const,cursor:"pointer",background:tanggal===TODAY?"#eff6ff":isSunday(tanggal)?"#fff1f2":"#fff",height:22}}>
         {aktif?(
           <div style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
-            <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:60}}>{namaKomp}</span>
+            {isTerlambat&&<i className="ti ti-clock-exclamation" style={{fontSize:8}}/>}
+            <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{namaKomp}</span>
             <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{komp.jumlahOrang}</span>
           </div>
         ):(
@@ -3238,6 +3240,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const getSemuaKomponenSebagaiSubBaris=(row:any):any[]|null=>{
     if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId));
     const semuaKomponen:any[]=[];
     for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
       for(const entry of entries){
@@ -3246,7 +3249,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           if(sudahAda)continue;
           const rentang=entry.rentangTanggal?.[kode];
           const jmlOrang=entry.orangPerKomponen?.[kode]||1;
-          semuaKomponen.push({wp:entry.wp,kode,mulai:rentang?.mulai||tglKey,selesai:rentang?.selesai||tglKey,jumlahOrang:jmlOrang});
+          const progress=panelData?.checklist?.[kode]?.progress?.[row.proses]||0;
+          const terlambat=rentang?.selesai&&TODAY>rentang.selesai&&progress<100;
+          semuaKomponen.push({wp:entry.wp,kode,mulai:rentang?.mulai||tglKey,selesai:rentang?.selesai||tglKey,jumlahOrang:jmlOrang,progress,terlambat});
         }
       }
     }
