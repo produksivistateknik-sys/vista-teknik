@@ -4113,7 +4113,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 const rowSpanCount=panelRowCount[String(curPanelId)]||1;
                 const subBarisKomponen=getSemuaKomponenSebagaiSubBaris(row);
 
-                if(subBarisKomponen&&subBarisKomponen.length>0){
+                if(false&&subBarisKomponen&&subBarisKomponen.length>0){
                   return(
                     <Fragment key={row.id}>
                       {subBarisKomponen.map((komp:any,ki:number)=>(
@@ -4184,22 +4184,21 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
                           {entries.length>0?(
-                            rentangInfo?(
+                            PROSES_ORANG_RAW.includes(row.proses)?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
-                                style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"6px 8px",borderRadius:8,background:"#dbeafe",border:"1px solid #93c5fd",cursor:"pointer",minHeight:36}}>
-                                {rentangInfo.komponenList.map((k:any,ki:number)=>{
-                                  const wpEntryForKode=(row.schedule?.[k.mulai]||[]).find((e:any)=>e.wp===k.wp);
-                                  const jmlOrang=wpEntryForKode?.orangPerKomponen?.[k.kode]||1;
+                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                                draggable={true} onDragStart={e=>onDragStart(e,row.id,d,entries)}
+                                style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:"grab"}}>
+                                {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
+                                  const jmlOrang=entry.orangPerKomponen?.[kode]||1;
+                                  const wc=WP_COLOR[entry.wp]||"#64748b";
                                   return(
-                                    <div key={k.wp+k.kode+ki} style={{display:"flex",alignItems:"center",gap:5,flexWrap:"wrap" as const,paddingBottom:ki<rentangInfo.komponenList.length-1?3:0,borderBottom:ki<rentangInfo.komponenList.length-1?"1px solid #93c5fd":"none"}}>
-                                      <span style={{background:"#1d4ed8",color:"#fff",borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{k.wp}</span>
-                                      <span style={{fontSize:10,fontWeight:600,color:"#1e3a8a"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,k.kode)}</span>
-                                      <span style={{fontSize:9,color:"#3b82f6",display:"flex",alignItems:"center",gap:2,marginLeft:"auto"}}>
-                                        <i className="ti ti-users" style={{fontSize:11}}/>{jmlOrang}
-                                      </span>
+                                    <div key={entry.wp+kode} style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
+                                      <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                     </div>
                                   );
-                                })}
+                                }))}
                               </div>
                             ):(
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
