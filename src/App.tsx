@@ -870,6 +870,27 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
   const [dateFrom,setDateFrom]=useState("");
   const [dateTo,setDateTo]=useState("");
   const [delId,setDelId]=useState<any>(null);
+  const [timerData,setTimerData]=useState<any[]>([]);
+
+  useEffect(()=>{
+    supabase.from("fcs_timer_kerja").select("*").not("selesai","is",null).then(({data})=>{
+      setTimerData(data??[]);
+    });
+  },[]);
+
+  const getKpiPerPekerja=(pkrId:number)=>{
+    const sesiPekerja=timerData.filter((t:any)=>{
+      if(t.pekerja_id!==pkrId)return false;
+      if(dateFrom&&t.tanggal<dateFrom)return false;
+      if(dateTo&&t.tanggal>dateTo)return false;
+      return true;
+    });
+    const totalMenit=sesiPekerja.reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0);
+    const komponenUnik=new Set(sesiPekerja.map((t:any)=>`${t.panel_id}_${t.kode_komponen}_${t.proses}`));
+    const jumlahKomponen=komponenUnik.size;
+    const rataRataMenit=jumlahKomponen>0?totalMenit/jumlahKomponen:0;
+    return{totalMenit,jumlahKomponen,rataRataMenit,jumlahSesi:sesiPekerja.length};
+  };
 
   const operatorDivisi=Object.entries(DIVISI_CONFIG)
     .filter(([k])=>OPERATOR_ROLES.includes(k))
@@ -1065,14 +1086,16 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
             <th style={{...thS,textAlign:"center" as const}}>On Progress</th>
             <th style={{...thS,textAlign:"center" as const}}>Hari Kerja</th>
             <th style={{...thS,minWidth:100}}>Avg Progress</th>
+            <th style={{...thS,textAlign:"center" as const}}>⏱ Total Jam</th>
             <th style={{...thS,textAlign:"center" as const}}>Aksi</th>
           </tr></thead>
           <tbody>
             {filteredPekerja.length===0?(
-              <tr><td colSpan={9} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Tidak ada pekerja ditemukan</td></tr>
+              <tr><td colSpan={10} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Tidak ada pekerja ditemukan</td></tr>
             ):filteredPekerja.map((p:any,i:number)=>{
               const dc:any=DIVISI_CONFIG[p.divisi]||{};
               const stats=getStatsPekerja(p.id);
+              const kpi=getKpiPerPekerja(p.id);
               const isSel=selPekerja?.id===p.id;
               const rBg=isSel?"#eff6ff":i%2===0?"#fff":"#f8fafc";
               const td:any={padding:"8px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
@@ -1107,6 +1130,16 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                       </div>
                       <span style={{fontSize:11,fontWeight:700,color:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#ef4444",minWidth:32}}>{stats.avg}%</span>
                     </div>
+                  </td>
+                  <td style={{...td,textAlign:"center" as const}}>
+                    {kpi.totalMenit>0?(
+                      <div>
+                        <div style={{fontWeight:700,color:"#1e293b"}}>{Math.floor(kpi.totalMenit/60)}j {Math.round(kpi.totalMenit%60)}m</div>
+                        <div style={{fontSize:9,color:"#94a3b8"}}>{kpi.jumlahKomponen} komp · avg {Math.round(kpi.rataRataMenit)}m</div>
+                      </div>
+                    ):(
+                      <span style={{color:"#cbd5e1"}}>—</span>
+                    )}
                   </td>
                   <td style={{...td,textAlign:"center" as const}} onClick={e=>e.stopPropagation()}>
                     <button onClick={()=>downloadPDF(p.id)}
