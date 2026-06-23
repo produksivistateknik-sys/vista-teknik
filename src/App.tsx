@@ -3757,18 +3757,17 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       if(wpEntry){
         oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
         const newOrangMap=isProsesOrangRow?{...(wpEntry.orangPerKomponen||{}),...modalOrangPerKomponen}:wpEntry.orangPerKomponen;
-        const newRentangMap=isProsesOrangRow?{...(wpEntry.rentangTanggal||{}),...modalRentangTanggal}:wpEntry.rentangTanggal;
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap,rentangTanggal:newRentangMap}:{})});
+        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen,rentangTanggal:modalRentangTanggal}:{})}];
+        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
       }
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
-    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});setModalRentangTanggal({});
+    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});
     const isBusbarRow=rawRow?.proses==="BUSBAR";
     if(updatedRow){
       const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'};
@@ -4407,7 +4406,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               else{
                                 setModalKomponen(prev=>[...prev,it.kode]);
                                 setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));
-                                setModalRentangTanggal(prev=>({...prev,[it.kode]:prev[it.kode]||{mulai:cellModal.date,selesai:cellModal.date}}));
                               }
                             }}/>
                             <span style={{flex:1,fontSize:12,color:"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
@@ -4421,18 +4419,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                               </div>
                             )}
                           </label>
-                          {sel&&(
-                            <div style={{display:"flex",alignItems:"center",gap:6,marginTop:6,paddingLeft:26}}>
-                              <i className="ti ti-calendar-time" style={{fontSize:13,color:"#64748b"}}/>
-                              <input type="date" value={modalRentangTanggal[it.kode]?.mulai||cellModal.date}
-                                onChange={e=>setModalRentangTanggal(prev=>({...prev,[it.kode]:{mulai:e.target.value,selesai:prev[it.kode]?.selesai||e.target.value}}))}
-                                style={{fontSize:11,padding:"3px 6px",borderRadius:6,border:"1px solid #cbd5e1"}}/>
-                              <span style={{fontSize:10,color:"#94a3b8"}}>s/d</span>
-                              <input type="date" value={modalRentangTanggal[it.kode]?.selesai||cellModal.date}
-                                onChange={e=>setModalRentangTanggal(prev=>({...prev,[it.kode]:{mulai:prev[it.kode]?.mulai||cellModal.date,selesai:e.target.value}}))}
-                                style={{fontSize:11,padding:"3px 6px",borderRadius:6,border:"1px solid #cbd5e1"}}/>
-                            </div>
-                          )}
                         </div>
                       );
                     })}
