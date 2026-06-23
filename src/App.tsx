@@ -3782,7 +3782,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       const wpEntry=existing.find(e=>e.wp===modalWp);
       let updated;
       if(wpEntry){
-        oldKomp=wpEntry.komponen;isEdit=true;finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+        oldKomp=wpEntry.komponen;isEdit=true;
+        if(isProsesOrangRow){
+          const komponenLamaBelumSelesai=(wpEntry.komponen||[]).filter((kode:string)=>{
+            const progress=livePanelForCell?.checklist?.[kode]?.progress?.[prosesCek||""]||0;
+            return progress<100;
+          });
+          finalKomp=[...new Set([...komponenLamaBelumSelesai,...modalKomponen])];
+        } else {
+          finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+        }
         const newOrangMap=isProsesOrangRow?{...(wpEntry.orangPerKomponen||{}),...modalOrangPerKomponen}:wpEntry.orangPerKomponen;
         updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
       }
@@ -4425,7 +4434,19 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   <div key={e.wp} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #e2e8f0"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                       <span style={{background:wc,color:'#fff',borderRadius:6,padding:'2px 10px',fontSize:12,fontWeight:700}}>{e.wp}</span>
-                      <div style={{display:'flex',gap:6}}><button onClick={()=>{setModalWp(e.wp);setModalKomponen([...e.komponen]);}} style={{background:'#eff6ff',border:'1px solid #bfdbfe',cursor:'pointer',color:'#2563eb',fontSize:12,borderRadius:6,padding:'2px 10px',fontWeight:600}}>✏️ Edit</button><button onClick={()=>removeEntry(e.wp)} style={{background:'none',border:'none',cursor:'pointer',color:'#fca5a5',fontSize:13}}>✕ Hapus</button></div>
+                      <div style={{display:'flex',gap:6}}><button onClick={()=>{
+                          setModalWp(e.wp);
+                          const isWiringProses=PROSES_ORANG_RAW.includes(rawRow?.proses||"");
+                          if(isWiringProses){
+                            const belumSelesai=(e.komponen||[]).filter((kode:string)=>{
+                              const progress=livePanelForCell?.checklist?.[kode]?.progress?.[rawRow?.proses||""]||0;
+                              return progress<100;
+                            });
+                            setModalKomponen(belumSelesai);
+                          } else {
+                            setModalKomponen([...e.komponen]);
+                          }
+                        }} style={{background:'#eff6ff',border:'1px solid #bfdbfe',cursor:'pointer',color:'#2563eb',fontSize:12,borderRadius:6,padding:'2px 10px',fontWeight:600}}>✏️ Edit</button><button onClick={()=>removeEntry(e.wp)} style={{background:'none',border:'none',cursor:'pointer',color:'#fca5a5',fontSize:13}}>✕ Hapus</button></div>
                     </div>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                       {e.komponen.map(k=>{const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);return <span key={k} style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{item?.nama||k}</span>;})}
@@ -4460,19 +4481,21 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       const sel=modalKomponen.includes(it.kode);
                       const kl=livePanelForCell?.checklist?.[it.kode];
                       const progress=kl?.progress?.[rawRow?.proses||""]||0;
+                      const sudahSelesai=progress>=100;
                       return(
-                        <div key={it.kode} style={{border:`1px solid ${sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",background:sel?"#eff6ff":"#fff"}}>
-                          <label style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer"}}>
-                            <input type="checkbox" checked={sel} onChange={()=>{
+                        <div key={it.kode} style={{border:`1px solid ${sudahSelesai?"#bbf7d0":sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",background:sudahSelesai?"#f0fdf4":sel?"#eff6ff":"#fff",opacity:sudahSelesai?0.7:1}}>
+                          <label style={{display:"flex",alignItems:"center",gap:10,cursor:sudahSelesai?"not-allowed":"pointer"}}>
+                            <input type="checkbox" checked={sel} disabled={sudahSelesai} onChange={()=>{
+                              if(sudahSelesai)return;
                               if(sel){setModalKomponen(prev=>prev.filter(k=>k!==it.kode));}
                               else{
                                 setModalKomponen(prev=>[...prev,it.kode]);
                                 setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));
                               }
                             }}/>
-                            <span style={{flex:1,fontSize:12,color:"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
-                            <span style={{fontSize:10,color:"#94a3b8"}}>progress {progress}%</span>
-                            {sel&&(
+                            <span style={{flex:1,fontSize:12,color:sudahSelesai?"#16a34a":"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
+                            <span style={{fontSize:10,color:sudahSelesai?"#16a34a":"#94a3b8",fontWeight:sudahSelesai?700:400}}>{sudahSelesai?"✓ Selesai":`progress ${progress}%`}</span>
+                            {sel&&!sudahSelesai&&(
                               <div style={{display:"flex",alignItems:"center",gap:4}}>
                                 <i className="ti ti-users" style={{fontSize:13,color:"#1d4ed8"}}/>
                                 <input type="number" min="1" step="1" value={modalOrangPerKomponen[it.kode]||1}
