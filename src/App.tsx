@@ -3296,6 +3296,17 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [swapOrangLoading,setSwapOrangLoading]=useState(false);
   const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
+  const [notifAvailable,setNotifAvailable]=useState<any[]>([]);
+
+  const fetchNotifAvailable=async()=>{
+    const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).order("created_at",{ascending:false});
+    setNotifAvailable(data??[]);
+  };
+
+  const tandaiNotifDibaca=async(id:number)=>{
+    await supabase.from("fcs_notifikasi").update({dibaca:true}).eq("id",id);
+    setNotifAvailable(prev=>prev.filter((n:any)=>n.id!==id));
+  };
 
   useEffect(()=>{
     const fetchCap=async()=>{
@@ -3309,9 +3320,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       setProcessTimeList(pt??[]);
     };
     fetchCap();
+    fetchNotifAvailable();
     const ch=supabase.channel("realtime-fcs-cap-raw")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_notifikasi"},fetchNotifAvailable)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
@@ -3880,6 +3893,30 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         <button onClick={()=>setFilterProses([])} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses.length===0?"#1d4ed8":"#e2e8f0"}`,background:filterProses.length===0?"#1d4ed8":"#fff",color:filterProses.length===0?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
+
+      {notifAvailable.length>0&&(
+        <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
+            💡 Operator Selesai Lebih Cepat ({notifAvailable.length})
+          </div>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+            {notifAvailable.map((n:any)=>(
+              <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #dbeafe"}}>
+                <div style={{flex:1}}>
+                  <div style={{fontSize:12,color:"#1e293b"}}>
+                    <strong>{n.pekerja_nama}</strong> selesai <strong>{n.nama_komponen}</strong> ({n.panel_nama}) lebih cepat
+                  </div>
+                  <div style={{fontSize:10,color:"#64748b",marginTop:2}}>
+                    Rencana selesai {fmtDate(n.tanggal_rencana_selesai)}, aktual {fmtDate(n.tanggal_aktual_selesai)}. Ada komponen lain yang bisa diambil.
+                  </div>
+                </div>
+                <button onClick={()=>tandaiNotifDibaca(n.id)}
+                  style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#64748b",whiteSpace:"nowrap" as const}}>Tandai dibaca</button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {fcsKapasitas.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
