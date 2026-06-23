@@ -793,8 +793,10 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
         const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
-        terpakaiSaatIni += orang
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
+        // Komponen yang sudah 100% selesai TIDAK lagi memakai kuota orang
+        if (progress >= 100) continue
+        terpakaiSaatIni += orang
 
         opsiSwap.push({
           raw_id: row.id,
