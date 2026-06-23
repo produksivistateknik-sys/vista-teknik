@@ -910,6 +910,60 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
     });
   };
 
+  // Komponen individual per pekerja - gabung dari field lama (pekerja) dan baru (pekerja_per_komponen)
+  // Khusus untuk task yang punya pekerja_per_komponen (WIRING CONTROL/POWER), pecah jadi komponen tersendiri
+  // Untuk task lama (cuma pakai field pekerja), tetap 1 entry per komponen di task itu
+  const getKomponenIndividualPerPekerja=(pkrId:number)=>{
+    const hasil:any[]=[];
+    renhar.forEach((t:any)=>{
+      const ppk=t.pekerja_per_komponen||{};
+      const punyaPpk=Object.keys(ppk).length>0;
+      if(punyaPpk){
+        (t.komponen||[]).forEach((kode:string)=>{
+          const idsKomp=ppk[kode]||[];
+          if(idsKomp.includes(pkrId)){
+            hasil.push({...t,_komponenSpesifik:kode});
+          }
+        });
+      } else if((t.pekerja||[]).includes(pkrId)){
+        (t.komponen||[]).forEach((kode:string)=>{
+          hasil.push({...t,_komponenSpesifik:kode});
+        });
+      }
+    });
+    return hasil;
+  };
+
+  // Progress khusus untuk 1 komponen spesifik (bukan rata-rata semua komponen di task)
+  const getProgressKomponenSpesifik=(tugas:any)=>{
+    const kode=tugas._komponenSpesifik;
+    if(!kode)return getProgressTugas(tugas);
+    const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>
+      String(p.id)===String(tugas.panel_id||tugas.panelId)
+    );
+    if(!panel||!panel.checklist)return 0;
+    const cl=panel.checklist[kode];
+    if(!cl)return 0;
+    const proses=tugas.proses;
+    const byDate=cl.progressByDate?.[proses];
+    if(byDate&&byDate[tugas.tanggal]!==undefined)return byDate[tugas.tanggal];
+    return cl.progress?.[proses]||0;
+  };
+
+  // Durasi kerja (menit) untuk 1 komponen spesifik dari fcs_timer_kerja
+  const getDurasiKomponenSpesifik=(pkrId:number,tugas:any)=>{
+    const kode=tugas._komponenSpesifik;
+    if(!kode)return 0;
+    const sesi=timerData.filter((tm:any)=>
+      tm.pekerja_id===pkrId&&
+      String(tm.panel_id)===String(tugas.panel_id||tugas.panelId)&&
+      tm.kode_komponen===kode&&
+      tm.proses===tugas.proses&&
+      tm.tanggal===tugas.tanggal
+    );
+    return sesi.reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0);
+  };
+
   // Hitung progress per tugas dari checklist panel
   const getProgressTugas=(tugas:any)=>{
     const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>
@@ -937,26 +991,26 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
     return{label:"Belum",color:"#94a3b8",bg:"#f8fafc"};
   };
 
-  // Rekap per tanggal untuk pekerja tertentu
+  // Rekap per tanggal untuk pekerja tertentu - berbasis komponen individual
   const getRekapPerTanggal=(pkrId:number)=>{
-    const tugas=filterTugas(getTugasPerPekerja(pkrId));
+    const tugas=filterTugas(getKomponenIndividualPerPekerja(pkrId));
     const byDate:{[d:string]:any[]}={};
     tugas.forEach(t=>{
       if(!byDate[t.tanggal]) byDate[t.tanggal]=[];
       byDate[t.tanggal].push(t);
     });
     return Object.entries(byDate).sort((a,b)=>b[0].localeCompare(a[0])).map(([tgl,tasks])=>{
-      const progList=tasks.map(t=>getProgressTugas(t));
+      const progList=tasks.map(t=>getProgressKomponenSpesifik(t));
       const avgProg=progList.length?Math.round(progList.reduce((a,b)=>a+b,0)/progList.length):0;
       const selesai=progList.filter(p=>p>=100).length;
       return{tanggal:tgl,tasks,avgProg,selesai,total:tasks.length};
     });
   };
 
-  // Stats per pekerja
+  // Stats per pekerja - berbasis komponen individual
   const getStatsPekerja=(pkrId:number)=>{
-    const tugas=filterTugas(getTugasPerPekerja(pkrId));
-    const progList=tugas.map(t=>getProgressTugas(t));
+    const tugas=filterTugas(getKomponenIndividualPerPekerja(pkrId));
+    const progList=tugas.map(t=>getProgressKomponenSpesifik(t));
     const selesai=progList.filter(p=>p>=100).length;
     const onProg=progList.filter(p=>p>0&&p<100).length;
     const belum=progList.filter(p=>p===0).length;
@@ -1219,13 +1273,13 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                   <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
                     <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
                       <thead><tr>
-                        {["No","Proyek","Panel","Proses","WP","Komponen","Progress","Status","Hapus"].map(h=>(
+                        {["No","Proyek","Panel","Proses","WP","Komponen","Durasi","Progress","Status","Hapus"].map(h=>(
                           <th key={h} style={{background:"#f1f5f9",color:"#64748b",padding:"6px 8px",fontWeight:600,fontSize:9.5,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #e2e8f0",textTransform:"uppercase" as const,letterSpacing:.3}}>{h}</th>
                         ))}
                       </tr></thead>
                       <tbody>
                         {r.tasks.map((t:any,ti:number)=>{
-                          const pct=getProgressTugas(t);
+                          const pct=getProgressKomponenSpesifik(t);
                           const st=getStatus(pct);
                           const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id||t.panelId));
                           const cfg=panelData?PANEL_TYPES[panelData.tipe]:null;
@@ -1233,21 +1287,21 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                           const wc=WP_COLOR[t.wp]||"#64748b";
                           const rBg2=ti%2===0?"#fff":"#f8fafc";
                           const td2:any={padding:"6px 8px",borderBottom:"1px solid #f5f7fa",borderRight:"1px solid #f5f7fa",background:rBg2,verticalAlign:"middle"};
+                          const kode=t._komponenSpesifik;
+                          const namaKomp=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+                          const durasiMenit=getDurasiKomponenSpesifik(selPekerja.id,t);
+                          const durasiLabel=durasiMenit>0?(Math.floor(durasiMenit/60)>0?`${Math.floor(durasiMenit/60)}j ${Math.round(durasiMenit%60)}m`:`${Math.round(durasiMenit)}m`):"—";
                           return(
-                            <tr key={t.id||ti}>
+                            <tr key={(t.id||ti)+"-"+kode}>
                               <td style={{...td2,color:"#94a3b8",fontWeight:600,textAlign:"center" as const}}>{ti+1}</td>
                               <td style={{...td2,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
                               <td style={{...td2,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
                               <td style={td2}><span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:6,padding:"1px 7px",fontSize:10,fontWeight:700}}>{t.proses}</span></td>
                               <td style={td2}><span style={{background:wc,color:"#fff",borderRadius:5,padding:"1px 7px",fontSize:10,fontWeight:700}}>{t.wp}</span></td>
                               <td style={td2}>
-                                <div style={{display:"flex",gap:3,flexWrap:"wrap" as const}}>
-                                  {(t.komponen||[]).map((k:string)=>{
-                                    const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===k);
-                                    return(<span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",fontSize:9.5,color:"#475569",fontWeight:600}}>{item?.nama||k}</span>);
-                                  })}
-                                </div>
+                                <span style={{background:"#f1f5f9",borderRadius:4,padding:"1px 6px",fontSize:9.5,color:"#475569",fontWeight:600}}>{namaKomp}</span>
                               </td>
+                              <td style={{...td2,textAlign:"center" as const,fontWeight:700,color:durasiMenit>0?"#1d4ed8":"#cbd5e1"}}>{durasiLabel}</td>
                               <td style={td2}>
                                 <div style={{display:"flex",alignItems:"center",gap:5}}>
                                   <div style={{width:50,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
