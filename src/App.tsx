@@ -3448,7 +3448,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
             if(!item)return;
             sudahDitambah.add(kode);
-            hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama});
+            hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama,wp:entry.wp});
           });
         });
       });
@@ -4038,6 +4038,16 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       await tandaiNotifDibaca(pilihKomponenModal.notifId);
                       setPilihKomponenModal(null);
                       openCellModal(k.rawId,TODAY);
+                      setModalWp(k.wp);
+                      const rowTarget=rawData.find((r:any)=>r.id===k.rawId);
+                      const existingEntry=(rowTarget?.schedule?.[TODAY]||[]).find((e:any)=>e.wp===k.wp);
+                      const panelDataTarget=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(k.panelId));
+                      const komponenLamaBelumSelesai=(existingEntry?.komponen||[]).filter((kd:string)=>{
+                        const progress=panelDataTarget?.checklist?.[kd]?.progress?.[pilihKomponenModal.proses]||0;
+                        return progress<100;
+                      });
+                      setModalKomponen([...new Set([...komponenLamaBelumSelesai,k.kode])]);
+                      setModalOrangPerKomponen((prev:any)=>({...prev,[k.kode]:prev[k.kode]||1}));
                     }}
                     style={{textAlign:"left" as const,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:"#fff"}}>
                     <div>
