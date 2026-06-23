@@ -3437,19 +3437,20 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       const panelId=row.panel_id||row.panelId;
       const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
       if(!panelData)return;
-      const sudahAssign=new Set<string>();
+      const sudahDitambah=new Set<string>();
       Object.values(row.schedule||{}).forEach((entries:any)=>{
         entries.forEach((entry:any)=>{
-          (entry.komponen||[]).forEach((kode:string)=>sudahAssign.add(kode));
+          (entry.komponen||[]).forEach((kode:string)=>{
+            if(sudahDitambah.has(kode))return;
+            const progress=panelData.checklist?.[kode]?.progress?.[proses]||0;
+            if(progress>0)return;
+            const cfg=(PANEL_TYPES as any)[panelData.tipe];
+            const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+            if(!item)return;
+            sudahDitambah.add(kode);
+            hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama});
+          });
         });
-      });
-      Object.entries(KOMPONEN_PROSES_MAP).forEach(([kode,prosesList])=>{
-        if(!(prosesList as string[]).includes(proses))return;
-        if(sudahAssign.has(kode))return;
-        const cfg=(PANEL_TYPES as any)[panelData.tipe];
-        const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
-        if(!item)return;
-        hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama});
       });
     });
     return hasil;
