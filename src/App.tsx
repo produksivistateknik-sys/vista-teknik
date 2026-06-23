@@ -1464,6 +1464,25 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     setSelPekerja(existing?.pekerja||[]);
     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };
+
+  const toggleReleaseKomponen=async(task:any,kode:string,sedangDirilis:boolean)=>{
+    const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
+    const existing=getRenharEntry(task);
+    if(existing){
+      const releasedLama=existing.komponen_released||[];
+      const releasedBaru=sedangDirilis?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
+      await updateRenhar(existing.id,{komponen_released:releasedBaru});
+      setRenhar((prev:any)=>prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r));
+    } else {
+      const result=await createRenhar({
+        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+        proyek:task.proyek,panel:task.panel,proses:task.proses,
+        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+        tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
+      });
+      if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
+    }
+  };
   const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi,existing}=assignModal;
@@ -1577,17 +1596,58 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((t,i)=>{
+                  {tasks.flatMap((t,ti)=>{
                     const dist=isDist(t);const rh=getRenharEntry(t);
-                    const workers=(rh?.pekerja||[]).map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
                     const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
-                    const rBg=i%2===0?"#fff":"#f8fafc";
+                    const isWiringTask=PROSES_ORANG_RAW.includes(t.proses);
+
+                    if(isWiringTask){
+                      const ppk=rh?.pekerja_per_komponen||{};
+                      const released=rh?.komponen_released||[];
+                      return(t.komponen||[]).map((kode,ki)=>{
+                        const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
+                        const idxGlobal=ti*100+ki;
+                        const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
+                        const sudahRelease=released.includes(kode);
+                        const workersKode=(ppk[kode]||[]).map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+                        const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle"};
+                        return(
+                          <tr key={ti+"-"+kode}>
+                            <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
+                            <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
+                            <td style={{...td,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
+                            <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span></td>
+                            <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
+                            <td style={{...td}}>
+                              <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
+                            </td>
+                            <td style={{...td}}>
+                              {!sudahRelease?(
+                                <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
+                              ):workersKode.length>0?(
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{workersKode.map((n:string)=>(<span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}</div>
+                              ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
+                            </td>
+                            <td style={{...td,textAlign:"center"}}>
+                              {sudahRelease?<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Dirilis</span>
+                                :<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⏳ Belum</span>}
+                            </td>
+                            <td style={{...td,textAlign:"center"}}>
+                              <Btn color={sudahRelease?"#dc2626":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>toggleReleaseKomponen(t,kode,sudahRelease)}>{sudahRelease?"↩️ Tarik":"📤 Rilis"}</Btn>
+                            </td>
+                          </tr>
+                        );
+                      });
+                    }
+
+                    const workers=(rh?.pekerja||[]).map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+                    const rBg=ti%2===0?"#fff":"#f8fafc";
                     const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:dist?"#f0fdf4":rBg,verticalAlign:"middle"};
-                    return(
-                      <tr key={i}>
-                        <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{i+1}</td>
+                    return[(
+                      <tr key={ti}>
+                        <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}</td>
                         <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
                         <td style={{...td,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
                         <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span></td>
@@ -1610,7 +1670,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                           <Btn color={dist?"#0891b2":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>openAssign(t)}>{dist?"👥 Edit":"👤 Distribusi"}</Btn>
                         </td>
                       </tr>
-                    );
+                    )];
                   })}
                 </tbody>
               </table>
