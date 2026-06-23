@@ -3400,6 +3400,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     setNotifAvailable(prev=>prev.filter((n:any)=>n.id!==id));
   };
 
+  const [pilihKomponenModal,setPilihKomponenModal]=useState<any>(null);
+
   useEffect(()=>{
     const fetchCap=async()=>{
       const [{data:s},{data:k},{data:pt}]=await Promise.all([
@@ -3427,6 +3429,30 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     if(!tipe)return kode;
     const item=(PANEL_TYPES as any)[tipe]?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
     return item?.nama||kode;
+  };
+
+  const getKomponenBelumDikerjakan=(proses:string):any[]=>{
+    const hasil:any[]=[];
+    rawData.filter((row:any)=>row.proses===proses).forEach((row:any)=>{
+      const panelId=row.panel_id||row.panelId;
+      const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+      if(!panelData)return;
+      const sudahAssign=new Set<string>();
+      Object.values(row.schedule||{}).forEach((entries:any)=>{
+        entries.forEach((entry:any)=>{
+          (entry.komponen||[]).forEach((kode:string)=>sudahAssign.add(kode));
+        });
+      });
+      Object.entries(KOMPONEN_PROSES_MAP).forEach(([kode,prosesList])=>{
+        if(!(prosesList as string[]).includes(proses))return;
+        if(sudahAssign.has(kode))return;
+        const cfg=(PANEL_TYPES as any)[panelData.tipe];
+        const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+        if(!item)return;
+        hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama});
+      });
+    });
+    return hasil;
   };
 
   const getMenitPerPcs=(tipePanel:string,proses:string,kode:string):number=>{
@@ -3985,6 +4011,38 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
+      {pilihKomponenModal&&(
+        <Modal title="Pilih Komponen Lain yang Bisa Diambil" onClose={()=>setPilihKomponenModal(null)} width={520}>
+          <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>
+            Daftar komponen {pilihKomponenModal.proses} yang belum pernah dijadwalkan. Klik salah satu untuk lompat ke baris itu dan tambahkan ke hari ini.
+          </div>
+          {(()=>{
+            const daftarKomponen=getKomponenBelumDikerjakan(pilihKomponenModal.proses);
+            if(daftarKomponen.length===0){
+              return(<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12}}>Semua komponen sudah terjadwal</div>);
+            }
+            return(
+              <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:340,overflowY:"auto" as const}}>
+                {daftarKomponen.map((k:any,ki:number)=>(
+                  <button key={ki} onClick={async()=>{
+                      await tandaiNotifDibaca(pilihKomponenModal.notifId);
+                      setPilihKomponenModal(null);
+                      openCellModal(k.rawId,TODAY);
+                    }}
+                    style={{textAlign:"left" as const,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:"#fff"}}>
+                    <div>
+                      <div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{k.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({k.kode})</span></div>
+                      <div style={{fontSize:10,color:"#64748b"}}>{k.panel} · {k.proyek}</div>
+                    </div>
+                    <i className="ti ti-arrow-right" style={{fontSize:14,color:"#1d4ed8"}}/>
+                  </button>
+                ))}
+              </div>
+            );
+          })()}
+        </Modal>
+      )}
+
       {notifAvailable.length>0&&(
         <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
           <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
@@ -4001,8 +4059,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     Rencana selesai {fmtDate(n.tanggal_rencana_selesai)}, aktual {fmtDate(n.tanggal_aktual_selesai)}. Ada komponen lain yang bisa diambil.
                   </div>
                 </div>
-                <button onClick={()=>tandaiNotifDibaca(n.id)}
-                  style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#64748b",whiteSpace:"nowrap" as const}}>Tandai dibaca</button>
+                <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
+                  <button onClick={()=>setPilihKomponenModal({notifId:n.id,proses:n.proses})}
+                    style={{background:"#1d4ed8",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap" as const}}>Pilih Komponen</button>
+                  <button onClick={()=>tandaiNotifDibaca(n.id)}
+                    style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#64748b",whiteSpace:"nowrap" as const}}>Tandai dibaca</button>
+                </div>
               </div>
             ))}
           </div>
