@@ -4168,9 +4168,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               const panelRowCount:Record<string,number>={};
               visibleRows.forEach(row=>{
                 const pid=String(row.panel_id||row.panelId);
-                const subBarisRow=getSemuaKomponenSebagaiSubBaris(row);
-                const jmlBarisFisik=subBarisRow&&subBarisRow.length>0?subBarisRow.length:1;
-                panelRowCount[pid]=(panelRowCount[pid]||0)+jmlBarisFisik;
+                panelRowCount[pid]=(panelRowCount[pid]||0)+1;
               });
               return visibleRows.map((row,ri)=>{
                 const pc=PROSES_COLOR[row.proses]||"#64748b";
