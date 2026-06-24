@@ -3522,7 +3522,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [notifAvailable,setNotifAvailable]=useState<any[]>([]);
 
   const fetchNotifAvailable=async()=>{
-    const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).order("created_at",{ascending:false});
+    const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).eq("tipe","available").order("created_at",{ascending:false});
     setNotifAvailable(data??[]);
   };
 
