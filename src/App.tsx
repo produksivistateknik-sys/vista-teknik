@@ -5035,8 +5035,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       const{data:renharRows}=await supabase.from("renhar").select("*").eq("wo_id",wo.id);
       // Ambil semua timer kerja untuk panel-panel di WO ini
       const{data:timerRows}=panelIds.length>0?await supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").in("panel_id",panelIds):{data:[]};
-      // Ambil kendala terkait WO ini (kalau ada relasi)
-      const{data:kendalaRows}=await supabase.from("kendala").select("*").eq("wo_id",wo.id);
+      // Catatan: tabel kendala tidak punya relasi wo_id/panel_id, jadi tidak bisa difilter per WO
+      const kendalaRows:any[]=[];
 
       const totalJamKerja=(timerRows||[]).reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0)/60;
 
