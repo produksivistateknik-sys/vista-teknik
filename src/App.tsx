@@ -3390,7 +3390,6 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
   const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
-  const [modalRentangTanggal,setModalRentangTanggal]=useState<Record<string,{mulai:string,selesai:string}>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
