@@ -2620,10 +2620,10 @@ function Dashboard({woData}){
           <div style={{overflowX:"auto" as const}}>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <thead><tr>
-                {["No WO","Proyek","Target","Panel","Progress","Status"].map(h=><th key={h} style={thS}>{h}</th>)}
+                {["No WO","Proyek","Target","Panel","Progress","Status","Aksi"].map(h=><th key={h} style={thS}>{h}</th>)}
               </tr></thead>
               <tbody>
-                {filteredWO.length===0&&<tr><td colSpan={6} style={{...tdS,textAlign:"center",color:"#94a3b8",padding:"24px"}}>Tidak ada data</td></tr>}
+                {filteredWO.length===0&&<tr><td colSpan={7} style={{...tdS,textAlign:"center",color:"#94a3b8",padding:"24px"}}>Tidak ada data</td></tr>}
                 {filteredWO.map(wo=>{
                   const pct=woOverall(wo);
                   const d=daysUntil(wo.target);
@@ -2642,6 +2642,15 @@ function Dashboard({woData}){
                       <td style={{...tdS,color:"#64748b"}}>{(wo.panels||[]).length} panel</td>
                       <td style={tdS}><PBar pct={pct}/></td>
                       <td style={tdS}><StatusBadge w={wo}/></td>
+                      <td style={{...tdS,textAlign:"center" as const}}>
+                        {pct===100?(
+                          <Btn color="#16a34a" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setArsipModal(wo)}>
+                            📦 Arsipkan
+                          </Btn>
+                        ):(
+                          <span style={{fontSize:10,color:"#cbd5e1"}}>—</span>
+                        )}
+                      </td>
                     </tr>
                   );
                 })}
@@ -4990,6 +4999,73 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const [open,setOpen]=useState(false);
   const [expandedWo,setExpandedWo]=useState({});
   const [expandedPanel,setExpandedPanel]=useState({});
+  const [arsipModal,setArsipModal]=useState<any>(null);
+  const [arsipLoading,setArsipLoading]=useState(false);
+
+  const arsipkanWO=async(wo:any)=>{
+    setArsipLoading(true);
+    try{
+      const panelIds=(wo.panels||[]).map((p:any)=>p.id);
+      const totalPanel=panelIds.length;
+      const totalKomponen=(wo.panels||[]).reduce((s:number,p:any)=>s+Object.keys(p.checklist||{}).length,0);
+
+      // Ambil semua raw_schedule untuk WO ini
+      const{data:rawRows}=await supabase.from("raw_schedule").select("*").eq("wo_id",wo.id);
+      // Ambil semua renhar untuk WO ini
+      const{data:renharRows}=await supabase.from("renhar").select("*").eq("wo_id",wo.id);
+      // Ambil semua timer kerja untuk panel-panel di WO ini
+      const{data:timerRows}=panelIds.length>0?await supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").in("panel_id",panelIds):{data:[]};
+      // Ambil kendala terkait WO ini (kalau ada relasi)
+      const{data:kendalaRows}=await supabase.from("kendala").select("*").eq("wo_id",wo.id);
+
+      const totalJamKerja=(timerRows||[]).reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0)/60;
+
+      const ringkasanOperatorMap:Record<string,{nama:string,totalMenit:number,jumlahSesi:number}>={};
+      (timerRows||[]).forEach((t:any)=>{
+        const nama=t.pekerja?.nama||"Tidak diketahui";
+        if(!ringkasanOperatorMap[nama])ringkasanOperatorMap[nama]={nama,totalMenit:0,jumlahSesi:0};
+        ringkasanOperatorMap[nama].totalMenit+=Number(t.durasi_menit||0);
+        ringkasanOperatorMap[nama].jumlahSesi++;
+      });
+      const ringkasanOperator=Object.values(ringkasanOperatorMap);
+
+      const rincianPanel=(wo.panels||[]).map((p:any)=>({
+        id:p.id,nama:p.nama,tipe:p.tipe,qty:p.qty,
+        totalKomponen:Object.keys(p.checklist||{}).length,
+      }));
+
+      const tanggalSelesaiAktual=new Date().toISOString().slice(0,10);
+      const selisihHari=Math.round((new Date(tanggalSelesaiAktual).getTime()-new Date(wo.target).getTime())/86400000);
+      const statusKetepatan=selisihHari<=0?"tepat_waktu":"telat";
+
+      const{error}=await supabase.from("fcs_arsip_wo").insert({
+        wo_id:wo.id,wo_number:wo.wo,proyek:wo.proyek,
+        target_selesai:wo.target,tanggal_selesai_aktual:tanggalSelesaiAktual,
+        status_ketepatan:statusKetepatan,selisih_hari:Math.abs(selisihHari),
+        total_panel:totalPanel,total_komponen:totalKomponen,total_jam_kerja:totalJamKerja,
+        ringkasan_operator:ringkasanOperator,rincian_panel:rincianPanel,
+        catatan_kendala:kendalaRows||[],
+        snapshot_raw_schedule:rawRows||[],snapshot_renhar:renharRows||[],
+        diarsipkan_oleh:user?.name||user?.nama||"Admin",
+      });
+
+      if(error){alert("Gagal arsipkan: "+error.message);setArsipLoading(false);return;}
+
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      const uname=user?.name||user?.nama||sess?.nama||"Admin";
+      await activityLogService.insert({
+        user_name:uname,action:"ARSIPKAN WO",
+        description:"Arsipkan WO "+wo.wo+" ("+wo.proyek+") - "+totalPanel+" panel, "+totalKomponen+" komponen",
+        module:"wo",halaman:"Manajemen WO",proyek:wo.proyek||"",panel:""
+      });
+
+      setArsipModal(null);
+      alert("WO "+wo.wo+" berhasil diarsipkan!");
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setArsipLoading(false);
+  };
 
   const save=async()=>{
     const np=panels.filter(p=>p.nama).map((p,i)=>({
@@ -5239,6 +5315,23 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           </Card>
         );
       })}
+      {arsipModal&&(
+        <Modal title="Arsipkan Work Order?" onClose={()=>{if(!arsipLoading)setArsipModal(null);}} width={420}>
+          <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#92400e",display:"flex",gap:8,alignItems:"flex-start"}}>
+            <i className="ti ti-alert-triangle" style={{fontSize:16,marginTop:1}}/>
+            <span>WO <strong>{arsipModal.wo}</strong> ({arsipModal.proyek}) akan diarsipkan. Semua data (Raw Schedule, Rencana Harian, riwayat kerja) akan disimpan permanen sebagai histori.</span>
+          </div>
+          <div style={{fontSize:12,color:"#475569",marginBottom:16}}>
+            <div>📦 {(arsipModal.panels||[]).length} panel akan diarsipkan</div>
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setArsipModal(null)} disabled={arsipLoading}>Batal</Btn>
+            <Btn color="#16a34a" onClick={()=>arsipkanWO(arsipModal)} disabled={arsipLoading}>
+              {arsipLoading?"⏳ Mengarsipkan...":"📦 Arsipkan Sekarang"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
       {delId&&(
         <Modal title="Hapus WO?" onClose={()=>setDelId(null)} width={360}>
           <div style={{textAlign:"center"}}>
