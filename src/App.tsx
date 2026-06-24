@@ -3233,9 +3233,9 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
               </span>}
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
                 {(p.nameplate_progress!==undefined||p.yellowmark_progress!==undefined)&&(
-                  <div style={{display:"flex",alignItems:"center",gap:5}}>
-                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:(p.nameplate_progress||0)>=100?"#ecfeff":"#f1f5f9",color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>🏷️{p.nameplate_progress||0}%</span>
-                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:(p.yellowmark_progress||0)>=100?"#fefce8":"#f1f5f9",color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>🟡{p.yellowmark_progress||0}%</span>
+                  <div style={{display:"flex",alignItems:"center",gap:6}}>
+                    <span style={{fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${(p.nameplate_progress||0)>=100?"#a5f3fc":"#e2e8f0"}`,background:(p.nameplate_progress||0)>=100?"#ecfeff":"#f8fafc",color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8",whiteSpace:"nowrap" as const}}>Nameplate: {p.nameplate_progress||0}%</span>
+                    <span style={{fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${(p.yellowmark_progress||0)>=100?"#fde68a":"#e2e8f0"}`,background:(p.yellowmark_progress||0)>=100?"#fefce8":"#f8fafc",color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8",whiteSpace:"nowrap" as const}}>Yellowmark: {p.yellowmark_progress||0}%</span>
                   </div>
                 )}
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
