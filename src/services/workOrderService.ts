@@ -13,7 +13,7 @@ const logActivity = async (user_name: string, action: string, description: strin
 
 export const workOrderService = {
   async getAll() {
-    const { data, error } = await supabase.from('work_orders').select('*, panels(*)').order('created_at', { ascending: false })
+    const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false })
     if (error) throw new Error(error.message)
     return (data ?? []).map(wo => ({
       ...wo,
