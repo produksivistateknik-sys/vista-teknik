@@ -875,9 +875,16 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
   const [timerData,setTimerData]=useState<any[]>([]);
 
   useEffect(()=>{
-    supabase.from("fcs_timer_kerja").select("*").not("selesai","is",null).then(({data})=>{
-      setTimerData(data??[]);
-    });
+    const fetchTimer=()=>{
+      supabase.from("fcs_timer_kerja").select("*").not("selesai","is",null).then(({data})=>{
+        setTimerData(data??[]);
+      });
+    };
+    fetchTimer();
+    const ch=supabase.channel("realtime-timer-kerja-tracking")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimer)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
   },[]);
 
   const getKpiPerPekerja=(pkrId:number)=>{
