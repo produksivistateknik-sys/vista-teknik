@@ -231,8 +231,9 @@ export const DIVISI_CONFIG = {
   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",  proses:["WIRING CONTROL"]},
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8", proses:["WIRING POWER"]},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",      proses:["QC TEST","PACKING"]},
+  nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",     proses:null},
 };
-export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc"];
+export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc","nameplate"];
 
 // USERS array removed - using Supabase operator_users table
 
