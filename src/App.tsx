@@ -2913,7 +2913,7 @@ function SummaryProgress({woData}:{woData:any[]}){
 
         // Proses yang ada data (pct > 0 atau ada di salah satu panel)
         const prosesAda=PROSES_LIST.filter(pr=>
-          panelProgressData.some((pd:any)=>pd[pr]!==undefined)
+          pr!=="QC TEST"&&pr!=="PACKING"&&panelProgressData.some((pd:any)=>pd[pr]!==undefined)
         );
 
         // Rata-rata per proses
@@ -2967,6 +2967,10 @@ function SummaryProgress({woData}:{woData:any[]}){
                           {pr}
                         </th>
                       ))}
+                      <th style={{...thS,minWidth:65,borderTop:"3px solid #0891b2"}}>NAMEPLATE</th>
+                      <th style={{...thS,minWidth:65,borderTop:"3px solid #ca8a04"}}>YELLOWMARK</th>
+                      <th style={{...thS,minWidth:55,borderTop:"3px solid #16a34a"}}>QC</th>
+                      <th style={{...thS,minWidth:55,borderTop:"3px solid #2563eb"}}>PACKING</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -3001,6 +3005,19 @@ function SummaryProgress({woData}:{woData:any[]}){
                             <span style={{background:pbg,color:psc,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:600}}>{ps}</span>
                           </td>
                           {prosesAda.map(pr=><ProsesPctCell key={pr} pct={pd[pr]} proses={pr}/>)}
+                          {(()=>{
+                            const qcCl=p.qc_checklist||{};
+                            const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"belum");
+                            const qcStatus=qcStatuses.some((s:string)=>s==="gagal")?"gagal":qcStatuses.every((s:string)=>s==="lolos")?"lolos":"belum";
+                            return(
+                              <>
+                                <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>{p.nameplate_progress||0}%</td>
+                                <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>{p.yellowmark_progress||0}%</td>
+                                <td style={{...tdS,fontWeight:700,color:qcStatus==="lolos"?"#16a34a":qcStatus==="gagal"?"#dc2626":"#94a3b8",fontSize:9}}>{qcStatus==="lolos"?"Lolos":qcStatus==="gagal"?"Gagal":"Belum"}</td>
+                                <td style={{...tdS,fontWeight:700,color:p.packing_done?"#2563eb":"#94a3b8",fontSize:9}}>{p.packing_done?"Selesai":"Belum"}</td>
+                              </>
+                            );
+                          })()}
                         </tr>
                       );
                     })}
