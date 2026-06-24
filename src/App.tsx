@@ -8993,6 +8993,24 @@ export default function App(){
   const [tab,setTab]=useState("dashboard");
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
   const [showNotif,setShowNotif]=useState(false);
+  const [notifQcGagal,setNotifQcGagal]=useState<any[]>([]);
+
+  useEffect(()=>{
+    const fetchQcGagal=()=>{
+      supabase.from("fcs_notifikasi").select("*").eq("tipe","qc_gagal").eq("dibaca",false)
+        .order("created_at",{ascending:false}).then(({data})=>{setNotifQcGagal(data??[]);});
+    };
+    fetchQcGagal();
+    const ch=supabase.channel("realtime-qc-gagal-global")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_notifikasi"},fetchQcGagal)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const tandaiQcGagalDibaca=async(id:number)=>{
+    await supabase.from("fcs_notifikasi").update({dibaca:true}).eq("id",id);
+    setNotifQcGagal(prev=>prev.filter((n:any)=>n.id!==id));
+  };
   const [showSearch,setShowSearch]=useState(false);
   const [searchQuery,setSearchQuery]=useState("");
   const [darkMode,setDarkMode]=useState(()=>{
@@ -9280,7 +9298,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   <div className="erp-bell" onClick={()=>setShowNotif(p=>!p)}
                     style={{cursor:"pointer",position:"relative"}}>
                     <i className="ti ti-bell" style={{fontSize:14}}/>
-                    {(alerts>0||kendalaNotif.length>0)&&(
+                    {(alerts>0||kendalaNotif.length>0||notifQcGagal.length>0)&&(
                       <div className="erp-bell-dot" style={{top:2,right:2}}/>
                     )}
                   </div>
@@ -9305,13 +9323,31 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                       </div>
                       {/* Notif list */}
                       <div style={{maxHeight:360,overflowY:"auto" as const}}>
-                        {notifItems.length===0&&kendalaNotif.length===0?(
+                        {notifItems.length===0&&kendalaNotif.length===0&&notifQcGagal.length===0?(
                           <div style={{padding:"32px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
                             <div style={{fontSize:24,marginBottom:8}}>✅</div>
                             Semua WO on track!
                           </div>
                         ):(
                           <>
+                            {notifQcGagal.map((n:any)=>(
+                              <div key={n.id} style={{padding:"10px 16px",borderBottom:"1px solid #f8fafc",background:"#fef2f2"}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                                  <div style={{flex:1}}>
+                                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:3}}>
+                                      <span style={{background:"#dc2626",color:"#fff",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>QC GAGAL</span>
+                                      <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{n.panel_nama}</span>
+                                    </div>
+                                    <div style={{fontSize:11,color:"#475569"}}>{n.nama_komponen} — oleh {n.pekerja_nama}</div>
+                                    {n.catatan&&<div style={{fontSize:10,color:"#7f1d1d",marginTop:3,fontStyle:"italic" as const}}>"{n.catatan}"</div>}
+                                  </div>
+                                  <button onClick={()=>tandaiQcGagalDibaca(n.id)}
+                                    style={{background:"#fff",border:"1px solid #fecaca",borderRadius:6,padding:"4px 10px",fontSize:10,fontWeight:700,color:"#dc2626",cursor:"pointer",whiteSpace:"nowrap" as const}}>
+                                    OK
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
                             {notifItems.map((n:any)=>(
                               <div key={n.id} onClick={()=>{setTab("wo");setShowNotif(false);}}
                                 style={{padding:"10px 16px",borderBottom:"1px solid #f8fafc",cursor:"pointer",
@@ -9365,7 +9401,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                         )}
                       </div>
                       {/* Footer */}
-                      {(notifItems.length>0||kendalaNotif.length>0)&&(
+                      {(notifItems.length>0||kendalaNotif.length>0||notifQcGagal.length>0)&&(
                         <div style={{padding:"8px 16px",borderTop:"1px solid #f1f5f9",textAlign:"center" as const}}>
                           <button onClick={()=>{setTab("wo");setShowNotif(false);}}
                             style={{background:"none",border:"none",cursor:"pointer",
