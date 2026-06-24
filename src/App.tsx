@@ -3220,6 +3220,12 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                 {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
               </span>}
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
+                {(p.nameplate_progress!==undefined||p.yellowmark_progress!==undefined)&&(
+                  <div style={{display:"flex",alignItems:"center",gap:5}}>
+                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:(p.nameplate_progress||0)>=100?"#ecfeff":"#f1f5f9",color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>🏷️{p.nameplate_progress||0}%</span>
+                    <span style={{fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:4,background:(p.yellowmark_progress||0)>=100?"#fefce8":"#f1f5f9",color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>🟡{p.yellowmark_progress||0}%</span>
+                  </div>
+                )}
                 <div style={{display:"flex",alignItems:"center",gap:6}}>
                   <div style={{width:100,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
                     <div style={{width:ppct+"%",height:"100%",background:pc,borderRadius:99}}/>
