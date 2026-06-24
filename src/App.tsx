@@ -7740,7 +7740,7 @@ function MasterUserTab({ admins, setAdmins, user }){
         </div>
       </div>
       <div style={{ borderTop: "2px dashed #e2e8f0", margin: "8px 0 28px" }} />
-      <MasterPekerjaInline />
+      <MasterPekerjaInline pekerja={pekerja} />
       {resetId && (
         <Modal title="Reset Password Admin" onClose={() => setResetId(null)} width={380}>
           <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>Reset password untuk <strong>{admins.find(a => a.id === resetId)?.nama}</strong></div>
@@ -7765,7 +7765,7 @@ function MasterUserTab({ admins, setAdmins, user }){
   );
 }
 
-function MasterPekerjaInline(){
+function MasterPekerjaInline({pekerja}:any){
   const [ops, setOps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
@@ -7882,7 +7882,14 @@ function MasterPekerjaInline(){
       <Card style={{ marginBottom: 16 }}>
         <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit User Pekerja" : "Tambah User Pekerja"}</div>
         <div style={{ display: "grid", gridTemplateColumns: editId ? "1fr 1fr 1fr auto" : "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
-          <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama pekerja..." /></div>
+          <div><Lbl>Nama Lengkap</Lbl>
+            <Sel value={form.nama} onChange={(e:any) => setForm({ ...form, nama: e.target.value })}>
+              <option value="">-- Pilih dari Master Pekerja --</option>
+              {(pekerja||[]).filter((p:any)=>p.divisi===form.divisi).map((p:any)=>(
+                <option key={p.id} value={p.nama}>{p.nama}</option>
+              ))}
+            </Sel>
+          </div>
           <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_pekerja" /></div>
           {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Default: 1234" /></div>)}
           <div><Lbl>Divisi</Lbl>
