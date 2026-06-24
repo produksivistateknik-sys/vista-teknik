@@ -336,6 +336,7 @@ function woOverall(wo){
 }
 
 const TODAY=new Date().toISOString().slice(0,10);
+const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
 function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
 function isDelayed(t){ return daysUntil(t)<0; }
 function isUrgent(t){ const d=daysUntil(t); return d>=0&&d<=7; }  // H-7
@@ -1601,7 +1602,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
                     const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
-                    const isWiringTask=PROSES_ORANG_RAW.includes(t.proses);
+                    const isWiringTask=PROSES_ORANG_RAW_GLOBAL.includes(t.proses);
 
                     if(isWiringTask){
                       const ppk=rh?.pekerja_per_komponen||{};
