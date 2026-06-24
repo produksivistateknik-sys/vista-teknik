@@ -3262,10 +3262,26 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                         {pr}
                       </th>
                     ))}
+                    <th style={{...thS,minWidth:70,borderTop:"3px solid #0891b2"}}>NAMEPLATE</th>
+                    <th style={{...thS,minWidth:70,borderTop:"3px solid #ca8a04"}}>YELLOWMARK</th>
+                    <th style={{...thS,minWidth:60,borderTop:"3px solid #16a34a"}}>QC</th>
+                    <th style={{...thS,minWidth:60,borderTop:"3px solid #2563eb"}}>PACKING</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {wps.map((wp:any)=>{
+                  {(()=>{
+                    const totalRowsPanel=wps.reduce((sum:number,wp:any)=>{
+                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                      return sum+ai.length;
+                    },0);
+                    const firstRenderedWp=wps.find((wp:any)=>{
+                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                      return ai.length>0;
+                    });
+                    const qcCl=p.qc_checklist||{};
+                    const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"belum");
+                    const qcStatus=qcStatuses.some((s:string)=>s==="gagal")?"gagal":qcStatuses.every((s:string)=>s==="lolos")?"lolos":"belum";
+                  return wps.map((wp:any)=>{
                     const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
                     const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
                     if(!activeItems.length) return null;
@@ -3289,10 +3305,19 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                             const pct=cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0;
                             return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name}/>;
                           })}
+                          {wp===firstRenderedWp&&ii===0&&(
+                            <>
+                              <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.nameplate_progress||0}%</td>
+                              <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.yellowmark_progress||0}%</td>
+                              <td style={{...tdS,fontWeight:700,color:qcStatus==="lolos"?"#16a34a":qcStatus==="gagal"?"#dc2626":"#94a3b8"}} rowSpan={totalRowsPanel}>{qcStatus==="lolos"?"Lolos":qcStatus==="gagal"?"Gagal":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:p.packing_done?"#2563eb":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.packing_done?"Selesai":"Belum"}</td>
+                            </>
+                          )}
                         </tr>
                       );
                     });
-                  })}
+                  });
+                  })()}
                   {/* Busbar rows - dari busbar_schedule + busbar_progress */}
                   {(()=>{
                     // Kumpulkan komponen busbar dari raw_schedule busbar_schedule
