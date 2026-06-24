@@ -3211,6 +3211,7 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
         const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
         const hasBusbar=BUSBAR_TIPE.includes(p.tipe)||Object.keys(p.busbar_progress||{}).length>0;
         const prosesPanel=PROSES_LIST.filter(pr=>{
+          if(pr==="QC TEST"||pr==="PACKING") return false;
           if(pr==="BUSBAR") return hasBusbar;
           return p.pd[pr]!==undefined&&p.pd[pr]>=0;
         });
