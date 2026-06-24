@@ -8604,6 +8604,58 @@ function ArsipTab({woData,pekerja,logActivity,user}:any){
           ))}
         </div>
       )}
+
+      {selArsip&&(
+        <Modal title={"WO "+selArsip.wo_number+" — "+selArsip.proyek} onClose={()=>setSelArsip(null)} width={560}>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8,marginBottom:16}}>
+            {[
+              {l:"Total Panel",v:selArsip.total_panel},
+              {l:"Total Komponen",v:selArsip.total_komponen},
+              {l:"Total Jam Kerja",v:Math.round(selArsip.total_jam_kerja)+" jam"},
+            ].map((s,i)=>(
+              <div key={i} style={{background:"#f8fafc",borderRadius:8,padding:"10px",textAlign:"center" as const}}>
+                <div style={{fontSize:18,fontWeight:800,color:"#1e293b"}}>{s.v}</div>
+                <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase" as const,marginTop:2}}>{s.l}</div>
+              </div>
+            ))}
+          </div>
+
+          <div style={{fontSize:11,color:"#64748b",marginBottom:16}}>
+            Target: {selArsip.target_selesai} → Selesai aktual: {selArsip.tanggal_selesai_aktual}
+            {selArsip.status_ketepatan==="tepat_waktu"
+              ?<span style={{color:"#16a34a",fontWeight:700,marginLeft:6}}>(Tepat waktu)</span>
+              :<span style={{color:"#dc2626",fontWeight:700,marginLeft:6}}>(Telat {selArsip.selisih_hari} hari)</span>}
+          </div>
+
+          <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:8}}>👥 Ringkasan Operator</div>
+          {(selArsip.ringkasan_operator||[]).length===0?(
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:16}}>Tidak ada data operator tercatat</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:16}}>
+              {(selArsip.ringkasan_operator||[]).map((op:any,i:number)=>(
+                <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,background:"#f8fafc",borderRadius:6,padding:"6px 10px"}}>
+                  <span style={{fontWeight:600,color:"#1e293b"}}>{op.nama}</span>
+                  <span style={{color:"#64748b"}}>{Math.round(op.totalMenit/60)} jam · {op.jumlahSesi} sesi</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:8}}>📋 Rincian Panel</div>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:200,overflowY:"auto" as const}}>
+            {(selArsip.rincian_panel||[]).map((p:any,i:number)=>(
+              <div key={i} style={{display:"flex",justifyContent:"space-between",fontSize:11,background:"#f8fafc",borderRadius:6,padding:"6px 10px"}}>
+                <span style={{fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
+                <span style={{color:"#94a3b8"}}>{p.tipe} · {p.totalKomponen} komponen</span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{fontSize:10,color:"#cbd5e1",marginTop:16,textAlign:"center" as const}}>
+            Diarsipkan oleh {selArsip.diarsipkan_oleh} pada {new Date(selArsip.diarsipkan_pada).toLocaleDateString("id-ID")}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
