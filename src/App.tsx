@@ -2803,6 +2803,9 @@ function SummaryProgress({woData}:{woData:any[]}){
   const selesai=woData.filter(w=>woOverall(w)===100).length;
   const mendesak=woData.filter(w=>woOverall(w)<100&&isUrgent(w.target)&&!isDelayed(w.target)).length;
   const terlambat=woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length;
+  const allPanelsForNp=woData.flatMap((w:any)=>w.panels||[]);
+  const belumNameplate=allPanelsForNp.filter((p:any)=>(p.nameplate_progress||0)<100).length;
+  const belumYellowmark=allPanelsForNp.filter((p:any)=>(p.yellowmark_progress||0)<100).length;
 
   const ProsesPctCell=({pct,proses}:{pct:number|undefined,proses:string})=>{
     if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
@@ -2823,13 +2826,15 @@ function SummaryProgress({woData}:{woData:any[]}){
     <div style={{display:"flex",flexDirection:"column",gap:10}}>
 
       {/* Stat row */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(5,1fr)",gap:8}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:8}}>
         {[
           {n:totalPanel,l:"Total Panel",c:"#2563eb",bc:"#2563eb"},
           {n:avgOverall+"%",l:"Avg Overall",c:avgOverall>=70?"#16a34a":avgOverall>=40?"#d97706":"#dc2626",bc:avgOverall>=70?"#16a34a":avgOverall>=40?"#d97706":"#dc2626"},
           {n:selesai,l:"Selesai",c:"#16a34a",bc:"#16a34a"},
           {n:mendesak,l:"Mendesak H-7",c:"#d97706",bc:"#d97706"},
           {n:terlambat,l:"Terlambat",c:"#dc2626",bc:"#dc2626"},
+          {n:belumNameplate,l:"Belum Nameplate",c:"#0891b2",bc:"#0891b2"},
+          {n:belumYellowmark,l:"Belum Yellowmark",c:"#ca8a04",bc:"#ca8a04"},
         ].map((s,i)=>(
           <div key={i} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderTop:"3px solid "+s.bc,borderRadius:8,padding:"10px 13px",textAlign:"center" as const}}>
             <div style={{fontSize:20,fontWeight:700,color:s.c}}>{s.n}</div>
