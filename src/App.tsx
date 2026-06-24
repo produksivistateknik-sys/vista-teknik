@@ -5064,6 +5064,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
 
       if(error){alert("Gagal arsipkan: "+error.message);setArsipLoading(false);return;}
 
+      // Tandai WO sebagai sudah diarsipkan, supaya tidak muncul lagi di tampilan aktif
+      await supabase.from("work_orders").update({is_archived:true}).eq("id",wo.id);
+
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
       const uname=user?.name||user?.nama||sess?.nama||"Admin";
       await activityLogService.insert({
@@ -5073,7 +5076,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       });
 
       setArsipModal(null);
-      alert("WO "+wo.wo+" berhasil diarsipkan!");
+      if(refetchWO)await refetchWO();
+      alert("WO "+wo.wo+" berhasil diarsipkan dan disembunyikan dari tampilan aktif!");
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
     }
