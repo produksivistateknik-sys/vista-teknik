@@ -9461,6 +9461,25 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               </div>
             </div>
             <div className="erp-body">
+              {notifQcGagal.length>0&&(
+                <div style={{position:"sticky" as const,top:0,zIndex:50,background:"#fef2f2",borderBottom:"1px solid #fecaca",padding:"10px 16px",marginBottom:12}}>
+                  <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:160,overflowY:"auto" as const}}>
+                    {notifQcGagal.map((n:any)=>(
+                      <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,background:"#fff",borderRadius:6,padding:"6px 10px",border:"1px solid #fecaca"}}>
+                        <div style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0}}>
+                          <span style={{background:"#dc2626",color:"#fff",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const}}>QC GAGAL</span>
+                          <span style={{fontSize:11.5,color:"#1e293b",fontWeight:600,whiteSpace:"nowrap" as const}}>{n.panel_nama}</span>
+                          <span style={{fontSize:11,color:"#7f1d1d",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{n.nama_komponen} oleh {n.pekerja_nama}{n.catatan?` — "${n.catatan}"`:""}</span>
+                        </div>
+                        <button onClick={()=>tandaiQcGagalDibaca(n.id)}
+                          style={{background:"#fff",border:"1px solid #fecaca",borderRadius:5,padding:"3px 10px",fontSize:10,fontWeight:700,color:"#dc2626",cursor:"pointer",whiteSpace:"nowrap" as const,flexShrink:0}}>
+                          OK
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
               {tab==="dashboard"&&<Dashboard woData={woData}/>}
               {tab==="fcs"&&<FCSScheduleTab woData={woData} user={user}/>}
               {tab==="arsip"&&<ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/>}
