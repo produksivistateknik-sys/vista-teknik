@@ -6988,6 +6988,8 @@ function KapasitasPekerjaanTab(){
         setProcessList(prev=>[...prev,data]);
         setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
         setShowAddProc(false);
+      } else if(error){
+        alert("Gagal simpan: "+error.message);
       }
     }
   };
