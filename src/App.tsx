@@ -4230,10 +4230,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
               const prosesToShow=filterProses.length===0?ALL_PROSES:filterProses;
-              let terpakaiTotal=0;let kapasitasTotal=0;let adaOverrideCount=0;
-              prosesToShow.forEach((pr:string)=>{
+              let kapasitasTotal=0;let adaOverrideCount=0;
+              const perProses:{nama:string;terpakai:number}[]=prosesToShow.map((pr:string)=>{
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
                 if(ov){adaOverrideCount++;kapasitasTotal+=Number(ov.kapasitas_menit);}
+                let terpakaiPr=0;
                 rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
                   const panelId=r.panel_id||r.panelId;
                   const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
@@ -4243,28 +4244,36 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     (e.komponen||[]).forEach((kode:string)=>{
                       const qty=panelData.checklist?.[kode]?.qty||0;
                       const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
-                      terpakaiTotal+=qty*menitPcs;
+                      terpakaiPr+=qty*menitPcs;
                     });
                   });
                 });
+                return {nama:pr,terpakai:terpakaiPr};
               });
               const adaOverride=adaOverrideCount>0;
-              const pct=kapasitasTotal>0?Math.min(Math.round((terpakaiTotal/kapasitasTotal)*100),100):0;
-              const color=!adaOverride?"#94a3b8":pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
-              const bg=!adaOverride?"#f8fafc":pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
               return(
-                <div key={d} style={{background:bg,border:`1px solid ${color}30`,borderRadius:8,padding:"8px 12px",minWidth:100,textAlign:"center" as const}}>
+                <div key={d} style={{background:"var(--card-bg,#fff)",border:"1px solid #e2e8f030",borderRadius:8,padding:"8px 12px",minWidth:130,textAlign:"center" as const}}>
                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{getDayLabel(d)}</div>
                   {!adaOverride?(
                     <div style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4}}>⚠ Belum diatur</div>
                   ):(
-                    <>
-                      <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
-                        <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
-                      </div>
-                      <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>{Math.round(terpakaiTotal)}/{kapasitasTotal} mnt</div>
-                    </>
+                    <div style={{display:"flex",flexDirection:"column" as const,gap:5,textAlign:"left" as const}}>
+                      {perProses.map(pp=>{
+                        const pctPr=kapasitasTotal>0?Math.min(Math.round((pp.terpakai/kapasitasTotal)*100),100):0;
+                        const colorPr=pctPr>=95?"#dc2626":pctPr>=80?"#f59e0b":"#16a34a";
+                        return(
+                          <div key={pp.nama}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9,marginBottom:2}}>
+                              <span style={{color:"#64748b"}}>{pp.nama}</span>
+                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{kapasitasTotal} mnt</span>
+                            </div>
+                            <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                              <div style={{width:pctPr+"%",height:"100%",background:colorPr,borderRadius:99}}/>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   )}
                 </div>
               );
