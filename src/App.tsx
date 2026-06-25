@@ -6939,14 +6939,6 @@ function KapasitasPekerjaanTab(){
     if(!overrideForm.tanggal)return;
     if(isOrang&&!overrideForm.jumlah_orang)return;
     if(!isOrang&&!overrideForm.jam_kerja)return;
-    if(!editOverride){
-      const existing=overrideList.find((o:any)=>o.tanggal===overrideForm.tanggal&&overrideForm.jenis_pekerjaan.includes(o.jenis_pekerjaan));
-      if(existing){
-        setEditOverride(existing);
-        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:[existing.jenis_pekerjaan],jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:overrideForm.keterangan});
-        return;
-      }
-    }
     const payload:any=isOrang
       ?{tipe_kapasitas:"orang",jumlah_orang:Number(overrideForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100,keterangan:overrideForm.keterangan}
       :{tipe_kapasitas:"jam",jam_kerja:Number(overrideForm.jam_kerja),efektivitas_pct:Number(overrideForm.efektivitas_pct),jumlah_orang:null,keterangan:overrideForm.keterangan};
@@ -6955,16 +6947,28 @@ function KapasitasPekerjaanTab(){
       if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
       else alert("Gagal simpan: "+error.message);
     } else {
+      const sudahAda=overrideForm.jenis_pekerjaan.filter(jp=>overrideList.some((o:any)=>o.tanggal===overrideForm.tanggal&&o.jenis_pekerjaan===jp));
+      const belumAda=overrideForm.jenis_pekerjaan.filter(jp=>!sudahAda.includes(jp));
+      if(belumAda.length===0){
+        alert("Semua jenis pekerjaan yang dipilih sudah ada override untuk tanggal ini. Gunakan tombol Edit di tabel untuk mengubahnya.");
+        return;
+      }
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-      const rows=overrideForm.jenis_pekerjaan.map(jp=>({
+      const rows=belumAda.map(jp=>({
         tanggal:overrideForm.tanggal,
         jenis_pekerjaan:jp,
         ...payload,
         created_by:sess?.nama||sess?.name||"Admin",
       }));
       const{error}=await supabase.from("fcs_kapasitas_override").insert(rows);
-      if(!error){await fetchOverride();setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
-      else alert("Gagal simpan: "+(error.message.includes("duplicate")?"Salah satu tanggal + pekerjaan yang dipilih sudah ada overridenya":error.message));
+      if(!error){
+        await fetchOverride();
+        setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+        if(sudahAda.length>0){
+          alert("Berhasil ditambahkan untuk: "+belumAda.join(", ")+".\nDilewati karena sudah ada override: "+sudahAda.join(", ")+" (gunakan tombol Edit untuk mengubahnya).");
+        }
+      }
+      else alert("Gagal simpan: "+error.message);
     }
   };
 
