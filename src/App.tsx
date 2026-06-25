@@ -7094,31 +7094,35 @@ function KapasitasPekerjaanTab(){
           {showAddProc&&(
             <div style={{background:"#f0f8ff",borderRadius:10,border:"1.5px solid #bfdbfe",padding:"14px 16px",marginBottom:14}}>
               <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>{editProc?"✏️ Edit Process Time":"➕ Tambah Process Time"}</div>
-              <div style={{display:"grid",gridTemplateColumns:"120px 1fr 120px 100px 1fr 120px",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Kode</div>
-                  <input value={procForm.kode_komponen} onChange={e=>setProcForm({...procForm,kode_komponen:e.target.value})}
-                    placeholder="FS.1..." disabled={!!editProc}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editProc?"#f1f5f9":"#fff"}}/>
-                </div>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Nama Komponen</div>
-                  <input value={procForm.nama_komponen} onChange={e=>setProcForm({...procForm,nama_komponen:e.target.value})}
-                    placeholder="Nama komponen..."
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}/>
-                </div>
+              <div style={{display:"grid",gridTemplateColumns:"110px 90px 1fr 1fr 110px",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Tipe Panel</div>
-                  <select value={procForm.tipe_panel} onChange={e=>setProcForm({...procForm,tipe_panel:e.target.value})}
+                  <select value={procForm.tipe_panel} onChange={e=>setProcForm({...procForm,tipe_panel:e.target.value,kode_komponen:"",nama_komponen:""})}
                     style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
                     {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
                   </select>
                 </div>
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>WP</div>
-                  <select value={procForm.wp} onChange={e=>setProcForm({...procForm,wp:e.target.value})}
+                  <select value={procForm.wp} onChange={e=>setProcForm({...procForm,wp:e.target.value,kode_komponen:"",nama_komponen:""})}
                     style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
                     {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
+                  </select>
+                </div>
+                <div>
+                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Komponen (dari Manajemen WO)</div>
+                  <select value={procForm.kode_komponen} disabled={!!editProc}
+                    onChange={e=>{
+                      const kode=e.target.value;
+                      const cfg=(PANEL_TYPES as any)[procForm.tipe_panel];
+                      const item=cfg?.wps.find((w:any)=>w.wp===procForm.wp)?.items.find((it:any)=>it.kode===kode);
+                      setProcForm({...procForm,kode_komponen:kode,nama_komponen:item?.nama||""});
+                    }}
+                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editProc?"#f1f5f9":"#fff"}}>
+                    <option value="">-- Pilih komponen --</option>
+                    {((PANEL_TYPES as any)[procForm.tipe_panel]?.wps.find((w:any)=>w.wp===procForm.wp)?.items||[]).map((it:any)=>(
+                      <option key={it.kode} value={it.kode}>{it.kode} — {it.nama}</option>
+                    ))}
                   </select>
                 </div>
                 <div>
