@@ -6857,7 +6857,8 @@ function KapasitasPekerjaanTab(){
   const [procForm,setProcForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
   const [overrideList,setOverrideList]=useState<any[]>([]);
   const [editOverride,setEditOverride]=useState<any>(null);
-  const [overrideForm,setOverrideForm]=useState({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+  const [overrideForm,setOverrideForm]=useState({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"] as string[],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+  const [overrideJenisDropdownOpen,setOverrideJenisDropdownOpen]=useState(false);
   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
   const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
@@ -6933,15 +6934,16 @@ function KapasitasPekerjaanTab(){
   };
 
   const saveOverride=async()=>{
-    const isOrang=isProsesOrang(overrideForm.jenis_pekerjaan);
+    if(overrideForm.jenis_pekerjaan.length===0){alert("Pilih minimal 1 jenis pekerjaan");return;}
+    const isOrang=isProsesOrang(overrideForm.jenis_pekerjaan[0]);
     if(!overrideForm.tanggal)return;
     if(isOrang&&!overrideForm.jumlah_orang)return;
     if(!isOrang&&!overrideForm.jam_kerja)return;
     if(!editOverride){
-      const existing=overrideList.find((o:any)=>o.tanggal===overrideForm.tanggal&&o.jenis_pekerjaan===overrideForm.jenis_pekerjaan);
+      const existing=overrideList.find((o:any)=>o.tanggal===overrideForm.tanggal&&overrideForm.jenis_pekerjaan.includes(o.jenis_pekerjaan));
       if(existing){
         setEditOverride(existing);
-        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:existing.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:overrideForm.keterangan});
+        setOverrideForm({tanggal:existing.tanggal,jenis_pekerjaan:[existing.jenis_pekerjaan],jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:overrideForm.keterangan});
         return;
       }
     }
@@ -6950,18 +6952,19 @@ function KapasitasPekerjaanTab(){
       :{tipe_kapasitas:"jam",jam_kerja:Number(overrideForm.jam_kerja),efektivitas_pct:Number(overrideForm.efektivitas_pct),jumlah_orang:null,keterangan:overrideForm.keterangan};
     if(editOverride){
       const{error}=await supabase.from("fcs_kapasitas_override").update(payload).eq("id",editOverride.id);
-      if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
+      if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
       else alert("Gagal simpan: "+error.message);
     } else {
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-      const{error}=await supabase.from("fcs_kapasitas_override").insert({
+      const rows=overrideForm.jenis_pekerjaan.map(jp=>({
         tanggal:overrideForm.tanggal,
-        jenis_pekerjaan:overrideForm.jenis_pekerjaan,
+        jenis_pekerjaan:jp,
         ...payload,
         created_by:sess?.nama||sess?.name||"Admin",
-      });
-      if(!error){await fetchOverride();setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
-      else alert("Gagal simpan: "+(error.message.includes("duplicate")?"Tanggal + pekerjaan ini sudah ada overridenya":error.message));
+      }));
+      const{error}=await supabase.from("fcs_kapasitas_override").insert(rows);
+      if(!error){await fetchOverride();setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
+      else alert("Gagal simpan: "+(error.message.includes("duplicate")?"Salah satu tanggal + pekerjaan yang dipilih sudah ada overridenya":error.message));
     }
   };
 
@@ -7331,17 +7334,35 @@ function KapasitasPekerjaanTab(){
                   onChange={e=>setOverrideForm({...overrideForm,tanggal:e.target.value})}
                   style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff"}}/>
               </div>
-              <div>
+              <div style={{position:"relative" as const}}>
                 <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
-                <select value={overrideForm.jenis_pekerjaan} disabled={!!editOverride}
-                  onChange={e=>setOverrideForm({...overrideForm,jenis_pekerjaan:e.target.value})}
-                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff"}}>
-                  {["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+                <button type="button" disabled={!!editOverride}
+                  onClick={()=>setOverrideJenisDropdownOpen(o=>!o)}
+                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff",textAlign:"left" as const,cursor:editOverride?"default":"pointer",fontFamily:"inherit",color:"#1e293b"}}>
+                  {overrideForm.jenis_pekerjaan.length===0?"Pilih...":overrideForm.jenis_pekerjaan.join(", ")}
+                </button>
+                {overrideJenisDropdownOpen&&!editOverride&&(
+                  <div style={{position:"absolute" as const,top:"100%",left:0,marginTop:4,background:"#fff",border:"1px solid #e2e8f0",borderRadius:7,boxShadow:"0 4px 12px #00000018",zIndex:20,maxHeight:220,overflowY:"auto" as const,minWidth:200}}>
+                    {["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+                      const selected=overrideForm.jenis_pekerjaan;
+                      const isChecked=selected.includes(p);
+                      const lockedKategoriOrang=selected.length>0&&isProsesOrang(selected[0]);
+                      const pIsOrang=isProsesOrang(p);
+                      const disabledOpt=selected.length>0&&!isChecked&&(lockedKategoriOrang!==pIsOrang);
+                      return(
+                        <label key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",fontSize:12,cursor:disabledOpt?"not-allowed":"pointer",opacity:disabledOpt?0.4:1,color:"#1e293b"}}>
+                          <input type="checkbox" checked={isChecked} disabled={disabledOpt}
+                            onChange={()=>{
+                              setOverrideForm(f=>({...f,jenis_pekerjaan:isChecked?f.jenis_pekerjaan.filter(x=>x!==p):[...f.jenis_pekerjaan,p]}));
+                            }}/>
+                          {p}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
               </div>
-              {isProsesOrang(overrideForm.jenis_pekerjaan)?(
+              {isProsesOrang(overrideForm.jenis_pekerjaan[0]||"POTONG")?(
                 <div style={{gridColumn:"span 2"}}>
                   <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>👥 Jumlah Orang</div>
                   <input type="number" min="0" step="1" value={overrideForm.jumlah_orang}
@@ -7373,7 +7394,7 @@ function KapasitasPekerjaanTab(){
             </div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
               <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                {isProsesOrang(overrideForm.jenis_pekerjaan)?(
+                {isProsesOrang(overrideForm.jenis_pekerjaan[0]||"POTONG")?(
                   <>{overrideForm.jumlah_orang} orang = <strong>{overrideForm.jumlah_orang} panel/hari</strong></>
                 ):(
                   <>{overrideForm.jam_kerja} jam × 60 × {overrideForm.efektivitas_pct}% = <strong>{Math.round(overrideForm.jam_kerja*60*overrideForm.efektivitas_pct/100)} menit</strong></>
@@ -7381,7 +7402,7 @@ function KapasitasPekerjaanTab(){
               </div>
               <div style={{display:"flex",gap:8}}>
                 {editOverride&&(
-                  <button onClick={()=>{setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});}}
+                  <button onClick={()=>{setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,keterangan:""} as any);}}
                     style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
                 )}
                 <button onClick={saveOverride}
@@ -7439,7 +7460,7 @@ function KapasitasPekerjaanTab(){
                       <td style={{...td,fontSize:11,color:"#64748b"}}>{o.keterangan||"—"}</td>
                       <td style={{...td,textAlign:"center" as const}}>
                         <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:o.jam_kerja,efektivitas_pct:o.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:o.keterangan||""});}}
+                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:[o.jenis_pekerjaan],jam_kerja:o.jam_kerja,efektivitas_pct:o.efektivitas_pct,jumlah_orang:overrideForm.jumlah_orang,keterangan:o.keterangan||""});}}
                             style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
                           <button onClick={()=>deleteOverride(o.id)}
                             style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
@@ -7476,7 +7497,7 @@ function KapasitasPekerjaanTab(){
                       <td style={{...td,fontSize:11,color:"#64748b"}}>{o.keterangan||"—"}</td>
                       <td style={{...td,textAlign:"center" as const}}>
                         <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:o.jenis_pekerjaan,jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:o.jumlah_orang,keterangan:o.keterangan||""});}}
+                          <button onClick={()=>{setEditOverride(o);setOverrideForm({tanggal:o.tanggal,jenis_pekerjaan:[o.jenis_pekerjaan],jam_kerja:overrideForm.jam_kerja,efektivitas_pct:overrideForm.efektivitas_pct,jumlah_orang:o.jumlah_orang,keterangan:o.keterangan||""});}}
                             style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
                           <button onClick={()=>deleteOverride(o.id)}
                             style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
