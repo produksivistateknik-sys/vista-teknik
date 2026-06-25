@@ -4230,10 +4230,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING"]:filterProses;
-              let kapasitasTotal=0;let adaOverrideCount=0;
-              const perProses:{nama:string;terpakai:number}[]=prosesToShow.map((pr:string)=>{
+              const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean}[]=prosesToShow.map((pr:string)=>{
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
-                if(ov){adaOverrideCount++;kapasitasTotal+=Number(ov.kapasitas_menit);}
+                const kapasitasPr=ov?Number(ov.kapasitas_menit):0;
                 let terpakaiPr=0;
                 rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
                   const panelId=r.panel_id||r.panelId;
@@ -4248,9 +4247,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     });
                   });
                 });
-                return {nama:pr,terpakai:terpakaiPr};
+                return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov};
               });
-              const adaOverride=adaOverrideCount>0;
+              const adaOverride=perProses.some(pp=>pp.adaOverride);
               return(
                 <div key={d} style={{background:"var(--card-bg,#fff)",border:"1px solid #e2e8f030",borderRadius:8,padding:"8px 12px",minWidth:130,textAlign:"center" as const}}>
                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{getDayLabel(d)}</div>
@@ -4259,13 +4258,21 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   ):(
                     <div style={{display:"flex",flexDirection:"column" as const,gap:5,textAlign:"left" as const}}>
                       {perProses.map(pp=>{
-                        const pctPr=kapasitasTotal>0?Math.min(Math.round((pp.terpakai/kapasitasTotal)*100),100):0;
+                        if(!pp.adaOverride){
+                          return(
+                            <div key={pp.nama} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9}}>
+                              <span style={{color:"#64748b"}}>{pp.nama}</span>
+                              <span style={{color:"#dc2626",fontWeight:700}}>Belum diatur</span>
+                            </div>
+                          );
+                        }
+                        const pctPr=pp.kapasitas>0?Math.min(Math.round((pp.terpakai/pp.kapasitas)*100),100):0;
                         const colorPr=pctPr>=95?"#dc2626":pctPr>=80?"#f59e0b":"#16a34a";
                         return(
                           <div key={pp.nama}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9,marginBottom:2}}>
                               <span style={{color:"#64748b"}}>{pp.nama}</span>
-                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{kapasitasTotal} mnt</span>
+                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{pp.kapasitas} mnt</span>
                             </div>
                             <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
                               <div style={{width:pctPr+"%",height:"100%",background:colorPr,borderRadius:99}}/>
