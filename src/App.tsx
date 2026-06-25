@@ -7611,7 +7611,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
         <div style={{textAlign:"center",padding:"40px",color:"#94a3b8"}}>Memuat data...</div>
       ):(
         <>
-          {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user}/>}
+          {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user} pekerja={pekerja}/>}
           {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
 
           {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={null} user={user}/>}
@@ -7624,7 +7624,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
   );
 }
 
-function MasterUserTab({ admins, setAdmins, user }){
+function MasterUserTab({ admins, setAdmins, user, pekerja }){
   const [form, setForm] = useState({ nama: "", username: "", password: "", is_active: true });
   const [editId, setEditId] = useState(null);
   const [delId, setDelId] = useState(null);
