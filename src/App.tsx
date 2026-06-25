@@ -4229,7 +4229,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
-              const prosesToShow=filterProses.length===0?ALL_PROSES:filterProses;
+              const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING"]:filterProses;
               let kapasitasTotal=0;let adaOverrideCount=0;
               const perProses:{nama:string;terpakai:number}[]=prosesToShow.map((pr:string)=>{
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
