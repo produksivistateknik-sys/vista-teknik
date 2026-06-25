@@ -7076,7 +7076,7 @@ function KapasitasPekerjaanTab(){
           {/* Grouped by Jenis Pekerjaan */}
           {(filterPekerjaan==="ALL"?ALL_PROSES:[filterPekerjaan]).map((proses:string)=>{
             const groupItems=filteredProcess.filter((p:any)=>p.jenis_pekerjaan===proses);
-            if(groupItems.length===0)return null;
+            if(groupItems.length===0&&!(showAddProc&&proses===procForm.jenis_pekerjaan))return null;
             const procColors:any={
               POTONG:"#f59e0b",BENDING:"#8b5cf6",STEL:"#06b6d4",PAINTING:"#ec4899",
               RAKIT:"#10b981","PASANG KOMPONEN":"#3b82f6",BUSBAR:"#f43f5e",
