@@ -9077,6 +9077,186 @@ function FCSScheduleTab({woData,user}:any){
   );
 }
 
+function ForumWO({user}:any){
+  const [posts,setPosts]=useState<any[]>([]);
+  const [attachMap,setAttachMap]=useState<Record<number,any[]>>({});
+  const [caption,setCaption]=useState("");
+  const [files,setFiles]=useState<File[]>([]);
+  const [uploading,setUploading]=useState(false);
+  const [loading,setLoading]=useState(true);
+
+  const fetchPosts=async()=>{
+    setLoading(true);
+    const{data:p}=await supabase.from("fcs_forum_post").select("*").order("created_at",{ascending:false});
+    setPosts(p??[]);
+    if(p&&p.length>0){
+      const ids=p.map((x:any)=>x.id);
+      const{data:a}=await supabase.from("fcs_forum_attachment").select("*").in("post_id",ids).order("uploaded_at",{ascending:true});
+      const map:Record<number,any[]>={};
+      (a??[]).forEach((att:any)=>{
+        if(!map[att.post_id])map[att.post_id]=[];
+        map[att.post_id].push(att);
+      });
+      setAttachMap(map);
+    } else {
+      setAttachMap({});
+    }
+    setLoading(false);
+  };
+
+  useEffect(()=>{
+    fetchPosts();
+    const ch=supabase.channel("realtime-forum-wo")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_forum_post"},fetchPosts)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_forum_attachment"},fetchPosts)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const handleFileSelect=(e:any)=>{
+    const picked=Array.from(e.target.files||[]) as File[];
+    setFiles(prev=>[...prev,...picked]);
+  };
+
+  const removeSelectedFile=(idx:number)=>{
+    setFiles(prev=>prev.filter((_,i)=>i!==idx));
+  };
+
+  const submitPost=async()=>{
+    if(!caption.trim()&&files.length===0){alert("Tulis caption atau lampirkan minimal 1 file");return;}
+    setUploading(true);
+    const authorName=user?.name||user?.nama||"Admin";
+    const{data:post,error:postErr}=await supabase.from("fcs_forum_post").insert({
+      author_name:authorName,
+      caption:caption.trim()||null,
+    }).select().single();
+    if(postErr||!post){
+      alert("Gagal membuat post: "+(postErr?.message||"unknown error"));
+      setUploading(false);
+      return;
+    }
+    for(const file of files){
+      const ext=file.name.split(".").pop();
+      const safeName=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+      const path=`${post.id}/${safeName}`;
+      const{error:upErr}=await supabase.storage.from("forum-attachments").upload(path,file);
+      if(upErr){
+        alert("Gagal upload file "+file.name+": "+upErr.message);
+        continue;
+      }
+      const{data:urlData}=supabase.storage.from("forum-attachments").getPublicUrl(path);
+      await supabase.from("fcs_forum_attachment").insert({
+        post_id:post.id,
+        file_name:file.name,
+        file_url:urlData.publicUrl,
+        file_type:file.type,
+        file_size:file.size,
+      });
+    }
+    setCaption("");
+    setFiles([]);
+    setUploading(false);
+    await fetchPosts();
+  };
+
+  const deletePost=async(postId:number)=>{
+    if(!confirm("Hapus post ini beserta semua lampirannya?"))return;
+    const atts=attachMap[postId]||[];
+    for(const att of atts){
+      const path=att.file_url.split("/forum-attachments/")[1];
+      if(path){await supabase.storage.from("forum-attachments").remove([path]);}
+    }
+    await supabase.from("fcs_forum_post").delete().eq("id",postId);
+    await fetchPosts();
+  };
+
+  const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"-";
+
+  const fileIcon=(type:string)=>{
+    if(!type)return "📎";
+    if(type.includes("pdf"))return "📕";
+    if(type.includes("image"))return "🖼️";
+    if(type.includes("sheet")||type.includes("excel"))return "📊";
+    if(type.includes("word")||type.includes("document"))return "📄";
+    return "📎";
+  };
+
+  return(
+    <div className="fi">
+      <div style={{fontWeight:800,fontSize:20,color:"#1e293b",marginBottom:4}}>📢 Forum WO</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Bagikan update, revisi, atau dokumen Work Order ke seluruh tim</div>
+
+      <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,padding:16,marginBottom:20}}>
+        <textarea value={caption} onChange={(e:any)=>setCaption(e.target.value)}
+          placeholder="Tulis update, revisi, atau catatan disini..."
+          style={{width:"100%",minHeight:70,padding:"10px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",resize:"vertical" as const}}/>
+        {files.length>0&&(
+          <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:10}}>
+            {files.map((f,idx)=>(
+              <div key={idx} style={{display:"flex",alignItems:"center",gap:6,background:"#f1f5f9",borderRadius:6,padding:"5px 10px",fontSize:12}}>
+                <span>{fileIcon(f.type)}</span>
+                <span style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{f.name}</span>
+                <button onClick={()=>removeSelectedFile(idx)} style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontWeight:700,fontSize:13}}>×</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
+          <label style={{display:"flex",alignItems:"center",gap:6,padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:12,fontWeight:600,color:"#475569"}}>
+            📎 Lampirkan File
+            <input type="file" multiple onChange={handleFileSelect} style={{display:"none"}}/>
+          </label>
+          <button onClick={submitPost} disabled={uploading}
+            style={{padding:"8px 20px",borderRadius:7,border:"none",background:uploading?"#94a3b8":"#1d4ed8",color:"#fff",fontSize:13,fontWeight:700,cursor:uploading?"default":"pointer",fontFamily:"inherit"}}>
+            {uploading?"Mengunggah...":"Post"}
+          </button>
+        </div>
+      </div>
+
+      {loading?(
+        <div style={{textAlign:"center" as const,padding:40,color:"#94a3b8"}}>Memuat...</div>
+      ):posts.length===0?(
+        <div style={{textAlign:"center" as const,padding:40,color:"#94a3b8",fontSize:13}}>Belum ada post. Jadilah yang pertama membagikan update!</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column" as const,gap:14}}>
+          {posts.map((p:any)=>(
+            <div key={p.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,padding:16}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:36,height:36,borderRadius:"50%",background:"#1d4ed8",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13}}>
+                    {(p.author_name||"A").slice(0,2).toUpperCase()}
+                  </div>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.author_name}</div>
+                    <div style={{fontSize:11,color:"#94a3b8"}}>{fmtDateTime(p.created_at)}</div>
+                  </div>
+                </div>
+                <button onClick={()=>deletePost(p.id)}
+                  style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:16}}
+                  title="Hapus post">🗑️</button>
+              </div>
+              {p.caption&&(
+                <div style={{marginTop:12,fontSize:13,color:"#334155",whiteSpace:"pre-wrap" as const,lineHeight:1.5}}>{p.caption}</div>
+              )}
+              {(attachMap[p.id]||[]).length>0&&(
+                <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:12}}>
+                  {(attachMap[p.id]||[]).map((att:any)=>(
+                    <a key={att.id} href={att.file_url} target="_blank" rel="noopener noreferrer"
+                      style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#1e293b",textDecoration:"none",maxWidth:220}}>
+                      <span style={{fontSize:16}}>{fileIcon(att.file_type)}</span>
+                      <span style={{overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{att.file_name}</span>
+                    </a>
+                  ))}
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
@@ -9272,6 +9452,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"fcs",label:"FCS Schedule",icon:"ti ti-timeline"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
+      {id:"forum",label:"Forum WO",icon:"ti ti-message-circle"},
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
@@ -9637,6 +9818,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
+              {tab==="forum"&&<ForumWO user={user}/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
