@@ -9380,6 +9380,25 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala, refetch: refetchKendala } = useKendala()
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
+  const [forumUnreadCount,setForumUnreadCount]=useState(0);
+  useEffect(()=>{
+    const fetchForumUnread=async()=>{
+      const lastSeen=localStorage.getItem("vista_forum_last_seen")||"1970-01-01";
+      const{count}=await supabase.from("fcs_forum_post").select("*",{count:"exact",head:true}).gt("created_at",lastSeen);
+      setForumUnreadCount(count??0);
+    };
+    fetchForumUnread();
+    const ch=supabase.channel("realtime-forum-unread")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_forum_post"},fetchForumUnread)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+  useEffect(()=>{
+    if(tab==="forum"){
+      localStorage.setItem("vista_forum_last_seen",new Date().toISOString());
+      setForumUnreadCount(0);
+    }
+  },[tab]);
   useEffect(() => {
     const fetchMaintAlert = async () => {
       const h3 = new Date(); h3.setDate(h3.getDate() + 3)
@@ -9512,7 +9531,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"fcs",label:"FCS Schedule",icon:"ti ti-timeline"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
-      {id:"forum",label:"Forum WO",icon:"ti ti-message-circle"},
+      {id:"forum",label:"Forum WO",icon:"ti ti-message-circle",badge:forumUnreadCount>0?forumUnreadCount:null},
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
