@@ -1980,190 +1980,22 @@ function KendalaInbox({kendalaLog,removeKendala,user}:any){
 // ─────────────────────────────────────────────────────────────────────────────
 function LandingPage({onEnter}){
   return(
-    <div style={{minHeight:"100vh",width:"100%",background:"#f8fafc",fontFamily:"'Plus Jakarta Sans',sans-serif"}}>
+    <div style={{minHeight:"100vh",width:"100%",background:"#ffffff",fontFamily:"'Plus Jakarta Sans',sans-serif",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24,padding:24}}>
       <style>{GCss}</style>
       <style>{`
-        @keyframes float1{0%,100%{transform:translateY(0) rotate(-2deg)}50%{transform:translateY(-12px) rotate(-2deg)}}
-        @keyframes float2{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
-        @keyframes float3{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-        @keyframes landIn{from{opacity:0;transform:translateY(24px)}to{opacity:1;transform:translateY(0)}}
-        .land-in{animation:landIn .6s cubic-bezier(.22,1,.36,1) forwards}
-        .land-in-2{animation:landIn .6s .15s cubic-bezier(.22,1,.36,1) both}
-        .land-in-3{animation:landIn .6s .3s cubic-bezier(.22,1,.36,1) both}
-        .land-in-4{animation:landIn .6s .45s cubic-bezier(.22,1,.36,1) both}
-        .cta-btn:hover{background:#1d4ed8!important;transform:translateY(-1px);box-shadow:0 8px 28px #2563eb44!important}
-        .cta-btn{transition:all .18s!important}
-        .feat-card:hover{transform:translateY(-3px);box-shadow:0 8px 24px #00000012!important}
-        .feat-card{transition:all .2s}
-        .nav-link{color:#475569;font-size:13px;font-weight:600;cursor:pointer;padding:6px 4px;border-bottom:2px solid transparent;transition:all .15s}
-        .nav-link:hover{color:#1d4ed8;border-bottom-color:#1d4ed8}
+        @keyframes landFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+        .land-logo{animation:landFadeIn .6s cubic-bezier(.22,1,.36,1) forwards}
+        .land-tagline{animation:landFadeIn .6s .15s cubic-bezier(.22,1,.36,1) both}
+        .land-cta{animation:landFadeIn .6s .3s cubic-bezier(.22,1,.36,1) both}
+        .land-cta-btn:hover{background:#e06a10!important;transform:translateY(-1px)}
+        .land-cta-btn{transition:all .18s!important}
       `}</style>
-
-      {/* NAVBAR */}
-      <nav style={{background:"#fff",borderBottom:"1px solid #e2e8f0",padding:"0 48px",height:64,
-        display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100,
-        boxShadow:"0 1px 8px #00000008"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,background:"linear-gradient(135deg,#f97316,#ea580c)",borderRadius:8,
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{color:"#fff",fontWeight:900,fontSize:15,letterSpacing:-1}}>V</span>
-          </div>
-          <div>
-            <div style={{fontWeight:900,fontSize:15,color:"#1e293b",letterSpacing:.5,lineHeight:1}}>
-              <span style={{color:"#ea580c"}}>VISTA</span> TEKNIK
-            </div>
-            <div style={{fontSize:8,color:"#94a3b8",fontWeight:600,letterSpacing:.8,textTransform:"uppercase"}}>Solusi Produksi Panel Listrik</div>
-          </div>
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:28}}>
-          {["Beranda","Produksi","Material","QC / Testing","Laporan"].map(l=>(
-            <span key={l} className="nav-link">{l}</span>
-          ))}
-        </div>
-        <div style={{display:"flex",alignItems:"center",gap:10}}>
-          <div style={{width:32,height:32,borderRadius:"50%",background:"#eff6ff",display:"flex",
-            alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,color:"#1d4ed8"}}>AD</div>
-        </div>
-      </nav>
-
-      {/* HERO */}
-      <div style={{maxWidth:1280,margin:"0 auto",padding:"72px 48px 80px",display:"grid",
-        gridTemplateColumns:"1fr 1fr",gap:60,alignItems:"center"}}>
-        {/* LEFT */}
-        <div>
-          <div className="land-in" style={{display:"inline-flex",alignItems:"center",gap:8,
-            background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:20,padding:"5px 14px",
-            fontSize:12,fontWeight:700,color:"#1d4ed8",marginBottom:24}}>
-            <span style={{width:7,height:7,borderRadius:"50%",background:"#3b82f6",display:"inline-block"}}/>
-            Sistem Terintegrasi
-          </div>
-          <h1 className="land-in-2" style={{fontSize:52,fontWeight:900,lineHeight:1.1,color:"#0f172a",marginBottom:16}}>
-            Your Electrical<br/><span style={{color:"#1d4ed8"}}>Safety Is Our Priority</span>
-          </h1>
-          <p className="land-in-3" style={{fontSize:15,color:"#64748b",lineHeight:1.8,marginBottom:36,maxWidth:400}}>
-            Solusi lengkap untuk produksi panel listrik yang lebih cepat, akurat, dan terorganisir.
-          </p>
-          <div className="land-in-4" style={{display:"flex",gap:14,alignItems:"center"}}>
-            <button className="cta-btn" onClick={onEnter}
-              style={{background:"#2563eb",color:"#fff",fontWeight:800,fontSize:15,padding:"14px 32px",
-                borderRadius:12,border:"none",cursor:"pointer",boxShadow:"0 4px 18px #2563eb33",
-                display:"flex",alignItems:"center",gap:8}}>
-              Masuk ke Aplikasi <span style={{fontSize:18}}>›</span>
-            </button>
-          </div>
-        </div>
-
-        {/* RIGHT — floating stats + panel illustration */}
-        <div style={{position:"relative",height:420,display:"flex",alignItems:"center",justifyContent:"center"}}>
-          {/* big blob bg */}
-          <div style={{position:"absolute",width:380,height:380,borderRadius:"50%",
-            background:"linear-gradient(135deg,#eff6ff 0%,#e0f2fe 100%)",zIndex:0}}/>
-
-          {/* panel listrik SVG illustration */}
-          <div style={{position:"relative",zIndex:1,animation:"float1 4s ease-in-out infinite"}}>
-            <svg width="220" height="300" viewBox="0 0 220 300" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <rect x="20" y="10" width="180" height="280" rx="6" fill="#d1d5db" stroke="#9ca3af" strokeWidth="1.5"/>
-              <rect x="26" y="16" width="168" height="268" rx="4" fill="#e5e7eb"/>
-              <rect x="34" y="24" width="152" height="80" rx="3" fill="#f3f4f6" stroke="#d1d5db" strokeWidth="1"/>
-              <rect x="40" y="30" width="60" height="16" rx="2" fill="#9ca3af"/>
-              <rect x="108" y="30" width="70" height="16" rx="2" fill="#9ca3af"/>
-              <rect x="40" y="52" width="40" height="10" rx="2" fill="#6b7280"/>
-              <rect x="86" y="52" width="40" height="10" rx="2" fill="#6b7280"/>
-              <rect x="132" y="52" width="40" height="10" rx="2" fill="#6b7280"/>
-              <rect x="40" y="68" width="140" height="28" rx="2" fill="#374151" stroke="#1f2937" strokeWidth="1"/>
-              <rect x="46" y="74" width="8" height="16" rx="1" fill="#f59e0b"/>
-              <rect x="58" y="74" width="8" height="16" rx="1" fill="#f59e0b"/>
-              <rect x="70" y="74" width="8" height="16" rx="1" fill="#ef4444"/>
-              <rect x="82" y="74" width="8" height="16" rx="1" fill="#22c55e"/>
-              <circle cx="148" cy="82" r="8" fill="#1f2937" stroke="#374151" strokeWidth="1"/>
-              <circle cx="148" cy="82" r="4" fill="#4b5563"/>
-              <rect x="34" y="112" width="152" height="120" rx="3" fill="#f9fafb" stroke="#d1d5db" strokeWidth="1"/>
-              <rect x="42" y="120" width="60" height="8" rx="1" fill="#d1d5db"/>
-              <rect x="42" y="134" width="40" height="6" rx="1" fill="#e5e7eb"/>
-              <circle cx="152" cy="128" r="10" fill="#dc2626" stroke="#b91c1c" strokeWidth="1"/>
-              <circle cx="172" cy="128" r="10" fill="#f59e0b" stroke="#d97706" strokeWidth="1"/>
-              <circle cx="152" cy="152" r="10" fill="#22c55e" stroke="#16a34a" strokeWidth="1"/>
-              <circle cx="172" cy="152" r="10" fill="#3b82f6" stroke="#2563eb" strokeWidth="1"/>
-              <rect x="42" y="158" width="90" height="6" rx="1" fill="#e5e7eb"/>
-              <rect x="42" y="170" width="70" height="6" rx="1" fill="#e5e7eb"/>
-              <rect x="34" y="240" width="152" height="30" rx="3" fill="#f3f4f6" stroke="#d1d5db" strokeWidth="1"/>
-              <rect x="40" y="248" width="50" height="14" rx="2" fill="#374151"/>
-              <rect x="96" y="248" width="50" height="14" rx="2" fill="#374151"/>
-              <rect x="152" y="248" width="26" height="14" rx="2" fill="#374151"/>
-              {/* warning sticker */}
-              <polygon points="110,205 120,222 100,222" fill="#f59e0b"/>
-              <text x="110" y="219" textAnchor="middle" fontSize="9" fill="#fff" fontWeight="bold">!</text>
-            </svg>
-          </div>
-
-          {/* floating card: Progress Produksi */}
-          <div style={{position:"absolute",top:30,left:-10,animation:"float2 3.5s ease-in-out infinite",
-            background:"#fff",borderRadius:14,padding:"14px 18px",boxShadow:"0 8px 32px #00000018",
-            minWidth:170,zIndex:2}}>
-            <div style={{fontSize:11,color:"#64748b",fontWeight:600,marginBottom:4}}>Progress Produksi</div>
-            <div style={{fontSize:28,fontWeight:900,color:"#2563eb",lineHeight:1}}>75%</div>
-            <div style={{margin:"8px 0 6px",height:5,background:"#e2e8f0",borderRadius:99}}>
-              <div style={{width:"75%",height:"100%",background:"#2563eb",borderRadius:99}}/>
-            </div>
-            <div style={{fontSize:10,color:"#22c55e",fontWeight:700}}>● On Progress</div>
-          </div>
-
-          {/* floating card: Order Aktif */}
-          <div style={{position:"absolute",top:60,right:-20,animation:"float3 4.2s ease-in-out infinite",
-            background:"#fff",borderRadius:14,padding:"14px 18px",boxShadow:"0 8px 32px #00000018",
-            minWidth:140,zIndex:2}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:4}}>
-              <div style={{width:28,height:28,background:"#eff6ff",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>📋</div>
-              <div style={{fontSize:11,color:"#64748b",fontWeight:600}}>Order Aktif</div>
-            </div>
-            <div style={{fontSize:32,fontWeight:900,color:"#1d4ed8",lineHeight:1}}>12</div>
-            <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>Pesanan berjalan</div>
-          </div>
-
-          {/* floating card: QC Pass Rate */}
-          <div style={{position:"absolute",bottom:40,left:-10,animation:"float2 3.8s 1s ease-in-out infinite",
-            background:"#fff",borderRadius:14,padding:"14px 18px",boxShadow:"0 8px 32px #00000018",
-            minWidth:160,zIndex:2}}>
-            <div style={{fontSize:11,color:"#64748b",fontWeight:600,marginBottom:4}}>QC Pass Rate</div>
-            <div style={{display:"flex",alignItems:"baseline",gap:8}}>
-              <div style={{fontSize:28,fontWeight:900,color:"#1d4ed8",lineHeight:1}}>98%</div>
-              <div style={{fontSize:11,color:"#22c55e",fontWeight:700}}>↑ 4%</div>
-            </div>
-            <svg width="100" height="28" viewBox="0 0 100 28" fill="none" style={{marginTop:6}}>
-              <polyline points="0,22 20,18 40,20 60,12 80,8 100,4" stroke="#2563eb" strokeWidth="2" strokeLinecap="round" fill="none"/>
-              <circle cx="100" cy="4" r="3" fill="#2563eb"/>
-            </svg>
-          </div>
-        </div>
-      </div>
-
-      {/* FEATURE STRIP */}
-      <div style={{background:"#fff",borderTop:"1px solid #f1f5f9",borderBottom:"1px solid #f1f5f9",padding:"32px 48px"}}>
-        <div style={{maxWidth:1280,margin:"0 auto",display:"grid",
-          gridTemplateColumns:"repeat(4,1fr)",gap:32}}>
-          {[
-            {icon:"🔧",title:"Produksi",sub:"Kelola proses produksi"},
-            {icon:"📦",title:"Material",sub:"Stok & BOM"},
-            {icon:"🔍",title:"QC / Testing",sub:"Kontrol kualitas"},
-            {icon:"📊",title:"Laporan",sub:"Data & laporan"},
-          ].map(f=>(
-            <div key={f.title} className="feat-card" style={{display:"flex",alignItems:"center",gap:14,
-              padding:"16px 20px",borderRadius:12,border:"1px solid #f1f5f9",cursor:"pointer"}}>
-              <div style={{width:44,height:44,background:"#eff6ff",borderRadius:12,display:"flex",
-                alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>{f.icon}</div>
-              <div>
-                <div style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>{f.title}</div>
-                <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>{f.sub}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* FOOTER */}
-      <div style={{textAlign:"center",padding:"24px",fontSize:12,color:"#94a3b8"}}>
-        © 2025 <span style={{color:"#ea580c",fontWeight:700}}>Vista Teknik</span>. All rights reserved.
-      </div>
+      <img src="data:image/png;base64,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" alt="Vista Teknik" className="land-logo" style={{width:260,height:"auto"}}/>
+      <p className="land-tagline" style={{fontSize:15,color:"#64748b",margin:0,textAlign:"center",letterSpacing:.3}}>Your electrical safety is our priority</p>
+      <button onClick={onEnter} className="land-cta land-cta-btn"
+        style={{marginTop:16,padding:"13px 36px",borderRadius:10,border:"none",background:"#f47920",color:"#fff",fontSize:14,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+        Masuk ke Aplikasi
+      </button>
     </div>
   );
 }
