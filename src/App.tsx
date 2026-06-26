@@ -9106,6 +9106,22 @@ export default function App(){
   const [darkMode,setDarkMode]=useState(()=>{
     return localStorage.getItem("vista_dark_mode")==="true";
   });
+  const [ctxMenu,setCtxMenu]=useState<{x:number;y:number}|null>(null);
+  const [showShortcutModal,setShowShortcutModal]=useState(false);
+  const [showAboutModal,setShowAboutModal]=useState(false);
+  useEffect(()=>{
+    const handleContextMenu=(e:MouseEvent)=>{
+      e.preventDefault();
+      setCtxMenu({x:e.clientX,y:e.clientY});
+    };
+    const handleClick=()=>setCtxMenu(null);
+    document.addEventListener("contextmenu",handleContextMenu);
+    document.addEventListener("click",handleClick);
+    return()=>{
+      document.removeEventListener("contextmenu",handleContextMenu);
+      document.removeEventListener("click",handleClick);
+    };
+  },[]);
   // Restore admin session
   useEffect(()=>{
     const saved=localStorage.getItem("vista_admin_session");
@@ -9300,6 +9316,90 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   return(
     <>
       <style>{GCss}</style>
+      {ctxMenu&&(
+        <div
+          onClick={(e:any)=>e.stopPropagation()}
+          style={{
+            position:"fixed",top:ctxMenu.y,left:ctxMenu.x,background:"#fff",
+            border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 8px 24px #00000022",
+            zIndex:9999,minWidth:220,padding:6,fontSize:13,fontFamily:"inherit"
+          }}>
+          <div style={{padding:"6px 10px",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4}}>Navigasi & Tampilan</div>
+          <button onClick={()=>{window.location.reload();setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>🔄</span><span>Refresh Data</span>
+          </button>
+          <button onClick={()=>{window.location.reload();setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>↻</span><span>Reload Halaman</span>
+          </button>
+          <div style={{height:1,background:"#f1f5f9",margin:"4px 0"}}/>
+          <div style={{padding:"6px 10px",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4}}>Tab & Window</div>
+          <button onClick={()=>{window.open(window.location.href,"_blank");setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>⧉</span><span>Buka di Tab Baru</span>
+          </button>
+          <button onClick={()=>{navigator.clipboard.writeText(window.location.href);alert("Tautan disalin ke clipboard");setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>📋</span><span>Salin Tautan Halaman</span>
+          </button>
+          <div style={{height:1,background:"#f1f5f9",margin:"4px 0"}}/>
+          <div style={{padding:"6px 10px",fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4}}>Bantuan</div>
+          <button onClick={()=>{setShowShortcutModal(true);setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>⌨️</span><span>Pintasan Keyboard</span>
+          </button>
+          <button onClick={()=>{setShowAboutModal(true);setCtxMenu(null);}}
+            style={{display:"flex",alignItems:"center",gap:10,width:"100%",textAlign:"left" as const,padding:"8px 10px",border:"none",background:"none",cursor:"pointer",borderRadius:6,color:"#1e293b",fontFamily:"inherit",fontSize:13}}
+            onMouseEnter={(e:any)=>e.currentTarget.style.background="#f1f5f9"}
+            onMouseLeave={(e:any)=>e.currentTarget.style.background="none"}>
+            <span>ℹ️</span><span>Tentang Vista Teknik</span>
+          </button>
+        </div>
+      )}
+      {showShortcutModal&&(
+        <div onClick={()=>setShowShortcutModal(false)}
+          style={{position:"fixed",inset:0,background:"#00000050",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:24,width:360,boxShadow:"0 12px 32px #00000033"}}>
+            <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:16}}>⌨️ Pintasan Keyboard</div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
+              <span style={{fontSize:13,color:"#64748b"}}>Cari work order, panel...</span>
+              <span style={{background:"#f1f5f9",borderRadius:6,padding:"3px 8px",fontSize:11,fontWeight:700,color:"#475569",fontFamily:"monospace"}}>Ctrl+K</span>
+            </div>
+            <button onClick={()=>setShowShortcutModal(false)}
+              style={{marginTop:16,width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
+      {showAboutModal&&(
+        <div onClick={()=>setShowAboutModal(false)}
+          style={{position:"fixed",inset:0,background:"#00000050",zIndex:9998,display:"flex",alignItems:"center",justifyContent:"center"}}>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,padding:24,width:360,textAlign:"center" as const,boxShadow:"0 12px 32px #00000033"}}>
+            <div className="erp-logo" style={{margin:"0 auto 12px",width:48,height:48,fontSize:22}}>V</div>
+            <div style={{fontWeight:700,fontSize:16,color:"#1e293b"}}>Vista Teknik</div>
+            <div style={{fontSize:12,color:"#94a3b8",marginTop:2}}>Electrical Switchboard Manufacturing</div>
+            <div style={{fontSize:12,color:"#64748b",marginTop:12}}>Versi 1.0 — 25 Juni 2026</div>
+            <button onClick={()=>setShowAboutModal(false)}
+              style={{marginTop:16,width:"100%",padding:"8px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+              Tutup
+            </button>
+          </div>
+        </div>
+      )}
       {isOp?(
         <div style={{display:"flex",flexDirection:"column",minHeight:"100vh",background:"#f8fafc"}}>
           <div style={{background:"#fff",borderBottom:"1px solid #eaecf0",padding:"0 16px",height:46,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
