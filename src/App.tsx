@@ -9139,12 +9139,12 @@ function ForumWO({user}:any){
       const ext=file.name.split(".").pop();
       const safeName=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
       const path=`${post.id}/${safeName}`;
-      const{error:upErr}=await supabase.storage.from("forum-attachments").upload(path,file);
+      const{error:upErr}=await supabase.storage.from("Forum-attachments").upload(path,file);
       if(upErr){
         alert("Gagal upload file "+file.name+": "+upErr.message);
         continue;
       }
-      const{data:urlData}=supabase.storage.from("forum-attachments").getPublicUrl(path);
+      const{data:urlData}=supabase.storage.from("Forum-attachments").getPublicUrl(path);
       await supabase.from("fcs_forum_attachment").insert({
         post_id:post.id,
         file_name:file.name,
@@ -9163,8 +9163,8 @@ function ForumWO({user}:any){
     if(!confirm("Hapus post ini beserta semua lampirannya?"))return;
     const atts=attachMap[postId]||[];
     for(const att of atts){
-      const path=att.file_url.split("/forum-attachments/")[1];
-      if(path){await supabase.storage.from("forum-attachments").remove([path]);}
+      const path=att.file_url.split("/Forum-attachments/")[1];
+      if(path){await supabase.storage.from("Forum-attachments").remove([path]);}
     }
     await supabase.from("fcs_forum_post").delete().eq("id",postId);
     await fetchPosts();
