@@ -9084,6 +9084,8 @@ function ForumWO({user}:any){
   const [files,setFiles]=useState<File[]>([]);
   const [uploading,setUploading]=useState(false);
   const [loading,setLoading]=useState(true);
+  const [searchQuery,setSearchQuery]=useState("");
+  const [filterAuthor,setFilterAuthor]=useState("ALL");
 
   const fetchPosts=async()=>{
     setLoading(true);
@@ -9172,14 +9174,42 @@ function ForumWO({user}:any){
 
   const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"-";
 
-  const fileIcon=(type:string)=>{
-    if(!type)return "📎";
-    if(type.includes("pdf"))return "📕";
-    if(type.includes("image"))return "🖼️";
-    if(type.includes("sheet")||type.includes("excel"))return "📊";
-    if(type.includes("word")||type.includes("document"))return "📄";
-    return "📎";
+  const fmtRelativeTime=(d:string)=>{
+    if(!d)return "-";
+    const diffMs=Date.now()-new Date(d).getTime();
+    const diffMin=Math.floor(diffMs/60000);
+    if(diffMin<1)return "Baru saja";
+    if(diffMin<60)return `${diffMin} menit lalu`;
+    const diffJam=Math.floor(diffMin/60);
+    if(diffJam<24)return `${diffJam} jam lalu`;
+    const diffHari=Math.floor(diffJam/24);
+    if(diffHari<7)return `${diffHari} hari lalu`;
+    return fmtDateTime(d);
   };
+
+  const fmtFileSize=(bytes:number)=>{
+    if(!bytes)return "";
+    if(bytes<1024)return bytes+" B";
+    if(bytes<1024*1024)return Math.round(bytes/1024)+" KB";
+    return (bytes/(1024*1024)).toFixed(1)+" MB";
+  };
+
+  const fileIconInfo=(type:string)=>{
+    if(type?.includes("pdf"))return{icon:"ti ti-file-type-pdf",bg:"#fee2e2",color:"#dc2626",label:"PDF"};
+    if(type?.includes("image"))return{icon:"ti ti-photo",bg:"#dbeafe",color:"#1d4ed8",label:"Gambar"};
+    if(type?.includes("sheet")||type?.includes("excel"))return{icon:"ti ti-file-spreadsheet",bg:"#dcfce7",color:"#16a34a",label:"Spreadsheet"};
+    if(type?.includes("word")||type?.includes("document"))return{icon:"ti ti-file-text",bg:"#dbeafe",color:"#1d4ed8",label:"Dokumen"};
+    return{icon:"ti ti-file",bg:"#f1f5f9",color:"#64748b",label:"File"};
+  };
+
+  const filteredPosts=posts.filter((p:any)=>{
+    if(filterAuthor!=="ALL"&&p.author_name!==filterAuthor)return false;
+    if(!searchQuery.trim())return true;
+    const q=searchQuery.toLowerCase();
+    const captionMatch=(p.caption||"").toLowerCase().includes(q);
+    const fileMatch=(attachMap[p.id]||[]).some((att:any)=>(att.file_name||"").toLowerCase().includes(q));
+    return captionMatch||fileMatch;
+  });
 
   return(
     <div className="fi">
@@ -9213,40 +9243,70 @@ function ForumWO({user}:any){
         </div>
       </div>
 
+      {posts.length>0&&(
+        <div style={{display:"flex",gap:10,marginBottom:16}}>
+          <div style={{flex:1,position:"relative" as const}}>
+            <i className="ti ti-search" style={{position:"absolute" as const,left:12,top:"50%",transform:"translateY(-50%)",fontSize:14,color:"#94a3b8"}}/>
+            <input value={searchQuery} onChange={(e:any)=>setSearchQuery(e.target.value)}
+              placeholder="Cari caption atau nama file..."
+              style={{width:"100%",padding:"8px 12px 8px 34px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit"}}/>
+          </div>
+          <select value={filterAuthor} onChange={(e:any)=>setFilterAuthor(e.target.value)}
+            style={{padding:"8px 12px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",background:"#fff",minWidth:160}}>
+            <option value="ALL">Semua Penulis</option>
+            {Array.from(new Set(posts.map((p:any)=>p.author_name))).map((name:any)=>(
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        </div>
+      )}
       {loading?(
         <div style={{textAlign:"center" as const,padding:40,color:"#94a3b8"}}>Memuat...</div>
       ):posts.length===0?(
         <div style={{textAlign:"center" as const,padding:40,color:"#94a3b8",fontSize:13}}>Belum ada post. Jadilah yang pertama membagikan update!</div>
+      ):filteredPosts.length===0?(
+        <div style={{textAlign:"center" as const,padding:40,color:"#94a3b8",fontSize:13}}>Tidak ada post yang cocok dengan pencarian.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:14}}>
-          {posts.map((p:any)=>(
-            <div key={p.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,padding:16}}>
+          {filteredPosts.map((p:any)=>(
+            <div key={p.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderLeft:"3px solid #1d4ed8",borderRadius:10,padding:"16px 20px",textAlign:"left" as const}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:36,height:36,borderRadius:"50%",background:"#1d4ed8",color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13}}>
+                  <div style={{width:38,height:38,borderRadius:"50%",background:"#eff6ff",color:"#1d4ed8",display:"flex",alignItems:"center",justifyContent:"center",fontWeight:700,fontSize:13,flexShrink:0}}>
                     {(p.author_name||"A").slice(0,2).toUpperCase()}
                   </div>
                   <div>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.author_name}</div>
-                    <div style={{fontSize:11,color:"#94a3b8"}}>{fmtDateTime(p.created_at)}</div>
+                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b",textAlign:"left" as const}}>{p.author_name}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",textAlign:"left" as const,marginTop:1}}>{fmtRelativeTime(p.created_at)}</div>
                   </div>
                 </div>
                 <button onClick={()=>deletePost(p.id)}
-                  style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:16}}
-                  title="Hapus post">🗑️</button>
+                  style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:15,padding:4}}
+                  title="Hapus post"><i className="ti ti-trash"/></button>
               </div>
               {p.caption&&(
-                <div style={{marginTop:12,fontSize:13,color:"#334155",whiteSpace:"pre-wrap" as const,lineHeight:1.5}}>{p.caption}</div>
+                <div style={{marginTop:14,fontSize:14,color:"#1e293b",whiteSpace:"pre-wrap" as const,lineHeight:1.6,textAlign:"left" as const}}>{p.caption}</div>
               )}
               {(attachMap[p.id]||[]).length>0&&(
-                <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:12}}>
-                  {(attachMap[p.id]||[]).map((att:any)=>(
-                    <a key={att.id} href={att.file_url} target="_blank" rel="noopener noreferrer"
-                      style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:12,color:"#1e293b",textDecoration:"none",maxWidth:220}}>
-                      <span style={{fontSize:16}}>{fileIcon(att.file_type)}</span>
-                      <span style={{overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{att.file_name}</span>
-                    </a>
-                  ))}
+                <div style={{display:"flex",flexDirection:"column" as const,gap:8,marginTop:14}}>
+                  {(attachMap[p.id]||[]).map((att:any)=>{
+                    const fi=fileIconInfo(att.file_type);
+                    return(
+                      <a key={att.id} href={att.file_url} target="_blank" rel="noopener noreferrer"
+                        style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",border:"1px solid #e2e8f0",borderRadius:8,textDecoration:"none",transition:"border-color .15s"}}
+                        onMouseEnter={(e:any)=>e.currentTarget.style.borderColor="#cbd5e1"}
+                        onMouseLeave={(e:any)=>e.currentTarget.style.borderColor="#e2e8f0"}>
+                        <div style={{width:32,height:32,borderRadius:6,background:fi.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <i className={fi.icon} style={{fontSize:16,color:fi.color}}/>
+                        </div>
+                        <div style={{flex:1,minWidth:0,textAlign:"left" as const}}>
+                          <div style={{fontSize:13,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{att.file_name}</div>
+                          <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>{fi.label}{att.file_size?" · "+fmtFileSize(att.file_size):""}</div>
+                        </div>
+                        <i className="ti ti-external-link" style={{fontSize:14,color:"#94a3b8",flexShrink:0}}/>
+                      </a>
+                    );
+                  })}
                 </div>
               )}
             </div>
