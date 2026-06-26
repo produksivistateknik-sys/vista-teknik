@@ -9317,6 +9317,180 @@ function ForumWO({user}:any){
   );
 }
 
+function TrackingKomponenAdmin(){
+  const[pwList,setPwList]=useState<any[]>([]);
+  const[pwEdit,setPwEdit]=useState<Record<string,string>>({});
+  const[pwSaving,setPwSaving]=useState<string|null>(null);
+  const[showPwPanel,setShowPwPanel]=useState(false);
+
+  const[woList,setWoList]=useState<any[]>([]);
+  const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  const[riwayat,setRiwayat]=useState<any[]>([]);
+  const[fotoMap,setFotoMap]=useState<Record<number,any[]>>({});
+  const[loadingRiwayat,setLoadingRiwayat]=useState(false);
+
+  const fetchPwList=async()=>{
+    const{data}=await supabase.from("fcs_sub_bagian_password").select("*").order("sub_bagian");
+    setPwList(data??[]);
+  };
+
+  const fetchWoList=async()=>{
+    const{data}=await supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false});
+    setWoList(data??[]);
+  };
+
+  const fetchRiwayat=async(woId:number)=>{
+    setLoadingRiwayat(true);
+    const{data:tr}=await supabase.from("fcs_tracking_komponen").select("*").eq("wo_id",woId).order("created_at",{ascending:false});
+    setRiwayat(tr??[]);
+    if(tr&&tr.length>0){
+      const ids=tr.map((t:any)=>t.id);
+      const{data:fotos}=await supabase.from("fcs_tracking_komponen_foto").select("*").in("tracking_id",ids);
+      const map:Record<number,any[]>={};
+      (fotos??[]).forEach((f:any)=>{
+        if(!map[f.tracking_id])map[f.tracking_id]=[];
+        map[f.tracking_id].push(f);
+      });
+      setFotoMap(map);
+    } else {
+      setFotoMap({});
+    }
+    setLoadingRiwayat(false);
+  };
+
+  useEffect(()=>{fetchPwList();fetchWoList();},[]);
+  useEffect(()=>{if(selectedWoId)fetchRiwayat(selectedWoId);},[selectedWoId]);
+
+  const savePassword=async(subBagian:string)=>{
+    const newPwd=pwEdit[subBagian];
+    if(!newPwd||!newPwd.trim()){alert("Password tidak boleh kosong");return;}
+    setPwSaving(subBagian);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const{error}=await supabase.from("fcs_sub_bagian_password").update({
+      password:newPwd.trim(),
+      updated_at:new Date().toISOString(),
+      updated_by:sess?.nama||sess?.name||"Admin",
+    }).eq("sub_bagian",subBagian);
+    if(error){alert("Gagal simpan: "+error.message);}
+    else{await fetchPwList();setPwEdit(prev=>({...prev,[subBagian]:""}));}
+    setPwSaving(null);
+  };
+
+  const deleteTracking=async(trackingId:number)=>{
+    if(!confirm("Hapus riwayat ini beserta fotonya?"))return;
+    const fotos=fotoMap[trackingId]||[];
+    for(const foto of fotos){
+      const path=foto.file_url.split("/tracking-komponen/")[1];
+      if(path)await supabase.storage.from("tracking-komponen").remove([path]);
+    }
+    await supabase.from("fcs_tracking_komponen").delete().eq("id",trackingId);
+    if(selectedWoId)fetchRiwayat(selectedWoId);
+  };
+
+  const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"-";
+
+  const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍"};
+
+  const countPerSubBagian=["Warehouse","Assembling","QS","QC"].map(sb=>({
+    sb,
+    count:riwayat.filter((r:any)=>r.sub_bagian===sb).length,
+  }));
+
+  return(
+    <div className="fi">
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:20,color:"#1e293b"}}>📦 Tracking Komponen</div>
+          <div style={{fontSize:12,color:"#64748b",marginTop:2}}>Monitoring serah terima komponen antar bagian</div>
+        </div>
+        <Btn outline color="#64748b" onClick={()=>setShowPwPanel(p=>!p)}>
+          {showPwPanel?"Tutup Pengaturan":"⚙️ Atur Password"}
+        </Btn>
+      </div>
+
+      {showPwPanel&&(
+        <Card style={{marginBottom:16}}>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>Password Sub-bagian</div>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+            {pwList.map((p:any)=>(
+              <div key={p.sub_bagian} style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
+                <div style={{minWidth:120}}>
+                  <Lbl>{subBagianIcon[p.sub_bagian]} {p.sub_bagian}</Lbl>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>Saat ini: {p.password}</div>
+                </div>
+                <div style={{flex:1,minWidth:160}}>
+                  <Inp value={pwEdit[p.sub_bagian]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[p.sub_bagian]:e.target.value}))}
+                    placeholder="Password baru..."/>
+                </div>
+                <Btn color="#1d4ed8" onClick={()=>savePassword(p.sub_bagian)} style={{padding:"9px 16px"}}>
+                  {pwSaving===p.sub_bagian?"...":"Simpan"}
+                </Btn>
+              </div>
+            ))}
+          </div>
+        </Card>
+      )}
+
+      <Card style={{marginBottom:16}}>
+        <Lbl>Pilih Work Order</Lbl>
+        <Sel value={selectedWoId??""} onChange={(e:any)=>setSelectedWoId(e.target.value?Number(e.target.value):null)}>
+          <option value="">-- Pilih Work Order --</option>
+          {woList.map((w:any)=>(
+            <option key={w.id} value={w.id}>{w.wo} — {w.proyek}</option>
+          ))}
+        </Sel>
+      </Card>
+
+      {selectedWoId&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+            {countPerSubBagian.map(({sb,count})=>(
+              <Card key={sb} style={{textAlign:"center" as const}}>
+                <div style={{fontSize:24}}>{subBagianIcon[sb]}</div>
+                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginTop:4}}>{sb}</div>
+                <div style={{fontSize:11,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{count>0?`${count} entri`:"Belum ada"}</div>
+              </Card>
+            ))}
+          </div>
+
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>Riwayat Lengkap</div>
+          {loadingRiwayat?(
+            <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8"}}>Memuat...</div>
+          ):riwayat.length===0?(
+            <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Belum ada riwayat untuk WO ini</div>
+          ):(
+            <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+              {riwayat.map((r:any)=>(
+                <Card key={r.id} style={{borderLeft:"3px solid #0d9488"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
+                    <div>
+                      <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</div>
+                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
+                    </div>
+                    <button onClick={()=>deleteTracking(r.id)}
+                      style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}
+                      title="Hapus riwayat">🗑️</button>
+                  </div>
+                  {r.catatan&&<div style={{fontSize:13,color:"#334155",marginTop:8,lineHeight:1.5}}>{r.catatan}</div>}
+                  {(fotoMap[r.id]||[]).length>0&&(
+                    <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:10}}>
+                      {(fotoMap[r.id]||[]).map((foto:any)=>(
+                        <a key={foto.id} href={foto.file_url} target="_blank" rel="noopener noreferrer">
+                          <img src={foto.file_url} style={{width:72,height:72,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
+                        </a>
+                      ))}
+                    </div>
+                  )}
+                </Card>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
@@ -9532,6 +9706,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canWO?[{id:"fcs",label:"FCS Schedule",icon:"ti ti-timeline"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
       {id:"forum",label:"Forum WO",icon:"ti ti-message-circle",badge:forumUnreadCount>0?forumUnreadCount:null},
+      {id:"trackingkomponen",label:"Tracking Komponen",icon:"ti ti-package"},
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
@@ -9898,6 +10073,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
               {tab==="forum"&&<ForumWO user={user}/>}
+              {tab==="trackingkomponen"&&<TrackingKomponenAdmin/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
