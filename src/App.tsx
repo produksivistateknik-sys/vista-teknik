@@ -9224,7 +9224,7 @@ function ForumWO({user}:any){
           <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:10}}>
             {files.map((f,idx)=>(
               <div key={idx} style={{display:"flex",alignItems:"center",gap:6,background:"#f1f5f9",borderRadius:6,padding:"5px 10px",fontSize:12}}>
-                <span>{fileIcon(f.type)}</span>
+                <span>{fileIconInfo(f.type).label==="PDF"?"📕":fileIconInfo(f.type).label==="Gambar"?"🖼️":fileIconInfo(f.type).label==="Spreadsheet"?"📊":fileIconInfo(f.type).label==="Dokumen"?"📄":"📎"}</span>
                 <span style={{maxWidth:140,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{f.name}</span>
                 <button onClick={()=>removeSelectedFile(idx)} style={{border:"none",background:"none",cursor:"pointer",color:"#dc2626",fontWeight:700,fontSize:13}}>×</button>
               </div>
