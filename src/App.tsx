@@ -9248,7 +9248,7 @@ function TrackingKomponenAdmin(){
               <div key={p.sub_bagian} style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
                 <div style={{minWidth:120}}>
                   <Lbl>{subBagianIcon[p.sub_bagian]} {p.sub_bagian}</Lbl>
-                  <div style={{fontSize:11,color:"#94a3b8"}}>Saat ini: {p.password}</div>
+                  <div style={{fontSize:12,fontWeight:600,color:"#64748b"}}>Saat ini: {p.password}</div>
                 </div>
                 <div style={{flex:1,minWidth:160}}>
                   <Inp value={pwEdit[p.sub_bagian]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[p.sub_bagian]:e.target.value}))}
@@ -9279,13 +9279,13 @@ function TrackingKomponenAdmin(){
             {countPerSubBagian.map(({sb,count})=>(
               <Card key={sb} style={{textAlign:"center" as const}}>
                 <div style={{fontSize:24}}>{subBagianIcon[sb]}</div>
-                <div style={{fontSize:13,fontWeight:700,color:"#1e293b",marginTop:4}}>{sb}</div>
-                <div style={{fontSize:11,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{count>0?`${count} entri`:"Belum ada"}</div>
+                <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:4}}>{sb}</div>
+                <div style={{fontSize:12,fontWeight:700,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{count>0?`${count} entri`:"Belum ada"}</div>
               </Card>
             ))}
           </div>
 
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>Riwayat Lengkap</div>
+          <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>Riwayat Lengkap</div>
           {loadingRiwayat?(
             <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8"}}>Memuat...</div>
           ):riwayat.length===0?(
@@ -9296,14 +9296,14 @@ function TrackingKomponenAdmin(){
                 <Card key={r.id} style={{borderLeft:"3px solid #0d9488"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
                     <div>
-                      <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</div>
-                      <div style={{fontSize:12,color:"#64748b",marginTop:2}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
+                      <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</div>
+                      <div style={{fontSize:13,fontWeight:600,color:"#475569",marginTop:2}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
                     </div>
                     <button onClick={()=>deleteTracking(r.id)}
                       style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}
                       title="Hapus riwayat">🗑️</button>
                   </div>
-                  {r.catatan&&<div style={{fontSize:13,color:"#334155",marginTop:8,lineHeight:1.5}}>{r.catatan}</div>}
+                  {r.catatan&&<div style={{fontSize:14,fontWeight:500,color:"#1e293b",marginTop:8,lineHeight:1.6}}>{r.catatan}</div>}
                   {(fotoMap[r.id]||[]).length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:10}}>
                       {(fotoMap[r.id]||[]).map((foto:any)=>(
