@@ -2612,8 +2612,8 @@ function TaskMonitoring({woData}:{woData:any[]}){
 
   const PROSES_LABEL:Record<string,string>={
     POTONG:"Potong",BENDING:"Bending",STEL:"Stel",PAINTING:"Painting",
-    RAKIT:"Ass Luar (I) - Rakit Frame","PASANG KOMPONEN":"Ass Luar (I) - Pasang Komponen",
-    BUSBAR:"Ass Dalam - Busbar","WIRING CONTROL":"Wiring Control","WIRING POWER":"Wiring Power",
+    RAKIT:"Rakit","PASANG KOMPONEN":"Pasang Komponen",
+    BUSBAR:"Busbar","WIRING CONTROL":"Wiring Control","WIRING POWER":"Wiring Power",
     "QC TEST":"QC Test",PACKING:"Packing",
   };
 
