@@ -629,9 +629,9 @@ function PBar({pct,h=6}){
     <div style={{width:`${pct}%`,height:"100%",background:pColor(pct),borderRadius:99,transition:"width .4s"}}/>
   </div>;
 }
-function Card({children,style={}}){
+function Card({children,style={},...rest}:any){
   return <div className="erp-card" style={{background:"var(--card-bg,#fff)",borderRadius:12,border:"1px solid var(--border-color,#e2e8f0)",
-    padding:16,boxShadow:"0 1px 3px #00000008",...style}}>{children}</div>;
+    padding:16,boxShadow:"0 1px 3px #00000008",...style}} {...rest}>{children}</div>;
 }
 function Lbl({children}){
   return <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,marginBottom:5}}>{children}</div>;
