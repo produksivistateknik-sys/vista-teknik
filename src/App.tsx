@@ -5217,6 +5217,21 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                                     <input type="number" min="0" value={cl.qty}
                                       onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
                                       onClick={e=>e.stopPropagation()}
+                                      onPaste={e=>{
+                                        const text=e.clipboardData.getData("text");
+                                        const values=text.split(/\r?\n|\t/).map(v=>v.trim()).filter(v=>v!=="");
+                                        if(values.length<=1)return;
+                                        e.preventDefault();
+                                        const flatItems=cfg.wps.flatMap((w:any)=>w.items);
+                                        const startIdx=flatItems.findIndex((it:any)=>it.kode===item.kode);
+                                        if(startIdx===-1)return;
+                                        values.forEach((val,idx)=>{
+                                          const target=flatItems[startIdx+idx];
+                                          if(!target)return;
+                                          const numVal=parseFloat(val)||0;
+                                          updateItemQty(wo.id,p.id,target.kode,numVal);
+                                        });
+                                      }}
                                       style={{width:56,padding:"4px 6px",borderRadius:6,
                                         border:`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
                                         background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
