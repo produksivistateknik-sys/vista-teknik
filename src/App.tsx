@@ -3037,6 +3037,7 @@ function SummaryProgress({woData}:{woData:any[]}){
 function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
   const [search,setSearch]=useState("");
   const [woFilter,setWoFilter]=useState("semua");
+  const [panelFilter,setPanelFilter]=useState("semua");
   const [statusFilter,setStatusFilter]=useState<string[]>([]);
 
   const PROSES_LIST=["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
@@ -3055,11 +3056,12 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
     const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchWO=woFilter==="semua"||p.wo===woFilter;
+    const matchPanel=panelFilter==="semua"||String(p.id)===panelFilter;
     const matchQ=!search||
       (p.nama||"").toLowerCase().includes(search.toLowerCase())||
       (p.proyek||"").toLowerCase().includes(search.toLowerCase())||
       (p.wo||"").toLowerCase().includes(search.toLowerCase());
-    return matchS&&matchWO&&matchQ;
+    return matchS&&matchWO&&matchPanel&&matchQ;
   });
 
   const thS={background:"#1e3a5f",color:"#fff",fontWeight:600,padding:"7px 10px",
@@ -3153,11 +3155,19 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 10px",
             fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-primary,#1e293b)",
             fontFamily:"inherit",flex:1,minWidth:160}}/>
-        <select value={woFilter} onChange={e=>setWoFilter(e.target.value)}
+        <select value={woFilter} onChange={e=>{setWoFilter(e.target.value);setPanelFilter("semua");}}
           style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
             fontSize:11,background:"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-secondary,#475569)",cursor:"pointer",fontFamily:"inherit"}}>
           <option value="semua">Semua WO</option>
           {woData.map(w=><option key={w.id} value={w.wo}>WO {w.wo} — {w.proyek}</option>)}
+        </select>
+        <select value={panelFilter} onChange={e=>setPanelFilter(e.target.value)} disabled={woFilter==="semua"}
+          style={{height:28,border:"1px solid #e2e8f0",borderRadius:5,padding:"0 7px",
+            fontSize:11,background:woFilter==="semua"?"#f1f5f9":"var(--input-bg,#f8fafc)",outline:"none",color:"var(--text-secondary,#475569)",cursor:woFilter==="semua"?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          <option value="semua">Semua Panel</option>
+          {allPanels.filter((p:any)=>woFilter==="semua"||p.wo===woFilter).map((p:any)=>(
+            <option key={p.id} value={p.id}>{p.nama}</option>
+          ))}
         </select>
         <div style={{display:"flex",gap:4,alignItems:"center",flexWrap:"wrap" as const}}>
           {[
