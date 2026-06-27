@@ -9244,6 +9244,9 @@ function TrackingKomponenAdmin(){
     count:riwayat.filter((r:any)=>r.sub_bagian===sb).length,
   }));
 
+  const[modalSubBagian,setModalSubBagian]=useState<string|null>(null);
+  const riwayatModalSubBagian=modalSubBagian?riwayat.filter((r:any)=>r.sub_bagian===modalSubBagian):[];
+
   return(
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
