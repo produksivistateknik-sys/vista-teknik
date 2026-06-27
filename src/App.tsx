@@ -4245,7 +4245,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             {days.map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
-                const isOrangPr=isProsesOrang(pr);
+                const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
                 const kapasitasPr=ov?(isOrangPr?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0)):0;
                 let terpakaiPr=0;
