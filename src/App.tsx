@@ -4243,10 +4243,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
-              const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING"]:filterProses;
-              const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean}[]=prosesToShow.map((pr:string)=>{
+              const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
+              const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
+                const isOrangPr=isProsesOrang(pr);
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
-                const kapasitasPr=ov?Number(ov.kapasitas_menit):0;
+                const kapasitasPr=ov?(isOrangPr?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0)):0;
                 let terpakaiPr=0;
                 rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
                   const panelId=r.panel_id||r.panelId;
@@ -4254,14 +4255,21 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   if(!panelData)return;
                   const entries=r.schedule?.[d]||[];
                   entries.forEach((e:any)=>{
-                    (e.komponen||[]).forEach((kode:string)=>{
-                      const qty=panelData.checklist?.[kode]?.qty||0;
-                      const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
-                      terpakaiPr+=qty*menitPcs;
-                    });
+                    if(isOrangPr){
+                      const orangMap:Record<string,number>=e.orangPerKomponen||{};
+                      (e.komponen||[]).forEach((kode:string)=>{
+                        terpakaiPr+=(orangMap[kode]!==undefined?orangMap[kode]:1);
+                      });
+                    } else {
+                      (e.komponen||[]).forEach((kode:string)=>{
+                        const qty=panelData.checklist?.[kode]?.qty||0;
+                        const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
+                        terpakaiPr+=qty*menitPcs;
+                      });
+                    }
                   });
                 });
-                return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov};
+                return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov,satuan:isOrangPr?"orang":"mnt"};
               });
               const adaOverride=perProses.some(pp=>pp.adaOverride);
               return(
@@ -4286,7 +4294,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           <div key={pp.nama}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9,marginBottom:2}}>
                               <span style={{color:"#64748b"}}>{pp.nama}</span>
-                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{pp.kapasitas} mnt</span>
+                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{pp.kapasitas} {pp.satuan}</span>
                             </div>
                             <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
                               <div style={{width:pctPr+"%",height:"100%",background:colorPr,borderRadius:99}}/>
