@@ -6738,6 +6738,7 @@ function KapasitasPekerjaanTab(){
     setRentangResult(null);
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const createdBy=sess?.nama||sess?.name||"Admin";
+    const isOrangRentang=isProsesOrang(rentangForm.jenis_pekerjaan);
     const rows:any[]=[];
     let cur=new Date(rentangForm.tanggalMulai);
     const end=new Date(rentangForm.tanggalAkhir);
@@ -6748,8 +6749,9 @@ function KapasitasPekerjaanTab(){
         rows.push({
           tanggal:cur.toISOString().slice(0,10),
           jenis_pekerjaan:rentangForm.jenis_pekerjaan,
-          jam_kerja:Number(rentangForm.jam_kerja),
-          efektivitas_pct:Number(rentangForm.efektivitas_pct),
+          ...(isOrangRentang
+            ?{tipe_kapasitas:"orang",jumlah_orang:Number(rentangForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100}
+            :{tipe_kapasitas:"jam",jam_kerja:Number(rentangForm.jam_kerja),efektivitas_pct:Number(rentangForm.efektivitas_pct),jumlah_orang:null}),
           keterangan:rentangForm.keterangan,
           created_by:createdBy,
         });
@@ -7149,7 +7151,16 @@ function KapasitasPekerjaanTab(){
                     ))}
                   </select>
                 </div>
-                <div>
+                {isProsesOrang(rentangForm.jenis_pekerjaan)?(
+                  <div style={{gridColumn:"span 2"}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>👥 Jumlah Orang</div>
+                    <input type="number" min="0" step="1" value={rentangForm.jumlah_orang}
+                      onChange={e=>setRentangForm({...rentangForm,jumlah_orang:parseFloat(e.target.value)||0})}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #93c5fd",fontSize:12,textAlign:"center" as const,background:"#eff6ff"}}/>
+                  </div>
+                ):(
+                <>
+<div>
                   <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jam Kerja</div>
                   <input type="number" min="0" step="0.5" value={rentangForm.jam_kerja}
                     onChange={e=>setRentangForm({...rentangForm,jam_kerja:parseFloat(e.target.value)||0})}
@@ -7161,6 +7172,8 @@ function KapasitasPekerjaanTab(){
                     onChange={e=>setRentangForm({...rentangForm,efektivitas_pct:parseFloat(e.target.value)||0})}
                     style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
                 </div>
+                </>
+                )}
                 <div>
                   <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Keterangan</div>
                   <input value={rentangForm.keterangan} onChange={e=>setRentangForm({...rentangForm,keterangan:e.target.value})}
@@ -7170,7 +7183,11 @@ function KapasitasPekerjaanTab(){
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
                 <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                  {rentangForm.jam_kerja} jam × 60 × {rentangForm.efektivitas_pct}% = <strong>{Math.round(rentangForm.jam_kerja*60*rentangForm.efektivitas_pct/100)} menit</strong>/hari
+                  {isProsesOrang(rentangForm.jenis_pekerjaan)?(
+                    <>{rentangForm.jumlah_orang} orang/hari</>
+                  ):(
+                    <>{rentangForm.jam_kerja} jam × 60 × {rentangForm.efektivitas_pct}% = <strong>{Math.round(rentangForm.jam_kerja*60*rentangForm.efektivitas_pct/100)} menit</strong>/hari</>
+                  )}
                 </div>
                 <button disabled={rentangSaving} onClick={saveRentangOverride}
                   style={{padding:"7px 18px",borderRadius:7,border:"none",background:rentangSaving?"#94a3b8":"#9333ea",color:"#fff",fontSize:12,fontWeight:700,cursor:rentangSaving?"not-allowed":"pointer",fontFamily:"inherit"}}>
