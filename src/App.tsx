@@ -2638,11 +2638,11 @@ function TaskMonitoring({woData}:{woData:any[]}){
     return progress>0?{status:"IN PROGRESS",pct:progress}:{status:"TO DO",pct:0};
   };
 
-  const statusStyle:Record<string,{bg:string;color:string}>={
-    "DONE":{bg:"#166534",color:"#fff"},
-    "IN PROGRESS":{bg:"#16a34a",color:"#fff"},
-    "TO DO":{bg:"#fbbf24",color:"#78350f"},
-    "NOT YET":{bg:"#ef4444",color:"#fff"},
+  const statusStyle:Record<string,{bg:string;color:string;border:string}>={
+    "DONE":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},
+    "IN PROGRESS":{bg:"#eff6ff",color:"#2563eb",border:"#bfdbfe"},
+    "TO DO":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},
+    "NOT YET":{bg:"#f8fafc",color:"#94a3b8",border:"#e2e8f0"},
   };
 
   const progresTotal=(()=>{
@@ -2712,10 +2712,10 @@ function TaskMonitoring({woData}:{woData:any[]}){
           <div style={{overflowX:"auto" as const,border:"1px solid #e2e8f0",borderRadius:10}}>
             <table style={{borderCollapse:"collapse" as const,fontSize:11,minWidth:900,width:"100%"}}>
               <thead>
-                <tr style={{background:"#1e293b"}}>
-                  <th style={{padding:"8px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,left:0,background:"#1e293b",minWidth:160,zIndex:1}}>Komponen</th>
+                <tr style={{background:"#1e3a5f"}}>
+                  <th style={{padding:"7px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,left:0,background:"#1e3a5f",minWidth:160,zIndex:1,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,fontWeight:600,borderRight:"1px solid rgba(255,255,255,.1)"}}>Komponen</th>
                   {ALL_PROSES.map((proses:string)=>(
-                    <th key={proses} style={{padding:"8px 10px",color:"#93c5fd",minWidth:90,fontWeight:700}}>{PROSES_LABEL[proses]}</th>
+                    <th key={proses} style={{padding:"7px 10px",color:"#fff",minWidth:90,fontWeight:600,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,borderRight:"1px solid rgba(255,255,255,.1)"}}>{PROSES_LABEL[proses]}</th>
                   ))}
                 </tr>
               </thead>
@@ -2731,8 +2731,8 @@ function TaskMonitoring({woData}:{woData:any[]}){
                         return(
                           <td key={proses} style={{padding:4,textAlign:"center" as const,background:ii%2===0?"#fff":"#f8fafc"}}>
                             {st&&(
-                              <span style={{background:statusStyle[st.status].bg,color:statusStyle[st.status].color,padding:"3px 8px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>
-                                {st.status==="IN PROGRESS"?`${st.pct}%`:st.status}
+                              <span style={{background:statusStyle[st.status].bg,color:statusStyle[st.status].color,border:`1px solid ${statusStyle[st.status].border}`,padding:"3px 9px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>
+                                {st.status==="IN PROGRESS"?`IN PROGRESS ${st.pct}%`:st.status}
                               </span>
                             )}
                           </td>
