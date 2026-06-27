@@ -2627,6 +2627,7 @@ function TaskMonitoring({woData}:{woData:any[]}){
     const qty=selectedPanel.checklist?.[kode]?.qty||0;
     if(qty<=0)return null;
     const proses=ALL_PROSES[prosesIdx];
+    if(!isKomponenRelevant(kode,proses))return null;
     const progress=selectedPanel.checklist?.[kode]?.progress?.[proses]||0;
     if(progress>=100)return{status:"DONE",pct:100};
     if(prosesIdx===0){
