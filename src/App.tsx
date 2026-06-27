@@ -3660,7 +3660,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     Object.entries(schedule).forEach(([tgl,entries]:[string,any])=>{
       if(tgl===cellModal?.date)return;
       (entries||[]).forEach((e:any)=>{
-        (e.komponen||[]).forEach((kode:string)=>result.add(kode));
+        (e.komponen||[]).forEach((kode:string)=>{
+          const progress=livePanelForCell?.checklist?.[kode]?.progress?.[rawRow?.proses||""]||0;
+          if(progress<100)return;
+          result.add(kode);
+        });
       });
     });
     return result;
