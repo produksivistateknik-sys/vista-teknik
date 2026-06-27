@@ -9307,18 +9307,24 @@ function TrackingKomponenAdmin(){
         </Card>
       )}
 
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+        {countPerSubBagian.map(({sb,count})=>{
+          const isActive=!!(selectedWoId&&selectedPanelId);
+          return(
+            <Card key={sb} onClick={()=>{if(isActive)setModalSubBagian(sb);}}
+              style={{textAlign:"center" as const,cursor:isActive?"pointer":"not-allowed",opacity:isActive?1:0.5,transition:"all .15s"}}
+              onMouseEnter={(e:any)=>{if(isActive){e.currentTarget.style.boxShadow="0 4px 12px #00000018";e.currentTarget.style.transform="translateY(-2px)";}}}
+              onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px #00000008";e.currentTarget.style.transform="translateY(0)";}}>
+              <div style={{fontSize:24}}>{subBagianIcon[sb]}</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:4}}>{sb}</div>
+              <div style={{fontSize:12,fontWeight:700,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{isActive?(count>0?`${count} entri`:"Belum ada"):"Pilih WO & panel"}</div>
+            </Card>
+          );
+        })}
+      </div>
+
       {selectedWoId&&selectedPanelId&&(
         <>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
-            {countPerSubBagian.map(({sb,count})=>(
-              <Card key={sb} style={{textAlign:"center" as const}}>
-                <div style={{fontSize:24}}>{subBagianIcon[sb]}</div>
-                <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:4}}>{sb}</div>
-                <div style={{fontSize:12,fontWeight:700,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{count>0?`${count} entri`:"Belum ada"}</div>
-              </Card>
-            ))}
-          </div>
-
           <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>Riwayat Lengkap</div>
           {loadingRiwayat?(
             <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8"}}>Memuat...</div>
