@@ -3654,7 +3654,18 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const panelCfg=livePanelForCell?PANEL_TYPES[livePanelForCell.tipe]:null;
   const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
   const komponenSudahAda=cellEntries.find(e=>e.wp===modalWp)?.komponen||[];
-  const wpItems=wpItemsAll.filter(it=>isKomponenRelevant(it.kode,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode));
+  const komponenSudahDipakaiTanggalLain=(()=>{
+    const result=new Set<string>();
+    const schedule=rawRow?.schedule||{};
+    Object.entries(schedule).forEach(([tgl,entries]:[string,any])=>{
+      if(tgl===cellModal?.date)return;
+      (entries||[]).forEach((e:any)=>{
+        (e.komponen||[]).forEach((kode:string)=>result.add(kode));
+      });
+    });
+    return result;
+  })();
+  const wpItems=wpItemsAll.filter(it=>isKomponenRelevant(it.kode,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode));
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
     const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
