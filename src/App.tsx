@@ -3669,7 +3669,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     });
     return result;
   })();
-  const wpItems=wpItemsAll.filter(it=>isKomponenRelevant(it.kode,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode));
+  const wpItems=wpItemsAll.filter(it=>{
+    const qty=livePanelForCell?.checklist?.[it.kode]?.qty||0;
+    if(qty<=0)return false;
+    return isKomponenRelevant(it.kode,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
+  });
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
     const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
