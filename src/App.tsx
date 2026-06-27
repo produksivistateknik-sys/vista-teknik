@@ -7179,6 +7179,8 @@ function KapasitasPekerjaanTab(){
           )}
 
           {overrideMode==="single"&&(
+        <>
+        {!editOverride&&(
           <div style={{background:"#f0f8ff",borderRadius:10,border:"1.5px solid #bfdbfe",padding:"14px 16px",marginBottom:16}}>
             <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>{editOverride?"✏️ Edit Override":"➕ Tambah Override"}</div>
             <div style={{display:"grid",gridTemplateColumns:"140px 160px 100px 100px 1fr",gap:10,alignItems:"flex-end"}}>
@@ -7264,7 +7266,103 @@ function KapasitasPekerjaanTab(){
               </div>
             </div>
           </div>
-          )}
+          
+        )}
+        {editOverride&&(
+          <div onClick={()=>{setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,keterangan:""} as any);}}
+            style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+            <div onClick={(e:any)=>e.stopPropagation()} style={{width:"100%",maxWidth:760,maxHeight:"85vh",overflowY:"auto" as const}}>
+          <div style={{background:"#f0f8ff",borderRadius:10,border:"1.5px solid #bfdbfe",padding:"14px 16px",marginBottom:16}}>
+            <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>{editOverride?"✏️ Edit Override":"➕ Tambah Override"}</div>
+            <div style={{display:"grid",gridTemplateColumns:"140px 160px 100px 100px 1fr",gap:10,alignItems:"flex-end"}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Tanggal</div>
+                <input type="date" value={overrideForm.tanggal} disabled={!!editOverride}
+                  onChange={e=>setOverrideForm({...overrideForm,tanggal:e.target.value})}
+                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff"}}/>
+              </div>
+              <div style={{position:"relative" as const}}>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
+                <button type="button" disabled={!!editOverride}
+                  onClick={()=>setOverrideJenisDropdownOpen(o=>!o)}
+                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editOverride?"#f1f5f9":"#fff",textAlign:"left" as const,cursor:editOverride?"default":"pointer",fontFamily:"inherit",color:"#1e293b"}}>
+                  {overrideForm.jenis_pekerjaan.length===0?"Pilih...":overrideForm.jenis_pekerjaan.join(", ")}
+                </button>
+                {overrideJenisDropdownOpen&&!editOverride&&(
+                  <div style={{position:"absolute" as const,top:"100%",left:0,marginTop:4,background:"#fff",border:"1px solid #e2e8f0",borderRadius:7,boxShadow:"0 4px 12px #00000018",zIndex:20,maxHeight:220,overflowY:"auto" as const,minWidth:200}}>
+                    {["POTONG","BENDING","STEL","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+                      const selected=overrideForm.jenis_pekerjaan;
+                      const isChecked=selected.includes(p);
+                      const lockedKategoriOrang=selected.length>0&&isProsesOrang(selected[0]);
+                      const pIsOrang=isProsesOrang(p);
+                      const disabledOpt=selected.length>0&&!isChecked&&(lockedKategoriOrang!==pIsOrang);
+                      return(
+                        <label key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 10px",fontSize:12,cursor:disabledOpt?"not-allowed":"pointer",opacity:disabledOpt?0.4:1,color:"#1e293b"}}>
+                          <input type="checkbox" checked={isChecked} disabled={disabledOpt}
+                            onChange={()=>{
+                              setOverrideForm(f=>({...f,jenis_pekerjaan:isChecked?f.jenis_pekerjaan.filter(x=>x!==p):[...f.jenis_pekerjaan,p]}));
+                            }}/>
+                          {p}
+                        </label>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+              {isProsesOrang(overrideForm.jenis_pekerjaan[0]||"POTONG")?(
+                <div style={{gridColumn:"span 2"}}>
+                  <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>👥 Jumlah Orang</div>
+                  <input type="number" min="0" step="1" value={overrideForm.jumlah_orang}
+                    onChange={e=>setOverrideForm({...overrideForm,jumlah_orang:parseFloat(e.target.value)||0})}
+                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #93c5fd",fontSize:12,textAlign:"center" as const,background:"#eff6ff"}}/>
+                </div>
+              ):(
+                <>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jam Kerja</div>
+                    <input type="number" min="0" step="0.5" value={overrideForm.jam_kerja}
+                      onChange={e=>setOverrideForm({...overrideForm,jam_kerja:parseFloat(e.target.value)||0})}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
+                  </div>
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Efekt. %</div>
+                    <input type="number" min="0" max="100" step="1" value={overrideForm.efektivitas_pct}
+                      onChange={e=>setOverrideForm({...overrideForm,efektivitas_pct:parseFloat(e.target.value)||0})}
+                      style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
+                  </div>
+                </>
+              )}
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Keterangan</div>
+                <input value={overrideForm.keterangan} onChange={e=>setOverrideForm({...overrideForm,keterangan:e.target.value})}
+                  placeholder="opsional..."
+                  style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
+              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
+                {isProsesOrang(overrideForm.jenis_pekerjaan[0]||"POTONG")?(
+                  <>{overrideForm.jumlah_orang} orang = <strong>{overrideForm.jumlah_orang} panel/hari</strong></>
+                ):(
+                  <>{overrideForm.jam_kerja} jam × 60 × {overrideForm.efektivitas_pct}% = <strong>{Math.round(overrideForm.jam_kerja*60*overrideForm.efektivitas_pct/100)} menit</strong></>
+                )}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                {editOverride&&(
+                  <button onClick={()=>{setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,keterangan:""} as any);}}
+                    style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+                )}
+                <button onClick={saveOverride}
+                  style={{padding:"7px 18px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editOverride?"Simpan":"+ Tambah"}</button>
+              </div>
+            </div>
+          </div>
+          
+            </div>
+          </div>
+        )}
+        </>
+      )}
 
           <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,alignItems:"center",marginBottom:14}}>
             <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
