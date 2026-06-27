@@ -4911,7 +4911,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO}:any){
   const blank={wo:"",proyek:"",target:""};
-  const blankPanel={noPnl:"",nama:"",tipe:"FS",qty:1};
+  const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1};
   const [fcsModal,setFcsModal]=useState<any>(null);
   const [fcsLoading,setFcsLoading]=useState(false);
   const [fcsResult,setFcsResult]=useState<any>(null);
