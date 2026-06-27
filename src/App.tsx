@@ -6958,63 +6958,7 @@ function KapasitasPekerjaanTab(){
                   <div style={{flex:1,height:1,background:"#f1f5f9"}}/>
                 </div>
 
-          {/* Form tambah/edit */}
-          {showAddProc&&(
-            <div style={{background:"#f0f8ff",borderRadius:10,border:"1.5px solid #bfdbfe",padding:"14px 16px",marginBottom:14}}>
-              <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:12}}>{editProc?"✏️ Edit Process Time":"➕ Tambah Process Time"}</div>
-              <div style={{display:"grid",gridTemplateColumns:"110px 90px 1fr 1fr 110px",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Tipe Panel</div>
-                  <select value={procForm.tipe_panel} onChange={e=>setProcForm({...procForm,tipe_panel:e.target.value,kode_komponen:"",nama_komponen:""})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
-                    {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>WP</div>
-                  <select value={procForm.wp} onChange={e=>setProcForm({...procForm,wp:e.target.value,kode_komponen:"",nama_komponen:""})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
-                    {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Komponen (dari Manajemen WO)</div>
-                  <select value={procForm.kode_komponen} disabled={!!editProc}
-                    onChange={e=>{
-                      const kode=e.target.value;
-                      const cfg=(PANEL_TYPES as any)[procForm.tipe_panel];
-                      const item=cfg?.wps.find((w:any)=>w.wp===procForm.wp)?.items.find((it:any)=>it.kode===kode);
-                      setProcForm({...procForm,kode_komponen:kode,nama_komponen:item?.nama||""});
-                    }}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,background:editProc?"#f1f5f9":"#fff"}}>
-                    <option value="">-- Pilih komponen --</option>
-                    {((PANEL_TYPES as any)[procForm.tipe_panel]?.wps.find((w:any)=>w.wp===procForm.wp)?.items||[]).map((it:any)=>(
-                      <option key={it.kode} value={it.kode}>{it.kode} — {it.nama}</option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
-                  <select value={procForm.jenis_pekerjaan} onChange={e=>setProcForm({...procForm,jenis_pekerjaan:e.target.value})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
-                    {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
-                  </select>
-                </div>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Menit/Pcs</div>
-                  <input type="number" min="0" step="0.25" value={procForm.menit_per_pcs}
-                    onChange={e=>setProcForm({...procForm,menit_per_pcs:parseFloat(e.target.value)||0})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12,textAlign:"center" as const}}/>
-                </div>
-              </div>
-              <div style={{display:"flex",gap:8,marginTop:12,justifyContent:"flex-end"}}>
-                <button onClick={()=>{setShowAddProc(false);setEditProc(null);}}
-                  style={{padding:"6px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
-                <button onClick={saveProcess}
-                  style={{padding:"6px 16px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editProc?"Simpan":"+ Tambah"}</button>
-              </div>
-            </div>
-          )}
+          
 
                 <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
                   <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -7069,6 +7013,69 @@ function KapasitasPekerjaanTab(){
               <div style={{fontSize:11}}>Klik tombol + Tambah untuk input data manual</div>
             </div>
           )}
+        </div>
+      )}
+
+      {showAddProc&&(
+        <div onClick={()=>{setShowAddProc(false);setEditProc(null);}}
+          style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:560,padding:20,maxHeight:"85vh",overflowY:"auto" as const}}>
+            <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:14}}>{editProc?"✏️ Edit Process Time":"➕ Tambah Process Time"}</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:10}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Tipe Panel</div>
+                <select value={procForm.tipe_panel} onChange={e=>setProcForm({...procForm,tipe_panel:e.target.value,kode_komponen:"",nama_komponen:""})}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13}}>
+                  {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>WP</div>
+                <select value={procForm.wp} onChange={e=>setProcForm({...procForm,wp:e.target.value,kode_komponen:"",nama_komponen:""})}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13}}>
+                  {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
+                </select>
+              </div>
+            </div>
+            <div style={{marginBottom:10}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Komponen (dari Manajemen WO)</div>
+              <select value={procForm.kode_komponen} disabled={!!editProc}
+                onChange={e=>{
+                  const kode=e.target.value;
+                  const cfg=(PANEL_TYPES as any)[procForm.tipe_panel];
+                  const item=cfg?.wps.find((w:any)=>w.wp===procForm.wp)?.items.find((it:any)=>it.kode===kode);
+                  setProcForm({...procForm,kode_komponen:kode,nama_komponen:item?.nama||""});
+                }}
+                style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13,background:editProc?"#f1f5f9":"#fff"}}>
+                <option value="">-- Pilih komponen --</option>
+                {((PANEL_TYPES as any)[procForm.tipe_panel]?.wps.find((w:any)=>w.wp===procForm.wp)?.items||[]).map((it:any)=>(
+                  <option key={it.kode} value={it.kode}>{it.kode} — {it.nama}</option>
+                ))}
+              </select>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:16}}>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
+                <select value={procForm.jenis_pekerjaan} onChange={e=>setProcForm({...procForm,jenis_pekerjaan:e.target.value})}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13}}>
+                  {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
+                </select>
+              </div>
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Menit/Pcs</div>
+                <input type="number" min="0" step="0.25" value={procForm.menit_per_pcs}
+                  onChange={e=>setProcForm({...procForm,menit_per_pcs:parseFloat(e.target.value)||0})}
+                  style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13,textAlign:"center" as const}}/>
+              </div>
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+              <button onClick={()=>{setShowAddProc(false);setEditProc(null);}}
+                style={{padding:"8px 16px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+              <button onClick={saveProcess}
+                style={{padding:"8px 18px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{editProc?"Simpan":"+ Tambah"}</button>
+            </div>
+          </div>
         </div>
       )}
 
