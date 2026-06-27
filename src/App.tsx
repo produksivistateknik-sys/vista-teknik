@@ -2643,7 +2643,7 @@ function TaskMonitoring({woData}:{woData:any[]}){
     "DONE":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},
     "IN PROGRESS":{bg:"#eff6ff",color:"#2563eb",border:"#bfdbfe"},
     "TO DO":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},
-    "NOT YET":{bg:"#f8fafc",color:"#94a3b8",border:"#e2e8f0"},
+    "NOT YET":{bg:"#fef2f2",color:"#dc2626",border:"#fecaca"},
   };
 
   const progresTotal=(()=>{
