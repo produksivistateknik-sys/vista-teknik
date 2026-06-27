@@ -4914,6 +4914,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
 
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO}:any){
+  const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
+  const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1};
   const [fcsModal,setFcsModal]=useState<any>(null);
@@ -5033,6 +5035,43 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   };
   const [dirtyQty,setDirtyQty]=useState<Record<string,Record<string,{newQty:number,oldQty:number}>>>({});
   const [origChecklist,setOrigChecklist]=useState<Record<string,any>>({});
+
+  const handleQtyCellClick=(panelId:number,kode:string,flatKodes:string[],shiftKey:boolean)=>{
+    if(shiftKey&&qtyAnchor&&qtyAnchor.panelId===panelId){
+      const startIdx=flatKodes.indexOf(qtyAnchor.kode);
+      const endIdx=flatKodes.indexOf(kode);
+      if(startIdx===-1||endIdx===-1)return;
+      const lo=Math.min(startIdx,endIdx);
+      const hi=Math.max(startIdx,endIdx);
+      setSelectedQtyCells({panelId,kodes:flatKodes.slice(lo,hi+1)});
+    } else {
+      setQtyAnchor({panelId,kode});
+      setSelectedQtyCells({panelId,kodes:[kode]});
+    }
+  };
+
+  const handleQtyCopy=(woId:number,panelId:number,e:any)=>{
+    if(!selectedQtyCells||selectedQtyCells.panelId!==panelId||selectedQtyCells.kodes.length<=1)return;
+    const wo=woData.find((w:any)=>w.id===woId);
+    const panel=wo?.panels?.find((p:any)=>p.id===panelId);
+    if(!panel)return;
+    const values=selectedQtyCells.kodes.map(kode=>panel.checklist?.[kode]?.qty??0);
+    e.clipboardData.setData("text/plain",values.join("\n"));
+    e.preventDefault();
+  };
+
+  const handleQtyPasteMulti=(woId:number,panelId:number,e:any)=>{
+    if(!selectedQtyCells||selectedQtyCells.panelId!==panelId||selectedQtyCells.kodes.length<=1)return;
+    const text=e.clipboardData.getData("text");
+    const values=text.split(/\r?\n|\t/).map((v:string)=>v.trim()).filter((v:string)=>v!=="");
+    if(values.length===0)return;
+    e.preventDefault();
+    selectedQtyCells.kodes.forEach((kode,idx)=>{
+      const val=values.length===1?values[0]:values[idx];
+      if(val===undefined)return;
+      updateItemQty(woId,panelId,kode,parseFloat(val)||0);
+    });
+  };
 
   const updateItemQty=(woId,panelId,kode,qty)=>{
     const nq=Number(qty)||0;
@@ -5216,25 +5255,34 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
                                     <input type="number" min="0" value={cl.qty}
                                       onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
-                                      onClick={e=>e.stopPropagation()}
+                                      onClick={e=>{
+                                        e.stopPropagation();
+                                        const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+                                        handleQtyCellClick(p.id,item.kode,flatKodes,e.shiftKey);
+                                      }}
+                                      onCopy={e=>handleQtyCopy(wo.id,p.id,e)}
                                       onPaste={e=>{
+                                        if(selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode)){
+                                          handleQtyPasteMulti(wo.id,p.id,e);
+                                          return;
+                                        }
                                         const text=e.clipboardData.getData("text");
                                         const values=text.split(/\r?\n|\t/).map(v=>v.trim()).filter(v=>v!=="");
                                         if(values.length<=1)return;
                                         e.preventDefault();
                                         const flatItems=cfg.wps.flatMap((w:any)=>w.items);
-                                        const startIdx=flatItems.findIndex((it:any)=>it.kode===item.kode);
-                                        if(startIdx===-1)return;
+                                        const startIdx2=flatItems.findIndex((it:any)=>it.kode===item.kode);
+                                        if(startIdx2===-1)return;
                                         values.forEach((val,idx)=>{
-                                          const target=flatItems[startIdx+idx];
+                                          const target=flatItems[startIdx2+idx];
                                           if(!target)return;
                                           const numVal=parseFloat(val)||0;
                                           updateItemQty(wo.id,p.id,target.kode,numVal);
                                         });
                                       }}
                                       style={{width:56,padding:"4px 6px",borderRadius:6,
-                                        border:`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
-                                        background:isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
+                                        border:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"1.5px solid #2563eb":`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
+                                        background:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"#eff6ff":isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
                                         fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"var(--text-primary,#1e293b)"}}/>
                                   </div>
                                 </div>
