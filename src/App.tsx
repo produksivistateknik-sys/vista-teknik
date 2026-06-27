@@ -5331,7 +5331,10 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               </div>
             </div>
           ))}
-          <button onClick={()=>setPanels([...panels,{...blankPanel}])}
+          <button onClick={()=>{
+            const maxNo=panels.reduce((max,p)=>{const n=parseInt(p.noPnl)||0;return n>max?n:max;},0);
+            setPanels([...panels,{...blankPanel,noPnl:String(maxNo+1)}]);
+          }}
             style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #cbd5e1",
               background:"transparent",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:600,marginBottom:16}}>
             + Tambah Panel
