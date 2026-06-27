@@ -9350,6 +9350,46 @@ function TrackingKomponenAdmin(){
           )}
         </>
       )}
+
+      {modalSubBagian&&(
+        <div onClick={()=>setModalSubBagian(null)}
+          style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:480,maxHeight:"80vh",overflowY:"auto" as const,padding:20}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"#f0fdfa",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>
+                  {subBagianIcon[modalSubBagian]}
+                </div>
+                <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>{modalSubBagian}</div>
+              </div>
+              <button onClick={()=>setModalSubBagian(null)}
+                style={{border:"none",background:"#f1f5f9",borderRadius:8,width:30,height:30,cursor:"pointer",fontSize:16,color:"#64748b"}}>✕</button>
+            </div>
+            {riwayatModalSubBagian.length===0?(
+              <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13,fontWeight:600}}>Belum ada riwayat untuk {modalSubBagian}</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column" as const,gap:14}}>
+                {riwayatModalSubBagian.map((r:any)=>(
+                  <div key={r.id} style={{background:"#f8fafc",borderRadius:10,padding:14}}>
+                    <div style={{fontSize:13,fontWeight:600,color:"#475569",marginBottom:6}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
+                    {r.catatan&&<div style={{fontSize:14,fontWeight:500,color:"#1e293b",marginBottom:10,lineHeight:1.6}}>{r.catatan}</div>}
+                    {(fotoMap[r.id]||[]).length>0&&(
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
+                        {(fotoMap[r.id]||[]).map((foto:any)=>(
+                          <a key={foto.id} href={foto.file_url} target="_blank" rel="noopener noreferrer">
+                            <img src={foto.file_url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
