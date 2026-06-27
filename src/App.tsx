@@ -2606,6 +2606,158 @@ function Dashboard({woData}){
   );
 }
 
+function TaskMonitoring({woData}:{woData:any[]}){
+  const [selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  const [selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+
+  const PROSES_LABEL:Record<string,string>={
+    POTONG:"Potong",BENDING:"Bending",STEL:"Stel",PAINTING:"Painting",
+    RAKIT:"Ass Luar (I) - Rakit Frame","PASANG KOMPONEN":"Ass Luar (I) - Pasang Komponen",
+    BUSBAR:"Ass Dalam - Busbar","WIRING CONTROL":"Wiring Control","WIRING POWER":"Wiring Power",
+    "QC TEST":"QC Test",PACKING:"Packing",
+  };
+
+  const selectedWo=woData.find((w:any)=>w.id===selectedWoId);
+  const panelList=selectedWo?.panels||[];
+  const selectedPanel=panelList.find((p:any)=>p.id===selectedPanelId);
+  const cfg=selectedPanel?(PANEL_TYPES as any)[selectedPanel.tipe]:null;
+
+  const getStatus=(kode:string,prosesIdx:number):{status:string;pct:number}|null=>{
+    if(!selectedPanel)return null;
+    const qty=selectedPanel.checklist?.[kode]?.qty||0;
+    if(qty<=0)return null;
+    const proses=ALL_PROSES[prosesIdx];
+    const progress=selectedPanel.checklist?.[kode]?.progress?.[proses]||0;
+    if(progress>=100)return{status:"DONE",pct:100};
+    if(prosesIdx===0){
+      return progress>0?{status:"IN PROGRESS",pct:progress}:{status:"TO DO",pct:0};
+    }
+    const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
+    const progressSebelumnya=selectedPanel.checklist?.[kode]?.progress?.[prosesSebelumnya]||0;
+    if(progressSebelumnya<100)return{status:"NOT YET",pct:0};
+    return progress>0?{status:"IN PROGRESS",pct:progress}:{status:"TO DO",pct:0};
+  };
+
+  const statusStyle:Record<string,{bg:string;color:string}>={
+    "DONE":{bg:"#166534",color:"#fff"},
+    "IN PROGRESS":{bg:"#16a34a",color:"#fff"},
+    "TO DO":{bg:"#fbbf24",color:"#78350f"},
+    "NOT YET":{bg:"#ef4444",color:"#fff"},
+  };
+
+  const progresTotal=(()=>{
+    if(!selectedPanel||!cfg)return 0;
+    const allItems=cfg.wps.flatMap((w:any)=>w.items);
+    let sum=0,count=0;
+    allItems.forEach((it:any)=>{
+      const qty=selectedPanel.checklist?.[it.kode]?.qty||0;
+      if(qty<=0)return;
+      ALL_PROSES.forEach((proses:string)=>{
+        const progress=selectedPanel.checklist?.[it.kode]?.progress?.[proses]||0;
+        sum+=progress;count++;
+      });
+    });
+    return count>0?(sum/count):0;
+  })();
+
+  return(
+    <div className="fi">
+      <div style={{fontWeight:800,fontSize:20,color:"#0f172a",marginBottom:4}}>Task Monitoring</div>
+      <div style={{fontSize:13,fontWeight:600,color:"#475569",marginBottom:16}}>Monitoring status estafet per komponen per panel</div>
+
+      <Card style={{marginBottom:16}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12}}>
+          <div>
+            <Lbl>Pilih Work Order</Lbl>
+            <Sel value={selectedWoId??""} onChange={(e:any)=>{setSelectedWoId(e.target.value?Number(e.target.value):null);setSelectedPanelId(null);}}>
+              <option value="">-- Pilih Work Order --</option>
+              {woData.map((w:any)=>(
+                <option key={w.id} value={w.id}>{w.wo} — {w.proyek}</option>
+              ))}
+            </Sel>
+          </div>
+          <div>
+            <Lbl>Pilih Panel</Lbl>
+            <Sel value={selectedPanelId??""} onChange={(e:any)=>setSelectedPanelId(e.target.value?Number(e.target.value):null)} disabled={!selectedWoId}>
+              <option value="">-- Pilih Panel --</option>
+              {panelList.map((p:any)=>(
+                <option key={p.id} value={p.id}>#{p.noPnl||p.no_pnl} {p.nama}</option>
+              ))}
+            </Sel>
+          </div>
+        </div>
+      </Card>
+
+      {selectedPanel&&cfg&&(
+        <>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+            <Card>
+              <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const}}>Proyek</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:2}}>{selectedWo.proyek}</div>
+            </Card>
+            <Card>
+              <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const}}>Nama Panel</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:2}}>{selectedPanel.nama}</div>
+            </Card>
+            <Card>
+              <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const}}>Target</div>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:2}}>{selectedWo.target||"-"}</div>
+            </Card>
+            <Card style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
+              <div style={{fontSize:10,fontWeight:700,color:"#2563eb",textTransform:"uppercase" as const}}>Progres Total</div>
+              <div style={{fontSize:16,fontWeight:800,color:"#1d4ed8",marginTop:2}}>{progresTotal.toFixed(1)}%</div>
+            </Card>
+          </div>
+
+          <div style={{overflowX:"auto" as const,border:"1px solid #e2e8f0",borderRadius:10}}>
+            <table style={{borderCollapse:"collapse" as const,fontSize:11,minWidth:900,width:"100%"}}>
+              <thead>
+                <tr style={{background:"#1e293b"}}>
+                  <th style={{padding:"8px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,left:0,background:"#1e293b",minWidth:160,zIndex:1}}>Komponen</th>
+                  {ALL_PROSES.map((proses:string)=>(
+                    <th key={proses} style={{padding:"8px 10px",color:"#93c5fd",minWidth:90,fontWeight:700}}>{PROSES_LABEL[proses]}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {cfg.wps.flatMap((wp:any)=>wp.items).map((item:any,ii:number)=>{
+                  const qty=selectedPanel.checklist?.[item.kode]?.qty||0;
+                  if(qty<=0)return null;
+                  return(
+                    <tr key={item.kode}>
+                      <td style={{padding:"6px 10px",fontWeight:600,color:"#1e293b",background:ii%2===0?"#fff":"#f8fafc",position:"sticky" as const,left:0}}>{item.nama}</td>
+                      {ALL_PROSES.map((proses:string,prosesIdx:number)=>{
+                        const st=getStatus(item.kode,prosesIdx);
+                        return(
+                          <td key={proses} style={{padding:4,textAlign:"center" as const,background:ii%2===0?"#fff":"#f8fafc"}}>
+                            {st&&(
+                              <span style={{background:statusStyle[st.status].bg,color:statusStyle[st.status].color,padding:"3px 8px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>
+                                {st.status==="IN PROGRESS"?`${st.pct}%`:st.status}
+                              </span>
+                            )}
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div style={{display:"flex",gap:16,marginTop:10,fontSize:11,color:"#64748b",flexWrap:"wrap" as const}}>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#166534",display:"inline-block"}}/>Done</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#16a34a",display:"inline-block"}}/>In progress</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fbbf24",display:"inline-block"}}/>To do</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#ef4444",display:"inline-block"}}/>Not yet</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fff",border:"1px solid #e2e8f0",display:"inline-block"}}/>Qty 0 (tidak ditampilkan)</div>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 function SummaryProgress({woData}:{woData:any[]}){
   const [search,setSearch]=useState("");
   const [statusFilter,setStatusFilter]=useState<string[]>([]);
@@ -9815,6 +9967,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     {group:"MONITORING",items:[
       {id:"dashboard",label:"Dashboard",icon:"ti ti-layout-dashboard"},
       {id:"summary",label:"Summary Progress",icon:"ti ti-chart-bar"},
+      {id:"taskmonitoring",label:"Task Monitoring",icon:"ti ti-list-check"},
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
       {id:"stok",label:"Stok Komponen",icon:"ti ti-package"},
     ]},
@@ -10186,6 +10339,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="arsip"&&<ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/>}
               {tab==="stok"&&<StokMonitoringTab user={user} activityLog={activityLog}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
+              {tab==="taskmonitoring"&&<TaskMonitoring woData={woData}/>}
               {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData}/>}
               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
