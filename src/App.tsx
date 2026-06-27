@@ -9166,14 +9166,22 @@ function TrackingKomponenAdmin(){
     setPwList(data??[]);
   };
 
+  const[panelList,setPanelList]=useState<any[]>([]);
+  const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+
   const fetchWoList=async()=>{
     const{data}=await supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false});
     setWoList(data??[]);
   };
 
-  const fetchRiwayat=async(woId:number)=>{
+  const fetchPanelList=async(woId:number)=>{
+    const{data}=await supabase.from("panels").select("id,no_pnl,nama,tipe").eq("wo_id",woId).is("deleted_at",null).order("no_pnl",{ascending:true});
+    setPanelList(data??[]);
+  };
+
+  const fetchRiwayat=async(panelId:number)=>{
     setLoadingRiwayat(true);
-    const{data:tr}=await supabase.from("fcs_tracking_komponen").select("*").eq("wo_id",woId).order("created_at",{ascending:false});
+    const{data:tr}=await supabase.from("fcs_tracking_komponen").select("*").eq("panel_id",panelId).order("created_at",{ascending:false});
     setRiwayat(tr??[]);
     if(tr&&tr.length>0){
       const ids=tr.map((t:any)=>t.id);
@@ -9191,7 +9199,15 @@ function TrackingKomponenAdmin(){
   };
 
   useEffect(()=>{fetchPwList();fetchWoList();},[]);
-  useEffect(()=>{if(selectedWoId)fetchRiwayat(selectedWoId);},[selectedWoId]);
+  useEffect(()=>{
+    setSelectedPanelId(null);
+    setRiwayat([]);
+    if(selectedWoId)fetchPanelList(selectedWoId);
+  },[selectedWoId]);
+  useEffect(()=>{
+    if(selectedPanelId)fetchRiwayat(selectedPanelId);
+    else setRiwayat([]);
+  },[selectedPanelId]);
 
   const savePassword=async(subBagian:string)=>{
     const newPwd=pwEdit[subBagian];
@@ -9216,7 +9232,7 @@ function TrackingKomponenAdmin(){
       if(path)await supabase.storage.from("tracking-komponen").remove([path]);
     }
     await supabase.from("fcs_tracking_komponen").delete().eq("id",trackingId);
-    if(selectedWoId)fetchRiwayat(selectedWoId);
+    if(selectedPanelId)fetchRiwayat(selectedPanelId);
   };
 
   const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"-";
@@ -9274,6 +9290,21 @@ function TrackingKomponenAdmin(){
       </Card>
 
       {selectedWoId&&(
+        <Card style={{marginBottom:16}}>
+          <Lbl>Pilih Panel</Lbl>
+          <Sel value={selectedPanelId??""} onChange={(e:any)=>setSelectedPanelId(e.target.value?Number(e.target.value):null)}>
+            <option value="">-- Pilih Panel --</option>
+            {panelList.map((p:any)=>(
+              <option key={p.id} value={p.id}>#{p.no_pnl} {p.nama} ({p.tipe})</option>
+            ))}
+          </Sel>
+          {panelList.length===0&&(
+            <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginTop:6}}>Belum ada panel untuk WO ini</div>
+          )}
+        </Card>
+      )}
+
+      {selectedWoId&&selectedPanelId&&(
         <>
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
             {countPerSubBagian.map(({sb,count})=>(
