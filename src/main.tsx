@@ -21,3 +21,14 @@ if ('serviceWorker' in navigator) {
     })
   })
 }
+
+// Coba maximize window otomatis kalau dibuka sebagai PWA terinstall (standalone mode)
+// Catatan: tidak dijamin berhasil di semua browser, karena window.resizeTo() bisa dibatasi browser modern
+if (window.matchMedia('(display-mode: standalone)').matches) {
+  try {
+    window.resizeTo(window.screen.availWidth, window.screen.availHeight)
+    window.moveTo(0, 0)
+  } catch (err) {
+    console.warn('Auto-resize PWA window tidak didukung browser ini:', err)
+  }
+}
