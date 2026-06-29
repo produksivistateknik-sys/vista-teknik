@@ -85,6 +85,7 @@ function generateFCSBatch(
   for (const komponen of komponenList) {
     let sisaQty = komponen.qty_total
     let tanggal: string | null = tanggalAwalValid
+    let lastTanggalDipakai: string = tanggalAwalValid
     let urutan = 1
 
     while (sisaQty > 0 && tanggal) {
@@ -93,7 +94,38 @@ function generateFCSBatch(
       const sisaKapasitas = kapasitasHari - terpakai
 
       if (sisaKapasitas < komponen.menit_per_pcs) {
-        tanggal = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+        const tanggalBerikutnya = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+        if (!tanggalBerikutnya) {
+          // Kapasitas habis di 60 hari ke depan: JANGAN buang sisa qty.
+          // Paksa masukkan semua sisa qty ke tanggal terakhir yang sempat dipakai (overflow),
+          // supaya komponen tetap muncul di Raw Schedule dan bisa diatur manual oleh planner.
+          tanggalHabis = true
+          const totalMenitOverflow = sisaQty * komponen.menit_per_pcs
+          result.push({
+            wo_id: woInfo.wo_id,
+            wo_number: woInfo.wo_number,
+            proyek: woInfo.proyek,
+            panel_id: woInfo.panel_id,
+            panel_nama: woInfo.panel_nama,
+            tipe_panel: woInfo.tipe_panel,
+            kode_komponen: komponen.kode_komponen,
+            nama_komponen: komponen.nama_komponen,
+            wp: komponen.wp,
+            jenis_pekerjaan: jenisPekerjaan,
+            tanggal: lastTanggalDipakai,
+            qty_total: komponen.qty_total,
+            qty_hari: sisaQty,
+            menit_per_pcs: komponen.menit_per_pcs,
+            total_menit: totalMenitOverflow,
+            status: 'planning',
+            urutan,
+            generated_by: generatedBy,
+          })
+          addKap(lastTanggalDipakai, totalMenitOverflow)
+          sisaQty = 0
+          break
+        }
+        tanggal = tanggalBerikutnya
         continue
       }
 
@@ -123,21 +155,46 @@ function generateFCSBatch(
       })
 
       addKap(tanggal, totalMenitHariIni)
+      lastTanggalDipakai = tanggal
       sisaQty -= qtyHariIni
       urutan++
 
       if (sisaQty > 0) {
-        tanggal = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
-        if (!tanggal) {
+        const tanggalBerikutnya = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+        if (!tanggalBerikutnya) {
+          // Sama seperti di atas: kapasitas habis, paksa masukkan sisa qty ke tanggal terakhir
           tanggalHabis = true
+          const totalMenitOverflow = sisaQty * komponen.menit_per_pcs
+          urutan++
+          result.push({
+            wo_id: woInfo.wo_id,
+            wo_number: woInfo.wo_number,
+            proyek: woInfo.proyek,
+            panel_id: woInfo.panel_id,
+            panel_nama: woInfo.panel_nama,
+            tipe_panel: woInfo.tipe_panel,
+            kode_komponen: komponen.kode_komponen,
+            nama_komponen: komponen.nama_komponen,
+            wp: komponen.wp,
+            jenis_pekerjaan: jenisPekerjaan,
+            tanggal: lastTanggalDipakai,
+            qty_total: komponen.qty_total,
+            qty_hari: sisaQty,
+            menit_per_pcs: komponen.menit_per_pcs,
+            total_menit: totalMenitOverflow,
+            status: 'planning',
+            urutan,
+            generated_by: generatedBy,
+          })
+          addKap(lastTanggalDipakai, totalMenitOverflow)
+          sisaQty = 0
           break
         }
+        tanggal = tanggalBerikutnya
       }
 
       if (urutan > 90) break
     }
-
-    if (!tanggal && sisaQty > 0) tanggalHabis = true
   }
 
   return { items: result, tanggalHabis }
