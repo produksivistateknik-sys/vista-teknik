@@ -103,7 +103,7 @@ const PRIORITAS_COLOR = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e
 
 const DIVISI_PROSES = {
   mekanik:    ["POTONG","BENDING","STEL"],
-  painting:   ["PAINTING"],
+  painting:   ["RENDAM","PAINTING"],
   assembling: ["RAKIT","PASANG KOMPONEN","BUSBAR"],
   wiring_ctrl:["WIRING CONTROL"],
   wiring_pwr: ["WIRING POWER"],
