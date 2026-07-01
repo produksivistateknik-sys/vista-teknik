@@ -4060,10 +4060,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const sudahSyncFCS=(p.synced_proses||[]).length>0;
     return sudahSyncFCS&&!sudahPunyaRaw;
   }):[]; 
+  const [addLoading,setAddLoading]=useState(false);
   const submitAdd=async()=>{
+    if(addLoading)return;
     if(!addForm.woId||addForm.panelIds.length===0)return;
     const wo=woData.find(w=>w.id===Number(addForm.woId));
     if(!wo)return;
+    setAddLoading(true);
     let totalPanelDitambah=0;
     for(const panelId of addForm.panelIds){
       const p=wo.panels.find(x=>x.id===panelId);
@@ -4081,6 +4084,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
     }
     await refetchRaw();
+    setAddLoading(false);
     if(totalPanelDitambah===0){alert("Semua proses panel yang dipilih sudah ada!");}
     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
   };
@@ -4356,7 +4360,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 if(pa!==pb)return pa-pb;
                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
                 if(aId!==bId)return aId-bId;
-                return 0;
+                const ai=ALL_PROSES.indexOf(a.proses);const bi=ALL_PROSES.indexOf(b.proses);
+                return ai-bi;
               });
               const panelRowCount:Record<string,number>={};
               visibleRows.forEach(row=>{
@@ -5053,7 +5058,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
           <div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>setAddModal(false)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={submitAdd}>Tambah Panel</Btn>
+            <Btn color="#1d4ed8" onClick={submitAdd} disabled={addLoading}>{addLoading?"Menambahkan...":"Tambah Panel"}</Btn>
           </div>
         </Modal>
       )}
