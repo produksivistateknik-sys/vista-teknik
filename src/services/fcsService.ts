@@ -74,7 +74,7 @@ function generateFCSBatch(
   }
 
   // Cari tanggal mulai yang valid (ada kapasitas)
-  let tanggalAwalValid = kapasitasMap[tanggalMulai] !== undefined && kapasitasMap[tanggalMulai] > 0
+  const tanggalAwalValid = kapasitasMap[tanggalMulai] !== undefined && kapasitasMap[tanggalMulai] > 0
     ? tanggalMulai
     : nextTanggalDenganKapasitas(addDays(tanggalMulai, 1), kapasitasMap)
 
@@ -82,11 +82,26 @@ function generateFCSBatch(
     return { items: [], tanggalHabis: true }
   }
 
-  for (const komponen of komponenList) {
-    let sisaQty = komponen.qty_total
-    let tanggal: string | null = tanggalAwalValid
-    let lastTanggalDipakai: string = tanggalAwalValid
-    let urutan = 1
+  // Kelompokkan komponen per WP dan urutkan WP (WP1 -> WP2 -> WP3 -> dst)
+  const wpGroups: Record<string, KomponenKebutuhan[]> = {}
+  for (const k of komponenList) {
+    if (!wpGroups[k.wp]) wpGroups[k.wp] = []
+    wpGroups[k.wp].push(k)
+  }
+  const wpUrutan = Object.keys(wpGroups).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+
+  // Setiap WP mulai setelah WP sebelumnya selesai semua
+  let tanggalMulaiWP = tanggalAwalValid
+
+  for (const wp of wpUrutan) {
+    const komponenWP = wpGroups[wp]
+    let tanggalSelesaiWP = tanggalMulaiWP // track tanggal terakhir WP ini dipakai
+
+    for (const komponen of komponenWP) {
+      let sisaQty = komponen.qty_total
+      let tanggal: string | null = tanggalMulaiWP
+      let lastTanggalDipakai: string = tanggalMulaiWP
+      let urutan = 1
 
     while (sisaQty > 0 && tanggal) {
       const kapasitasHari = kapasitasMap[tanggal] || 0
@@ -156,6 +171,8 @@ function generateFCSBatch(
 
       addKap(tanggal, totalMenitHariIni)
       lastTanggalDipakai = tanggal
+      // Track tanggal terakhir yang dipakai untuk seluruh WP ini
+      if (tanggal > tanggalSelesaiWP) tanggalSelesaiWP = tanggal
       sisaQty -= qtyHariIni
       urutan++
 
@@ -187,6 +204,7 @@ function generateFCSBatch(
             generated_by: generatedBy,
           })
           addKap(lastTanggalDipakai, totalMenitOverflow)
+          if (lastTanggalDipakai > tanggalSelesaiWP) tanggalSelesaiWP = lastTanggalDipakai
           sisaQty = 0
           break
         }
@@ -195,6 +213,12 @@ function generateFCSBatch(
 
       if (urutan > 90) break
     }
+    }
+
+    // WP berikutnya mulai di hari SETELAH WP ini selesai semua
+    // Cari tanggal valid berikutnya setelah tanggalSelesaiWP
+    const tanggalMulaiWPBerikutnya = nextTanggalDenganKapasitas(addDays(tanggalSelesaiWP, 1), kapasitasMap)
+    tanggalMulaiWP = tanggalMulaiWPBerikutnya || addDays(tanggalSelesaiWP, 1)
   }
 
   return { items: result, tanggalHabis }
