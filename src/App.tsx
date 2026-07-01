@@ -9077,6 +9077,7 @@ function FCSScheduleTab({woData,user}:any){
   const [weekStart,setWeekStart]=useState(new Date().toISOString().slice(0,10));
   const [approveId,setApproveId]=useState<any>(null);
   const [syncing,setSyncing]=useState(false);
+  const [selectedWP,setSelectedWP]=useState<string[]>([]);
   const [deliverySim,setDeliverySim]=useState<any[]>([]);
 
   const ALL_STATUS=["planning","released","in_progress","completed","cancelled"];
@@ -9287,26 +9288,53 @@ function FCSScheduleTab({woData,user}:any){
         </select>
         <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} jadwal</span>
         <button onClick={async()=>{
-          const targetLabel=filterWO==="ALL"?"SEMUA WO":"WO "+filterWO;
-          if(!window.confirm("Sync jadwal FCS ke Raw Schedule untuk "+targetLabel+"? Data schedule yang ada akan diupdate."))return;
+          const panelTarget=filterPanel==="ALL"?null:filterPanel;
+          const wpList=selectedWP.length>0?selectedWP:null;
+          const targetLabel=panelTarget?("Panel: "+panelTarget):(filterWO==="ALL"?"SEMUA WO":"WO "+filterWO);
+          const wpLabel=wpList?(" (WP: "+wpList.join(", ")+")"):" (Semua WP)";
+          if(!window.confirm("Sync jadwal FCS ke Raw Schedule untuk "+targetLabel+wpLabel+"? Data schedule yang ada akan diupdate."))return;
           setSyncing(true);
           const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
           const uname=user?.name||user?.nama||sess?.nama||"Admin";
           const woNumbers=filterWO==="ALL"
-            ?[...new Set(scheduleList.map((s:any)=>s.wo_number))]
+            ?[...new Set(filtered.map((s:any)=>s.wo_number))]
             :[filterWO];
           let sukses=0;let gagal=0;
           for(const woNum of woNumbers){
-            const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname);
+            const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname,panelTarget,wpList);
             if(res.success)sukses++;else gagal++;
           }
           setSyncing(false);
           alert("Sync selesai untuk "+targetLabel+"! "+sukses+" WO berhasil"+(gagal>0?", "+gagal+" gagal":""));
           fetchAll();
-        }} disabled={syncing||scheduleList.length===0}
-          style={{height:28,padding:"0 14px",borderRadius:6,border:"none",background:syncing?"#94a3b8":"#7c3aed",color:"#fff",fontSize:11,fontWeight:700,cursor:syncing||scheduleList.length===0?"not-allowed":"pointer",fontFamily:"inherit"}}>
-          {syncing?"⏳ Syncing...":filterWO==="ALL"?"⇄ Sync Semua WO":"⇄ Sync WO "+filterWO}
+        }} disabled={syncing||filtered.length===0}
+          style={{height:28,padding:"0 14px",borderRadius:6,border:"none",background:syncing?"#94a3b8":"#7c3aed",color:"#fff",fontSize:11,fontWeight:700,cursor:syncing||filtered.length===0?"not-allowed":"pointer",fontFamily:"inherit"}}>
+          {syncing?"⏳ Syncing...":filterPanel!=="ALL"?"⇄ Sync Panel Ini":"⇄ Sync "+( filterWO==="ALL"?"Semua":"WO "+filterWO)}
         </button>
+        {(()=>{
+          const wpAvail=[...new Set(filtered.map((s:any)=>s.wp))].sort();
+          if(wpAvail.length===0)return null;
+          return(
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
+              <span style={{fontSize:10,fontWeight:700,color:"#64748b"}}>WP:</span>
+              <button onClick={()=>setSelectedWP([])}
+                style={{fontSize:10,padding:"2px 8px",borderRadius:4,border:"1px solid "+(selectedWP.length===0?"#7c3aed":"#e2e8f0"),
+                  background:selectedWP.length===0?"#7c3aed":"#f8fafc",color:selectedWP.length===0?"#fff":"#64748b",cursor:"pointer",fontWeight:600}}>
+                Semua
+              </button>
+              {wpAvail.map((wp:string)=>{
+                const checked=selectedWP.includes(wp);
+                return(
+                  <button key={wp} onClick={()=>setSelectedWP(prev=>checked?prev.filter(x=>x!==wp):[...prev,wp])}
+                    style={{fontSize:10,padding:"2px 8px",borderRadius:4,border:"1px solid "+(checked?"#1d4ed8":"#e2e8f0"),
+                      background:checked?"#eff6ff":"#f8fafc",color:checked?"#1d4ed8":"#64748b",cursor:"pointer",fontWeight:checked?700:400}}>
+                    {wp}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
         <button onClick={fetchAll}
           style={{height:28,padding:"0 12px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
           ↻ Refresh

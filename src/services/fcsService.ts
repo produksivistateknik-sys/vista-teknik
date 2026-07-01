@@ -391,16 +391,20 @@ export async function updateFCSStatus(id: number, status: string, approvedBy?: s
 export async function syncFCSToRawSchedule(
   woNumber: string,
   jenisPekerjaan: string,
-  syncBy: string
+  syncBy: string,
+  panelNama?: string | null,
+  selectedWP?: string[] | null
 ): Promise<{ success: boolean; updated: number; error?: string }> {
   try {
-    const { data: fcsData } = await supabase
+    let fcsQuery = supabase
       .from('fcs_schedule')
       .select('*')
       .eq('wo_number', woNumber)
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .neq('status', 'cancelled')
       .order('tanggal', { ascending: true })
+    if (panelNama) fcsQuery = (fcsQuery as any).eq('panel_nama', panelNama)
+    const { data: fcsData } = await fcsQuery
 
     if (!fcsData || fcsData.length === 0) {
       return { success: false, updated: 0, error: 'Tidak ada FCS schedule untuk WO ini' }
@@ -409,6 +413,7 @@ export async function syncFCSToRawSchedule(
     const panelScheduleMap: Record<number, Record<string, Record<string, string[]>>> = {}
 
     fcsData.forEach((row: any) => {
+      if (selectedWP && selectedWP.length > 0 && !selectedWP.includes(row.wp)) return
       const panelId = row.panel_id
       const tanggal = row.tanggal
       const wp = row.wp
