@@ -213,7 +213,7 @@ export async function generateFCSSchedule(params: {
   generatedBy: string
 }): Promise<{ success: boolean; count: number; error?: string; tanggalHabis?: boolean }> {
   try {
-    const { woId, woNumber, proyek, panelId, panelNama, tipePanel, checklist, jenisPekerjaan, tanggalMulai, generatedBy } = params
+    const { woId, woNumber, proyek, panelId, panelNama, tipePanel, checklist, jenisPekerjaan, tanggalMulai, generatedBy, selectedKomponen } = params
 
     // 1. Ambil process time
     const { data: ptData } = await supabase
@@ -276,11 +276,12 @@ export async function generateFCSSchedule(params: {
       })
     }
 
-    // 5. Hitung kebutuhan komponen
+    // 5. Hitung kebutuhan komponen (filter berdasarkan selectedKomponen kalau ada)
     const kebutuhan: KomponenKebutuhan[] = []
     for (const [kode, cl] of Object.entries(checklist)) {
       const qty = cl.qty || 0
       if (qty <= 0) continue
+      if (selectedKomponen && selectedKomponen.length > 0 && !selectedKomponen.includes(kode)) continue
       const pt = processTimeMap[kode]
       if (!pt || pt.menit_per_pcs <= 0) continue
       kebutuhan.push({

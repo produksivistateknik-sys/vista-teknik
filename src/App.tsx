@@ -5131,6 +5131,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const [fcsResult,setFcsResult]=useState<any>(null);
   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
   const [selectedPanelIds,setSelectedPanelIds]=useState<number[]>([]);
+  const [selectedKomponen,setSelectedKomponen]=useState<string[]>([]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -5621,7 +5622,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
         </Card>
       )}
       {fcsModal&&(
-        <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);}} width={520}>
+        <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);}} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
             <strong>{fcsModal.proyek}</strong> · {(fcsModal.panels||[]).length} panel · Target: {fcsModal.target}
           </div>
@@ -5668,6 +5669,73 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   </select>
                 </div>
               </div>
+              {(()=>{
+                // Komponen yang relevan untuk proses+tipe panel yang dipilih
+                const selectedPanels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
+                const tipeSet=new Set(selectedPanels.map((p:any)=>p.tipe));
+                // Kumpulkan semua kode komponen yang relevan: punya proses ini di KOMPONEN_PROSES_MAP
+                // dan tipenya match dengan panel yang dipilih
+                const komponenRelevant:Array<{kode:string,nama:string}>=[];
+                const seen=new Set<string>();
+                selectedPanels.forEach((p:any)=>{
+                  const cl=p.checklist||{};
+                  Object.entries(cl).forEach(([kode,clVal]:any)=>{
+                    if(seen.has(kode))return;
+                    const prosesKomp=KOMPONEN_PROSES_MAP[kode]||[];
+                    if(!prosesKomp.includes(fcsForm.jenisPekerjaan))return;
+                    if((clVal?.qty||0)<=0)return;
+                    seen.add(kode);
+                    komponenRelevant.push({kode,nama:clVal?.nama||kode});
+                  });
+                });
+                if(komponenRelevant.length===0)return null;
+                return(
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>
+                        Pilih Komponen ({selectedKomponen.length===0?"Semua":selectedKomponen.length+"/"+komponenRelevant.length})
+                      </div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>setSelectedKomponen([])}
+                          style={{fontSize:10,color:"#16a34a",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Semua</button>
+                        <button onClick={()=>setSelectedKomponen(komponenRelevant.map(k=>k.kode))}
+                          style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                        <button onClick={()=>setSelectedKomponen([])}
+                          style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                      </div>
+                    </div>
+                    <div style={{maxHeight:160,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
+                      {komponenRelevant.map(k=>{
+                        const checked=selectedKomponen.length===0||selectedKomponen.includes(k.kode);
+                        return(
+                          <label key={k.kode} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",cursor:"pointer",borderRadius:6,
+                            background:selectedKomponen.length>0&&selectedKomponen.includes(k.kode)?"#eff6ff":"transparent"}}>
+                            <input type="checkbox" checked={selectedKomponen.length===0||selectedKomponen.includes(k.kode)}
+                              onChange={()=>{
+                                if(selectedKomponen.length===0){
+                                  // Dari mode "semua", switch ke mode pilihan: exclude kode ini
+                                  setSelectedKomponen(komponenRelevant.map(x=>x.kode).filter(x=>x!==k.kode));
+                                } else if(selectedKomponen.includes(k.kode)){
+                                  const next=selectedKomponen.filter(x=>x!==k.kode);
+                                  // Kalau semua dipilih lagi, reset ke mode "semua"
+                                  setSelectedKomponen(next.length===komponenRelevant.length?[]:next);
+                                } else {
+                                  const next=[...selectedKomponen,k.kode];
+                                  setSelectedKomponen(next.length===komponenRelevant.length?[]:next);
+                                }
+                              }}/>
+                            <span style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{k.kode}</span>
+                            <span style={{fontSize:11,color:"#64748b"}}>{k.nama}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>
+                      {selectedKomponen.length===0?"Semua komponen akan dijadwalkan":"Hanya "+selectedKomponen.length+" komponen terpilih yang akan dijadwalkan"}
+                    </div>
+                  </div>
+                );
+              })()}
               <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#92400e"}}>
                 ⚠️ Schedule lama status Planning untuk WO ini akan digantikan jadwal baru.
               </div>
@@ -5688,6 +5756,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                       jenisPekerjaan:fcsForm.jenisPekerjaan,
                       tanggalMulai:fcsForm.tanggalMulai,
                       generatedBy:uname,
+                      selectedKomponen:selectedKomponen.length>0?selectedKomponen:null,
                     });
                     if(res.success)totalCount+=res.count;
                     else errors.push(panel.nama+": "+(res.error||"Error"));
