@@ -7056,7 +7056,7 @@ function KapasitasPekerjaanTab(){
   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
   const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
-  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:"POTONG",jam_kerja:8,efektivitas_pct:80,keterangan:""});
+  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
   const [rentangSaving,setRentangSaving]=useState(false);
   const [rentangResult,setRentangResult]=useState<{sukses:number;skip:number}|null>(null);
 
@@ -7082,7 +7082,7 @@ function KapasitasPekerjaanTab(){
     setRentangResult(null);
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const createdBy=sess?.nama||sess?.name||"Admin";
-    const isOrangRentang=isProsesOrang(rentangForm.jenis_pekerjaan);
+    const prosesList=Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan];
     const rows:any[]=[];
     let cur=new Date(rentangForm.tanggalMulai);
     const end=new Date(rentangForm.tanggalAkhir);
@@ -7090,15 +7090,19 @@ function KapasitasPekerjaanTab(){
     while(cur<=end&&safety<366){
       const hari=cur.getDay()===0?7:cur.getDay();
       if(rentangForm.hariAktif.includes(hari)){
-        rows.push({
-          tanggal:cur.toISOString().slice(0,10),
-          jenis_pekerjaan:rentangForm.jenis_pekerjaan,
-          ...(isOrangRentang
-            ?{tipe_kapasitas:"orang",jumlah_orang:Number(rentangForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100}
-            :{tipe_kapasitas:"jam",jam_kerja:Number(rentangForm.jam_kerja),efektivitas_pct:Number(rentangForm.efektivitas_pct),jumlah_orang:null}),
-          keterangan:rentangForm.keterangan,
-          created_by:createdBy,
-        });
+        const tgl=cur.toISOString().slice(0,10);
+        for(const proses of prosesList){
+          const isOrangRentang=isProsesOrang(proses);
+          rows.push({
+            tanggal:tgl,
+            jenis_pekerjaan:proses,
+            ...(isOrangRentang
+              ?{tipe_kapasitas:"orang",jumlah_orang:Number(rentangForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100}
+              :{tipe_kapasitas:"jam",jam_kerja:Number(rentangForm.jam_kerja),efektivitas_pct:Number(rentangForm.efektivitas_pct),jumlah_orang:null}),
+            keterangan:rentangForm.keterangan,
+            created_by:createdBy,
+          });
+        }
       }
       cur.setDate(cur.getDate()+1);
       safety++;
@@ -7485,15 +7489,34 @@ function KapasitasPekerjaanTab(){
                   </div>
                 </div>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"160px 100px 100px 1fr",gap:10,alignItems:"flex-end"}}>
-                <div>
-                  <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Jenis Pekerjaan</div>
-                  <select value={rentangForm.jenis_pekerjaan} onChange={e=>setRentangForm({...rentangForm,jenis_pekerjaan:e.target.value})}
-                    style={{width:"100%",padding:"7px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:12}}>
-                    {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-                      <option key={p} value={p}>{p}</option>
-                    ))}
-                  </select>
+              <div style={{display:"grid",gridTemplateColumns:"1fr",gap:10,alignItems:"flex-end"}}>
+                <div style={{gridColumn:"span 3"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Jenis Pekerjaan ({Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan.length:1} dipilih)</div>
+                    <div style={{display:"flex",gap:6}}>
+                      <button type="button" onClick={()=>setRentangForm(f=>({...f,jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]}))}
+                        style={{fontSize:10,color:"#16a34a",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                      <button type="button" onClick={()=>setRentangForm(f=>({...f,jenis_pekerjaan:[]}))}
+                        style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                    </div>
+                  </div>
+                  <div style={{display:"flex",flexWrap:"wrap" as const,gap:4}}>
+                    {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+                      const arr=Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan];
+                      const checked=arr.includes(p);
+                      return(
+                        <button key={p} type="button" onClick={()=>{
+                          const cur=Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan];
+                          setRentangForm(f=>({...f,jenis_pekerjaan:checked?cur.filter(x=>x!==p):[...cur,p]}));
+                        }}
+                          style={{padding:"4px 10px",borderRadius:6,border:`1.5px solid ${checked?"#9333ea":"#e2e8f0"}`,
+                            background:checked?"#f5f3ff":"#f8fafc",color:checked?"#7c3aed":"#64748b",
+                            fontSize:11,fontWeight:checked?700:400,cursor:"pointer"}}>
+                          {p}
+                        </button>
+                      );
+                    })}
+                  </div>
                 </div>
                 {isProsesOrang(rentangForm.jenis_pekerjaan)?(
                   <div style={{gridColumn:"span 2"}}>
