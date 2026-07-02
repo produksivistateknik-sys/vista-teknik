@@ -9214,7 +9214,16 @@ function FCSScheduleTab({woData,user}:any){
     });
     // Exclude kapasitas WO yang sedang dihitung supaya tidak double-count dirinya sendiri
     const kapExclude=getKapTerpakaiExcludeWO(woNum);
-    const preview=hitungDistribusiWP(rows,tanggalMulai,kapExclude);
+    // Tambahkan kapasitas yang sudah dipakai preview WP lain supaya WP2 tidak masuk di tanggal penuh WP1
+    const kapIncludePreview:{[tgl:string]:number}={...kapExclude};
+    const previewWO=wpPreview[woNum]||{};
+    Object.entries(previewWO).forEach(([wpLain,previewRows]:any)=>{
+      if(wpLain===wp)return;
+      previewRows.forEach((r:any)=>{
+        kapIncludePreview[r.tanggal]=(kapIncludePreview[r.tanggal]||0)+r.total_menit_hari;
+      });
+    });
+    const preview=hitungDistribusiWP(rows,tanggalMulai,kapIncludePreview);
     // Sort preview berdasarkan tanggal supaya tampil urut
     const previewSorted=[...preview].sort((a,b)=>a.tanggal.localeCompare(b.tanggal));
     setWpPreview(prev=>({...prev,[woNum]:{...(prev[woNum]||{}),[wp]:previewSorted}}));
