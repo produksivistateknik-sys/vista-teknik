@@ -9205,7 +9205,9 @@ function FCSScheduleTab({woData,user}:any){
       (panel.wps[wp]||[]).forEach((r:any)=>rows.push(r));
     });
     const preview=hitungDistribusiWP(rows,tanggalMulai,kapTerpakaiMap);
-    setWpPreview(prev=>({...prev,[woNum]:{...(prev[woNum]||{}),[wp]:preview}}));
+    // Sort preview berdasarkan tanggal supaya tampil urut
+    const previewSorted=[...preview].sort((a,b)=>a.tanggal.localeCompare(b.tanggal));
+    setWpPreview(prev=>({...prev,[woNum]:{...(prev[woNum]||{}),[wp]:previewSorted}}));
     setCalculating(null);
   };
 
