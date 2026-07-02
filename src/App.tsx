@@ -9088,28 +9088,26 @@ function ArsipTab({woData,pekerja,logActivity,user}:any){
   );
 }
 
+// FCSScheduleTab — UI baru: card per WO, filter proses, pilih panel, atur tanggal per WP
 function FCSScheduleTab({woData,user}:any){
+  const [filterPekerjaan,setFilterPekerjaan]=useState("POTONG");
   const [scheduleList,setScheduleList]=useState<any[]>([]);
   const [kapasitasList,setKapasitasList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
-  const [filterWO,setFilterWO]=useState("ALL");
-  const [filterPanel,setFilterPanel]=useState("ALL");
-  const [filterProyek,setFilterProyek]=useState("ALL");
-  const [filterPekerjaan,setFilterPekerjaan]=useState("POTONG");
-  const [filterStatus,setFilterStatus]=useState("ALL");
-  const [weekStart,setWeekStart]=useState(new Date().toISOString().slice(0,10));
-  const [approveId,setApproveId]=useState<any>(null);
-  const [syncing,setSyncing]=useState(false);
-  const [selectedWP,setSelectedWP]=useState<string[]>([]);
-  const [deliverySim,setDeliverySim]=useState<any[]>([]);
+  const [expandedWO,setExpandedWO]=useState<string|null>(null);
+  const [selectedPanels,setSelectedPanels]=useState<Record<string,number[]>>({});
+  const [wpTanggal,setWpTanggal]=useState<Record<string,Record<string,string>>>({});
+  const [wpPreview,setWpPreview]=useState<Record<string,Record<string,any[]>>>({});
+  const [syncing,setSyncing]=useState<string|null>(null);
+  const [calculating,setCalculating]=useState<string|null>(null);
 
-  const ALL_STATUS=["planning","released","in_progress","completed","cancelled"];
-  const STATUS_COLOR:any={
-    planning:{bg:"#f1f5f9",color:"#64748b",label:"Planning"},
-    released:{bg:"#eff6ff",color:"#1d4ed8",label:"Released"},
-    in_progress:{bg:"#fffbeb",color:"#d97706",label:"In Progress"},
-    completed:{bg:"#f0fdf4",color:"#16a34a",label:"Completed"},
-    cancelled:{bg:"#fef2f2",color:"#dc2626",label:"Cancelled"},
+  const WP_COLORS:any={
+    WP1:{color:"#2563eb",bg:"#eff6ff"},
+    WP2:{color:"#059669",bg:"#ecfdf5"},
+    WP3:{color:"#d97706",bg:"#fffbeb"},
+    WP4:{color:"#7c3aed",bg:"#f5f3ff"},
+    WP5:{color:"#dc2626",bg:"#fef2f2"},
+    WP6:{color:"#0891b2",bg:"#ecfeff"},
   };
 
   useEffect(()=>{fetchAll();},[filterPekerjaan,woData]);
@@ -9119,330 +9117,285 @@ function FCSScheduleTab({woData,user}:any){
     const [{data:s},{data:k}]=await Promise.all([
       supabase.from("fcs_schedule").select("*")
         .eq("jenis_pekerjaan",filterPekerjaan)
+        .neq("status","cancelled")
         .order("tanggal",{ascending:true})
         .order("wp",{ascending:true}),
       supabase.from("fcs_kapasitas_override").select("*")
         .eq("jenis_pekerjaan",filterPekerjaan)
         .order("tanggal",{ascending:true}),
     ]);
-    const sd=s??[];
-    setScheduleList(sd);
+    setScheduleList(s??[]);
     setKapasitasList(k??[]);
-    const wm:Record<string,string>={};
-    sd.forEach((r:any)=>{if(!wm[r.wo_number]||r.tanggal>wm[r.wo_number])wm[r.wo_number]=r.tanggal;});
-    const woNums=Object.keys(wm);
-    if(woNums.length>0){
-      const{data:woRows}=await supabase.from('work_orders').select('wo,proyek,target').in('wo',woNums);
-      const woMap2:Record<string,any>={};
-      (woRows||[]).forEach((w:any)=>{woMap2[w.wo]=w;});
-      const sim=Object.entries(wm).map(([wn,sf])=>{
-        const w=woMap2[wn];
-        const tg=w?.target||null;
-        let st='no_target';let sl=0;
-        if(tg){sl=Math.ceil((new Date(sf).getTime()-new Date(tg).getTime())/86400000);if(sl<=-7)st='early';else if(sl<=0)st='ontime';else if(sl<=3)st='warning';else st='late';}
-        return{woNum:wn,selesaiFCS:sf,target:tg,status:st,selisih:sl,proyek:w?.proyek||wn};
-      });
-      setDeliverySim(sim);
-    } else {
-      setDeliverySim([]);
-    }
     setLoading(false);
   };
 
-  const kapasitasOverrideMap=useMemo(()=>{
+  const kapasitasMap=useMemo(()=>{
     const map:Record<string,number>={};
     kapasitasList.forEach((k:any)=>{map[k.tanggal]=Number(k.kapasitas_menit);});
     return map;
   },[kapasitasList]);
 
-  // Hitung kapasitas per tanggal
-  const kapPerTanggal=useMemo(()=>{
+  const kapTerpakaiMap=useMemo(()=>{
     const map:Record<string,number>={};
-    scheduleList.filter(s=>s.status!=="cancelled").forEach(s=>{
-      if(!map[s.tanggal])map[s.tanggal]=0;
-      map[s.tanggal]+=Number(s.total_menit);
+    scheduleList.forEach((s:any)=>{
+      map[s.tanggal]=(map[s.tanggal]||0)+Number(s.total_menit);
     });
     return map;
   },[scheduleList]);
 
-  // Tanggal unik
-  const tanggalList=useMemo(()=>{
-    return [...new Set(scheduleList.map(s=>s.tanggal))].sort();
+  const woGroups=useMemo(()=>{
+    const groups:Record<string,{wo:string,proyek:string,panels:Record<string,{nama:string,wps:Record<string,any[]>}>}>={};
+    scheduleList.forEach((s:any)=>{
+      if(!groups[s.wo_number])groups[s.wo_number]={wo:s.wo_number,proyek:s.proyek,panels:{}};
+      if(!groups[s.wo_number].panels[s.panel_id])groups[s.wo_number].panels[s.panel_id]={nama:s.panel_nama,wps:{}};
+      if(!groups[s.wo_number].panels[s.panel_id].wps[s.wp])groups[s.wo_number].panels[s.panel_id].wps[s.wp]=[];
+      groups[s.wo_number].panels[s.panel_id].wps[s.wp].push(s);
+    });
+    return groups;
   },[scheduleList]);
 
-  // Filter schedule
-  const filtered=useMemo(()=>{
-    return scheduleList.filter(s=>{
-      const matchWO=filterWO==="ALL"||s.wo_number===filterWO;
-      const matchStatus=filterStatus==="ALL"||s.status===filterStatus;
-      const matchPanel=filterPanel==="ALL"||s.panel_nama===filterPanel;
-      const matchProyek=filterProyek==="ALL"||s.proyek===filterProyek;
-      return matchWO&&matchStatus&&matchPanel&&matchProyek;
-    });
-  },[scheduleList,filterWO,filterStatus,filterPanel,filterProyek]);
-
-  const updateStatus=async(id:number,status:string)=>{
-    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-    const uname=user?.name||user?.nama||sess?.nama||"Admin";
-    await supabase.from("fcs_schedule").update({
-      status,
-      ...(status==="released"?{approved_by:uname,approved_at:new Date().toISOString()}:{})
-    }).eq("id",id);
-    setScheduleList(prev=>prev.map(s=>s.id===id?{...s,status}:s));
-    setApproveId(null);
+  const addDaysStr=(date:string,n:number)=>{
+    const d=new Date(date);d.setDate(d.getDate()+n);return d.toISOString().slice(0,10);
   };
 
-  const fmtDate=(d:string)=>new Date(d).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short"});
+  const hitungDistribusiWP=(rows:any[],tanggalMulai:string,existingTerpakai:Record<string,number>)=>{
+    const tracker={...existingTerpakai};
+    const result:any[]=[];
+    let cur=tanggalMulai;
+    let attempts=0;
+    while(attempts<90&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);attempts++;}
+    if(attempts>=90)return[];
+    for(const row of rows){
+      let sisaQty=row.qty_total;
+      let dayAttempts=0;
+      while(sisaQty>0&&dayAttempts<90){
+        const kap=kapasitasMap[cur]||0;
+        const terpakai=tracker[cur]||0;
+        const sisa=kap-terpakai;
+        if(sisa<row.menit_per_pcs){
+          cur=addDaysStr(cur,1);
+          let skip=0;
+          while(skip<30&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);skip++;}
+          dayAttempts++;continue;
+        }
+        const maxQty=Math.floor(sisa/row.menit_per_pcs);
+        const qtyHari=Math.min(sisaQty,maxQty);
+        const mntHari=qtyHari*row.menit_per_pcs;
+        result.push({...row,tanggal:cur,qty_hari:qtyHari,total_menit_hari:mntHari});
+        tracker[cur]=(tracker[cur]||0)+mntHari;
+        sisaQty-=qtyHari;
+        dayAttempts++;
+      }
+      if(sisaQty>0){
+        result.push({...row,tanggal:cur,qty_hari:sisaQty,total_menit_hari:sisaQty*row.menit_per_pcs,overflow:true});
+      }
+    }
+    return result;
+  };
 
-  const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,
-    fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,
-    borderRight:"1px solid #ffffff10",textTransform:"uppercase" as const,letterSpacing:.4};
+  const handleHitung=async(woNum:string,wp:string,panelIds:number[])=>{
+    const key=`${woNum}_${wp}`;
+    const tanggalMulai=wpTanggal[woNum]?.[wp];
+    if(!tanggalMulai){alert("Pilih tanggal mulai dulu!");return;}
+    setCalculating(key);
+    const rows:any[]=[];
+    panelIds.forEach(pid=>{
+      const panel=woGroups[woNum]?.panels[pid];
+      if(!panel)return;
+      (panel.wps[wp]||[]).forEach((r:any)=>rows.push(r));
+    });
+    const preview=hitungDistribusiWP(rows,tanggalMulai,kapTerpakaiMap);
+    setWpPreview(prev=>({...prev,[woNum]:{...(prev[woNum]||{}),[wp]:preview}}));
+    setCalculating(null);
+  };
 
-  if(loading)return <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat jadwal FCS...</div>;
+  const handleSync=async(woNum:string)=>{
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    const panelIds=selectedPanels[woNum]||[];
+    if(panelIds.length===0){alert("Pilih minimal 1 panel!");return;}
+    const wps=new Set<string>();
+    panelIds.forEach(pid=>{
+      const panel=woGroups[woNum]?.panels[pid];
+      if(panel)Object.keys(panel.wps).forEach(wp=>wps.add(wp));
+    });
+    const belumHitung=[...wps].filter(wp=>!wpPreview[woNum]?.[wp]);
+    if(belumHitung.length>0){alert(`Hitung dulu jadwal untuk: ${belumHitung.join(", ")}`);return;}
+    setSyncing(woNum);
+    try{
+      for(const wp of wps){
+        const preview=wpPreview[woNum]?.[wp]||[];
+        for(const item of preview){
+          await supabase.from("fcs_schedule")
+            .update({tanggal:item.tanggal,qty_hari:item.qty_hari,total_menit:item.total_menit_hari})
+            .eq("id",item.id);
+        }
+      }
+      let sukses=0;let gagal=0;
+      for(const pid of panelIds){
+        const panel=woGroups[woNum]?.panels[pid];
+        if(!panel)continue;
+        const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname,panel.nama,null);
+        if(res.success)sukses++;else gagal++;
+      }
+      alert(`Sync selesai! ${sukses} panel berhasil${gagal>0?`, ${gagal} gagal`:""}`);
+      fetchAll();
+      setWpPreview(prev=>{const n={...prev};delete n[woNum];return n;});
+    }catch(e:any){alert("Error: "+e.message);}
+    setSyncing(null);
+  };
+
+  if(loading)return(
+    <div style={{padding:40,textAlign:"center" as const,color:"#64748b"}}>
+      <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+      <div>Memuat FCS Schedule...</div>
+    </div>
+  );
 
   return(
     <div className="fi">
-      {/* Header stats */}
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:14}}>
-        {[
-          {l:"Total Jadwal",v:scheduleList.length,c:"#2563eb"},
-          {l:"Planning",v:scheduleList.filter(s=>s.status==="planning").length,c:"#64748b"},
-          {l:"Released",v:scheduleList.filter(s=>s.status==="released").length,c:"#1d4ed8"},
-          {l:"Completed",v:scheduleList.filter(s=>s.status==="completed").length,c:"#16a34a"},
-        ].map((s,i)=>(
-          <div key={i} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"10px 14px",borderTop:`3px solid ${s.c}`}}>
-            <div style={{fontSize:22,fontWeight:700,color:s.c}}>{s.v}</div>
-            <div style={{fontSize:9,color:"#94a3b8",marginTop:3,fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
-          </div>
+      <div style={{fontWeight:800,fontSize:18,color:"var(--text-primary,#1e293b)",marginBottom:4}}>⏱ FCS Schedule</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Atur jadwal produksi per WP per panel, lalu sync ke Raw Schedule</div>
+      <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,marginBottom:16,background:"var(--card-bg,#fff)",padding:"10px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+        <span style={{fontSize:11,fontWeight:700,color:"#64748b",alignSelf:"center"}}>PROSES:</span>
+        {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
+          <button key={p} onClick={()=>{setFilterPekerjaan(p);setWpPreview({});setSelectedPanels({});}}
+            style={{padding:"4px 10px",borderRadius:6,border:`1.5px solid ${filterPekerjaan===p?"#1d4ed8":"#e2e8f0"}`,
+              background:filterPekerjaan===p?"#1d4ed8":"#f8fafc",
+              color:filterPekerjaan===p?"#fff":"#64748b",
+              fontSize:11,fontWeight:filterPekerjaan===p?700:400,cursor:"pointer"}}>
+            {p}
+          </button>
         ))}
+        <button onClick={fetchAll} style={{marginLeft:"auto",height:28,padding:"0 12px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:11,cursor:"pointer"}}>↻ Refresh</button>
       </div>
-
-      {/* Capacity utilization per tanggal */}
-      {tanggalList.length>0&&(
-        <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
-            ⚡ Capacity Utilization — {filterPekerjaan} (dari Override Tanggal)
-          </div>
-          <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
-            {tanggalList.slice(0,14).map(tgl=>{
-              const terpakai=kapPerTanggal[tgl]||0;
-              const kapHari=kapasitasOverrideMap[tgl]||0;
-              const adaOverride=kapasitasOverrideMap[tgl]!==undefined;
-              const pct=kapHari>0?Math.min(Math.round((terpakai/kapHari)*100),100):0;
-              const color=!adaOverride?"#94a3b8":pct>=95?"#dc2626":pct>=80?"#f59e0b":"#16a34a";
-              const bg=!adaOverride?"#f8fafc":pct>=95?"#fef2f2":pct>=80?"#fffbeb":"#f0fdf4";
-              return(
-                <div key={tgl} style={{background:bg,border:`1px solid ${color}30`,borderRadius:8,padding:"8px 12px",minWidth:100,textAlign:"center" as const}}>
-                  <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{fmtDate(tgl)}</div>
-                  {!adaOverride?(
-                    <div style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4}}>⚠ Belum diatur</div>
-                  ):(
-                    <>
-                      <div style={{width:"100%",height:6,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginBottom:4}}>
-                        <div style={{width:pct+"%",height:"100%",background:color,borderRadius:99}}/>
-                      </div>
-                      <div style={{fontSize:11,fontWeight:700,color}}>{pct}%</div>
-                      <div style={{fontSize:9,color:"#94a3b8"}}>{terpakai}/{kapHari} mnt</div>
-                    </>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {deliverySim.length>0&&(
-        <div style={{background:'var(--card-bg,#fff)',border:'1px solid var(--border-color,#e2e8f0)',borderRadius:8,padding:'12px 14px',marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:'#64748b',textTransform:'uppercase' as const,letterSpacing:.4,marginBottom:10}}>
-            Simulasi Delivery
-          </div>
-          <div style={{display:'flex',gap:8,flexWrap:'wrap' as const}}>
-            {deliverySim.map((d:any)=>{
-              const cm:any={early:{bg:'#f0fdf4',br:'#bbf7d0',c:'#16a34a',ic:'OK',lb:'Lebih Awal'},ontime:{bg:'#eff6ff',br:'#bfdbfe',c:'#1d4ed8',ic:'ON',lb:'On Time'},warning:{bg:'#fffbeb',br:'#fde68a',c:'#d97706',ic:'!!',lb:'Hampir Terlambat'},late:{bg:'#fef2f2',br:'#fecaca',c:'#dc2626',ic:'!!',lb:'Terlambat'},no_target:{bg:'#f8fafc',br:'#e2e8f0',c:'#94a3b8',ic:'?',lb:'No Target'}};
-              const cf=cm[d.status]||cm.no_target;
-              return(
-                <div key={d.woNum} style={{background:cf.bg,border:`1.5px solid ${cf.br}`,borderRadius:10,padding:'10px 14px',minWidth:180}}>
-                  <div style={{fontSize:11,fontWeight:700,color:cf.c,marginBottom:4}}>{cf.lb}</div>
-                  <div style={{fontSize:12,fontWeight:700,color:'#1e293b',marginBottom:2}}>WO {d.woNum}</div>
-                  <div style={{fontSize:11,color:'#64748b',marginBottom:6}}>{d.proyek}</div>
-                  <div style={{fontSize:10,color:'#94a3b8'}}>Selesai FCS: <strong style={{color:'#475569'}}>{new Date(d.selesaiFCS).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}</strong></div>
-                  {d.target&&<div style={{fontSize:10,color:'#94a3b8',marginTop:2}}>Target: <strong style={{color:'#475569'}}>{new Date(d.target).toLocaleDateString('id-ID',{day:'numeric',month:'short',year:'numeric'})}</strong></div>}
-                  {d.target&&<div style={{marginTop:6,fontSize:11,fontWeight:700,color:cf.c}}>{d.selisih<0?`${Math.abs(d.selisih)} hari lebih awal`:d.selisih===0?'Tepat waktu':`${d.selisih} hari terlambat`}</div>}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-      {/* Filter bar */}
-      <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap" as const,alignItems:"center",background:"var(--card-bg,#fff)",borderRadius:8,padding:"10px 12px",border:"1px solid var(--border-color,#e2e8f0)"}}>
-        <select value={filterPekerjaan} onChange={e=>{setFilterPekerjaan(e.target.value);}}
-          style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit",fontWeight:700,color:"#1d4ed8"}}>
-          {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select value={filterWO} onChange={e=>{setFilterWO(e.target.value);setFilterProyek("ALL");setFilterPanel("ALL");}}
-          style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}>
-          <option value="ALL">Semua WO</option>
-          {[...new Set(scheduleList.map(s=>s.wo_number))].map(wo=>(
-            <option key={wo} value={wo}>WO {wo}</option>
-          ))}
-        </select>
-        <select value={filterProyek} onChange={e=>{setFilterProyek(e.target.value);setFilterPanel("ALL");}}
-          style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}>
-          <option value="ALL">Semua Proyek</option>
-          {[...new Set(scheduleList.filter(s=>filterWO==="ALL"||s.wo_number===filterWO).map(s=>s.proyek))].map(p=>(
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)}
-          style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}>
-          <option value="ALL">Semua Panel</option>
-          {[...new Set(scheduleList.filter(s=>(filterWO==="ALL"||s.wo_number===filterWO)&&(filterProyek==="ALL"||s.proyek===filterProyek)).map(s=>s.panel_nama))].map(p=>(
-            <option key={p} value={p}>{p}</option>
-          ))}
-        </select>
-        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)}
-          style={{height:28,padding:"0 8px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11,background:"#f8fafc",outline:"none",fontFamily:"inherit"}}>
-          <option value="ALL">Semua Status</option>
-          {ALL_STATUS.map(s=><option key={s} value={s}>{STATUS_COLOR[s]?.label||s}</option>)}
-        </select>
-        <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filtered.length} jadwal</span>
-        <button onClick={async()=>{
-          const panelTarget=filterPanel==="ALL"?null:filterPanel;
-          const wpList=selectedWP.length>0?selectedWP:null;
-          const targetLabel=panelTarget?("Panel: "+panelTarget):(filterWO==="ALL"?"SEMUA WO":"WO "+filterWO);
-          const wpLabel=wpList?(" (WP: "+wpList.join(", ")+")"):" (Semua WP)";
-          if(!window.confirm("Sync jadwal FCS ke Raw Schedule untuk "+targetLabel+wpLabel+"? Data schedule yang ada akan diupdate."))return;
-          setSyncing(true);
-          const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-          const uname=user?.name||user?.nama||sess?.nama||"Admin";
-          const woNumbers=filterWO==="ALL"
-            ?[...new Set(filtered.map((s:any)=>s.wo_number))]
-            :[filterWO];
-          let sukses=0;let gagal=0;
-          for(const woNum of woNumbers){
-            const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname,panelTarget,wpList);
-            if(res.success)sukses++;else gagal++;
-          }
-          setSyncing(false);
-          alert("Sync selesai untuk "+targetLabel+"! "+sukses+" WO berhasil"+(gagal>0?", "+gagal+" gagal":""));
-          fetchAll();
-        }} disabled={syncing||filtered.length===0}
-          style={{height:28,padding:"0 14px",borderRadius:6,border:"none",background:syncing?"#94a3b8":"#7c3aed",color:"#fff",fontSize:11,fontWeight:700,cursor:syncing||filtered.length===0?"not-allowed":"pointer",fontFamily:"inherit"}}>
-          {syncing?"⏳ Syncing...":filterPanel!=="ALL"?"⇄ Sync Panel Ini":"⇄ Sync "+( filterWO==="ALL"?"Semua":"WO "+filterWO)}
-        </button>
-        {(()=>{
-          const wpAvail=[...new Set(filtered.map((s:any)=>s.wp))].sort();
-          if(wpAvail.length===0)return null;
-          return(
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
-              <span style={{fontSize:10,fontWeight:700,color:"#64748b"}}>WP:</span>
-              <button onClick={()=>setSelectedWP([])}
-                style={{fontSize:10,padding:"2px 8px",borderRadius:4,border:"1px solid "+(selectedWP.length===0?"#7c3aed":"#e2e8f0"),
-                  background:selectedWP.length===0?"#7c3aed":"#f8fafc",color:selectedWP.length===0?"#fff":"#64748b",cursor:"pointer",fontWeight:600}}>
-                Semua
-              </button>
-              {wpAvail.map((wp:string)=>{
-                const checked=selectedWP.includes(wp);
-                return(
-                  <button key={wp} onClick={()=>setSelectedWP(prev=>checked?prev.filter(x=>x!==wp):[...prev,wp])}
-                    style={{fontSize:10,padding:"2px 8px",borderRadius:4,border:"1px solid "+(checked?"#1d4ed8":"#e2e8f0"),
-                      background:checked?"#eff6ff":"#f8fafc",color:checked?"#1d4ed8":"#64748b",cursor:"pointer",fontWeight:checked?700:400}}>
-                    {wp}
-                  </button>
-                );
-              })}
-            </div>
-          );
-        })()}
-        <button onClick={fetchAll}
-          style={{height:28,padding:"0 12px",borderRadius:6,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>
-          ↻ Refresh
-        </button>
-      </div>
-
-      {/* Tabel jadwal */}
-      {filtered.length===0?(
-        <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"40px",textAlign:"center" as const,color:"#94a3b8"}}>
-          <div style={{fontSize:32,marginBottom:8}}>⏱</div>
-          <div style={{fontSize:13,fontWeight:600}}>Belum ada jadwal FCS</div>
-          <div style={{fontSize:12,marginTop:4}}>Generate schedule dari Manajemen WO terlebih dahulu</div>
+      {Object.keys(woGroups).length===0?(
+        <div style={{padding:40,textAlign:"center" as const,color:"#94a3b8",background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)"}}>
+          <div style={{fontSize:32,marginBottom:8}}>📋</div>
+          <div style={{fontSize:14,fontWeight:600}}>Tidak ada FCS Schedule untuk proses {filterPekerjaan}</div>
+          <div style={{fontSize:12,marginTop:4}}>Generate FCS dari Manajemen WO terlebih dahulu</div>
         </div>
       ):(
-        <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
-          <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
-            <thead><tr>
-              <th style={thS}>Tanggal</th>
-              <th style={thS}>WO</th>
-              <th style={thS}>Proyek</th>
-              <th style={thS}>Panel</th>
-              <th style={{...thS,textAlign:"center" as const}}>WP</th>
-              <th style={thS}>Komponen</th>
-              <th style={{...thS,textAlign:"center" as const}}>Qty</th>
-              <th style={{...thS,textAlign:"center" as const}}>Mnt/Pcs</th>
-              <th style={{...thS,textAlign:"center" as const}}>Total Mnt</th>
-              <th style={{...thS,textAlign:"center" as const}}>Status</th>
-              <th style={{...thS,textAlign:"center" as const}}>Progress</th>
-            </tr></thead>
-            <tbody>
-              {filtered.map((s:any,i:number)=>{
-                const sc=STATUS_COLOR[s.status]||STATUS_COLOR.planning;
-                const rBg=i%2===0?"var(--card-bg,#fff)":"var(--bg-secondary,#f8fafc)";
-                const td:any={padding:"7px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
-                return(
-                  <tr key={s.id}>
-                    <td style={{...td,fontWeight:600,color:"#1e293b",whiteSpace:"nowrap" as const}}>{fmtDate(s.tanggal)}</td>
-                    <td style={{...td,fontFamily:"monospace",fontWeight:700,color:"#1d4ed8"}}>WO {s.wo_number}</td>
-                    <td style={{...td,color:"#475569"}}>{s.proyek}</td>
-                    <td style={{...td,fontWeight:600,color:"#1e293b"}}>{s.panel_nama}</td>
-                    <td style={{...td,textAlign:"center" as const}}>
-                      <span style={{background:"#f1f5f9",color:"#475569",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{s.wp}</span>
-                    </td>
-                    <td style={td}>{s.nama_komponen}<span style={{fontSize:9,color:"#94a3b8",marginLeft:4}}>({s.kode_komponen})</span></td>
-                    <td style={{...td,textAlign:"center" as const,fontWeight:700,color:"#1e293b"}}>{s.qty_hari}</td>
-                    <td style={{...td,textAlign:"center" as const,color:"#64748b"}}>{s.menit_per_pcs}</td>
-                    <td style={{...td,textAlign:"center" as const}}>
-                      <span style={{fontWeight:700,color:"#1d4ed8"}}>{Number(s.total_menit).toFixed(1)}</span>
-                    </td>
-                    <td style={{...td,textAlign:"center" as const}}>
-                      <span style={{background:sc.bg,color:sc.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,border:`1px solid ${sc.color}30`}}>{sc.label}</span>
-                    </td>
-                    <td style={{...td,textAlign:"center" as const}}>
-                      {s.status==="planning"&&(
-                        <span style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#1d4ed8",fontWeight:700,display:"inline-block"}}>
-                          Release
-                        </span>
-                      )}
-                      {s.status==="released"&&(
-                        <span style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#d97706",fontWeight:700,display:"inline-block"}}>
-                          Mulai
-                        </span>
-                      )}
-                      {s.status==="in_progress"&&(
-                        <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 10px",fontSize:10,color:"#16a34a",fontWeight:700,display:"inline-block"}}>
-                          Selesai
-                        </span>
-                      )}
-                      {s.status==="completed"&&(
-                        <span style={{fontSize:10,color:"#16a34a",fontWeight:700}}>
-                          ✓ Completed
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        Object.values(woGroups).map((wo:any)=>{
+          const isExpanded=expandedWO===wo.wo;
+          const allPanelIds=Object.keys(wo.panels).map(Number);
+          const selPanels=selectedPanels[wo.wo]||[];
+          const allWPs=[...new Set(Object.values(wo.panels).flatMap((p:any)=>Object.keys(p.wps)))].sort();
+          const totalRows=Object.values(wo.panels).reduce((a:number,p:any)=>a+Object.values(p.wps).reduce((b:number,rows:any)=>b+(rows as any[]).length,0),0);
+          return(
+            <div key={wo.wo} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,marginBottom:10,overflow:"hidden"}}>
+              <div onClick={()=>setExpandedWO(isExpanded?null:wo.wo)}
+                style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",cursor:"pointer",
+                  background:isExpanded?"#f8faff":"var(--card-bg,#fff)",
+                  borderBottom:isExpanded?"1px solid #e2e8f0":"none"}}>
+                <span style={{fontSize:14}}>{isExpanded?"▼":"▶"}</span>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:14,color:"var(--text-primary,#1e293b)"}}>WO {wo.wo} — {wo.proyek}</div>
+                  <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{allPanelIds.length} panel · {totalRows} jadwal · {allWPs.join(", ")}</div>
+                </div>
+                {selPanels.length>0&&<span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{selPanels.length} panel dipilih</span>}
+              </div>
+              {isExpanded&&(
+                <div style={{padding:"14px 16px"}}>
+                  <div style={{marginBottom:14}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({selPanels.length}/{allPanelIds.length})</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.wo]:allPanelIds}))} style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Semua</button>
+                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.wo]:[]}))} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                      </div>
+                    </div>
+                    <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
+                      {Object.entries(wo.panels).map(([pid,panel]:any)=>{
+                        const checked=selPanels.includes(Number(pid));
+                        return(
+                          <label key={pid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,
+                            border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,
+                            background:checked?"#eff6ff":"#f8fafc",cursor:"pointer"}}>
+                            <input type="checkbox" checked={checked} onChange={()=>{
+                              setSelectedPanels(prev=>{
+                                const cur=prev[wo.wo]||[];
+                                return{...prev,[wo.wo]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
+                              });
+                            }}/>
+                            <span style={{fontSize:12,color:checked?"#1d4ed8":"#1e293b",fontWeight:checked?700:400}}>{panel.nama}</span>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  </div>
+                  {selPanels.length>0&&(
+                    <div style={{marginBottom:14}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>Atur Jadwal per WP</div>
+                      {allWPs.map(wp=>{
+                        const wpColor=WP_COLORS[wp]||{color:"#64748b",bg:"#f1f5f9"};
+                        const key=`${wo.wo}_${wp}`;
+                        const preview=wpPreview[wo.wo]?.[wp];
+                        const isCalc=calculating===key;
+                        const komponenList:string[]=[];
+                        selPanels.forEach(pid=>{
+                          const panel=wo.panels[pid];
+                          if(panel?.wps[wp]){panel.wps[wp].forEach((r:any)=>{if(!komponenList.includes(r.nama_komponen))komponenList.push(r.nama_komponen);});}
+                        });
+                        return(
+                          <div key={wp} style={{border:`1.5px solid ${wpColor.color}30`,borderRadius:8,padding:"10px 12px",marginBottom:8,background:wpColor.bg+"40"}}>
+                            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                              <span style={{background:wpColor.color,color:"#fff",borderRadius:5,padding:"2px 8px",fontSize:11,fontWeight:700}}>{wp}</span>
+                              <span style={{fontSize:11,color:"#64748b",flex:1}}>{komponenList.slice(0,3).join(", ")}{komponenList.length>3?` +${komponenList.length-3} lainnya`:""}</span>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
+                              <div style={{fontSize:10,fontWeight:600,color:"#64748b"}}>Tanggal mulai:</div>
+                              <input type="date"
+                                value={wpTanggal[wo.wo]?.[wp]||new Date().toISOString().slice(0,10)}
+                                onChange={e=>setWpTanggal(prev=>({...prev,[wo.wo]:{...(prev[wo.wo]||{}),[wp]:e.target.value}}))}
+                                style={{padding:"4px 8px",borderRadius:6,border:"1.5px solid #e2e8f0",fontSize:11,fontFamily:"inherit"}}/>
+                              <button onClick={()=>handleHitung(wo.wo,wp,selPanels)} disabled={isCalc}
+                                style={{padding:"4px 12px",borderRadius:6,border:"none",background:isCalc?"#94a3b8":wpColor.color,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                {isCalc?"⏳...":"Hitung →"}
+                              </button>
+                              {preview&&<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {[...new Set(preview.map((p:any)=>p.tanggal))].length} hari · {preview.length} baris</span>}
+                            </div>
+                            {preview&&(
+                              <div style={{marginTop:8,display:"flex",flexWrap:"wrap" as const,gap:4}}>
+                                {([...new Set(preview.map((p:any)=>p.tanggal))] as string[]).map((tgl:string)=>{
+                                  const dayRows=preview.filter((p:any)=>p.tanggal===tgl);
+                                  const mnt=dayRows.reduce((a:number,b:any)=>a+b.total_menit_hari,0);
+                                  const kap=kapasitasMap[tgl]||0;
+                                  const pct=kap>0?Math.round(mnt/kap*100):0;
+                                  const color=pct>=90?"#dc2626":pct>=70?"#d97706":"#16a34a";
+                                  return(
+                                    <div key={tgl} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${color}30`,background:`${color}10`,fontSize:10}}>
+                                      <div style={{fontWeight:600,color:"#1e293b"}}>{new Date(tgl).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
+                                      <div style={{color}}>{mnt} mnt ({pct}%)</div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                  {selPanels.length>0&&(
+                    <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                      <button onClick={fetchAll} style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
+                      <button onClick={()=>handleSync(wo.wo)} disabled={syncing===wo.wo}
+                        style={{padding:"7px 18px",borderRadius:7,border:"none",background:syncing===wo.wo?"#94a3b8":"#7c3aed",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        {syncing===wo.wo?"⏳ Syncing...":"⇄ Sync Panel Terpilih"}
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          );
+        })
       )}
-
     </div>
   );
 }
+
 
 function ForumWO({user}:any){
   const [posts,setPosts]=useState<any[]>([]);
