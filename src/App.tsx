@@ -9329,11 +9329,14 @@ function FCSScheduleTab({woData,user}:any){
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                       {Object.entries(wo.panels).map(([pid,panel]:any)=>{
                         const checked=selPanels.includes(Number(pid));
+                        // Panel disabled kalau sudah punya data di fcs_schedule untuk proses ini
+                        const sudahTerjadwal=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo);
                         return(
                           <label key={pid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,
-                            border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,
-                            background:checked?"#eff6ff":"#f8fafc",cursor:"pointer"}}>
-                            <input type="checkbox" checked={checked} onChange={()=>{
+                            border:`1.5px solid ${sudahTerjadwal?"#94a3b8":checked?"#1d4ed8":"#e2e8f0"}`,
+                            background:sudahTerjadwal?"#f1f5f9":checked?"#eff6ff":"#f8fafc",cursor:sudahTerjadwal?"not-allowed":"pointer",
+                            opacity:sudahTerjadwal?0.6:1}}>
+                            <input type="checkbox" checked={checked} disabled={sudahTerjadwal} onChange={()=>{
                               setSelectedPanels(prev=>{
                                 const cur=prev[wo.wo]||[];
                                 return{...prev,[wo.wo]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
