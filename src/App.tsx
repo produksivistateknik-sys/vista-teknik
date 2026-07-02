@@ -9135,6 +9135,14 @@ function FCSScheduleTab({woData,user}:any){
     return map;
   },[kapasitasList]);
 
+  // kapTerpakaiMap per WO - exclude WO yang sedang dihitung supaya tidak double-count
+  const getKapTerpakaiExcludeWO=(woNum:string)=>{
+    const map:Record<string,number>={};
+    scheduleList.filter((s:any)=>s.wo_number!==woNum).forEach((s:any)=>{
+      map[s.tanggal]=(map[s.tanggal]||0)+Number(s.total_menit);
+    });
+    return map;
+  };
   const kapTerpakaiMap=useMemo(()=>{
     const map:Record<string,number>={};
     scheduleList.forEach((s:any)=>{
@@ -9204,7 +9212,9 @@ function FCSScheduleTab({woData,user}:any){
       if(!panel)return;
       (panel.wps[wp]||[]).forEach((r:any)=>rows.push(r));
     });
-    const preview=hitungDistribusiWP(rows,tanggalMulai,kapTerpakaiMap);
+    // Exclude kapasitas WO yang sedang dihitung supaya tidak double-count dirinya sendiri
+    const kapExclude=getKapTerpakaiExcludeWO(woNum);
+    const preview=hitungDistribusiWP(rows,tanggalMulai,kapExclude);
     // Sort preview berdasarkan tanggal supaya tampil urut
     const previewSorted=[...preview].sort((a,b)=>a.tanggal.localeCompare(b.tanggal));
     setWpPreview(prev=>({...prev,[woNum]:{...(prev[woNum]||{}),[wp]:previewSorted}}));
