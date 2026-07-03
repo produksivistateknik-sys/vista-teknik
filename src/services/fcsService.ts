@@ -512,10 +512,11 @@ export async function syncFCSToRawSchedule(
 
       if (!error) {
         updatedCount++
-        // Hapus data FCS untuk panel ini setelah berhasil sync - Raw Schedule jadi sumber kebenaran
+        // Update status FCS jadi 'synced' setelah berhasil sync ke Raw Schedule
+        // TIDAK dihapus supaya panel tetap muncul di FCS Schedule sebagai tanda sudah di-sync
         await supabase
           .from('fcs_schedule')
-          .delete()
+          .update({ status: 'synced' })
           .eq('wo_number', woNumber)
           .eq('panel_id', panelId)
           .eq('jenis_pekerjaan', jenisPekerjaan)

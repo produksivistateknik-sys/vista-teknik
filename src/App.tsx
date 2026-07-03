@@ -9117,7 +9117,7 @@ function FCSScheduleTab({woData,user}:any){
     const [{data:s},{data:k}]=await Promise.all([
       supabase.from("fcs_schedule").select("*")
         .eq("jenis_pekerjaan",filterPekerjaan)
-        .neq("status","cancelled")
+        .not("status","in",'("cancelled")')
         .order("tanggal",{ascending:true})
         .order("wp",{ascending:true}),
       supabase.from("fcs_kapasitas_override").select("*")
@@ -9138,7 +9138,8 @@ function FCSScheduleTab({woData,user}:any){
   // kapTerpakaiMap per WO - exclude WO yang sedang dihitung supaya tidak double-count
   const getKapTerpakaiExcludeWO=(woNum:string)=>{
     const map:Record<string,number>={};
-    scheduleList.filter((s:any)=>s.wo_number!==woNum).forEach((s:any)=>{
+    // Exclude WO yang sedang dihitung DAN data yang sudah synced (tidak perlu dihitung lagi)
+    scheduleList.filter((s:any)=>s.wo_number!==woNum&&s.status!=="synced").forEach((s:any)=>{
       map[s.tanggal]=(map[s.tanggal]||0)+Number(s.total_menit);
     });
     return map;
@@ -9329,20 +9330,24 @@ function FCSScheduleTab({woData,user}:any){
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                       {Object.entries(wo.panels).map(([pid,panel]:any)=>{
                         const checked=selPanels.includes(Number(pid));
-                        // Indikator: panel sudah punya data di fcs_schedule untuk proses ini
-                        const sudahDiFCS=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo);
+                        // Cek apakah panel sudah di-sync (status='synced' di fcs_schedule)
+                        const sudahSynced=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo&&s.status==="synced");
+                        // Cek apakah panel masih planning (belum di-sync)
+                        const adaDiFCS=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo&&s.status!=="synced");
                         return(
                           <label key={pid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,
-                            border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,
-                            background:checked?"#eff6ff":"#f8fafc",cursor:"pointer"}}>
-                            <input type="checkbox" checked={checked} onChange={()=>{
+                            border:`1.5px solid ${sudahSynced?"#16a34a":checked?"#1d4ed8":"#e2e8f0"}`,
+                            background:sudahSynced?"#f0fdf4":checked?"#eff6ff":"#f8fafc",
+                            cursor:sudahSynced?"not-allowed":"pointer",opacity:sudahSynced?0.65:1}}>
+                            <input type="checkbox" checked={checked} disabled={sudahSynced} onChange={()=>{
                               setSelectedPanels(prev=>{
                                 const cur=prev[wo.wo]||[];
                                 return{...prev,[wo.wo]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
                               });
                             }}/>
-                            <span style={{fontSize:12,color:checked?"#1d4ed8":"#1e293b",fontWeight:checked?700:400}}>{panel.nama}</span>
-                            {sudahDiFCS&&<span style={{fontSize:9,background:"#dcfce7",color:"#16a34a",borderRadius:4,padding:"1px 5px",fontWeight:700}}>✓ FCS</span>}
+                            <span style={{fontSize:12,color:sudahSynced?"#16a34a":checked?"#1d4ed8":"#1e293b",fontWeight:checked||sudahSynced?700:400}}>{panel.nama}</span>
+                            {sudahSynced&&<span style={{fontSize:9,background:"#dcfce7",color:"#16a34a",borderRadius:4,padding:"1px 5px",fontWeight:700}}>✓ Synced</span>}
+                            {!sudahSynced&&adaDiFCS&&<span style={{fontSize:9,background:"#fffbeb",color:"#d97706",borderRadius:4,padding:"1px 5px",fontWeight:700}}>FCS</span>}
                           </label>
                         );
                       })}
