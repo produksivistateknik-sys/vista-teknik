@@ -7574,7 +7574,7 @@ function KapasitasPekerjaanTab(){
                     })}
                   </div>
                 </div>
-                {isProsesOrang(rentangForm.jenis_pekerjaan)?(
+                {(Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan]).every((p:string)=>isProsesOrang(p))?(
                   <div style={{gridColumn:"span 2"}}>
                     <div style={{fontSize:10,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>👥 Jumlah Orang</div>
                     <input type="number" min="0" step="1" value={rentangForm.jumlah_orang}
@@ -7606,7 +7606,7 @@ function KapasitasPekerjaanTab(){
               </div>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:12}}>
                 <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                  {isProsesOrang(rentangForm.jenis_pekerjaan)?(
+                  {(Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan]).every((p:string)=>isProsesOrang(p))?(
                     <>{rentangForm.jumlah_orang} orang/hari</>
                   ):(
                     <>{rentangForm.jam_kerja} jam × 60 × {rentangForm.efektivitas_pct}% = <strong>{Math.round(rentangForm.jam_kerja*60*rentangForm.efektivitas_pct/100)} menit</strong>/hari</>
