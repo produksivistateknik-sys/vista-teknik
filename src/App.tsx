@@ -4462,8 +4462,15 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
                                   return(
                                     <div key={entry.wp+kode} style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
-                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
-                                      <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
+                                      {kode.startsWith("__wiring_")?(()=>{
+                                        const parts=kode.replace("__wiring_","").split("_");
+                                        const org=parts[0];
+                                        const bobot=parts.slice(1).join(" ");
+                                        return <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const}}>⚡ {org} · {bobot}</span>;
+                                      })():(
+                                        <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
+                                      )}
+                                      {!kode.startsWith("__wiring_")&&<span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>}
                                     </div>
                                   );
                                 }))}
