@@ -9319,21 +9319,72 @@ function FCSScheduleTab({woData,user}:any){
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     const panelIds=selectedPanels[woNum]||[];
     if(panelIds.length===0){alert("Pilih minimal 1 panel!");return;}
-    const wps=new Set<string>();
-    panelIds.forEach(pid=>{
-      const panel=woGroups[woNum]?.panels[pid];
-      if(panel)Object.keys(panel.wps).forEach(wp=>wps.add(wp));
-    });
-    const belumHitung=[...wps].filter(wp=>!wpPreview[woNum]?.[wp]);
-    if(belumHitung.length>0){alert(`Hitung dulu jadwal untuk: ${belumHitung.join(", ")}`);return;}
+    const isWiring=["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan);
+    if(isWiring){
+      // WIRING: cek semua panel sudah dihitung
+      const belumHitungW=panelIds.filter(pid=>!wpPreview[woNum]?.[`${woNum}_${pid}_bobot`]);
+      if(belumHitungW.length>0){
+        const namaBelum=belumHitungW.map(pid=>woGroups[woNum]?.panels[pid]?.nama||pid).join(", ");
+        alert(`Hitung dulu jadwal untuk panel: ${namaBelum}`);return;
+      }
+    } else {
+      const wps=new Set<string>();
+      panelIds.forEach(pid=>{
+        const panel=woGroups[woNum]?.panels[pid];
+        if(panel)Object.keys(panel.wps).forEach(wp=>wps.add(wp));
+      });
+      const belumHitung=[...wps].filter(wp=>!wpPreview[woNum]?.[wp]);
+      if(belumHitung.length>0){alert(`Hitung dulu jadwal untuk: ${belumHitung.join(", ")}`);return;}
+    }
     setSyncing(woNum);
     try{
-      for(const wp of wps){
-        const preview=wpPreview[woNum]?.[wp]||[];
-        for(const item of preview){
-          await supabase.from("fcs_schedule")
-            .update({tanggal:item.tanggal,qty_hari:item.qty_hari,total_menit:item.total_menit_hari})
-            .eq("id",item.id);
+      if(isWiring){
+        // WIRING: update fcs_schedule per panel berdasarkan preview bobot
+        for(const pid of panelIds){
+          const bobotKey=`${woNum}_${pid}_bobot`;
+          const preview=wpPreview[woNum]?.[bobotKey]||[];
+          // Hapus data lama dan insert baru
+          await supabase.from("fcs_schedule").delete()
+            .eq("panel_id",pid).eq("wo_number",woNum).eq("jenis_pekerjaan",filterPekerjaan);
+          const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
+          const orangVal=parseInt((wpTanggal as any)[`${woNum}_${pid}_orang`]||"1")||1;
+          if(preview.length>0){
+            const items=preview.map((r:any,i:number)=>({
+              wo_id:woGroups[woNum]?.panels[pid]?.__wo_id||0,
+              wo_number:woNum,
+              proyek:woGroups[woNum]?.proyek||"" ,
+              panel_id:pid,
+              panel_nama:woGroups[woNum]?.panels[pid]?.nama||"" ,
+              tipe_panel:"FS",
+              kode_komponen:bobotVal,
+              nama_komponen:`Wiring ${bobotVal}`,
+              wp:"WP1",
+              jenis_pekerjaan:filterPekerjaan,
+              tanggal:r.tanggal,
+              qty_total:orangVal,
+              qty_hari:orangVal,
+              menit_per_pcs:0,
+              total_menit:orangVal,
+              status:"planning",
+              urutan:i+1,
+              generated_by:uname,
+            }));
+            await supabase.from("fcs_schedule").insert(items);
+          }
+        }
+      } else {
+        const wps=new Set<string>();
+        panelIds.forEach(pid=>{
+          const panel=woGroups[woNum]?.panels[pid];
+          if(panel)Object.keys(panel.wps).forEach(wp=>wps.add(wp));
+        });
+        for(const wp of wps){
+          const preview=wpPreview[woNum]?.[wp]||[];
+          for(const item of preview){
+            await supabase.from("fcs_schedule")
+              .update({tanggal:item.tanggal,qty_hari:item.qty_hari,total_menit:item.total_menit_hari})
+              .eq("id",item.id);
+          }
         }
       }
       let sukses=0;let gagal=0;
