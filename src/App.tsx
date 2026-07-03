@@ -9187,9 +9187,18 @@ function FCSScheduleTab({woData,user}:any){
 
   const kapasitasMap=useMemo(()=>{
     const map:Record<string,number>={};
-    kapasitasList.forEach((k:any)=>{map[k.tanggal]=Number(k.kapasitas_menit);});
+    kapasitasList.forEach((k:any)=>{
+      // Untuk WIRING CONTROL/POWER, kapasitas disimpan di jumlah_orang (bukan kapasitas_menit)
+      if(k.tipe_kapasitas==="orang"&&k.jumlah_orang!=null){
+        map[k.tanggal]=Number(k.jumlah_orang);
+      } else {
+        map[k.tanggal]=Number(k.kapasitas_menit)||0;
+      }
+    });
     return map;
   },[kapasitasList]);
+  // Flag apakah proses ini pakai satuan orang (bukan menit)
+  const isProsesSatuanOrang=["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan);
 
   // kapTerpakaiMap per WO - exclude WO yang sedang dihitung supaya tidak double-count
   const getKapTerpakaiExcludeWO=(woNum:string)=>{
