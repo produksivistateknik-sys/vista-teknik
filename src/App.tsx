@@ -9205,7 +9205,9 @@ function FCSScheduleTab({woData,user}:any){
     const map:Record<string,number>={};
     // Exclude WO yang sedang dihitung DAN data yang sudah synced (tidak perlu dihitung lagi)
     scheduleList.filter((s:any)=>s.wo_number!==woNum&&s.status!=="synced").forEach((s:any)=>{
-      map[s.tanggal]=(map[s.tanggal]||0)+Number(s.total_menit);
+      // Untuk wiring (satuan orang), pakai qty_hari; untuk proses lain pakai total_menit
+      const val=isProsesSatuanOrang?Number(s.qty_hari||0):Number(s.total_menit||0);
+      map[s.tanggal]=(map[s.tanggal]||0)+val;
     });
     return map;
   };
@@ -9240,28 +9242,55 @@ function FCSScheduleTab({woData,user}:any){
     while(attempts<90&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);attempts++;}
     if(attempts>=90)return[];
     for(const row of rows){
-      let sisaQty=row.qty_total;
-      let dayAttempts=0;
-      while(sisaQty>0&&dayAttempts<90){
-        const kap=kapasitasMap[cur]||0;
-        const terpakai=tracker[cur]||0;
-        const sisa=kap-terpakai;
-        if(sisa<row.menit_per_pcs){
+      // Untuk wiring: 1 row = 1 hari, kebutuhan = qty_hari (jumlah orang)
+      // Untuk proses lain: kebutuhan = menit_per_pcs * qty
+      if(isProsesSatuanOrang){
+        // Wiring: cari hari yang punya kapasitas orang cukup untuk row.qty_total orang
+        const kebutuhanOrang=row.qty_total||1;
+        let dayAttempts=0;
+        while(dayAttempts<90){
+          const kap=kapasitasMap[cur]||0;
+          const terpakai=tracker[cur]||0;
+          const sisa=kap-terpakai;
+          if(sisa>=kebutuhanOrang){
+            result.push({...row,tanggal:cur,qty_hari:kebutuhanOrang,total_menit_hari:kebutuhanOrang});
+            tracker[cur]=(tracker[cur]||0)+kebutuhanOrang;
+            break;
+          }
           cur=addDaysStr(cur,1);
           let skip=0;
           while(skip<30&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);skip++;}
-          dayAttempts++;continue;
+          dayAttempts++;
         }
-        const maxQty=Math.floor(sisa/row.menit_per_pcs);
-        const qtyHari=Math.min(sisaQty,maxQty);
-        const mntHari=qtyHari*row.menit_per_pcs;
-        result.push({...row,tanggal:cur,qty_hari:qtyHari,total_menit_hari:mntHari});
-        tracker[cur]=(tracker[cur]||0)+mntHari;
-        sisaQty-=qtyHari;
-        dayAttempts++;
-      }
-      if(sisaQty>0){
-        result.push({...row,tanggal:cur,qty_hari:sisaQty,total_menit_hari:sisaQty*row.menit_per_pcs,overflow:true});
+        if(dayAttempts>=90){
+          // Overflow: masukkan ke tanggal terakhir
+          result.push({...row,tanggal:cur,qty_hari:kebutuhanOrang,total_menit_hari:kebutuhanOrang,overflow:true});
+        }
+      } else {
+        // Proses biasa: distribusi berdasarkan menit
+        let sisaQty=row.qty_total;
+        let dayAttempts=0;
+        while(sisaQty>0&&dayAttempts<90){
+          const kap=kapasitasMap[cur]||0;
+          const terpakai=tracker[cur]||0;
+          const sisa=kap-terpakai;
+          if(sisa<row.menit_per_pcs){
+            cur=addDaysStr(cur,1);
+            let skip=0;
+            while(skip<30&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);skip++;}
+            dayAttempts++;continue;
+          }
+          const maxQty=Math.floor(sisa/row.menit_per_pcs);
+          const qtyHari=Math.min(sisaQty,maxQty);
+          const mntHari=qtyHari*row.menit_per_pcs;
+          result.push({...row,tanggal:cur,qty_hari:qtyHari,total_menit_hari:mntHari});
+          tracker[cur]=(tracker[cur]||0)+mntHari;
+          sisaQty-=qtyHari;
+          dayAttempts++;
+        }
+        if(sisaQty>0){
+          result.push({...row,tanggal:cur,qty_hari:sisaQty,total_menit_hari:sisaQty*row.menit_per_pcs,overflow:true});
+        }
       }
     }
     return result;
