@@ -5693,34 +5693,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 </div>
               </div>
               {WIRING_PROSES.includes(fcsForm.jenisPekerjaan)&&selectedPanelIds.length>0&&(
-                <div style={{marginBottom:14}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#6366f1",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>⚡ Bobot Pekerjaan per Panel</div>
-                  <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:200,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
-                    {(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id)).map((p:any)=>{
-                      const bobot=panelBobot[p.id]||{bobot:"MEDIUM",jumlahOrang:1};
-                      const cfg=BOBOT_CONFIG[bobot.bobot];
-                      const hariTotal=Math.ceil(cfg.hariOrang/bobot.jumlahOrang);
-                      return(
-                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,background:cfg.bg,border:`1px solid ${cfg.color}30`}}>
-                          <span style={{fontSize:12,fontWeight:600,color:"#1e293b",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{p.nama}</span>
-                          <select value={bobot.bobot} onChange={e=>setPanelBobot(prev=>({...prev,[p.id]:{...bobot,bobot:e.target.value}}))}
-                            style={{padding:"3px 6px",borderRadius:5,border:`1.5px solid ${cfg.color}`,background:cfg.bg,color:cfg.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                            {Object.entries(BOBOT_CONFIG).map(([k,v])=>(
-                              <option key={k} value={k}>{v.label} ({v.hariOrang} hari-orang)</option>
-                            ))}
-                          </select>
-                          <div style={{display:"flex",alignItems:"center",gap:4}}>
-                            <span style={{fontSize:10,color:"#64748b"}}>Orang:</span>
-                            <input type="number" min="1" max="10" value={bobot.jumlahOrang}
-                              onChange={e=>setPanelBobot(prev=>({...prev,[p.id]:{...bobot,jumlahOrang:Math.max(1,parseInt(e.target.value)||1)}}))}
-                              style={{width:40,padding:"3px 4px",borderRadius:5,border:"1.5px solid #e2e8f0",fontSize:11,textAlign:"center" as const}}/>
-                          </div>
-                          <span style={{fontSize:10,color:cfg.color,fontWeight:700,minWidth:50}}>{hariTotal} hari</span>
-                        </div>
-                      );
-                    })}
-                  </div>
-                  <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>Hari = Bobot ÷ Jumlah Orang (dibulatkan ke atas)</div>
+                <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",borderRadius:8,border:"1px solid #bfdbfe"}}>
+                  <div style={{fontSize:12,color:"#1d4ed8",fontWeight:600}}>⚡ {selectedPanelIds.length} panel akan diregistrasi untuk {fcsForm.jenisPekerjaan}</div>
+                  <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Bobot dan jadwal per panel akan diatur di FCS Schedule setelah generate</div>
                 </div>
               )}
               {!WIRING_PROSES.includes(fcsForm.jenisPekerjaan)&&(()=>{
@@ -5805,15 +5780,12 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   for(const panel of panels){
                     let res:any;
                     if(WIRING_PROSES.includes(fcsForm.jenisPekerjaan)){
-                      // Generate wiring berdasarkan bobot per panel
-                      const bobot=panelBobot[panel.id]||{bobot:"MEDIUM",jumlahOrang:1};
+                      // Generate wiring: cukup register panel, bobot diatur di FCS Schedule
                       res=await generateFCSWiring({
                         woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
                         panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
                         jenisPekerjaan:fcsForm.jenisPekerjaan,
                         tanggalMulai:fcsForm.tanggalMulai,
-                        bobot:bobot.bobot,
-                        jumlahOrang:bobot.jumlahOrang,
                         generatedBy:uname,
                       });
                     } else {
@@ -9462,7 +9434,95 @@ function FCSScheduleTab({woData,user}:any){
                   </div>
                   {selPanels.length>0&&(
                     <div style={{marginBottom:14}}>
-                      <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>Atur Jadwal per WP</div>
+                      <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>
+                        {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)?"⚡ Bobot & Jadwal per Panel":"Atur Jadwal per WP"}
+                      </div>
+                      {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)?(
+                        <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                          {selPanels.map(pid=>{
+                            const panel=wo.panels[pid];
+                            if(!panel)return null;
+                            const bobotKey=`${wo.wo}_${pid}_bobot`;
+                            const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
+                            const orangKey=`${wo.wo}_${pid}_orang`;
+                            const orangVal=parseInt((wpTanggal as any)[orangKey]||"1")||1;
+                            const tglKey=`${wo.wo}_${pid}_tgl`;
+                            const tglVal=(wpTanggal as any)[tglKey]||new Date().toISOString().slice(0,10);
+                            const BOBOT_CFG:any={
+                              EASY:{label:"Easy",hariOrang:1,color:"#16a34a",bg:"#f0fdf4"},
+                              MEDIUM:{label:"Medium",hariOrang:2,color:"#d97706",bg:"#fffbeb"},
+                              HARD:{label:"Hard",hariOrang:3,color:"#dc2626",bg:"#fef2f2"},
+                              VERY_HARD:{label:"Very Hard",hariOrang:4,color:"#7c3aed",bg:"#f5f3ff"},
+                            };
+                            const cfg=BOBOT_CFG[bobotVal]||BOBOT_CFG.MEDIUM;
+                            const hariTotal=Math.ceil(cfg.hariOrang/orangVal);
+                            const previewW=wpPreview[wo.wo]?.[bobotKey];
+                            return(
+                              <div key={pid} style={{border:`1.5px solid ${cfg.color}30`,borderRadius:8,padding:"10px 12px",background:cfg.bg+"40"}}>
+                                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" as const}}>
+                                  <span style={{fontSize:12,fontWeight:700,color:"#1e293b",flex:1}}>{panel.nama}</span>
+                                  <select value={bobotVal} onChange={e=>setWpTanggal((prev:any)=>({...prev,[bobotKey]:e.target.value}))}
+                                    style={{padding:"3px 8px",borderRadius:5,border:`1.5px solid ${cfg.color}`,background:cfg.bg,color:cfg.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                    {Object.entries(BOBOT_CFG).map(([k,v]:any)=>(
+                                      <option key={k} value={k}>{v.label} ({v.hariOrang} hari-org)</option>
+                                    ))}
+                                  </select>
+                                  <div style={{display:"flex",alignItems:"center",gap:4}}>
+                                    <span style={{fontSize:10,color:"#64748b"}}>Org:</span>
+                                    <input type="number" min="1" max="10" value={orangVal}
+                                      onChange={e=>setWpTanggal((prev:any)=>({...prev,[orangKey]:e.target.value}))}
+                                      style={{width:36,padding:"3px 4px",borderRadius:5,border:"1.5px solid #e2e8f0",fontSize:11,textAlign:"center" as const}}/>
+                                  </div>
+                                  <span style={{fontSize:10,color:cfg.color,fontWeight:700}}>{hariTotal} hari</span>
+                                </div>
+                                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                                  <div style={{fontSize:10,fontWeight:600,color:"#64748b"}}>Mulai:</div>
+                                  <input type="date" value={tglVal}
+                                    onChange={e=>setWpTanggal((prev:any)=>({...prev,[tglKey]:e.target.value}))}
+                                    style={{padding:"3px 8px",borderRadius:6,border:"1.5px solid #e2e8f0",fontSize:11,fontFamily:"inherit"}}/>
+                                  <button onClick={()=>{
+                                    const kapExclude=getKapTerpakaiExcludeWO(wo.wo);
+                                    const kapInclude:{[t:string]:number}={...kapExclude};
+                                    Object.entries(wpPreview[wo.wo]||{}).forEach(([k,rows]:any)=>{
+                                      if(k===bobotKey)return;
+                                      rows.forEach((r:any)=>{kapInclude[r.tanggal]=(kapInclude[r.tanggal]||0)+r.total_menit_hari;});
+                                    });
+                                    const rows=Array.from({length:hariTotal},(_,i)=>({
+                                      qty_total:orangVal,qty_hari:orangVal,menit_per_pcs:0,
+                                      kode_komponen:bobotVal,nama_komponen:`Wiring ${bobotVal}`,
+                                      wp:"WP1",id:`wiring_${pid}_${i}`,
+                                    }));
+                                    const previewRows=hitungDistribusiWP(rows,tglVal,kapInclude);
+                                    const sorted=[...previewRows].sort((a:any,b:any)=>a.tanggal.localeCompare(b.tanggal));
+                                    setWpPreview((prev:any)=>({...prev,[wo.wo]:{...(prev[wo.wo]||{}),[bobotKey]:sorted}}));
+                                  }} style={{padding:"3px 10px",borderRadius:5,border:"none",background:cfg.color,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                                    Hitung →
+                                  </button>
+                                  {previewW&&<span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {[...new Set(previewW.map((p:any)=>p.tanggal))].length} hari</span>}
+                                </div>
+                                {previewW&&(
+                                  <div style={{marginTop:6,display:"flex",flexWrap:"wrap" as const,gap:4}}>
+                                    {([...new Set(previewW.map((p:any)=>p.tanggal))] as string[]).map((tgl:string)=>{
+                                      const dayRows=previewW.filter((p:any)=>p.tanggal===tgl);
+                                      const org=dayRows.reduce((a:number,b:any)=>a+b.total_menit_hari,0);
+                                      const kap=kapasitasMap[tgl]||0;
+                                      const pct=kap>0?Math.round(org/kap*100):0;
+                                      const color=pct>=90?"#dc2626":pct>=70?"#d97706":"#16a34a";
+                                      return(
+                                        <div key={tgl} style={{padding:"3px 8px",borderRadius:5,border:`1px solid ${color}30`,background:`${color}10`,fontSize:10}}>
+                                          <div style={{fontWeight:600}}>{new Date(tgl).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
+                                          <div style={{color}}>{org}/{kap} org ({pct}%)</div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      ):(
+                      <div>
                       {allWPs.map(wp=>{
                         const wpColor=WP_COLORS[wp]||{color:"#64748b",bg:"#f1f5f9"};
                         const key=`${wo.wo}_${wp}`;
@@ -9511,6 +9571,8 @@ function FCSScheduleTab({woData,user}:any){
                           </div>
                         );
                       })}
+                    </div>
+                  )}
                     </div>
                   )}
                   {selPanels.length>0&&(
