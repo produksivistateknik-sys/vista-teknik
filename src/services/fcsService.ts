@@ -412,6 +412,146 @@ export async function updateFCSStatus(id: number, status: string, approvedBy?: s
   return { success: !error, error }
 }
 
+// ===== WIRING CONTROL/WIRING POWER: Generate berdasarkan bobot =====
+export async function generateFCSWiring(params: {
+  woId: number
+  woNumber: string
+  proyek: string
+  panelId: number
+  panelNama: string
+  tipePanel: string
+  jenisPekerjaan: string
+  tanggalMulai: string
+  bobot: string // EASY | MEDIUM | HARD | VERY_HARD
+  jumlahOrang: number
+  generatedBy: string
+}): Promise<{ success: boolean; count: number; error?: string }> {
+  const { woId, woNumber, proyek, panelId, panelNama, tipePanel, jenisPekerjaan, tanggalMulai, bobot, jumlahOrang, generatedBy } = params
+
+  const BOBOT_HARI_ORANG: Record<string, number> = {
+    EASY: 1, MEDIUM: 2, HARD: 3, VERY_HARD: 4
+  }
+
+  const totalHariOrang = BOBOT_HARI_ORANG[bobot] || 1
+  // Hitung jumlah hari: ceil(totalHariOrang / jumlahOrang)
+  const jumlahHari = Math.ceil(totalHariOrang / jumlahOrang)
+
+  try {
+    // Hapus data lama untuk panel ini
+    await supabase
+      .from('fcs_schedule')
+      .delete()
+      .eq('wo_id', woId)
+      .eq('panel_id', panelId)
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+
+    // Ambil kapasitas override (dalam satuan orang) untuk 60 hari ke depan
+    const addDays = (date: string, n: number) => {
+      const d = new Date(date); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10)
+    }
+    const tanggalAkhir = addDays(tanggalMulai, 60)
+    const { data: overrideData } = await supabase
+      .from('fcs_kapasitas_override')
+      .select('tanggal, jumlah_orang, tipe_kapasitas')
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+      .gte('tanggal', tanggalMulai)
+      .lte('tanggal', tanggalAkhir)
+
+    // Kapasitas map: tanggal -> jumlah orang tersedia
+    const kapasitasMap: Record<string, number> = {}
+    ;(overrideData || []).forEach((row: any) => {
+      if (row.tipe_kapasitas === 'orang') {
+        kapasitasMap[row.tanggal] = Number(row.jumlah_orang)
+      }
+    })
+
+    // Kapasitas terpakai dari WO lain
+    const { data: existingData } = await supabase
+      .from('fcs_schedule')
+      .select('tanggal, qty_hari')
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+      .gte('tanggal', tanggalMulai)
+      .lte('tanggal', tanggalAkhir)
+      .neq('status', 'cancelled')
+
+    const kapTerpakai: Record<string, number> = {}
+    ;(existingData || []).forEach((row: any) => {
+      kapTerpakai[row.tanggal] = (kapTerpakai[row.tanggal] || 0) + Number(row.qty_hari)
+    })
+
+    // Generate jadwal: cari hari-hari yang punya kapasitas orang cukup
+    const items: any[] = []
+    let sisaHari = jumlahHari
+    let cur = tanggalMulai
+    let attempts = 0
+    let urutan = 1
+
+    while (sisaHari > 0 && attempts < 90) {
+      const kapHari = kapasitasMap[cur]
+      if (kapHari !== undefined && kapHari > 0) {
+        const terpakai = kapTerpakai[cur] || 0
+        const sisaKapasitas = kapHari - terpakai
+        if (sisaKapasitas >= jumlahOrang) {
+          // Hari ini cukup untuk jumlahOrang yang dibutuhkan
+          items.push({
+            wo_id: woId,
+            wo_number: woNumber,
+            proyek,
+            panel_id: panelId,
+            panel_nama: panelNama,
+            tipe_panel: tipePanel,
+            kode_komponen: bobot, // pakai kode_komponen untuk simpan bobot
+            nama_komponen: `Wiring ${bobot.replace('_', ' ')}`,
+            wp: 'WP1',
+            jenis_pekerjaan: jenisPekerjaan,
+            tanggal: cur,
+            qty_total: jumlahOrang,
+            qty_hari: jumlahOrang,
+            menit_per_pcs: 0,
+            total_menit: jumlahOrang, // repurpose: simpan jumlah orang
+            status: 'planning',
+            urutan,
+            generated_by: generatedBy,
+          })
+          kapTerpakai[cur] = (kapTerpakai[cur] || 0) + jumlahOrang
+          sisaHari--
+          urutan++
+        }
+      }
+      cur = addDays(cur, 1)
+      attempts++
+    }
+
+    // Kalau kapasitas habis, overflow ke hari terakhir
+    if (sisaHari > 0 && items.length > 0) {
+      const lastTanggal = items[items.length - 1].tanggal
+      for (let i = 0; i < sisaHari; i++) {
+        items.push({
+          wo_id: woId, wo_number: woNumber, proyek,
+          panel_id: panelId, panel_nama: panelNama, tipe_panel: tipePanel,
+          kode_komponen: bobot, nama_komponen: `Wiring ${bobot.replace('_', ' ')}`,
+          wp: 'WP1', jenis_pekerjaan: jenisPekerjaan,
+          tanggal: lastTanggal, qty_total: jumlahOrang, qty_hari: jumlahOrang,
+          menit_per_pcs: 0, total_menit: jumlahOrang,
+          status: 'planning', urutan, generated_by: generatedBy,
+        })
+        urutan++
+      }
+    }
+
+    if (items.length === 0) {
+      return { success: false, count: 0, error: `Tidak ada kapasitas ${jenisPekerjaan} yang diatur. Set Override Tanggal (satuan orang) dulu.` }
+    }
+
+    const { error: insertError } = await supabase.from('fcs_schedule').insert(items)
+    if (insertError) return { success: false, count: 0, error: insertError.message }
+
+    return { success: true, count: items.length }
+  } catch (err: any) {
+    return { success: false, count: 0, error: err.message }
+  }
+}
+
 export async function syncFCSToRawSchedule(
   woNumber: string,
   jenisPekerjaan: string,

@@ -9,7 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang } from './services/fcsService'
+import { generateFCSSchedule, generateFCSWiring, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang } from './services/fcsService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -5131,6 +5131,16 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const [fcsResult,setFcsResult]=useState<any>(null);
   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
   const [selectedPanelIds,setSelectedPanelIds]=useState<number[]>([]);
+  // State bobot per panel untuk WIRING CONTROL/WIRING POWER
+  // format: {panelId: {bobot: "EASY"|"MEDIUM"|"HARD"|"VERY_HARD", jumlahOrang: number}}
+  const [panelBobot,setPanelBobot]=useState<Record<number,{bobot:string,jumlahOrang:number}>>({});
+  const WIRING_PROSES=["WIRING CONTROL","WIRING POWER"];
+  const BOBOT_CONFIG:Record<string,{label:string,hariOrang:number,color:string,bg:string}>={
+    EASY:{label:"Easy",hariOrang:1,color:"#16a34a",bg:"#f0fdf4"},
+    MEDIUM:{label:"Medium",hariOrang:2,color:"#d97706",bg:"#fffbeb"},
+    HARD:{label:"Hard",hariOrang:3,color:"#dc2626",bg:"#fef2f2"},
+    VERY_HARD:{label:"Very Hard",hariOrang:4,color:"#7c3aed",bg:"#f5f3ff"},
+  };
   const [selectedKomponen,setSelectedKomponen]=useState<string[]>([]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
@@ -5622,7 +5632,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
         </Card>
       )}
       {fcsModal&&(
-        <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);}} width={520}>
+        <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);setPanelBobot({});}} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
             <strong>{fcsModal.proyek}</strong> · {(fcsModal.panels||[]).length} panel · Target: {fcsModal.target}
           </div>
@@ -5669,7 +5679,38 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   </select>
                 </div>
               </div>
-              {(()=>{
+              {WIRING_PROSES.includes(fcsForm.jenisPekerjaan)&&selectedPanelIds.length>0&&(
+                <div style={{marginBottom:14}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#6366f1",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>⚡ Bobot Pekerjaan per Panel</div>
+                  <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:200,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
+                    {(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id)).map((p:any)=>{
+                      const bobot=panelBobot[p.id]||{bobot:"MEDIUM",jumlahOrang:1};
+                      const cfg=BOBOT_CONFIG[bobot.bobot];
+                      const hariTotal=Math.ceil(cfg.hariOrang/bobot.jumlahOrang);
+                      return(
+                        <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,background:cfg.bg,border:`1px solid ${cfg.color}30`}}>
+                          <span style={{fontSize:12,fontWeight:600,color:"#1e293b",flex:1,minWidth:0,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{p.nama}</span>
+                          <select value={bobot.bobot} onChange={e=>setPanelBobot(prev=>({...prev,[p.id]:{...bobot,bobot:e.target.value}}))}
+                            style={{padding:"3px 6px",borderRadius:5,border:`1.5px solid ${cfg.color}`,background:cfg.bg,color:cfg.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                            {Object.entries(BOBOT_CONFIG).map(([k,v])=>(
+                              <option key={k} value={k}>{v.label} ({v.hariOrang} hari-orang)</option>
+                            ))}
+                          </select>
+                          <div style={{display:"flex",alignItems:"center",gap:4}}>
+                            <span style={{fontSize:10,color:"#64748b"}}>Orang:</span>
+                            <input type="number" min="1" max="10" value={bobot.jumlahOrang}
+                              onChange={e=>setPanelBobot(prev=>({...prev,[p.id]:{...bobot,jumlahOrang:Math.max(1,parseInt(e.target.value)||1)}}))}
+                              style={{width:40,padding:"3px 4px",borderRadius:5,border:"1.5px solid #e2e8f0",fontSize:11,textAlign:"center" as const}}/>
+                          </div>
+                          <span style={{fontSize:10,color:cfg.color,fontWeight:700,minWidth:50}}>{hariTotal} hari</span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>Hari = Bobot ÷ Jumlah Orang (dibulatkan ke atas)</div>
+                </div>
+              )}
+              {!WIRING_PROSES.includes(fcsForm.jenisPekerjaan)&&(()=>{
                 // Komponen yang relevan untuk proses+tipe panel yang dipilih
                 const selectedPanels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
                 const tipeSet=new Set(selectedPanels.map((p:any)=>p.tipe));
@@ -5749,15 +5790,30 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   const panels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
                   let totalCount=0;const errors:string[]=[];
                   for(const panel of panels){
-                    const res=await generateFCSSchedule({
-                      woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                      panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                      checklist:panel.checklist||{},
-                      jenisPekerjaan:fcsForm.jenisPekerjaan,
-                      tanggalMulai:fcsForm.tanggalMulai,
-                      generatedBy:uname,
-                      selectedKomponen:selectedKomponen.length>0?selectedKomponen:null,
-                    });
+                    let res:any;
+                    if(WIRING_PROSES.includes(fcsForm.jenisPekerjaan)){
+                      // Generate wiring berdasarkan bobot per panel
+                      const bobot=panelBobot[panel.id]||{bobot:"MEDIUM",jumlahOrang:1};
+                      res=await generateFCSWiring({
+                        woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
+                        panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
+                        jenisPekerjaan:fcsForm.jenisPekerjaan,
+                        tanggalMulai:fcsForm.tanggalMulai,
+                        bobot:bobot.bobot,
+                        jumlahOrang:bobot.jumlahOrang,
+                        generatedBy:uname,
+                      });
+                    } else {
+                      res=await generateFCSSchedule({
+                        woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
+                        panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
+                        checklist:panel.checklist||{},
+                        jenisPekerjaan:fcsForm.jenisPekerjaan,
+                        tanggalMulai:fcsForm.tanggalMulai,
+                        generatedBy:uname,
+                        selectedKomponen:selectedKomponen.length>0?selectedKomponen:null,
+                      });
+                    }
                     if(res.success)totalCount+=res.count;
                     else errors.push(panel.nama+": "+(res.error||"Error"));
                   }
