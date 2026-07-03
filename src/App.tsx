@@ -9579,6 +9579,37 @@ function FCSScheduleTab({woData,user}:any){
                   )}
                     </div>
                   )}
+                  {/* Summary total orang per tanggal untuk WIRING */}
+                  {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)&&selPanels.length>0&&Object.keys(wpPreview[wo.wo]||{}).length>0&&(()=>{
+                    // Gabungkan semua preview panel per tanggal
+                    const summaryMap:{[tgl:string]:number}={};
+                    Object.entries(wpPreview[wo.wo]||{}).forEach(([k,rows]:any)=>{
+                      if(!k.includes('_bobot'))return;
+                      rows.forEach((r:any)=>{summaryMap[r.tanggal]=(summaryMap[r.tanggal]||0)+r.total_menit_hari;});
+                    });
+                    const tanggalList=Object.keys(summaryMap).sort();
+                    if(tanggalList.length===0)return null;
+                    return(
+                      <div style={{marginBottom:12,padding:"10px 12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#6366f1",marginBottom:8}}>📊 Total Kapasitas Orang per Hari</div>
+                        <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
+                          {tanggalList.map(tgl=>{
+                            const total=summaryMap[tgl];
+                            const kap=kapasitasMap[tgl]||0;
+                            const pct=kap>0?Math.round(total/kap*100):0;
+                            const color=pct>=100?"#dc2626":pct>=80?"#d97706":"#16a34a";
+                            return(
+                              <div key={tgl} style={{padding:"6px 10px",borderRadius:6,border:`1.5px solid ${color}30`,background:`${color}10`,textAlign:"center" as const,minWidth:80}}>
+                                <div style={{fontSize:10,fontWeight:600,color:"#1e293b"}}>{new Date(tgl).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
+                                <div style={{fontSize:13,fontWeight:700,color}}>{total}/{kap} org</div>
+                                <div style={{fontSize:9,color:"#94a3b8"}}>{pct}%</div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
                   {selPanels.length>0&&(
                     <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                       <button onClick={fetchAll} style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
