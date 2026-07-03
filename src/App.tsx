@@ -9489,7 +9489,7 @@ function FCSScheduleTab({woData,user}:any){
                                   return(
                                     <div key={tgl} style={{padding:"4px 8px",borderRadius:6,border:`1px solid ${color}30`,background:`${color}10`,fontSize:10}}>
                                       <div style={{fontWeight:600,color:"#1e293b"}}>{new Date(tgl).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>
-                                      <div style={{color}}>{mnt} mnt ({pct}%)</div>
+                                      <div style={{color}}>{isProsesSatuanOrang?`${mnt}/${kap} orang (${pct}%)`:`${mnt} mnt (${pct}%)`}</div>
                                     </div>
                                   );
                                 })}
