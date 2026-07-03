@@ -9240,6 +9240,10 @@ function FCSScheduleTab({woData,user}:any){
           if(sisa>=kebutuhanOrang){
             result.push({...row,tanggal:cur,qty_hari:kebutuhanOrang,total_menit_hari:kebutuhanOrang});
             tracker[cur]=(tracker[cur]||0)+kebutuhanOrang;
+            // Advance cur ke hari berikutnya supaya row berikutnya tidak masuk di tanggal yang sama
+            cur=addDaysStr(cur,1);
+            let skipNext=0;
+            while(skipNext<30&&(!kapasitasMap[cur]||kapasitasMap[cur]<=0)){cur=addDaysStr(cur,1);skipNext++;}
             break;
           }
           cur=addDaysStr(cur,1);
