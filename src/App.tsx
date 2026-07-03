@@ -4645,7 +4645,20 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         }} style={{background:'#eff6ff',border:'1px solid #bfdbfe',cursor:'pointer',color:'#2563eb',fontSize:12,borderRadius:6,padding:'2px 10px',fontWeight:600}}>✏️ Edit</button><button onClick={()=>removeEntry(e.wp)} style={{background:'none',border:'none',cursor:'pointer',color:'#fca5a5',fontSize:13}}>✕ Hapus</button></div>
                     </div>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
-                      {e.komponen.map(k=>{const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);return <span key={k} style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{item?.nama||k}</span>;})}
+                      {e.komponen.map(k=>{
+                        // Handle format wiring khusus: __wiring_{org}org_{bobot}
+                        if(k.startsWith("__wiring_")){
+                          const parts=k.replace("__wiring_","").split("_");
+                          const org=parts[0]; // misal "2org"
+                          const bobot=parts.slice(1).join("_"); // misal "MEDIUM" atau "VERY_HARD"
+                          const bobotLabel=bobot.replace("_"," ");
+                          const bobotColor:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
+                          const bc=bobotColor[bobot]||"#6366f1";
+                          return <span key={k} style={{background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>⚡ {org} · {bobotLabel}</span>;
+                        }
+                        const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
+                        return <span key={k} style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{item?.nama||k}</span>;
+                      })}
                     </div>
                   </div>
                 );

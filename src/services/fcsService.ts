@@ -576,12 +576,18 @@ export async function syncFCSToRawSchedule(
 
     const panelScheduleMap: Record<number, Record<string, Record<string, string[]>>> = {}
 
+    // Deteksi apakah proses ini wiring (satuan orang, bukan komponen)
+    const isWiringProses = ['WIRING CONTROL', 'WIRING POWER'].includes(jenisPekerjaan)
+
     fcsData.forEach((row: any) => {
       if (selectedWP && selectedWP.length > 0 && !selectedWP.includes(row.wp)) return
       const panelId = row.panel_id
       const tanggal = row.tanggal
       const wp = row.wp
-      const kode = row.kode_komponen
+      // Untuk wiring: simpan sebagai token khusus __wiring_{org}org_{bobot}
+      const kode = isWiringProses
+        ? `__wiring_${row.qty_hari}org_${row.kode_komponen}`
+        : row.kode_komponen
 
       if (!panelScheduleMap[panelId]) panelScheduleMap[panelId] = {}
       if (!panelScheduleMap[panelId][tanggal]) panelScheduleMap[panelId][tanggal] = {}
