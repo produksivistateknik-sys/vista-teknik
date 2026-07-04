@@ -336,7 +336,13 @@ function woOverall(wo){
   return Math.round(sum/vals.length);
 }
 
-const TODAY=new Date().toISOString().slice(0,10);
+function getLocalDateStr(d=new Date()){
+  const y=d.getFullYear();
+  const m=String(d.getMonth()+1).padStart(2,"0");
+  const day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+const TODAY=getLocalDateStr();
 const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
 function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
 function isDelayed(t){ return daysUntil(t)<0; }
@@ -1759,7 +1765,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
     logout:    {label:"Logout",    color:"#5F5E5A",bg:"#f1f5f9"},
     distribute:{label:"Distribusi",color:"#085041",bg:"#E1F5EE"},
   };
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=getLocalDateStr();
   const adminList=[...new Set(activityLog.map(a=>a.admin_nama||a.user_name).filter(Boolean))];
   const moduleList=[...new Set(activityLog.map(a=>a.module||a.jenis).filter(Boolean))];
   const actionList=[...new Set(activityLog.map(a=>a.action_type).filter(Boolean))];
@@ -5204,7 +5210,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
         totalKomponen:Object.keys(p.checklist||{}).length,
       }));
 
-      const tanggalSelesaiAktual=new Date().toISOString().slice(0,10);
+      const tanggalSelesaiAktual=getLocalDateStr();
       const selisihHari=Math.round((new Date(tanggalSelesaiAktual).getTime()-new Date(wo.target).getTime())/86400000);
       const statusKetepatan=selisihHari<=0?"tepat_waktu":"telat";
 
@@ -5873,7 +5879,7 @@ function MaintenancePageTab({user}:any){
       setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setLoading(false);
     };load();
   },[]);
-  const today=new Date().toISOString().slice(0,10);
+  const today=getLocalDateStr();
   const terlambat=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<today);
   const mingguIni=rutinList.filter((r:any)=>{
     if(!r.jatuh_tempo||r.jatuh_tempo<today)return false;
@@ -6102,7 +6108,7 @@ function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlam
 };
 
   const markDone=async(item:any)=>{
-    const todayStr=new Date().toISOString().slice(0,10);
+    const todayStr=getLocalDateStr();
     const nextDate=calcNext(todayStr,item.frekuensi);
     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
     const{data}=await supabase.from("maintenance_rutin").update({
@@ -10267,7 +10273,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   useEffect(() => {
     const fetchMaintAlert = async () => {
       const h3 = new Date(); h3.setDate(h3.getDate() + 3)
-      const { data } = await supabase.from('maintenance_rutin').select('id,jatuh_tempo').eq('is_active', true).lte('jatuh_tempo', h3.toISOString().slice(0,10))
+      const { data } = await supabase.from('maintenance_rutin').select('id,jatuh_tempo').eq('is_active', true).lte('jatuh_tempo', getLocalDateStr(h3))
       setMaintenanceOverdueCount(data?.length || 0)
     }
     fetchMaintAlert()
