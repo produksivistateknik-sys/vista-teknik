@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase'
+import { KOMPONEN_PROSES_MAP } from '../App'
 
 interface FCSProcessTime {
   kode_komponen: string
@@ -491,6 +492,20 @@ export async function syncFCSToRawSchedule(
     // Deteksi apakah proses ini wiring (satuan orang, bukan komponen)
     const isWiringProses = ['WIRING CONTROL', 'WIRING POWER'].includes(jenisPekerjaan)
 
+    // Untuk wiring: ambil checklist tiap panel biar bisa sisipin komponen REAL (filter KOMPONEN_PROSES_MAP)
+    // di samping token bobot - biar operator bisa milih & tracking progress per-komponen asli.
+    let panelChecklistMap: Record<number, any> = {}
+    if (isWiringProses) {
+      const wiringPanelIds = [...new Set(fcsData.map((r: any) => r.panel_id))]
+      const { data: panelsData } = await supabase
+        .from('panels')
+        .select('id, checklist')
+        .in('id', wiringPanelIds)
+      ;(panelsData || []).forEach((p: any) => {
+        panelChecklistMap[p.id] = p.checklist || {}
+      })
+    }
+
     fcsData.forEach((row: any) => {
       if (selectedWP && selectedWP.length > 0 && !selectedWP.includes(row.wp)) return
       const panelId = row.panel_id
@@ -505,6 +520,20 @@ export async function syncFCSToRawSchedule(
       if (!panelScheduleMap[panelId][tanggal]) panelScheduleMap[panelId][tanggal] = {}
       if (!panelScheduleMap[panelId][tanggal][wp]) panelScheduleMap[panelId][tanggal][wp] = []
       panelScheduleMap[panelId][tanggal][wp].push(kode)
+
+      // Untuk wiring: ikutan push komponen REAL (bukan cuma token) biar operator bisa
+      // milih & tracking progress per-komponen di Vista Pekerja
+      if (isWiringProses) {
+        const checklist = panelChecklistMap[panelId] || {}
+        Object.entries(checklist).forEach(([kodeKomp, clVal]: any) => {
+          const prosesKomp = KOMPONEN_PROSES_MAP[kodeKomp] || []
+          if (!prosesKomp.includes(jenisPekerjaan)) return
+          if ((clVal?.qty || 0) <= 0) return
+          if (!panelScheduleMap[panelId][tanggal][wp].includes(kodeKomp)) {
+            panelScheduleMap[panelId][tanggal][wp].push(kodeKomp)
+          }
+        })
+      }
     })
 
     let updatedCount = 0

@@ -118,7 +118,7 @@ const QTY_DIVISI = ["mekanik","painting"];
 // ─────────────────────────────────────────────────────────────────────────────
 // MAPPING: KODE KOMPONEN → PROSES YANG RELEVAN
 // ─────────────────────────────────────────────────────────────────────────────
-const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
+export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   // FS & F3B - WP1
   "FS.1":  ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
   "FS.2":  ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
