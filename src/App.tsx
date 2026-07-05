@@ -7368,7 +7368,33 @@ function KapasitasPekerjaanTab(){
     setEditKap({...item,hari_kerja:updated});
   };
 
-  const filteredProcess=processList.filter(p=>{
+  const combosList=useMemo(()=>{
+    const combos:any[]=[];
+    ALL_TIPE.forEach((tipe:string)=>{
+      const cfg=(PANEL_TYPES as any)[tipe];
+      if(!cfg)return;
+      cfg.wps.forEach((wpObj:any)=>{
+        wpObj.items.forEach((item:any)=>{
+          ALL_PROSES.forEach((proses:string)=>{
+            if(!isKomponenRelevant(item.kode,proses))return;
+            const existing=processList.find((p:any)=>p.kode_komponen===item.kode&&p.tipe_panel===tipe&&p.jenis_pekerjaan===proses);
+            combos.push({
+              id:existing?existing.id:null,
+              kode_komponen:item.kode,
+              nama_komponen:item.nama,
+              tipe_panel:tipe,
+              wp:wpObj.wp,
+              jenis_pekerjaan:proses,
+              menit_per_pcs:existing?Number(existing.menit_per_pcs):0,
+            });
+          });
+        });
+      });
+    });
+    return combos;
+  },[processList]);
+
+  const filteredProcess=combosList.filter((p:any)=>{
     const matchTipe=filterTipe==="ALL"||p.tipe_panel===filterTipe;
     const matchPek=filterPekerjaan==="ALL"||p.jenis_pekerjaan===filterPekerjaan;
     const matchSearch=!search||p.nama_komponen.toLowerCase().includes(search.toLowerCase())||p.kode_komponen.toLowerCase().includes(search.toLowerCase());
@@ -7444,10 +7470,7 @@ function KapasitasPekerjaanTab(){
                 {importProcResult.error?`Gagal: ${importProcResult.error}`:`✓ ${importProcResult.updated} diupdate, ${importProcResult.inserted} ditambah`}
               </span>
             )}
-            <button onClick={()=>{setShowAddProc(true);setEditProc(null);setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipe==="ALL"?"FS":filterTipe,wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});}}
-              style={{height:30,padding:"0 14px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-              + Tambah
-            </button>
+
           </div>
 
           {/* Grouped by Jenis Pekerjaan */}
@@ -7486,7 +7509,7 @@ function KapasitasPekerjaanTab(){
                         const rBg=i%2===0?"#fff":"#f8fafc";
                         const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle"};
                         return(
-                          <tr key={p.id}>
+                          <tr key={`${p.tipe_panel}_${p.kode_komponen}_${p.jenis_pekerjaan}`}>
                             <td style={{...td,fontFamily:"monospace",fontWeight:700,color:"#1d4ed8"}}>{p.kode_komponen}</td>
                             <td style={{...td,fontWeight:500,color:"#1e293b"}}>{p.nama_komponen}</td>
                             <td style={{...td,textAlign:"center" as const}}>
@@ -7500,9 +7523,18 @@ function KapasitasPekerjaanTab(){
                                 onBlur={(e:any)=>{
                                   const val=Number(e.target.value)||0;
                                   if(val===p.menit_per_pcs)return;
-                                  supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",p.id).then(()=>{
-                                    setProcessList(prev=>prev.map((x:any)=>x.id===p.id?{...x,menit_per_pcs:val}:x));
-                                  });
+                                  if(p.id){
+                                    supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",p.id).then(()=>{
+                                      setProcessList(prev=>prev.map((x:any)=>x.id===p.id?{...x,menit_per_pcs:val}:x));
+                                    });
+                                  } else {
+                                    supabase.from("fcs_process_time").insert({
+                                      kode_komponen:p.kode_komponen,nama_komponen:p.nama_komponen,tipe_panel:p.tipe_panel,
+                                      wp:p.wp,jenis_pekerjaan:p.jenis_pekerjaan,menit_per_pcs:val,
+                                    }).select().single().then(({data,error}:any)=>{
+                                      if(!error&&data)setProcessList(prev=>[...prev,data]);
+                                    });
+                                  }
                                 }}
                                 onPaste={(e:any)=>{
                                   const text=e.clipboardData.getData("text");
@@ -7513,23 +7545,24 @@ function KapasitasPekerjaanTab(){
                                     const targetRow=groupItems[i+k];
                                     if(!targetRow)return;
                                     const val=parseFloat(v)||0;
-                                    supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",targetRow.id).then(()=>{
-                                      setProcessList(prev=>prev.map((x:any)=>x.id===targetRow.id?{...x,menit_per_pcs:val}:x));
-                                    });
+                                    if(targetRow.id){
+                                      supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",targetRow.id).then(()=>{
+                                        setProcessList(prev=>prev.map((x:any)=>x.id===targetRow.id?{...x,menit_per_pcs:val}:x));
+                                      });
+                                    } else {
+                                      supabase.from("fcs_process_time").insert({
+                                        kode_komponen:targetRow.kode_komponen,nama_komponen:targetRow.nama_komponen,tipe_panel:targetRow.tipe_panel,
+                                        wp:targetRow.wp,jenis_pekerjaan:targetRow.jenis_pekerjaan,menit_per_pcs:val,
+                                      }).select().single().then(({data,error}:any)=>{
+                                        if(!error&&data)setProcessList(prev=>[...prev,data]);
+                                      });
+                                    }
                                   });
                                 }}
                                 style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #e2e8f0",
                                   textAlign:"center" as const,fontWeight:800,fontSize:13,fontFamily:"'DM Mono',monospace",
                                   color:p.menit_per_pcs>0?"#1d4ed8":"#94a3b8",outline:"none"}}/>
                               <span style={{fontSize:10,color:"#94a3b8",marginLeft:3}}>mnt</span>
-                            </td>
-                            <td style={{...td,textAlign:"center" as const}}>
-                              <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                                <button onClick={()=>{setEditProc(p);setShowAddProc(true);setProcForm({kode_komponen:p.kode_komponen,nama_komponen:p.nama_komponen,tipe_panel:p.tipe_panel,wp:p.wp,jenis_pekerjaan:p.jenis_pekerjaan,menit_per_pcs:p.menit_per_pcs});}}
-                                  style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
-                                <button onClick={()=>deleteProcess(p.id)}
-                                  style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
-                              </div>
                             </td>
                           </tr>
                         );
@@ -7544,8 +7577,8 @@ function KapasitasPekerjaanTab(){
           {filteredProcess.length===0&&(
             <div style={{textAlign:"center",padding:40,color:"#94a3b8",background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
               <div style={{fontSize:28,marginBottom:8}}>📋</div>
-              <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Belum ada data process time untuk {filterTipe}</div>
-              <div style={{fontSize:11}}>Klik tombol + Tambah untuk input data manual</div>
+              <div style={{fontWeight:600,fontSize:13,marginBottom:4}}>Tidak ada komponen untuk filter ini</div>
+              <div style={{fontSize:11}}>Coba ganti filter tipe panel atau jenis pekerjaan</div>
             </div>
           )}
         </div>
