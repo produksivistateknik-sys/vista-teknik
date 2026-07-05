@@ -7489,7 +7489,31 @@ function KapasitasPekerjaanTab(){
                               <span style={{background:"#f1f5f9",color:"#475569",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{p.wp}</span>
                             </td>
                             <td style={{...td,textAlign:"center" as const}}>
-                              <span style={{fontWeight:800,fontSize:13,color:p.menit_per_pcs>0?"#1d4ed8":"#94a3b8"}}>{p.menit_per_pcs}</span>
+                              <input type="number" defaultValue={p.menit_per_pcs}
+                                onBlur={(e:any)=>{
+                                  const val=Number(e.target.value)||0;
+                                  if(val===p.menit_per_pcs)return;
+                                  supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",p.id).then(()=>{
+                                    setProcessList(prev=>prev.map((x:any)=>x.id===p.id?{...x,menit_per_pcs:val}:x));
+                                  });
+                                }}
+                                onPaste={(e:any)=>{
+                                  const text=e.clipboardData.getData("text");
+                                  const values=text.split(/\r?\n|\t/).map((v:string)=>v.trim()).filter((v:string)=>v!=="");
+                                  if(values.length<=1)return;
+                                  e.preventDefault();
+                                  values.forEach((v:string,k:number)=>{
+                                    const targetRow=groupItems[i+k];
+                                    if(!targetRow)return;
+                                    const val=parseFloat(v)||0;
+                                    supabase.from("fcs_process_time").update({menit_per_pcs:val}).eq("id",targetRow.id).then(()=>{
+                                      setProcessList(prev=>prev.map((x:any)=>x.id===targetRow.id?{...x,menit_per_pcs:val}:x));
+                                    });
+                                  });
+                                }}
+                                style={{width:55,padding:"4px 6px",borderRadius:6,border:"1px solid #e2e8f0",
+                                  textAlign:"center" as const,fontWeight:800,fontSize:13,fontFamily:"'DM Mono',monospace",
+                                  color:p.menit_per_pcs>0?"#1d4ed8":"#94a3b8",outline:"none"}}/>
                               <span style={{fontSize:10,color:"#94a3b8",marginLeft:3}}>mnt</span>
                             </td>
                             <td style={{...td,textAlign:"center" as const}}>
