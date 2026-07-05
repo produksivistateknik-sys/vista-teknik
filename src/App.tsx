@@ -1519,19 +1519,35 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
   const distributeAll=async()=>{
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
-      if(getRenharEntry(task))continue;
-      const result=await createRenhar({
-        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
-        proyek:task.proyek,panel:task.panel,proses:task.proses,
-        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
-        tanggal:task.tanggal,divisi,pekerja:[],
-      });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      const existing=getRenharEntry(task);
+      const allKode=task.komponen||[];
+      if(existing){
+        const releasedLama=existing.komponen_released||[];
+        const releasedBaru=[...new Set([...releasedLama,...allKode])];
+        if(releasedBaru.length===releasedLama.length)continue;
+        await updateRenhar(existing.id,{komponen_released:releasedBaru});
+        setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r));
+      } else {
+        const result=await createRenhar({
+          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+          proyek:task.proyek,panel:task.panel,proses:task.proses,
+          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+          tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
+        });
+        if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      }
     }
   };
   const isDist=(task)=>!!getRenharEntry(task);
-  const distCount=filteredTasks.filter(isDist).length;
-  const allDist=filteredTasks.length>0&&distCount===filteredTasks.length;
+  const countKomponen=(list)=>list.reduce((s,t)=>s+(t.komponen||[]).length,0);
+  const countReleased=(list)=>list.reduce((s,t)=>{
+    const rh=getRenharEntry(t);
+    const released=rh?.komponen_released||[];
+    return s+(t.komponen||[]).filter(k=>released.includes(k)).length;
+  },0);
+  const distCount=countReleased(filteredTasks);
+  const totalKompFiltered=countKomponen(filteredTasks);
+  const allDist=totalKompFiltered>0&&distCount===totalKompFiltered;
   return(
     <div className="fi">
       <Card style={{marginBottom:10,padding:"10px 14px"}}>
@@ -1559,9 +1575,9 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>📅 {fmtDateFull(selDate)}</div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-          {filteredTasks.length>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{filteredTasks.length} terdistribusi</span>}
-          {!allDist&&filteredTasks.length>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>✓ Distribusi Semua</Btn>}
-          {allDist&&filteredTasks.length>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Terdistribusi</span>}
+          {totalKompFiltered>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{totalKompFiltered} dirilis</span>}
+          {!allDist&&totalKompFiltered>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>📤 Rilis Semua</Btn>}
+          {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
@@ -1583,7 +1599,8 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
         const pc=PROSES_COLOR[proses]||"#64748b";
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
-        const distTasks=tasks.filter(isDist).length;
+        const distTasks=countReleased(tasks);
+        const totalTasksKomp=countKomponen(tasks);
         const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
@@ -1593,7 +1610,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
                 <span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>
               </div>
-              <span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{tasks.length} terdistribusi</span>
+              <span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>
             </div>
             <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -1616,7 +1633,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
                     const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
-                    const isWiringTask=PROSES_ORANG_RAW_GLOBAL.includes(t.proses);
+                    const isWiringTask=true; // semua proses pakai flow Rilis/Tarik per-komponen (operator pilih sendiri di Vista Pekerja)
 
                     if(isWiringTask){
                       const ppk=rh?.pekerja_per_komponen||{};
