@@ -7188,8 +7188,6 @@ function KapasitasPekerjaanTab(){
   const [filterTipe,setFilterTipe]=useState("FS");
   const [filterPekerjaan,setFilterPekerjaan]=useState("ALL");
   const [search,setSearch]=useState("");
-  const [importingProc,setImportingProc]=useState(false);
-  const [importProcResult,setImportProcResult]=useState<{updated:number,inserted:number,error?:string}|null>(null);
 
   const HARI_LABEL:any={1:"Sen",2:"Sel",3:"Rab",4:"Kam",5:"Jum",6:"Sab",7:"Min"};
   const ALL_PROSES=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
@@ -7295,73 +7293,6 @@ function KapasitasPekerjaanTab(){
     setProcessList(prev=>prev.filter(p=>p.id!==id));
   };
 
-  const exportProcessTimeExcel=()=>{
-    const XLSX=(window as any).XLSX;
-    if(!XLSX){alert("SheetJS belum dimuat, coba refresh halaman.");return;}
-    const wb=XLSX.utils.book_new();
-    ALL_TIPE.forEach((tipe:string)=>{
-      const rows:any[]=[["KODE","NAMA KOMPONEN","WP","JENIS PEKERJAAN","MENIT/PCS"]];
-      processList.filter((p:any)=>p.tipe_panel===tipe).forEach((p:any)=>{
-        rows.push([p.kode_komponen,p.nama_komponen,p.wp,p.jenis_pekerjaan,p.menit_per_pcs]);
-      });
-      if(rows.length>1){
-        const ws=XLSX.utils.aoa_to_sheet(rows);
-        XLSX.utils.book_append_sheet(wb,ws,tipe);
-      }
-    });
-    XLSX.writeFile(wb,`Kapasitas_Pekerjaan_${TODAY}.xlsx`);
-  };
-
-  const importProcessTimeExcel=(file:File)=>{
-    const XLSX=(window as any).XLSX;
-    if(!XLSX){alert("SheetJS belum dimuat, coba refresh halaman.");return;}
-    setImportingProc(true);
-    setImportProcResult(null);
-    const reader=new FileReader();
-    reader.onload=async(evt:any)=>{
-      try{
-        const data=new Uint8Array(evt.target.result);
-        const wb=XLSX.read(data,{type:"array"});
-        let updated=0,inserted=0;
-        for(const sheetName of wb.SheetNames){
-          const tipe=sheetName.trim();
-          if(!ALL_TIPE.includes(tipe))continue;
-          const ws=wb.Sheets[sheetName];
-          const rows=XLSX.utils.sheet_to_json(ws,{header:1}) as any[][];
-          for(let i=1;i<rows.length;i++){
-            const row=rows[i];
-            if(!row||!row[0])continue;
-            const kode=String(row[0]).trim();
-            const nama=String(row[1]||"").trim();
-            const wp=String(row[2]||"").trim();
-            const jenis=String(row[3]||"").trim();
-            const menit=Number(row[4])||0;
-            if(!kode||!jenis)continue;
-            const existing=processList.find((p:any)=>p.kode_komponen===kode&&p.tipe_panel===tipe&&p.jenis_pekerjaan===jenis);
-            if(existing){
-              if(existing.menit_per_pcs!==menit||existing.nama_komponen!==nama){
-                await supabase.from("fcs_process_time").update({menit_per_pcs:menit,nama_komponen:nama||existing.nama_komponen}).eq("id",existing.id);
-                updated++;
-              }
-            } else {
-              await supabase.from("fcs_process_time").insert({
-                kode_komponen:kode,nama_komponen:nama||kode,tipe_panel:tipe,
-                wp:wp||"WP1",jenis_pekerjaan:jenis||"POTONG",menit_per_pcs:menit,
-              });
-              inserted++;
-            }
-          }
-        }
-        await fetchAll();
-        setImportProcResult({updated,inserted});
-      }catch(err:any){
-        setImportProcResult({updated:0,inserted:0,error:err.message});
-      }
-      setImportingProc(false);
-    };
-    reader.readAsArrayBuffer(file);
-  };
-
   const toggleHari=(item:any,hari:number)=>{
     const curr=item.hari_kerja||[];
     const updated=curr.includes(hari)?curr.filter((h:number)=>h!==hari):[...curr,hari].sort();
@@ -7456,20 +7387,6 @@ function KapasitasPekerjaanTab(){
               {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
             </select>
             <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filteredProcess.length} komponen</span>
-            <button onClick={exportProcessTimeExcel}
-              style={{height:30,padding:"0 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",color:"#16a34a",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-              📥 Export Excel
-            </button>
-            <label style={{height:30,padding:"0 14px",borderRadius:8,border:"1px solid #e2e8f0",background:importingProc?"#f1f5f9":"#fff",color:"#1d4ed8",fontSize:11,fontWeight:600,cursor:importingProc?"not-allowed":"pointer",fontFamily:"inherit",display:"flex",alignItems:"center"}}>
-              {importingProc?"Mengimpor...":"📤 Import Excel"}
-              <input type="file" accept=".xlsx,.xls" style={{display:"none"}} disabled={importingProc}
-                onChange={(e:any)=>{if(e.target.files?.[0])importProcessTimeExcel(e.target.files[0]);e.target.value="";}}/>
-            </label>
-            {importProcResult&&(
-              <span style={{fontSize:11,color:importProcResult.error?"#dc2626":"#16a34a",fontWeight:600}}>
-                {importProcResult.error?`Gagal: ${importProcResult.error}`:`✓ ${importProcResult.updated} diupdate, ${importProcResult.inserted} ditambah`}
-              </span>
-            )}
 
           </div>
 
