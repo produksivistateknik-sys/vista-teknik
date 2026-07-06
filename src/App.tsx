@@ -10742,14 +10742,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
               <div className="erp-topbar-right">
                 {/* Refresh global */}
-                <button onClick={refreshAll} disabled={isRefreshing}
-                  title="Refresh semua data"
+                <button onClick={()=>window.location.reload()}
+                  title="Hard refresh (muat ulang halaman)"
                   style={{width:26,height:26,border:"1px solid var(--border-color,#e5e8ed)",
                     borderRadius:5,background:"var(--bg-secondary,#f8f9fb)",
                     display:"flex",alignItems:"center",justifyContent:"center",
-                    cursor:isRefreshing?"not-allowed":"pointer",color:"var(--text-secondary,#64748b)"}}>
-                  <i className="ti ti-refresh" style={{fontSize:13,display:"inline-block",
-                    animation:isRefreshing?"spin .6s linear infinite":"none"}}/>
+                    cursor:"pointer",color:"var(--text-secondary,#64748b)"}}>
+                  <i className="ti ti-refresh" style={{fontSize:13,display:"inline-block"}}/>
                 </button>
 
                 {/* Dark mode toggle */}
