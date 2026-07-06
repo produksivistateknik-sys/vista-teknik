@@ -878,10 +878,18 @@ const QC_ITEMS_LAPORAN=[
   {key:"test",label:"QC Test"},
 ];
 
+const QC_STATUS_LIST=[
+  {key:"to_do",label:"To Do",color:"#64748b",bg:"#f1f5f9",icon:"ti ti-circle-dashed"},
+  {key:"in_progress",label:"In Progress",color:"#ea580c",bg:"#fff7ed",icon:"ti ti-loader-2"},
+  {key:"complete",label:"Complete",color:"#16a34a",bg:"#f0fdf4",icon:"ti ti-circle-check"},
+];
+
 function LaporanQCView({woData}:{woData:any[]}){
   const[search,setSearch]=useState("");
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
   const[lightbox,setLightbox]=useState<any>(null);
+  const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding");
+  const[statusFilter,setStatusFilter]=useState("ALL");
 
   const allPanels=useMemo(()=>{
     const list:any[]=[];
@@ -897,9 +905,16 @@ function LaporanQCView({woData}:{woData:any[]}){
     return panel.qc_checklist?._global?.status||"to_do";
   };
 
-  const filtered=allPanels.filter((p:any)=>
-    !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
-  );
+  const withStatus=allPanels.map((p:any)=>({...p,_qcStatus:getQcStatus(p)}));
+  const outstandingPanels=withStatus.filter((p:any)=>p._qcStatus!=="complete");
+  const finishedPanels=withStatus.filter((p:any)=>p._qcStatus==="complete");
+  const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels;
+
+  const filtered=basePool.filter((p:any)=>{
+    const matchSearch=!search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase());
+    const matchStatus=statusFilter==="ALL"||p._qcStatus===statusFilter;
+    return matchSearch&&matchStatus;
+  });
 
   const selectedPanel=allPanels.find((p:any)=>p.id===selectedPanelId);
 
@@ -998,39 +1013,88 @@ function LaporanQCView({woData}:{woData:any[]}){
 
   return(
     <div className="fi">
-      <div style={{marginBottom:14}}>
+      <div style={{display:"flex",gap:10,marginBottom:18}}>
+        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");}}
+          style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
+            background:subTab==="outstanding"?"linear-gradient(135deg,#f59e0b,#ea580c)":"#fff",
+            boxShadow:subTab==="outstanding"?"0 4px 14px #ea580c33":"0 1px 3px rgba(0,0,0,0.06)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,borderRadius:10,background:subTab==="outstanding"?"#ffffff2a":"#fff7ed",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <i className="ti ti-loader-2" style={{fontSize:18,color:subTab==="outstanding"?"#fff":"#ea580c"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:subTab==="outstanding"?"#ffffffcc":"#94a3b8"}}>Sedang Dikerjakan</div>
+              <div style={{fontSize:20,fontWeight:800,color:subTab==="outstanding"?"#fff":"#1e293b"}}>{outstandingPanels.length}</div>
+            </div>
+          </div>
+        </button>
+        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");}}
+          style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
+            background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
+            boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10}}>
+            <div style={{width:38,height:38,borderRadius:10,background:subTab==="finished"?"#ffffff2a":"#f0fdf4",display:"flex",alignItems:"center",justifyContent:"center"}}>
+              <i className="ti ti-circle-check" style={{fontSize:18,color:subTab==="finished"?"#fff":"#16a34a"}}/>
+            </div>
+            <div>
+              <div style={{fontSize:11,fontWeight:600,color:subTab==="finished"?"#ffffffcc":"#94a3b8"}}>Sudah Selesai QC</div>
+              <div style={{fontSize:20,fontWeight:800,color:subTab==="finished"?"#fff":"#1e293b"}}>{finishedPanels.length}</div>
+            </div>
+          </div>
+        </button>
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
-          style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:280}}/>
+          style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
+        <div style={{display:"flex",gap:6,marginLeft:"auto",flexWrap:"wrap" as const}}>
+          <button onClick={()=>setStatusFilter("ALL")}
+            style={{padding:"6px 14px",borderRadius:20,border:statusFilter==="ALL"?"1.5px solid #1d4ed8":"1.5px solid #e2e8f0",
+              background:statusFilter==="ALL"?"#1d4ed8":"#fff",color:statusFilter==="ALL"?"#fff":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+            Semua
+          </button>
+          {QC_STATUS_LIST.map(s=>(
+            <button key={s.key} onClick={()=>setStatusFilter(s.key)}
+              style={{padding:"6px 14px",borderRadius:20,border:statusFilter===s.key?`1.5px solid ${s.color}`:"1.5px solid #e2e8f0",
+                background:statusFilter===s.key?s.color:"#fff",color:statusFilter===s.key?"#fff":"#64748b",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+              {s.label}
+            </button>
+          ))}
+        </div>
       </div>
-      <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead><tr>
-            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>Proyek</th>
-            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>WO</th>
-            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>Panel</th>
-            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"center" as const,textTransform:"uppercase" as const}}>Status QC</th>
-          </tr></thead>
-          <tbody>
-            {filtered.length===0?(
-              <tr><td colSpan={4} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada panel ditemukan</td></tr>
-            ):filtered.map((p:any,i:number)=>{
-              const status=getQcStatus(p);
-              const sb=statusBadgeStyle(status);
-              const rBg=i%2===0?"#fff":"#f8fafc";
-              return(
-                <tr key={p.id} onClick={()=>setSelectedPanelId(p.id)} style={{cursor:"pointer",background:rBg}}>
-                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",color:"#475569"}}>{p._wo?.proyek}</td>
-                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",color:"#475569"}}>{p._wo?.wo}</td>
-                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontWeight:600,color:"#1e293b"}}>{p.nama}</td>
-                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",textAlign:"center" as const}}>
-                    <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{sb.label}</span>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
+
+      {filtered.length===0?(
+        <div style={{textAlign:"center",padding:50,color:"#94a3b8",background:"#fff",borderRadius:12,border:"1px solid #e2e8f0"}}>
+          <i className="ti ti-clipboard-x" style={{fontSize:36,display:"block",marginBottom:10}}/>
+          Tidak ada panel ditemukan
+        </div>
+      ):(
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
+          {filtered.map((p:any)=>{
+            const statusDef=QC_STATUS_LIST.find(s=>s.key===p._qcStatus)||QC_STATUS_LIST[0];
+            const sb=statusBadgeStyle(p._qcStatus);
+            return(
+              <div key={p.id} onClick={()=>setSelectedPanelId(p.id)}
+                style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:`4px solid ${statusDef.color}`,
+                  padding:16,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.05)",transition:"all .15s"}}
+                onMouseEnter={(e:any)=>{e.currentTarget.style.boxShadow="0 6px 16px rgba(0,0,0,0.1)";e.currentTarget.style.transform="translateY(-3px)";}}
+                onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)";e.currentTarget.style.transform="translateY(0)";}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p._wo?.proyek}</div>
+                    <div style={{fontSize:14,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p.nama}</div>
+                  </div>
+                  <div style={{width:34,height:34,borderRadius:9,background:statusDef.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                    <i className={statusDef.icon} style={{fontSize:16,color:statusDef.color}}/>
+                  </div>
+                </div>
+                <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>WO {p._wo?.wo} - {p.tipe}</div>
+                <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{sb.label}</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
