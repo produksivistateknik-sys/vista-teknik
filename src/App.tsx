@@ -10386,7 +10386,7 @@ function TrackingKomponenAdmin(){
   };
 
   const fetchPanelList=async(woId:number)=>{
-    const{data}=await supabase.from("panels").select("id,no_pnl,nama,tipe").eq("wo_id",woId).is("deleted_at",null).order("no_pnl",{ascending:true});
+    const{data}=await supabase.from("panels").select("id,no_pnl,nama,tipe,komponen_status").eq("wo_id",woId).is("deleted_at",null).order("no_pnl",{ascending:true});
     setPanelList(data??[]);
   };
 
@@ -10450,7 +10450,7 @@ function TrackingKomponenAdmin(){
 
   const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍"};
 
-  const countPerSubBagian=["Warehouse","Assembling","QS","QC"].map(sb=>({
+  const countPerSubBagian=["Warehouse","Assembling","QS"].map(sb=>({
     sb,
     count:riwayat.filter((r:any)=>r.sub_bagian===sb).length,
   }));
@@ -10518,17 +10518,27 @@ function TrackingKomponenAdmin(){
         </Card>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
         {countPerSubBagian.map(({sb,count})=>{
           const isActive=!!(selectedWoId&&selectedPanelId);
+          const selectedPanelObj=panelList.find((p:any)=>p.id===selectedPanelId);
+          const sbStatus=selectedPanelObj?.komponen_status?.[sb]?.status||"to_do";
+          const statusStyle=sbStatus==="complete"?{bg:"#f0fdf4",color:"#16a34a",label:"Complete"}:sbStatus==="in_progress"?{bg:"#fff7ed",color:"#ea580c",label:"In Progress"}:{bg:"#f1f5f9",color:"#64748b",label:"To Do"};
           return(
             <Card key={sb} onClick={()=>{if(isActive)setModalSubBagian(sb);}}
               style={{textAlign:"center" as const,cursor:isActive?"pointer":"not-allowed",opacity:isActive?1:0.5,transition:"all .15s"}}
               onMouseEnter={(e:any)=>{if(isActive){e.currentTarget.style.boxShadow="0 4px 12px #00000018";e.currentTarget.style.transform="translateY(-2px)";}}}
               onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px #00000008";e.currentTarget.style.transform="translateY(0)";}}>
-              <div style={{fontSize:24}}>{subBagianIcon[sb]}</div>
-              <div style={{fontSize:14,fontWeight:800,color:"#0f172a",marginTop:4}}>{sb}</div>
-              <div style={{fontSize:12,fontWeight:700,color:count>0?"#16a34a":"#94a3b8",marginTop:2}}>{isActive?(count>0?`${count} entri`:"Belum ada"):"Pilih WO & panel"}</div>
+              <div style={{width:48,height:48,borderRadius:12,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto 8px",fontSize:22,boxShadow:"0 3px 10px #0d948844"}}>
+                {subBagianIcon[sb]}
+              </div>
+              <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{sb}</div>
+              <div style={{fontSize:11.5,fontWeight:600,color:"#94a3b8",marginTop:2,marginBottom:8}}>{isActive?(count>0?`${count} entri`:"Belum ada entri"):"Pilih WO & panel"}</div>
+              {isActive&&(
+                <span style={{background:statusStyle.bg,color:statusStyle.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>
+                  {statusStyle.label}
+                </span>
+              )}
             </Card>
           );
         })}
@@ -10544,11 +10554,16 @@ function TrackingKomponenAdmin(){
           ):(
             <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
               {riwayat.map((r:any)=>(
-                <Card key={r.id} style={{borderLeft:"3px solid #0d9488"}}>
+                <Card key={r.id}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                    <div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</div>
-                      <div style={{fontSize:13,fontWeight:600,color:"#475569",marginTop:2}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{width:36,height:36,borderRadius:10,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17}}>
+                        {subBagianIcon[r.sub_bagian]}
+                      </div>
+                      <div>
+                        <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>{r.sub_bagian}</div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#94a3b8",marginTop:2}}>oleh {r.operator_name} · {fmtDateTime(r.created_at)}</div>
+                      </div>
                     </div>
                     <button onClick={()=>deleteTracking(r.id)}
                       style={{border:"none",background:"none",cursor:"pointer",color:"#94a3b8",fontSize:15}}
@@ -10578,7 +10593,7 @@ function TrackingKomponenAdmin(){
             style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:480,maxHeight:"80vh",overflowY:"auto" as const,padding:20}}>
             <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:16}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:38,height:38,borderRadius:10,background:"#f0fdfa",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>
+                <div style={{width:38,height:38,borderRadius:10,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #0d948844"}}>
                   {subBagianIcon[modalSubBagian]}
                 </div>
                 <div style={{fontWeight:800,fontSize:17,color:"#0f172a"}}>{modalSubBagian}</div>
