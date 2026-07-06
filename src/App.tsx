@@ -1166,43 +1166,35 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
               <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Sedang Bekerja Sekarang</span>
               <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"1px 9px",fontSize:10,fontWeight:700}}>{groups.length} orang</span>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:8}}>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6}}>
               {groups.map((g:any)=>{
                 const pkr=pekerja.find((p:any)=>p.id===g.pkrId);
                 const dc:any=pkr?(DIVISI_CONFIG as any)[pkr.divisi]||{}:{};
                 return(
-                  <div key={g.pkrId} style={{background:"#fff",border:"1px solid #fecaca",borderRadius:10,padding:"10px 12px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                      <div style={{width:28,height:28,borderRadius:7,background:dc.bg||"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:dc.color||"#64748b",flexShrink:0}}>
-                        {pkr?.nama?.slice(0,2).toUpperCase()||"?"}
-                      </div>
-                      <div style={{minWidth:0,flex:1}}>
-                        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</div>
-                        <div style={{fontSize:10,color:dc.color||"#64748b"}}>{dc.icon} {dc.label||""}</div>
-                      </div>
-                      <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
-                        {g.tasks.length}x
-                      </span>
+                  <div key={g.pkrId} style={{background:"#fff",border:"1px solid #f1f5f9",borderRadius:8,padding:"7px 9px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,paddingBottom:4,borderBottom:"1px solid #f1f5f9"}}>
+                      <span style={{width:5,height:5,borderRadius:99,background:dc.color||"#64748b",flexShrink:0}}/>
+                      <span style={{fontWeight:700,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</span>
+                      <span style={{marginLeft:"auto",fontSize:9,color:"#94a3b8",fontWeight:600}}>{g.tasks.length}x</span>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
                       {g.tasks.map((t:any)=>{
-                        const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id));
-                        const cfg=panel?(PANEL_TYPES as any)[panel.tipe]:null;
-                        const namaKomp=t.kode_komponen?.startsWith("__wiring_")
-                          ?"Wiring "+t.kode_komponen.replace("__wiring_","").split("_").slice(1).join(" ")
+                        const panel2=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id));
+                        const cfg=panel2?(PANEL_TYPES as any)[panel2.tipe]:null;
+                        const namaKomp=t.kode_komponen&&t.kode_komponen.indexOf("__wiring_")===0
+                          ?"Wiring"
                           :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
                         const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(t.mulai).getTime())/60000));
                         const jam=Math.floor(menitBerjalan/60);
                         const menit=menitBerjalan%60;
+                        const durasiTxt=jam>0?(jam+"j"+menit+"m"):(menit+"m");
                         return(
-                          <div key={t.id} style={{borderTop:"1px solid #f1f5f9",paddingTop:6,display:"flex",justifyContent:"space-between",gap:6}}>
-                            <div style={{minWidth:0}}>
-                              <div style={{fontSize:11,color:"#475569",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{panel?.nama||t.panel_id}</div>
-                              <div style={{fontSize:11,fontWeight:600,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaKomp}</div>
-                              <div style={{fontSize:9,color:"#94a3b8"}}>{t.proses}</div>
-                            </div>
-                            <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",height:"fit-content"}}>
-                              {jam>0?`${jam}j ${menit}m`:`${menit}m`}
+                          <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:10}}>
+                            <span style={{color:"#475569",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                              {namaKomp}
+                            </span>
+                            <span style={{color:"#dc2626",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+                              {durasiTxt}
                             </span>
                           </div>
                         );
