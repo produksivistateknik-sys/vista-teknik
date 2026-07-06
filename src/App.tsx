@@ -1153,42 +1153,61 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
       {(()=>{
         const activeTimers=timerData.filter((t:any)=>!t.selesai);
         if(activeTimers.length===0)return null;
+        const byPekerja:Record<number,any[]>={};
+        activeTimers.forEach((t:any)=>{
+          if(!byPekerja[t.pekerja_id])byPekerja[t.pekerja_id]=[];
+          byPekerja[t.pekerja_id].push(t);
+        });
+        const groups=Object.entries(byPekerja).map(([pkrId,tasks])=>({pkrId:Number(pkrId),tasks}));
         return(
           <div style={{marginBottom:12}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
               <span style={{width:8,height:8,borderRadius:99,background:"#dc2626",display:"inline-block"}}/>
               <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Sedang Bekerja Sekarang</span>
-              <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"1px 9px",fontSize:10,fontWeight:700}}>{activeTimers.length} orang</span>
+              <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"1px 9px",fontSize:10,fontWeight:700}}>{groups.length} orang</span>
             </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
-              {activeTimers.map((t:any)=>{
-                const pkr=pekerja.find((p:any)=>p.id===t.pekerja_id);
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:8}}>
+              {groups.map((g:any)=>{
+                const pkr=pekerja.find((p:any)=>p.id===g.pkrId);
                 const dc:any=pkr?(DIVISI_CONFIG as any)[pkr.divisi]||{}:{};
-                const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id));
-                const cfg=panel?(PANEL_TYPES as any)[panel.tipe]:null;
-                const namaKomp=t.kode_komponen?.startsWith("__wiring_")
-                  ?"Wiring "+t.kode_komponen.replace("__wiring_","").split("_").slice(1).join(" ")
-                  :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
-                const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(t.mulai).getTime())/60000));
-                const jam=Math.floor(menitBerjalan/60);
-                const menit=menitBerjalan%60;
                 return(
-                  <div key={t.id} style={{background:"#fff",border:"1px solid #fecaca",borderRadius:10,padding:"10px 12px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
-                      <div style={{width:26,height:26,borderRadius:7,background:dc.bg||"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:dc.color||"#64748b",flexShrink:0}}>
+                  <div key={g.pkrId} style={{background:"#fff",border:"1px solid #fecaca",borderRadius:10,padding:"10px 12px"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                      <div style={{width:28,height:28,borderRadius:7,background:dc.bg||"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:800,color:dc.color||"#64748b",flexShrink:0}}>
                         {pkr?.nama?.slice(0,2).toUpperCase()||"?"}
                       </div>
                       <div style={{minWidth:0,flex:1}}>
-                        <div style={{fontWeight:700,fontSize:12,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</div>
-                        <div style={{fontSize:10,color:dc.color||"#64748b"}}>{dc.icon} {dc.label||t.proses}</div>
+                        <div style={{fontWeight:700,fontSize:13,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</div>
+                        <div style={{fontSize:10,color:dc.color||"#64748b"}}>{dc.icon} {dc.label||""}</div>
                       </div>
                       <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
-                        {jam>0?`${jam}j ${menit}m`:`${menit}m`}
+                        {g.tasks.length}x
                       </span>
                     </div>
-                    <div style={{fontSize:11,color:"#475569"}}>{panel?.nama||t.panel_id}</div>
-                    <div style={{fontSize:11,fontWeight:600,color:"#1e293b"}}>{namaKomp}</div>
-                    <div style={{fontSize:10,color:"#94a3b8"}}>{t.proses}</div>
+                    <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                      {g.tasks.map((t:any)=>{
+                        const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id));
+                        const cfg=panel?(PANEL_TYPES as any)[panel.tipe]:null;
+                        const namaKomp=t.kode_komponen?.startsWith("__wiring_")
+                          ?"Wiring "+t.kode_komponen.replace("__wiring_","").split("_").slice(1).join(" ")
+                          :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
+                        const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(t.mulai).getTime())/60000));
+                        const jam=Math.floor(menitBerjalan/60);
+                        const menit=menitBerjalan%60;
+                        return(
+                          <div key={t.id} style={{borderTop:"1px solid #f1f5f9",paddingTop:6,display:"flex",justifyContent:"space-between",gap:6}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{fontSize:11,color:"#475569",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{panel?.nama||t.panel_id}</div>
+                              <div style={{fontSize:11,fontWeight:600,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaKomp}</div>
+                              <div style={{fontSize:9,color:"#94a3b8"}}>{t.proses}</div>
+                            </div>
+                            <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700,whiteSpace:"nowrap",height:"fit-content"}}>
+                              {jam>0?`${jam}j ${menit}m`:`${menit}m`}
+                            </span>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 );
               })}
