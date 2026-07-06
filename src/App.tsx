@@ -871,6 +871,177 @@ function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,removePek
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING PEKERJA
 // ─────────────────────────────────────────────────────────────────────────────
+const QC_ITEMS_LAPORAN=[
+  {key:"fisik",label:"Pemeriksaan Fisik"},
+  {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen"},
+  {key:"baut",label:"Pengecekan Kekencangan Baut"},
+  {key:"test",label:"QC Test"},
+];
+
+function LaporanQCView({woData}:{woData:any[]}){
+  const[search,setSearch]=useState("");
+  const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+  const[lightbox,setLightbox]=useState<any>(null);
+
+  const allPanels=useMemo(()=>{
+    const list:any[]=[];
+    (woData||[]).forEach((w:any)=>{
+      (w.panels||[]).forEach((p:any)=>{
+        list.push({...p,_wo:w});
+      });
+    });
+    return list;
+  },[woData]);
+
+  const getQcStatus=(panel:any)=>{
+    const cl=panel.qc_checklist||{};
+    const statuses=QC_ITEMS_LAPORAN.map(it=>cl[it.key]?.status||"to_do");
+    if(statuses.every(s=>s==="complete"))return"complete";
+    if(statuses.some(s=>s==="in_progress"||s==="complete"))return"in_progress";
+    return"to_do";
+  };
+
+  const filtered=allPanels.filter((p:any)=>
+    !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedPanel=allPanels.find((p:any)=>p.id===selectedPanelId);
+
+  const fmtTgl=(iso:string)=>{
+    if(!iso)return"";
+    const d=new Date(iso);
+    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+  };
+
+  const statusBadgeStyle=(status:string)=>{
+    if(status==="complete")return{bg:"#f0fdf4",color:"#16a34a",label:"Selesai"};
+    if(status==="in_progress")return{bg:"#fff7ed",color:"#ea580c",label:"Sedang Dikerjakan"};
+    return{bg:"#f1f5f9",color:"#64748b",label:"To Do"};
+  };
+
+  if(selectedPanel){
+    const cl=selectedPanel.qc_checklist||{};
+    const status=getQcStatus(selectedPanel);
+    const sb=statusBadgeStyle(status);
+    return(
+      <div className="fi">
+        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16}} className="no-print">
+          <button onClick={()=>setSelectedPanelId(null)}
+            style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#fff",color:"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            Kembali
+          </button>
+          <button onClick={()=>window.print()}
+            style={{height:32,padding:"0 14px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>
+            Print Laporan
+          </button>
+        </div>
+
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:20,marginBottom:16}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+            <div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>{selectedPanel._wo?.proyek} - {selectedPanel._wo?.wo}</div>
+              <div style={{fontSize:18,fontWeight:800,color:"#1e293b"}}>{selectedPanel.nama}</div>
+              <div style={{fontSize:11,color:"#94a3b8"}}>Tipe: {selectedPanel.tipe}</div>
+            </div>
+            <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>
+              {sb.label}
+            </span>
+          </div>
+        </div>
+
+        {QC_ITEMS_LAPORAN.map(item=>{
+          const data=cl[item.key]||{status:"to_do"};
+          const isb=statusBadgeStyle(data.status||"to_do");
+          const fotoList=data.foto||[];
+          return(
+            <div key={item.key} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:12}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{item.label}</span>
+                <span style={{background:isb.bg,color:isb.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>
+                  {isb.label}
+                </span>
+              </div>
+              <div style={{display:"flex",gap:16,fontSize:11,color:"#64748b",marginBottom:10}}>
+                {data.todo_at&&<span>To Do: {fmtTgl(data.todo_at)}</span>}
+                {data.complete_at&&<span>Selesai: {fmtTgl(data.complete_at)}</span>}
+                {data.updated_by&&<span>oleh {data.updated_by}</span>}
+              </div>
+              {data.catatan&&(
+                <div style={{fontSize:12,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"8px 10px",marginBottom:10}}>
+                  {data.catatan}
+                </div>
+              )}
+              {fotoList.length>0?(
+                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
+                  {fotoList.map((f:any,fi:number)=>(
+                    <div key={fi} onClick={()=>setLightbox(f)} style={{cursor:"pointer"}} className="qc-foto-print">
+                      <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
+                      <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}</div>
+                    </div>
+                  ))}
+                </div>
+              ):(
+                <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
+              )}
+            </div>
+          );
+        })}
+
+        {lightbox&&(
+          <div onClick={()=>setLightbox(null)} className="no-print"
+            style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
+            <img src={lightbox.url} style={{maxWidth:"90%",maxHeight:"90%",objectFit:"contain" as const,borderRadius:8}}/>
+          </div>
+        )}
+
+        <style>{`
+          @media print {
+            .no-print { display: none !important; }
+          }
+        `}</style>
+      </div>
+    );
+  }
+
+  return(
+    <div className="fi">
+      <div style={{marginBottom:14}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
+          style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:280}}/>
+      </div>
+      <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0"}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+          <thead><tr>
+            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>Proyek</th>
+            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>WO</th>
+            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,textTransform:"uppercase" as const}}>Panel</th>
+            <th style={{background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,fontSize:10,textAlign:"center" as const,textTransform:"uppercase" as const}}>Status QC</th>
+          </tr></thead>
+          <tbody>
+            {filtered.length===0?(
+              <tr><td colSpan={4} style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada panel ditemukan</td></tr>
+            ):filtered.map((p:any,i:number)=>{
+              const status=getQcStatus(p);
+              const sb=statusBadgeStyle(status);
+              const rBg=i%2===0?"#fff":"#f8fafc";
+              return(
+                <tr key={p.id} onClick={()=>setSelectedPanelId(p.id)} style={{cursor:"pointer",background:rBg}}>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",color:"#475569"}}>{p._wo?.proyek}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",color:"#475569"}}>{p._wo?.wo}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",fontWeight:600,color:"#1e293b"}}>{p.nama}</td>
+                  <td style={{padding:"8px 10px",borderBottom:"1px solid #f1f5f9",textAlign:"center" as const}}>
+                    <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{sb.label}</span>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
 function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
   const [selPekerja,setSelPekerja]=useState<any>(null);
   const [filterDiv,setFilterDiv]=useState("ALL");
@@ -3094,13 +3265,13 @@ function SummaryProgress({woData}:{woData:any[]}){
                           {prosesAda.map(pr=><ProsesPctCell key={pr} pct={pd[pr]} proses={pr}/>)}
                           {(()=>{
                             const qcCl=p.qc_checklist||{};
-                            const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"belum");
-                            const qcStatus=qcStatuses.some((s:string)=>s==="gagal")?"gagal":qcStatuses.every((s:string)=>s==="lolos")?"lolos":"belum";
+                            const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"to_do");
+                            const qcStatus=qcStatuses.every((s:string)=>s==="complete")?"complete":qcStatuses.some((s:string)=>s==="in_progress"||s==="complete")?"in_progress":"to_do";
                             return(
                               <>
                                 <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>{p.nameplate_progress||0}%</td>
                                 <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>{p.yellowmark_progress||0}%</td>
-                                <td style={{...tdS,fontWeight:700,color:qcStatus==="lolos"?"#16a34a":qcStatus==="gagal"?"#dc2626":"#94a3b8",fontSize:9}}>{qcStatus==="lolos"?"Lolos":qcStatus==="gagal"?"Gagal":"Belum"}</td>
+                                <td style={{...tdS,fontWeight:700,color:qcStatus==="complete"?"#16a34a":qcStatus==="in_progress"?"#ea580c":"#94a3b8",fontSize:9}}>{qcStatus==="complete"?"Selesai":qcStatus==="in_progress"?"Proses":"To Do"}</td>
                                 <td style={{...tdS,fontWeight:700,color:p.packing_done?"#2563eb":"#94a3b8",fontSize:9}}>{p.packing_done?"Selesai":"Belum"}</td>
                               </>
                             );
@@ -3394,8 +3565,8 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
                       return ai.length>0;
                     });
                     const qcCl=p.qc_checklist||{};
-                    const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"belum");
-                    const qcStatus=qcStatuses.some((s:string)=>s==="gagal")?"gagal":qcStatuses.every((s:string)=>s==="lolos")?"lolos":"belum";
+                    const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"to_do");
+                    const qcStatus=qcStatuses.every((s:string)=>s==="complete")?"complete":qcStatuses.some((s:string)=>s==="in_progress"||s==="complete")?"in_progress":"to_do";
                   return wps.map((wp:any)=>{
                     const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
                     const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
@@ -10541,6 +10712,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       {id:"taskmonitoring",label:"Task Monitoring",icon:"ti ti-list-check"},
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
       {id:"stok",label:"Stok Komponen",icon:"ti ti-package"},
+      {id:"laporan_qc",label:"Laporan QC",icon:"ti ti-clipboard-check"},
     ]},
     {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
@@ -10915,6 +11087,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/>}
               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
+              {tab==="laporan_qc"&&<LaporanQCView woData={woData}/>}
               {tab==="forum"&&<ForumWO user={user}/>}
               {tab==="trackingkomponen"&&<TrackingKomponenAdmin/>}
               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
