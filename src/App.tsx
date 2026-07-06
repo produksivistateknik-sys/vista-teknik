@@ -894,11 +894,7 @@ function LaporanQCView({woData}:{woData:any[]}){
   },[woData]);
 
   const getQcStatus=(panel:any)=>{
-    const cl=panel.qc_checklist||{};
-    const statuses=QC_ITEMS_LAPORAN.map(it=>cl[it.key]?.status||"to_do");
-    if(statuses.every(s=>s==="complete"))return"complete";
-    if(statuses.some(s=>s==="in_progress"||s==="complete"))return"in_progress";
-    return"to_do";
+    return panel.qc_checklist?._global?.status||"to_do";
   };
 
   const filtered=allPanels.filter((p:any)=>
@@ -921,6 +917,7 @@ function LaporanQCView({woData}:{woData:any[]}){
 
   if(selectedPanel){
     const cl=selectedPanel.qc_checklist||{};
+    const globalData=selectedPanel.qc_checklist?._global||{};
     const status=getQcStatus(selectedPanel);
     const sb=statusBadgeStyle(status);
     return(
@@ -947,24 +944,20 @@ function LaporanQCView({woData}:{woData:any[]}){
               {sb.label}
             </span>
           </div>
+          <div style={{display:"flex",gap:16,fontSize:11,color:"#64748b"}}>
+            {globalData.todo_at&&<span>To Do: {fmtTgl(globalData.todo_at)}</span>}
+            {globalData.complete_at&&<span>Selesai: {fmtTgl(globalData.complete_at)}</span>}
+            {globalData.updated_by&&<span>oleh {globalData.updated_by}</span>}
+          </div>
         </div>
 
         {QC_ITEMS_LAPORAN.map(item=>{
-          const data=cl[item.key]||{status:"to_do"};
-          const isb=statusBadgeStyle(data.status||"to_do");
+          const data=cl[item.key]||{};
           const fotoList=data.foto||[];
           return(
             <div key={item.key} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:12}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{marginBottom:8}}>
                 <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{item.label}</span>
-                <span style={{background:isb.bg,color:isb.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>
-                  {isb.label}
-                </span>
-              </div>
-              <div style={{display:"flex",gap:16,fontSize:11,color:"#64748b",marginBottom:10}}>
-                {data.todo_at&&<span>To Do: {fmtTgl(data.todo_at)}</span>}
-                {data.complete_at&&<span>Selesai: {fmtTgl(data.complete_at)}</span>}
-                {data.updated_by&&<span>oleh {data.updated_by}</span>}
               </div>
               {data.catatan&&(
                 <div style={{fontSize:12,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"8px 10px",marginBottom:10}}>
