@@ -1151,7 +1151,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
       </div>
 
       {(()=>{
-        const activeTimers=timerData.filter((t:any)=>!t.selesai);
+        const activeTimers=timerData.filter((t:any)=>!t.selesai&&t.tanggal===TODAY);
         if(activeTimers.length===0)return null;
         const byPekerja:Record<number,any[]>={};
         activeTimers.forEach((t:any)=>{
@@ -1177,9 +1177,10 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                       <span style={{fontWeight:700,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</span>
                       <span style={{marginLeft:"auto",fontSize:9,color:"#94a3b8",fontWeight:600}}>{g.tasks.length}x</span>
                     </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:2}}>
+                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
                       {g.tasks.map((t:any)=>{
-                        const panel2=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id));
+                        const wo2=woData.find((w:any)=>(w.panels||[]).some((p:any)=>String(p.id)===String(t.panel_id)));
+                        const panel2=wo2?(wo2.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id)):null;
                         const cfg=panel2?(PANEL_TYPES as any)[panel2.tipe]:null;
                         const namaKomp=t.kode_komponen&&t.kode_komponen.indexOf("__wiring_")===0
                           ?"Wiring"
@@ -1189,13 +1190,18 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                         const menit=menitBerjalan%60;
                         const durasiTxt=jam>0?(jam+"j"+menit+"m"):(menit+"m");
                         return(
-                          <div key={t.id} style={{display:"flex",justifyContent:"space-between",gap:6,fontSize:10}}>
-                            <span style={{color:"#475569",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                              {namaKomp}
-                            </span>
-                            <span style={{color:"#dc2626",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
-                              {durasiTxt}
-                            </span>
+                          <div key={t.id} style={{fontSize:10,paddingBottom:4,borderBottom:"1px solid #f8fafc"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",gap:6}}>
+                              <span style={{fontWeight:600,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                                {panel2?.nama||t.panel_id}
+                              </span>
+                              <span style={{color:"#dc2626",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
+                                {durasiTxt}
+                              </span>
+                            </div>
+                            <div style={{color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
+                              {wo2?.proyek||""} · {namaKomp}
+                            </div>
                           </div>
                         );
                       })}
