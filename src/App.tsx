@@ -6066,21 +6066,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   })}
                 </div>
               </div>
-              <div style={{marginBottom:16}}>
-                <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:6}}>Jenis Pekerjaan</div>
-                <select value={fcsForm.jenisPekerjaan} onChange={e=>setFcsForm({...fcsForm,jenisPekerjaan:e.target.value})}
-                  style={{width:"100%",padding:"8px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit"}}>
-                  {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-                    <option key={p} value={p}>{p}</option>
-                  ))}
-                </select>
+              <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",borderRadius:8,border:"1px solid #bfdbfe"}}>
+                <div style={{fontSize:12,color:"#1d4ed8",fontWeight:600}}>⚡ Semua proses relevan akan digenerate otomatis sesuai komponen tiap panel</div>
               </div>
-              {WIRING_PROSES.includes(fcsForm.jenisPekerjaan)&&selectedPanelIds.length>0&&(
-                <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",borderRadius:8,border:"1px solid #bfdbfe"}}>
-                  <div style={{fontSize:12,color:"#1d4ed8",fontWeight:600}}>⚡ {selectedPanelIds.length} panel akan diregistrasi untuk {fcsForm.jenisPekerjaan}</div>
-                  <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Bobot dan jadwal per panel akan diatur di FCS Schedule setelah generate</div>
-                </div>
-              )}
               <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#92400e"}}>
                 ⚠️ Schedule lama status Planning untuk WO ini akan digantikan jadwal baru.
               </div>
@@ -6094,29 +6082,36 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   const panels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
                   let totalCount=0;const errors:string[]=[];
                   for(const panel of panels){
-                    let res:any;
-                    if(WIRING_PROSES.includes(fcsForm.jenisPekerjaan)){
-                      // Generate wiring: cukup register panel, bobot diatur di FCS Schedule
-                      res=await generateFCSWiring({
-                        woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                        panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                        jenisPekerjaan:fcsForm.jenisPekerjaan,
-                        tanggalMulai:fcsForm.tanggalMulai,
-                        generatedBy:uname,
-                      });
-                    } else {
-                      res=await generateFCSSchedule({
-                        woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                        panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                        checklist:panel.checklist||{},
-                        jenisPekerjaan:fcsForm.jenisPekerjaan,
-                        tanggalMulai:fcsForm.tanggalMulai,
-                        generatedBy:uname,
-                        selectedKomponen:selectedKomponen.length>0?selectedKomponen:null,
-                      });
+                    const cl=panel.checklist||{};
+                    const prosesSet=new Set<string>();
+                    Object.entries(cl).forEach(([kode,clVal]:any)=>{
+                      if((clVal?.qty||0)<=0)return;
+                      (KOMPONEN_PROSES_MAP[kode]||[]).forEach((pr:string)=>prosesSet.add(pr));
+                    });
+                    for(const proses of prosesSet){
+                      let res:any;
+                      if(WIRING_PROSES.includes(proses)){
+                        res=await generateFCSWiring({
+                          woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
+                          panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
+                          jenisPekerjaan:proses,
+                          tanggalMulai:fcsForm.tanggalMulai,
+                          generatedBy:uname,
+                        });
+                      } else {
+                        res=await generateFCSSchedule({
+                          woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
+                          panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
+                          checklist:panel.checklist||{},
+                          jenisPekerjaan:proses,
+                          tanggalMulai:fcsForm.tanggalMulai,
+                          generatedBy:uname,
+                          selectedKomponen:null,
+                        });
+                      }
+                      if(res.success)totalCount+=res.count;
+                      else errors.push(panel.nama+" ("+proses+"): "+(res.error||"Error"));
                     }
-                    if(res.success)totalCount+=res.count;
-                    else errors.push(panel.nama+": "+(res.error||"Error"));
                   }
                   if(totalCount>0&&refetchWO)await refetchWO();
                   setFcsResult({totalCount,errors,panels:panels.length});
@@ -6134,7 +6129,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   <div style={{fontSize:40,marginBottom:12}}>✅</div>
                   <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Schedule Berhasil!</div>
                   <div style={{fontSize:13,color:"#64748b",marginBottom:4}}>{fcsResult.panels} panel · {fcsResult.totalCount} baris jadwal</div>
-                  <div style={{fontSize:12,color:"#94a3b8"}}>Pekerjaan: <strong>{fcsForm.jenisPekerjaan}</strong> · Mulai: <strong>{fcsForm.tanggalMulai}</strong></div>
+                  <div style={{fontSize:12,color:"#94a3b8"}}>Mulai: <strong>{fcsForm.tanggalMulai}</strong></div>
                 </div>
               ):(
                 <div>
