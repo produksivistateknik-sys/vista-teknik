@@ -100,5 +100,51 @@ export const workOrderService = {
     if (error) throw new Error(error.message)
     await logActivity(uname, 'TAMBAH WO', `Tambah WO ${wo} - ${proyek} (split tanggal ${target})`, { wo_number: wo, proyek })
     return data.id
+  },
+
+  async saveWOWithSplit(
+    editWoId: number,
+    wo: string,
+    proyek: string,
+    mainTarget: string,
+    groupedPanels: { tanggal: string; panels: any[] }[],
+    uname = 'Admin'
+  ) {
+    const { data: existingRows } = await supabase.from('panels').select('id').eq('wo_id', editWoId)
+    const existingIds = new Set((existingRows || []).map((p: any) => p.id))
+
+    const allIncomingIds = new Set<number>()
+    groupedPanels.forEach(g => g.panels.forEach((p: any) => { if (p.id) allIncomingIds.add(p.id) }))
+
+    const idsToDelete = [...existingIds].filter(id => !allIncomingIds.has(id))
+    if (idsToDelete.length > 0) {
+      await supabase.from('panels').delete().in('id', idsToDelete)
+    }
+
+    for (const g of groupedPanels) {
+      let targetWoId = editWoId
+      if (g.tanggal && g.tanggal !== mainTarget) {
+        targetWoId = await this.findOrCreateSiblingWO(wo, proyek, g.tanggal, uname)
+      }
+      for (const p of g.panels) {
+        const row = {
+          wo_id: targetWoId,
+          no_pnl: p.noPnl || p.no_pnl || 1,
+          nama: p.nama,
+          tipe: p.tipe,
+          qty: p.qty || 1,
+          checklist: p.checklist || {},
+          catatan: p.catatan || "",
+          tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
+        }
+        if (p.id) {
+          const { error } = await supabase.from('panels').update(row).eq('id', p.id)
+          if (error) throw new Error(error.message)
+        } else {
+          const { error } = await supabase.from('panels').insert(row)
+          if (error) throw new Error(error.message)
+        }
+      }
+    }
   }
 }

@@ -5644,14 +5644,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           if(!groups[tgl])groups[tgl]=[];
           groups[tgl].push(p);
         });
-        for(const tgl of Object.keys(groups)){
-          const npGroup=buildNp(groups[tgl]);
-          let targetWoId=editId;
-          if(tgl&&tgl!==form.target){
-            targetWoId=await workOrderService.findOrCreateSiblingWO(form.wo,form.proyek,tgl,uname);
-          }
-          await workOrderService.savePanels(targetWoId, npGroup);
-        }
+        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl])}));
+        await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
       }
