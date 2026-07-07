@@ -3891,9 +3891,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [swapModal,setSwapModal]=useState<any>(null);
   const [swapSelected,setSwapSelected]=useState<string[]>([]);
+  const [swapExpandedPanel,setSwapExpandedPanel]=useState<Record<string,boolean>>({});
   const [swapLoading,setSwapLoading]=useState(false);
   const [swapOrangModal,setSwapOrangModal]=useState<any>(null);
   const [swapOrangSelected,setSwapOrangSelected]=useState<string[]>([]);
+  const [swapOrangExpandedPanel,setSwapOrangExpandedPanel]=useState<Record<string,boolean>>({});
   const [swapOrangLoading,setSwapOrangLoading]=useState(false);
   const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
@@ -5240,31 +5242,48 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     <span style={{fontSize:10,color:"#94a3b8"}}>Deadline: {g.wo_target?fmtDate(g.wo_target):"-"}</span>
                   </div>
                   <div style={{padding:"8px 10px",display:"flex",flexDirection:"column" as const,gap:8}}>
-                    {Object.values(g.panels).map((pnl:any,pi:number)=>(
-                      <div key={pi}>
-                        <div style={{fontSize:11,fontWeight:600,color:"#475569",marginBottom:4}}>{pnl.panel_nama}</div>
-                        <div style={{display:"flex",flexDirection:"column" as const,gap:5}}>
-                          {pnl.items.map((o:any)=>{
-                            const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
-                            const checked=swapSelected.includes(swapKey);
-                            const hasProgress=o.progress>0;
-                            return(
-                              <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
-                                <input type="checkbox" checked={checked} style={{marginTop:2}}
-                                  onChange={()=>setSwapSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
-                                <div style={{flex:1}}>
-                                  <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
-                                  <div style={{fontSize:10,color:"#94a3b8"}}>{o.qty} pcs · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
-                                </div>
-                                {hasProgress&&(
-                                  <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
-                                )}
-                              </label>
-                            );
-                          })}
+                    {Object.entries(g.panels).map(([panelKey,pnl]:any,pi:number)=>{
+                      const expKey=g.wo_number+"|"+panelKey;
+                      const isExp=!!swapExpandedPanel[expKey];
+                      const selectedCount=pnl.items.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).length;
+                      return(
+                        <div key={pi}>
+                          <div onClick={()=>setSwapExpandedPanel(prev=>({...prev,[expKey]:!prev[expKey]}))}
+                            style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"5px 4px",borderRadius:6}}>
+                            <span style={{fontSize:11,fontWeight:600,color:"#475569"}}>{pnl.panel_nama}</span>
+                            <div style={{display:"flex",alignItems:"center",gap:6}}>
+                              {selectedCount>0&&(
+                                <span style={{fontSize:9,background:"#1d4ed8",color:"#fff",borderRadius:20,padding:"1px 7px",fontWeight:700}}>{selectedCount} dipilih</span>
+                              )}
+                              <span style={{fontSize:9,color:"#94a3b8",background:"#f1f5f9",borderRadius:20,padding:"1px 8px"}}>{pnl.items.length} komponen</span>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
+                            </div>
+                          </div>
+                          {isExp&&(
+                            <div style={{display:"flex",flexDirection:"column" as const,gap:5,marginTop:4}}>
+                              {pnl.items.map((o:any)=>{
+                                const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
+                                const checked=swapSelected.includes(swapKey);
+                                const hasProgress=o.progress>0;
+                                return(
+                                  <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                                    <input type="checkbox" checked={checked} style={{marginTop:2}}
+                                      onChange={()=>setSwapSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
+                                    <div style={{flex:1}}>
+                                      <div style={{fontSize:12,color:"#1e293b"}}>{o.nama_komponen}</div>
+                                      <div style={{fontSize:10,color:"#94a3b8"}}>{o.qty} pcs · progress {o.progress}% · {Math.round(o.total_menit)} menit</div>
+                                    </div>
+                                    {hasProgress&&(
+                                      <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               ));
@@ -5343,31 +5362,48 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         <span style={{fontSize:10,color:"#94a3b8"}}>Deadline: {g.wo_target?fmtDate(g.wo_target):"-"}</span>
                       </div>
                       <div style={{padding:"8px 10px",display:"flex",flexDirection:"column" as const,gap:8}}>
-                        {Object.values(g.panels).map((pnl:any,pi:number)=>(
-                          <div key={pi}>
-                            <div style={{fontSize:11,fontWeight:600,color:"#475569",marginBottom:4}}>{pnl.panel_nama}</div>
-                            <div style={{display:"flex",flexDirection:"column" as const,gap:5}}>
-                              {pnl.items.map((o:any)=>{
-                                const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
-                                const checked=swapOrangSelected.includes(swapKey);
-                                const hasProgress=o.progress>0;
-                                return(
-                                  <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
-                                    <input type="checkbox" checked={checked} style={{marginTop:2}}
-                                      onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
-                                    <div style={{flex:1}}>
-                                      <div style={{fontSize:12,color:"#1e293b"}}>{getNamaKomponenDariKode(o.panel_id,o.kode_komponen)}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({o.kode_komponen})</span></div>
-                                      <div style={{fontSize:10,color:"#94a3b8"}}>{o.jumlah_orang} orang · progress {o.progress}%</div>
-                                    </div>
-                                    {hasProgress&&(
-                                      <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
-                                    )}
-                                  </label>
-                                );
-                              })}
+                        {Object.entries(g.panels).map(([panelKey,pnl]:any,pi:number)=>{
+                          const expKey=g.wo_number+"|"+panelKey;
+                          const isExp=!!swapOrangExpandedPanel[expKey];
+                          const selectedCount=pnl.items.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).length;
+                          return(
+                            <div key={pi}>
+                              <div onClick={()=>setSwapOrangExpandedPanel(prev=>({...prev,[expKey]:!prev[expKey]}))}
+                                style={{display:"flex",justifyContent:"space-between",alignItems:"center",cursor:"pointer",padding:"5px 4px",borderRadius:6}}>
+                                <span style={{fontSize:11,fontWeight:600,color:"#475569"}}>{pnl.panel_nama}</span>
+                                <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                  {selectedCount>0&&(
+                                    <span style={{fontSize:9,background:"#1d4ed8",color:"#fff",borderRadius:20,padding:"1px 7px",fontWeight:700}}>{selectedCount} dipilih</span>
+                                  )}
+                                  <span style={{fontSize:9,color:"#94a3b8",background:"#f1f5f9",borderRadius:20,padding:"1px 8px"}}>{pnl.items.length} komponen</span>
+                                  <span style={{fontSize:10,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
+                                </div>
+                              </div>
+                              {isExp&&(
+                                <div style={{display:"flex",flexDirection:"column" as const,gap:5,marginTop:4}}>
+                                  {pnl.items.map((o:any)=>{
+                                    const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
+                                    const checked=swapOrangSelected.includes(swapKey);
+                                    const hasProgress=o.progress>0;
+                                    return(
+                                      <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                                        <input type="checkbox" checked={checked} style={{marginTop:2}}
+                                          onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
+                                        <div style={{flex:1}}>
+                                          <div style={{fontSize:12,color:"#1e293b"}}>{getNamaKomponenDariKode(o.panel_id,o.kode_komponen)}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({o.kode_komponen})</span></div>
+                                          <div style={{fontSize:10,color:"#94a3b8"}}>{o.jumlah_orang} orang · progress {o.progress}%</div>
+                                        </div>
+                                        {hasProgress&&(
+                                          <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
+                                        )}
+                                      </label>
+                                    );
+                                  })}
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   ));
