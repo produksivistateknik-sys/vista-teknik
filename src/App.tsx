@@ -6072,6 +6072,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   await supabase.from('renhar').delete().eq('wo_id',delId);
   // 4. Hapus raw_schedule terkait wo
   await supabase.from('raw_schedule').delete().eq('wo_id',delId);
+  // 4b. Hapus fcs_schedule terkait wo
+  await supabase.from('fcs_schedule').delete().eq('wo_id',delId);
   // 5. Hapus panels terkait wo
   await supabase.from('panels').delete().eq('wo_id',delId);
   // 6. Hapus work order

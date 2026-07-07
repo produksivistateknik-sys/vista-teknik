@@ -118,6 +118,9 @@ export const workOrderService = {
 
     const idsToDelete = [...existingIds].filter(id => !allIncomingIds.has(id))
     if (idsToDelete.length > 0) {
+      await supabase.from('renhar').delete().in('panel_id', idsToDelete)
+      await supabase.from('raw_schedule').delete().in('panel_id', idsToDelete)
+      await supabase.from('fcs_schedule').delete().in('panel_id', idsToDelete)
       await supabase.from('panels').delete().in('id', idsToDelete)
     }
 
