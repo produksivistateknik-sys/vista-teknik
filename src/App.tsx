@@ -5520,7 +5520,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
   const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
   const blank={wo:"",proyek:"",target:""};
-  const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1};
+  const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,tingkatKesulitan:"EASY"};
   const [fcsModal,setFcsModal]=useState<any>(null);
   const [fcsLoading,setFcsLoading]=useState(false);
   const [fcsResult,setFcsResult]=useState<any>(null);
@@ -5623,11 +5623,13 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           id:(p as any).id,noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
           checklist:(p as any).checklist||initChecklist(p.tipe,Number(p.qty)||1),
           catatan:(p as any).catatan||"",
+          tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
         };
       }
       return{
         noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
         checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+        tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
       };
     });
     if(editId){
@@ -5826,7 +5828,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan})));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY"})));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});setSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
@@ -6005,7 +6007,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #e2e8f0",paddingTop:16}}>Panel</div>
           {panels.map((p,i)=>(
             <div key={i} style={{background:"#fff",borderRadius:10,padding:14,marginBottom:10,border:"1px solid #e2e8f0"}}>
-              <div style={{display:"grid",gridTemplateColumns:"56px 1fr 180px 70px 32px",gap:8,alignItems:"end"}}>
+              <div style={{display:"grid",gridTemplateColumns:"56px 1fr 140px 70px 130px 32px",gap:8,alignItems:"end"}}>
                 <div><Lbl>No</Lbl><Inp value={p.noPnl} onChange={e=>{const n=[...panels];n[i]={...n[i],noPnl:e.target.value};setPanels(n);}} placeholder="1"/></div>
                 <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={e=>{const n=[...panels];n[i]={...n[i],nama:e.target.value};setPanels(n);}} placeholder="Nama panel..."/></div>
                 <div><Lbl>Tipe</Lbl>
@@ -6014,6 +6016,14 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   </Sel>
                 </div>
                 <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={e=>{const n=[...panels];n[i]={...n[i],qty:e.target.value};setPanels(n);}}/></div>
+                <div><Lbl>Kesulitan</Lbl>
+                  <Sel value={(p as any).tingkatKesulitan||"EASY"} onChange={e=>{const n=[...panels];n[i]={...n[i],tingkatKesulitan:e.target.value} as any;setPanels(n);}}>
+                    <option value="EASY">Easy</option>
+                    <option value="MEDIUM">Medium</option>
+                    <option value="HARD">Hard</option>
+                    <option value="VERY_HARD">Very Hard</option>
+                  </Sel>
+                </div>
                 <div style={{paddingBottom:2}}>
                   <button onClick={()=>setPanels(panels.filter((_,j)=>j!==i))}
                     style={{width:32,height:36,borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:14}}>✕</button>

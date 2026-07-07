@@ -70,6 +70,7 @@ export const workOrderService = {
         qty: p.qty || 1,
         checklist: p.checklist || {},
         catatan: p.catatan || "",
+        tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
       }).eq('id', p.id)
       if (error) throw new Error(error.message)
     }
@@ -83,6 +84,7 @@ export const workOrderService = {
         qty: p.qty || 1,
         checklist: p.checklist || {},
         catatan: p.catatan || "",
+        tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
       }))
       const { error } = await supabase.from('panels').insert(rows)
       if (error) throw new Error(error.message)
