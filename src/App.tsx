@@ -5325,25 +5325,53 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
           <div>
               <Lbl>Komponen Terjadwal di {fmtDate(swapOrangModal.tanggal)} (pilih untuk dipindah)</Lbl>
-              <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14,maxHeight:240,overflowY:"auto" as const}}>
-                {swapOrangModal.opsiSwap.map((o:any)=>{
-                  const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
-                  const checked=swapOrangSelected.includes(swapKey);
-                  const hasProgress=o.progress>0;
-                  return(
-                    <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
-                      <input type="checkbox" checked={checked} style={{marginTop:2}}
-                        onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:12,color:"#1e293b"}}>{getNamaKomponenDariKode(o.panel_id,o.kode_komponen)}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({o.kode_komponen})</span></div>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>WO {o.wo_number} · {o.panel_nama} · {o.jumlah_orang} orang · progress {o.progress}%</div>
+              <div style={{fontSize:10,color:"#94a3b8",marginBottom:8}}>Disusun berdasarkan prioritas: deadline paling jauh duluan (paling aman digeser)</div>
+              <div style={{display:"flex",flexDirection:"column" as const,gap:10,marginBottom:14,maxHeight:280,overflowY:"auto" as const}}>
+                {(()=>{
+                  const groups:Record<string,{wo_number:string,wo_target:string,panels:Record<string,{panel_nama:string,items:any[]}>}>={};
+                  swapOrangModal.opsiSwap.forEach((o:any)=>{
+                    const woKey=o.wo_number;
+                    if(!groups[woKey])groups[woKey]={wo_number:o.wo_number,wo_target:o.wo_target,panels:{}};
+                    const panelKey=String(o.panel_id);
+                    if(!groups[woKey].panels[panelKey])groups[woKey].panels[panelKey]={panel_nama:o.panel_nama,items:[]};
+                    groups[woKey].panels[panelKey].items.push(o);
+                  });
+                  return Object.values(groups).map((g:any,gi:number)=>(
+                    <div key={gi} style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+                      <div style={{background:"#f8fafc",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #e2e8f0"}}>
+                        <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>WO {g.wo_number}</span>
+                        <span style={{fontSize:10,color:"#94a3b8"}}>Deadline: {g.wo_target?fmtDate(g.wo_target):"-"}</span>
                       </div>
-                      {hasProgress&&(
-                        <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
-                      )}
-                    </label>
-                  );
-                })}
+                      <div style={{padding:"8px 10px",display:"flex",flexDirection:"column" as const,gap:8}}>
+                        {Object.values(g.panels).map((pnl:any,pi:number)=>(
+                          <div key={pi}>
+                            <div style={{fontSize:11,fontWeight:600,color:"#475569",marginBottom:4}}>{pnl.panel_nama}</div>
+                            <div style={{display:"flex",flexDirection:"column" as const,gap:5}}>
+                              {pnl.items.map((o:any)=>{
+                                const swapKey=o.raw_id+"|"+o.wp+"|"+o.kode_komponen;
+                                const checked=swapOrangSelected.includes(swapKey);
+                                const hasProgress=o.progress>0;
+                                return(
+                                  <label key={swapKey} style={{display:"flex",alignItems:"flex-start",gap:10,border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                                    <input type="checkbox" checked={checked} style={{marginTop:2}}
+                                      onChange={()=>setSwapOrangSelected(prev=>checked?prev.filter(k=>k!==swapKey):[...prev,swapKey])}/>
+                                    <div style={{flex:1}}>
+                                      <div style={{fontSize:12,color:"#1e293b"}}>{getNamaKomponenDariKode(o.panel_id,o.kode_komponen)}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({o.kode_komponen})</span></div>
+                                      <div style={{fontSize:10,color:"#94a3b8"}}>{o.jumlah_orang} orang · progress {o.progress}%</div>
+                                    </div>
+                                    {hasProgress&&(
+                                      <span style={{fontSize:9,background:"#fffbeb",color:"#92400e",padding:"2px 8px",borderRadius:6,fontWeight:600,whiteSpace:"nowrap" as const}}>Boleh, hati-hati</span>
+                                    )}
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ));
+                })()}
               </div>
               {(()=>{
                 const orangDipindah=swapOrangModal.opsiSwap.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).reduce((s:number,o:any)=>s+Number(o.jumlah_orang),0);
