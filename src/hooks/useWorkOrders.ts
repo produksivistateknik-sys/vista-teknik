@@ -67,7 +67,7 @@ export function useWorkOrders() {
     try {
       const uname = getUname()
       const result = await workOrderService.update(id, { ...payload, updated_by: uname }, uname)
-      setData(prev => prev.map(r => r.id === id ? result : r))
+      setData(prev => prev.map(r => r.id === id ? { ...r, ...result } : r))
       return { success: true, data: result }
     } catch (err) {
       return { success: false, error: err instanceof Error ? err.message : 'Error' }
