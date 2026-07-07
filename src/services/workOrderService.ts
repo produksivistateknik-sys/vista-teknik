@@ -89,5 +89,16 @@ export const workOrderService = {
       const { error } = await supabase.from('panels').insert(rows)
       if (error) throw new Error(error.message)
     }
+  },
+
+  async findOrCreateSiblingWO(wo: string, proyek: string, target: string, uname = 'Admin') {
+    const { data: existing } = await supabase.from('work_orders')
+      .select('id').eq('wo', wo).eq('proyek', proyek).eq('target', target).limit(1)
+    if (existing && existing.length > 0) return existing[0].id
+    const { data, error } = await supabase.from('work_orders')
+      .insert({ wo, proyek, target, updated_by: uname }).select().single()
+    if (error) throw new Error(error.message)
+    await logActivity(uname, 'TAMBAH WO', `Tambah WO ${wo} - ${proyek} (split tanggal ${target})`, { wo_number: wo, proyek })
+    return data.id
   }
 }

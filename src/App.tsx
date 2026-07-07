@@ -5616,35 +5616,50 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     setArsipLoading(false);
   };
 
-  const save=async()=>{
-    const np=panels.filter(p=>p.nama).map((p,i)=>{
-      if((p as any).id){
-        return{
-          id:(p as any).id,noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-          checklist:(p as any).checklist||initChecklist(p.tipe,Number(p.qty)||1),
-          catatan:(p as any).catatan||"",
-          tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
-        };
-      }
+  const buildNp=(list:any[])=>list.filter(p=>p.nama).map((p,i)=>{
+    if((p as any).id){
       return{
-        noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-        checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+        id:(p as any).id,noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+        checklist:(p as any).checklist||initChecklist(p.tipe,Number(p.qty)||1),
+        catatan:(p as any).catatan||"",
         tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
       };
-    });
+    }
+    return{
+      noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+      checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+      tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
+    };
+  });
+
+  const save=async()=>{
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
     if(editId){
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
-        await workOrderService.savePanels(editId, np);
-        const{data:freshPanelsEdit}=await supabase.from("panels").select("*").eq("wo_id",editId).order("no_pnl",{ascending:true});
-        setWoData(prev=>prev.map(w=>w.id==editId?{...w,...form,panels:freshPanelsEdit??np}:w));
+        const groups:Record<string,any[]>={};
+        panels.filter(p=>p.nama).forEach(p=>{
+          const tgl=(p as any).tanggal||form.target;
+          if(!groups[tgl])groups[tgl]=[];
+          groups[tgl].push(p);
+        });
+        for(const tgl of Object.keys(groups)){
+          const npGroup=buildNp(groups[tgl]);
+          let targetWoId=editId;
+          if(tgl&&tgl!==form.target){
+            targetWoId=await workOrderService.findOrCreateSiblingWO(form.wo,form.proyek,tgl,uname);
+          }
+          await workOrderService.savePanels(targetWoId, npGroup);
+        }
+        if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
       }
     } else {
+      const np=buildNp(panels);
       const result=await createWO({wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
-        // Refetch panels dengan id yang benar dari database
         const{data:freshPanels}=await supabase.from("panels").select("*").eq("wo_id",result.data.id).order("no_pnl",{ascending:true});
         const newWo={...result.data,panels:freshPanels??np};
         setWoData(prev=>{
@@ -5828,7 +5843,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY"})));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target})));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});setSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
@@ -6007,7 +6022,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #e2e8f0",paddingTop:16}}>Panel</div>
           {panels.map((p,i)=>(
             <div key={i} style={{background:"#fff",borderRadius:10,padding:14,marginBottom:10,border:"1px solid #e2e8f0"}}>
-              <div style={{display:"grid",gridTemplateColumns:"56px 1fr 140px 70px 130px 32px",gap:8,alignItems:"end"}}>
+              <div style={{display:"grid",gridTemplateColumns:"50px 1fr 120px 55px 100px 130px 32px",gap:8,alignItems:"end"}}>
                 <div><Lbl>No</Lbl><Inp value={p.noPnl} onChange={e=>{const n=[...panels];n[i]={...n[i],noPnl:e.target.value};setPanels(n);}} placeholder="1"/></div>
                 <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={e=>{const n=[...panels];n[i]={...n[i],nama:e.target.value};setPanels(n);}} placeholder="Nama panel..."/></div>
                 <div><Lbl>Tipe</Lbl>
@@ -6024,6 +6039,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                     <option value="VERY_HARD">Very Hard</option>
                   </Sel>
                 </div>
+                <div><Lbl>Tanggal</Lbl>
+                  <Inp type="date" value={(p as any).tanggal||form.target||""} onChange={e=>{const n=[...panels];n[i]={...n[i],tanggal:e.target.value} as any;setPanels(n);}}/>
+                </div>
                 <div style={{paddingBottom:2}}>
                   <button onClick={()=>setPanels(panels.filter((_,j)=>j!==i))}
                     style={{width:32,height:36,borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:14}}>✕</button>
@@ -6033,7 +6051,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           ))}
           <button onClick={()=>{
             const maxNo=panels.reduce((max,p)=>{const n=parseInt(p.noPnl)||0;return n>max?n:max;},0);
-            setPanels([...panels,{...blankPanel,noPnl:String(maxNo+1)}]);
+            setPanels([...panels,{...blankPanel,noPnl:String(maxNo+1),tanggal:form.target} as any]);
           }}
             style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #cbd5e1",
               background:"transparent",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:600,marginBottom:16}}>
