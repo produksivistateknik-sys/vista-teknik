@@ -633,6 +633,7 @@ export interface KomponenSwapOptionV2 {
   raw_id: number
   wo_id: number
   wo_number: string
+  wo_target: string
   panel_id: number
   panel_nama: string
   wp: string
@@ -694,14 +695,15 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
   const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
   const { data: woRows } = await supabase
     .from('work_orders')
-    .select('id, wo')
+    .select('id, wo, target')
     .in('id', woIds.length > 0 ? woIds : [-1])
 
   const panelMap: Record<number, any> = {}
   ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
 
   const woMap: Record<number, string> = {}
-  ;(woRows || []).forEach((w: any) => { woMap[w.id] = w.wo })
+  const woTargetMap: Record<number, string> = {}
+  ;(woRows || []).forEach((w: any) => { woMap[w.id] = w.wo; woTargetMap[w.id] = w.target || '' })
 
   const ptMap: Record<string, any> = {}
   ;(ptData || []).forEach((pt: any) => { ptMap[`${pt.tipe_panel}|${pt.kode_komponen}`] = pt })
@@ -730,6 +732,7 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
           raw_id: row.id,
           wo_id: row.wo_id,
           wo_number: woMap[row.wo_id] || '',
+          wo_target: woTargetMap[row.wo_id] || '',
           panel_id: row.panel_id,
           panel_nama: panel.nama,
           wp: entry.wp,
@@ -749,7 +752,11 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
     return { cukup: true, kapasitasHari, terpakaiSaatIni, sisaKapasitas, opsiSwap: [] }
   }
 
-  opsiSwap.sort((a, b) => a.progress - b.progress)
+  opsiSwap.sort((a, b) => {
+    const targetCompare = (b.wo_target || '9999-99-99').localeCompare(a.wo_target || '9999-99-99')
+    if (targetCompare !== 0) return targetCompare
+    return a.progress - b.progress
+  })
 
   return { cukup: false, kapasitasHari, terpakaiSaatIni, sisaKapasitas, opsiSwap }
 }
