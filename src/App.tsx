@@ -5811,7 +5811,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           <div style={{fontSize:12,marginTop:4}}>Klik tombol "+ Tambah WO" untuk membuat WO pertama</div>
         </div>
       )}
-      {woData.map(wo=>{
+      {[...woData].sort((a:any,b:any)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99")).map(wo=>{
         const pct=woOverall(wo);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
         return(
           <Card key={wo.id} style={{marginBottom:12,borderLeft:`3px solid ${st.color}`,padding:0,overflow:"hidden"}}>
@@ -5845,7 +5845,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
               </div>
             </div>
-            {isExp&&(wo.panels||[]).map(p=>{
+            {isExp&&[...(wo.panels||[])].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map(p=>{
               const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=PANEL_TYPES[p.tipe];
               return(
                 <div key={p.id} style={{borderBottom:"1px solid #f1f5f9"}}>
