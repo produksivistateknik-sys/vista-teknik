@@ -50,18 +50,42 @@ export const workOrderService = {
   },
 
   async savePanels(woId: number, panels: any[]) {
-    await supabase.from('panels').delete().eq('wo_id', woId)
-    if (!panels.length) return
-    const rows = panels.map(p => ({
-      wo_id: woId,
-      no_pnl: p.noPnl || p.no_pnl || 1,
-      nama: p.nama,
-      tipe: p.tipe,
-      qty: p.qty || 1,
-      checklist: p.checklist || {},
-      catatan: p.catatan || "",
-    }))
-    const { error } = await supabase.from('panels').insert(rows)
-    if (error) throw new Error(error.message)
+    const { data: existingRows } = await supabase.from('panels').select('id').eq('wo_id', woId)
+    const existingIds = new Set((existingRows || []).map((p: any) => p.id))
+
+    const withId = panels.filter(p => p.id && existingIds.has(p.id))
+    const withoutId = panels.filter(p => !p.id || !existingIds.has(p.id))
+    const keepIds = new Set(withId.map(p => p.id))
+    const idsToDelete = [...existingIds].filter(id => !keepIds.has(id))
+
+    if (idsToDelete.length > 0) {
+      await supabase.from('panels').delete().in('id', idsToDelete)
+    }
+
+    for (const p of withId) {
+      const { error } = await supabase.from('panels').update({
+        no_pnl: p.noPnl || p.no_pnl || 1,
+        nama: p.nama,
+        tipe: p.tipe,
+        qty: p.qty || 1,
+        checklist: p.checklist || {},
+        catatan: p.catatan || "",
+      }).eq('id', p.id)
+      if (error) throw new Error(error.message)
+    }
+
+    if (withoutId.length > 0) {
+      const rows = withoutId.map(p => ({
+        wo_id: woId,
+        no_pnl: p.noPnl || p.no_pnl || 1,
+        nama: p.nama,
+        tipe: p.tipe,
+        qty: p.qty || 1,
+        checklist: p.checklist || {},
+        catatan: p.catatan || "",
+      }))
+      const { error } = await supabase.from('panels').insert(rows)
+      if (error) throw new Error(error.message)
+    }
   }
 }

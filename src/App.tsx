@@ -5617,10 +5617,19 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   };
 
   const save=async()=>{
-    const np=panels.filter(p=>p.nama).map((p,i)=>({
-      id:uid(),noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-      checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
-    }));
+    const np=panels.filter(p=>p.nama).map((p,i)=>{
+      if((p as any).id){
+        return{
+          id:(p as any).id,noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+          checklist:(p as any).checklist||initChecklist(p.tipe,Number(p.qty)||1),
+          catatan:(p as any).catatan||"",
+        };
+      }
+      return{
+        noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+        checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+      };
+    });
     if(editId){
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
@@ -5817,7 +5826,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty})));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan})));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});setSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
@@ -5856,7 +5865,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                           </div>
                           <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",overflow:"hidden"}}>
                             {wpDef.items.map((item,ii)=>{
-                              const cl=p.checklist[item.kode]||{qty:0};const isLocked=cl.qty===0;
+                              const cl=(p.checklist||{})[item.kode]||{qty:0};const isLocked=cl.qty===0;
                               return(
                                 <div key={item.kode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
                                   borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",
