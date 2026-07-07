@@ -96,7 +96,7 @@ export const workOrderService = {
       .select('id').eq('wo', wo).eq('proyek', proyek).eq('target', target).limit(1)
     if (existing && existing.length > 0) return existing[0].id
     const { data, error } = await supabase.from('work_orders')
-      .insert({ wo, proyek, target, updated_by: uname }).select().single()
+      .insert({ wo, proyek, target }).select().single()
     if (error) throw new Error(error.message)
     await logActivity(uname, 'TAMBAH WO', `Tambah WO ${wo} - ${proyek} (split tanggal ${target})`, { wo_number: wo, proyek })
     return data.id
