@@ -6058,6 +6058,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   };
 
   const updateItemQty=(woId,panelId,kode,qty)=>{
+    const panelForQtyMulti=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
+    const panelQtyMultiplier=Number(panelForQtyMulti?.qty)||1;
+    qty=(Number(qty)||0)*panelQtyMultiplier;
     const nq=Number(qty)||0;
     setOrigChecklist(prev=>{
       if(prev[String(panelId)])return prev;
