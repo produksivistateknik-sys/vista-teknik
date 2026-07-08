@@ -149,5 +149,13 @@ export const workOrderService = {
         }
       }
     }
+
+    const { data: sisaPanel } = await supabase.from('panels').select('id').eq('wo_id', editWoId).limit(1)
+    if (!sisaPanel || sisaPanel.length === 0) {
+      await supabase.from('renhar').delete().eq('wo_id', editWoId)
+      await supabase.from('raw_schedule').delete().eq('wo_id', editWoId)
+      await supabase.from('fcs_schedule').delete().eq('wo_id', editWoId)
+      await supabase.from('work_orders').delete().eq('id', editWoId)
+    }
   }
 }
