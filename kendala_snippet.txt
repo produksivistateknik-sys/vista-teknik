@@ -1,0 +1,38 @@
+2311:           <div style={{fontSize:14,fontWeight:600}}>Belum ada catatan kendala</div>
+2312:           <div style={{fontSize:12,marginTop:4}}>Catatan dari operator akan muncul di sini</div>
+2313:         </div>
+2314:       ):(
+2315:         <div style={{display:"flex",flexDirection:"column",gap:10}}>
+2316:           {filtered.map(k=>{
+2317:             const dc=DIVISI_CONFIG[k.divisi];
+2318:             const pc=PROSES_COLOR[k.proses]||"#64748b";
+2319:             return(
+2320:               <div key={k.id} style={{background:"var(--card-bg,#fff)",borderRadius:12,border:"1px solid var(--border-color,#e2e8f0)",
+2321:                 padding:"14px 16px",borderLeft:`4px solid ${dc?.color||"#64748b"}`}}>
+2322:                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,flexWrap:"wrap"}}>
+2323:                   <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+2324:                     <span style={{background:dc?.bg,color:dc?.color,border:`1px solid ${dc?.color}30`,
+2325:                       borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+2326:                       {dc?.icon} {dc?.label}
+2327:                     </span>
+2328:                     <Badge label={k.proses} color={pc}/>
+2329:                     <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>📅 {fmtDate(k.tanggal)}</span>
+2330:                     <span style={{fontSize:11,color:"#94a3b8"}}>👤 {k.operator}</span>
+2331:                   </div>
+2332:                   <button onClick={()=>removeKendala(k.id, user?.name||user?.nama||'Admin')}
+2333:                     style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:13,flexShrink:0}}>
+2334:                     🗑
+2335:                   </button>
+2336:                 </div>
+2337:                 <div style={{marginTop:10,fontSize:13,color:"#374151",lineHeight:1.6,
+2338:                   background:"#f8fafc",borderRadius:8,padding:"10px 12px"}}>
+2339:                   {k.catatan}
+2340:                 </div>
+2341:                 <div style={{fontSize:10,color:"#cbd5e1",marginTop:6,textAlign:"right"}}>
+2342:                   {new Date(k.ts).toLocaleString("id-ID")}
+2343:                 </div>
+2344:               </div>
+2345:             );
+2346:           })}
+2347:         </div>
+2348:       )}
