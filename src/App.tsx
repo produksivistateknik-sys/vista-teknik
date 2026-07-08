@@ -1160,11 +1160,18 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
   const [dateTo,setDateTo]=useState("");
   const [delId,setDelId]=useState<any>(null);
   const [timerData,setTimerData]=useState<any[]>([]);
+  const [checkpointLogData,setCheckpointLogData]=useState<any[]>([]);
   const [,setLiveTick]=useState(0);
 
   useEffect(()=>{
     const iv=setInterval(()=>setLiveTick(t=>t+1),30000);
     return()=>clearInterval(iv);
+  },[]);
+
+  useEffect(()=>{
+    supabase.from("progress_checkpoint_log").select("*").then(({data})=>{
+      setCheckpointLogData(data??[]);
+    });
   },[]);
 
   useEffect(()=>{
@@ -1265,6 +1272,23 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
       tm.tanggal===tugas.tanggal
     );
     return sesi.reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0);
+  };
+
+  const getKontribusiOperator=(panelId:any,kode:string,proses:string,tanggal:string,operatorNama:string)=>{
+    const semuaLog=[...checkpointLogData]
+      .filter((c:any)=>String(c.panel_id)===String(panelId)&&c.kode_komponen===kode&&c.proses===proses)
+      .sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
+    const entriesOperatorHariIni=semuaLog.filter((c:any)=>c.pekerja_nama===operatorNama&&c.tanggal===tanggal);
+    if(entriesOperatorHariIni.length===0)return null;
+    const afterVal=Math.max(...entriesOperatorHariIni.map((c:any)=>Number(c.checkpoint)));
+    const firstTs=entriesOperatorHariIni[0].ts;
+    const priorEntries=semuaLog.filter((c:any)=>String(c.ts).localeCompare(String(firstTs))<0);
+    const lastPrior=priorEntries.length>0?priorEntries[priorEntries.length-1]:null;
+    const beforeVal=lastPrior?Number(lastPrior.checkpoint):0;
+    const beforeOperator=lastPrior?lastPrior.pekerja_nama:null;
+    const beforeTanggal=lastPrior?lastPrior.tanggal:null;
+    const isHandoff=!!(beforeOperator&&beforeOperator!==operatorNama&&beforeVal>0);
+    return{before:beforeVal,after:afterVal,kontribusi:Math.max(0,afterVal-beforeVal),beforeOperator,beforeTanggal,isHandoff};
   };
 
   // Hitung progress per tugas dari checklist panel
@@ -1670,12 +1694,38 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                               </td>
                               <td style={{...td2,textAlign:"center" as const,fontWeight:700,color:durasiMenit>0?"#1d4ed8":"#cbd5e1"}}>{durasiLabel}</td>
                               <td style={td2}>
-                                <div style={{display:"flex",alignItems:"center",gap:5}}>
-                                  <div style={{width:50,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                                    <div style={{width:pct+"%",height:"100%",background:pct>=100?"#16a34a":pct>0?"#f59e0b":"#e2e8f0",borderRadius:99}}/>
-                                  </div>
-                                  <span style={{fontSize:10,fontWeight:700,color:pct>=100?"#16a34a":pct>0?"#f59e0b":"#94a3b8"}}>{pct}%</span>
-                                </div>
+                                {(()=>{
+                                  const kontrib=getKontribusiOperator(t.panel_id||t.panelId,kode,t.proses,r.tanggal,selPekerja.nama);
+                                  if(!kontrib){
+                                    return(
+                                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                        <div style={{width:50,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+                                          <div style={{width:pct+"%",height:"100%",background:pct>=100?"#16a34a":pct>0?"#f59e0b":"#e2e8f0",borderRadius:99}}/>
+                                        </div>
+                                        <span style={{fontSize:10,fontWeight:700,color:pct>=100?"#16a34a":pct>0?"#f59e0b":"#94a3b8"}}>{pct}%</span>
+                                      </div>
+                                    );
+                                  }
+                                  const{before,after,kontribusi,beforeOperator,beforeTanggal,isHandoff}=kontrib;
+                                  return(
+                                    <div>
+                                      <div style={{display:"flex",alignItems:"center",gap:5}}>
+                                        <div style={{width:50,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden",display:"flex"}}>
+                                          {before>0&&(
+                                            <div style={{width:before+"%",height:"100%",background:"#93c5fd"}}/>
+                                          )}
+                                          <div style={{width:(after-before)+"%",height:"100%",background:"#16a34a"}}/>
+                                        </div>
+                                        <span style={{fontSize:10,fontWeight:700,color:"#16a34a"}}>{kontribusi}%</span>
+                                      </div>
+                                      {isHandoff&&(
+                                        <div style={{fontSize:8,color:"#2563eb",marginTop:2,whiteSpace:"nowrap" as const}}>
+                                          ↳ lanjutin {beforeOperator} ({fmtDate(beforeTanggal)})
+                                        </div>
+                                      )}
+                                    </div>
+                                  );
+                                })()}
                               </td>
                               <td style={td2}>
                                 <span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 8px",fontSize:9.5,fontWeight:700}}>
