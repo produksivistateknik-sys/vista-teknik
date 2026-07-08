@@ -2954,6 +2954,7 @@ function Dashboard({woData}){
             {id:"wo",label:"Work Order"},
             {id:"panel",label:"Panel List"},
             {id:"alert",label:"Peringatan"+(alerts.length>0?" ("+alerts.length+")":"")},
+            {id:"kalender",label:"Kalender"},
           ].map(t=>(
             <div key={t.id} onClick={()=>setActiveTab(t.id)}
               style={{padding:"9px 14px",fontSize:12,fontWeight:activeTab===t.id?600:500,
@@ -3124,7 +3125,113 @@ function Dashboard({woData}){
             </table>
           </div>
         </>}
+
+        {/* TAB: KALENDER */}
+        {activeTab==="kalender"&&<KalenderTab/>}
       </div>
+    </div>
+  );
+}
+
+function KalenderTab(){
+  const [rawData,setRawData]=useState<any[]>([]);
+  const [loading,setLoading]=useState(true);
+  const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
+  const [selectedDay,setSelectedDay]=useState<string|null>(null);
+
+  useEffect(()=>{
+    supabase.from("raw_schedule").select("wo_number,proyek,panel,proses,schedule").then(({data}:any)=>{
+      setRawData(data??[]);
+      setLoading(false);
+    });
+  },[]);
+
+  const [year,month]=viewMonth.split("-").map(Number);
+  const firstDay=new Date(year,month-1,1);
+  const lastDay=new Date(year,month,0);
+  const daysInMonth=lastDay.getDate();
+  const startWeekday=firstDay.getDay();
+
+  const eventsByDate=useMemo(()=>{
+    const map:Record<string,any[]>={};
+    rawData.forEach((row:any)=>{
+      Object.entries(row.schedule||{}).forEach(([tgl,entries]:[string,any])=>{
+        if(!tgl.startsWith(viewMonth))return;
+        if(!Array.isArray(entries)||entries.length===0)return;
+        if(!map[tgl])map[tgl]=[];
+        map[tgl].push({wo:row.wo_number,proyek:row.proyek,panel:row.panel,proses:row.proses,count:entries.length});
+      });
+    });
+    return map;
+  },[rawData,viewMonth]);
+
+  const prevMonth=()=>{
+    const d=new Date(year,month-2,1);
+    setViewMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+  };
+  const nextMonth=()=>{
+    const d=new Date(year,month,1);
+    setViewMonth(`${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`);
+  };
+
+  const cells:any[]=[];
+  for(let i=0;i<startWeekday;i++)cells.push(null);
+  for(let d=1;d<=daysInMonth;d++)cells.push(d);
+
+  const MONTH_NAMES=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+  const DAY_NAMES=["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+
+  if(loading)return <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat kalender...</div>;
+
+  return(
+    <div style={{padding:12}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={prevMonth} style={{border:"1px solid #e2e8f0",borderRadius:6,background:"#fff",padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>‹</button>
+          <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{MONTH_NAMES[month-1]} {year}</span>
+          <button onClick={nextMonth} style={{border:"1px solid #e2e8f0",borderRadius:6,background:"#fff",padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>›</button>
+        </div>
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,background:"#e2e8f0",border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden"}}>
+        {DAY_NAMES.map(d=>(
+          <div key={d} style={{background:"#f8fafc",padding:"6px 8px",fontSize:10,fontWeight:700,color:"#64748b",textAlign:"center" as const}}>{d}</div>
+        ))}
+        {cells.map((d,i)=>{
+          if(d===null)return <div key={i} style={{background:"#fafafa",minHeight:90}}/>;
+          const tgl=`${year}-${String(month).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
+          const events=eventsByDate[tgl]||[];
+          const isToday=tgl===getLocalDateStr();
+          return(
+            <div key={i} onClick={()=>events.length>0&&setSelectedDay(tgl)}
+              style={{background:"#fff",minHeight:90,padding:6,cursor:events.length>0?"pointer":"default",border:isToday?"2px solid #1d4ed8":"none"}}>
+              <div style={{fontSize:10,fontWeight:700,color:isToday?"#1d4ed8":"#64748b",marginBottom:4}}>{d}</div>
+              <div style={{display:"flex",flexDirection:"column" as const,gap:2}}>
+                {events.slice(0,3).map((e:any,ei:number)=>(
+                  <div key={ei} style={{fontSize:8.5,background:(PROSES_COLOR[e.proses]||"#64748b")+"18",color:PROSES_COLOR[e.proses]||"#475569",borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>
+                    {e.proses} - {e.proyek} - {e.panel}
+                  </div>
+                ))}
+                {events.length>3&&(
+                  <div style={{fontSize:8,color:"#94a3b8",fontWeight:600}}>+{events.length-3} lagi</div>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      {selectedDay&&(
+        <Modal title={"Jadwal "+fmtDate(selectedDay)} onClose={()=>setSelectedDay(null)} width={480}>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:8,maxHeight:400,overflowY:"auto" as const}}>
+            {(eventsByDate[selectedDay]||[]).map((e:any,i:number)=>(
+              <div key={i} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px"}}>
+                <span style={{background:(PROSES_COLOR[e.proses]||"#64748b")+"18",color:PROSES_COLOR[e.proses]||"#64748b",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{e.proses}</span>
+                <div style={{fontSize:12,fontWeight:600,color:"#1e293b",marginTop:4}}>{e.proyek} — {e.panel}</div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>WO {e.wo}</div>
+              </div>
+            ))}
+          </div>
+        </Modal>
+      )}
     </div>
   );
 }
