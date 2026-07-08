@@ -1619,7 +1619,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                   </span>
                 </div>
               </div>
-              <div style={{display:"flex",gap:16,flexWrap:"wrap" as const}}>
+              <div style={{display:"flex",gap:16,flexWrap:"wrap" as const,alignItems:"center"}}>
                 {[
                   {l:"Total Tugas",v:stats.total,c:"#fff"},
                   {l:"Tercapai",v:stats.selesai,c:"#86efac"},
@@ -1632,6 +1632,31 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                     <div style={{fontSize:9,color:"rgba(255,255,255,.7)",fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
                   </div>
                 ))}
+                {(()=>{
+                  const allKontribusi=rekap.flatMap((r:any)=>r.tasks.map((t:any)=>{
+                    const kode=t._komponenSpesifik;
+                    if(!kode)return null;
+                    return getKontribusiOperator(t.panel_id||t.panelId,kode,t.proses,r.tanggal,selPekerja.nama);
+                  })).filter(Boolean);
+                  const totalKontribusi=allKontribusi.reduce((s:number,k:any)=>s+k.kontribusi,0);
+                  const rataKontribusi=allKontribusi.length>0?Math.round(totalKontribusi/allKontribusi.length):0;
+                  const jumlahLanjutan=allKontribusi.filter((k:any)=>k.isHandoff).length;
+                  return(
+                    <>
+                      <div style={{width:1,alignSelf:"stretch",background:"rgba(255,255,255,.25)"}}/>
+                      {[
+                        {l:"Total Kontribusi",v:totalKontribusi+"%",c:"#a7f3d0"},
+                        {l:"Rata2 Kontribusi",v:rataKontribusi+"%",c:"#a7f3d0"},
+                        {l:"Lanjutan Orang Lain",v:jumlahLanjutan,c:"#fbcfe8"},
+                      ].map((s,i)=>(
+                        <div key={"kpi-"+i} style={{textAlign:"center" as const}}>
+                          <div style={{fontSize:20,fontWeight:800,color:s.c}}>{s.v}</div>
+                          <div style={{fontSize:9,color:"rgba(255,255,255,.7)",fontWeight:600,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.l}</div>
+                        </div>
+                      ))}
+                    </>
+                  );
+                })()}
               </div>
               <button onClick={()=>setSelPekerja(null)}
                 style={{background:"rgba(255,255,255,.2)",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer",color:"#fff",fontSize:12,fontWeight:600}}>
