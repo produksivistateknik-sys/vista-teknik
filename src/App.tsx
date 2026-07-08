@@ -1732,6 +1732,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                                     );
                                   }
                                   const{before,after,kontribusi,beforeOperator,beforeTanggal,isHandoff}=kontrib;
+                                  const sisaBelum=Math.max(0,100-after);
                                   return(
                                     <div>
                                       <div style={{display:"flex",alignItems:"center",gap:5}}>
@@ -1740,6 +1741,9 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
                                             <div style={{width:before+"%",height:"100%",background:"#93c5fd"}}/>
                                           )}
                                           <div style={{width:(after-before)+"%",height:"100%",background:"#16a34a"}}/>
+                                          {sisaBelum>0&&(
+                                            <div style={{width:sisaBelum+"%",height:"100%",background:"#f87171"}}/>
+                                          )}
                                         </div>
                                         <span style={{fontSize:10,fontWeight:700,color:"#16a34a"}}>{kontribusi}%</span>
                                       </div>
