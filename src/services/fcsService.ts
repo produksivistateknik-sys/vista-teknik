@@ -1147,7 +1147,7 @@ export async function setOverrideAndRebalance(params: {
       .select('id').eq('tanggal', tanggal).eq('jenis_pekerjaan', jenisPekerjaan).maybeSingle()
     const ovPayload: any = isOrang
       ? { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'orang', jumlah_orang: Number(jumlahOrang) || 0, created_by: createdBy }
-      : { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'jam', kapasitas_menit: Number(kapasitasMenit) || 0, created_by: createdBy }
+      : { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'jam', jam_kerja: (Number(kapasitasMenit) || 0) / 60, efektivitas_pct: 100, created_by: createdBy }
     if (existingOv) {
       await supabase.from('fcs_kapasitas_override').update(ovPayload).eq('id', existingOv.id)
     } else {
