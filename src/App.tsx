@@ -4146,6 +4146,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [swapOrangExpandedPanel,setSwapOrangExpandedPanel]=useState<Record<string,boolean>>({});
   const [overrideModal,setOverrideModal]=useState<{tanggalMulai:string,tanggalAkhir:string,proses:string[]}|null>(null);
   const [overrideValue,setOverrideValue]=useState("");
+  const [overrideJamKerja,setOverrideJamKerja]=useState("8");
+  const [overrideEfektivitas,setOverrideEfektivitas]=useState("80");
   const [overrideSaving,setOverrideSaving]=useState(false);
   const [overrideResult,setOverrideResult]=useState<any>(null);
   const [overrideProgress,setOverrideProgress]=useState("");
@@ -5741,15 +5743,32 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               })}
             </div>
           </div>
-          <div style={{marginBottom:14}}>
-            <Lbl>{overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?"Jumlah Orang":"Kapasitas Menit"}</Lbl>
-            <Inp type="number" min="0" value={overrideValue} onChange={e=>setOverrideValue(e.target.value)}
-              placeholder={overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?"misal 6":"misal 384"}/>
-          </div>
+          {overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?(
+            <div style={{marginBottom:14}}>
+              <Lbl>Jumlah Orang</Lbl>
+              <Inp type="number" min="0" value={overrideValue} onChange={e=>setOverrideValue(e.target.value)} placeholder="misal 6"/>
+            </div>
+          ):(
+            <div style={{marginBottom:14}}>
+              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
+                <div>
+                  <Lbl>Jam Kerja</Lbl>
+                  <Inp type="number" min="0" step="0.5" value={overrideJamKerja} onChange={e=>setOverrideJamKerja(e.target.value)}/>
+                </div>
+                <div>
+                  <Lbl>Efektivitas %</Lbl>
+                  <Inp type="number" min="0" max="100" value={overrideEfektivitas} onChange={e=>setOverrideEfektivitas(e.target.value)}/>
+                </div>
+              </div>
+              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
+                {overrideJamKerja} jam × 60 × {overrideEfektivitas}% = <strong>{Math.round((Number(overrideJamKerja)||0)*60*(Number(overrideEfektivitas)||0)/100)} menit</strong>/hari
+              </div>
+            </div>
+          )}
           {!overrideResult?(
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <Btn outline color="#64748b" onClick={()=>setOverrideModal(null)}>Batal</Btn>
-              <Btn color="#1d4ed8" disabled={overrideSaving||!overrideValue||overrideModal.proses.length===0||!overrideModal.tanggalMulai||!overrideModal.tanggalAkhir} onClick={async()=>{
+              <Btn color="#1d4ed8" disabled={overrideSaving||(overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?!overrideValue:(!overrideJamKerja||!overrideEfektivitas))||overrideModal.proses.length===0||!overrideModal.tanggalMulai||!overrideModal.tanggalAkhir} onClick={async()=>{
                 setOverrideSaving(true);
                 const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                 const uname=user?.name||user?.nama||sess?.nama||"Admin";
@@ -5762,10 +5781,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                   for(const proses of overrideModal.proses){
                     setOverrideProgress(tgl+" — "+proses);
                     const isOrangOv=["WIRING CONTROL","WIRING POWER"].includes(proses);
+                    const kapasitasMenitHitung=Math.round((Number(overrideJamKerja)||0)*60*(Number(overrideEfektivitas)||0)/100);
                     const res=await setOverrideAndRebalance({
                       tanggal:tgl,
                       jenisPekerjaan:proses,
-                      kapasitasMenit:isOrangOv?undefined:Number(overrideValue),
+                      kapasitasMenit:isOrangOv?undefined:kapasitasMenitHitung,
                       jumlahOrang:isOrangOv?Number(overrideValue):undefined,
                       createdBy:uname,
                     });
