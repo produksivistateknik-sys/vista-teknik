@@ -248,8 +248,9 @@ export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","
 function initChecklist(tipe, qty=1){
   const cfg=PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};
+  const qtyAwal=qty>1?0:qty;
   cfg.wps.forEach(w=>w.items.forEach(it=>{
-    c[it.kode]={ qty, qtyProses:{}, progress: ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{}),
+    c[it.kode]={ qty:qtyAwal, qtyProses:{}, progress: ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{}),
       progressByDate: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}),
       stepDates: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}) };
   }));
