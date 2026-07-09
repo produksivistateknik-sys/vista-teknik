@@ -4144,10 +4144,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [swapOrangModal,setSwapOrangModal]=useState<any>(null);
   const [swapOrangSelected,setSwapOrangSelected]=useState<string[]>([]);
   const [swapOrangExpandedPanel,setSwapOrangExpandedPanel]=useState<Record<string,boolean>>({});
-  const [overrideModal,setOverrideModal]=useState<{tanggal:string,proses:string}|null>(null);
+  const [overrideModal,setOverrideModal]=useState<{tanggalMulai:string,tanggalAkhir:string,proses:string[]}|null>(null);
   const [overrideValue,setOverrideValue]=useState("");
   const [overrideSaving,setOverrideSaving]=useState(false);
   const [overrideResult,setOverrideResult]=useState<any>(null);
+  const [overrideProgress,setOverrideProgress]=useState("");
   const [swapOrangLoading,setSwapOrangLoading]=useState(false);
   const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
@@ -4923,7 +4924,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 <div key={d} style={{background:"var(--card-bg,#fff)",border:"1px solid #e2e8f030",borderRadius:8,padding:"8px 12px",minWidth:130,textAlign:"center" as const}}>
                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{getDayLabel(d)}</div>
                   {!adaOverride?(
-                    <button onClick={()=>{setOverrideModal({tanggal:d,proses:(filterProses[0]||"POTONG")});setOverrideValue("");setOverrideResult(null);}}
+                    <button onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:filterProses.length>0?filterProses:["POTONG"]});setOverrideValue("");setOverrideResult(null);}}
                       style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0,fontFamily:"inherit"}}>⚠ Belum diatur · Atur</button>
                   ):(
                     <div style={{display:"flex",flexDirection:"column" as const,gap:5,textAlign:"left" as const}}>
@@ -4932,7 +4933,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           return(
                             <div key={pp.nama} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9}}>
                               <span style={{color:"#64748b"}}>{pp.nama}</span>
-                              <button onClick={()=>{setOverrideModal({tanggal:d,proses:pp.nama});setOverrideValue("");setOverrideResult(null);}}
+                              <button onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:[pp.nama]});setOverrideValue("");setOverrideResult(null);}}
                                 style={{color:"#dc2626",fontWeight:700,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0,fontSize:9,fontFamily:"inherit"}}>Belum diatur · Atur</button>
                             </div>
                           );
@@ -5704,41 +5705,81 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       )}
 
       {overrideModal&&(
-        <Modal title={"Atur Kapasitas — "+fmtDate(overrideModal.tanggal)} onClose={()=>{setOverrideModal(null);setOverrideResult(null);}} width={420}>
-          <div style={{marginBottom:14}}>
-            <Lbl>Jenis Pekerjaan</Lbl>
-            <Sel value={overrideModal.proses} onChange={e=>setOverrideModal({...overrideModal,proses:e.target.value})}>
-              {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
-                <option key={p} value={p}>{p}</option>
-              ))}
-            </Sel>
+        <Modal title="Atur Kapasitas" onClose={()=>{setOverrideModal(null);setOverrideResult(null);}} width={480}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
+            <div>
+              <Lbl>Tanggal Mulai</Lbl>
+              <Inp type="date" value={overrideModal.tanggalMulai} onChange={e=>setOverrideModal({...overrideModal,tanggalMulai:e.target.value})}/>
+            </div>
+            <div>
+              <Lbl>Tanggal Akhir</Lbl>
+              <Inp type="date" value={overrideModal.tanggalAkhir} onChange={e=>setOverrideModal({...overrideModal,tanggalAkhir:e.target.value})}/>
+            </div>
           </div>
           <div style={{marginBottom:14}}>
-            <Lbl>{["WIRING CONTROL","WIRING POWER"].includes(overrideModal.proses)?"Jumlah Orang":"Kapasitas Menit"}</Lbl>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Jenis Pekerjaan ({overrideModal.proses.length} dipilih)</div>
+              <div style={{display:"flex",gap:6}}>
+                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]})}
+                  style={{fontSize:10,color:"#16a34a",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:[]})}
+                  style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+              </div>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
+              {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+                const checked=overrideModal.proses.includes(p);
+                return(
+                  <button key={p} type="button" onClick={()=>{
+                    setOverrideModal({...overrideModal,proses:checked?overrideModal.proses.filter(x=>x!==p):[...overrideModal.proses,p]});
+                  }}
+                    style={{padding:"4px 10px",borderRadius:6,border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,
+                      background:checked?"#eff6ff":"#fff",color:checked?"#1d4ed8":"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <div style={{marginBottom:14}}>
+            <Lbl>{overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?"Jumlah Orang":"Kapasitas Menit"}</Lbl>
             <Inp type="number" min="0" value={overrideValue} onChange={e=>setOverrideValue(e.target.value)}
-              placeholder={["WIRING CONTROL","WIRING POWER"].includes(overrideModal.proses)?"misal 6":"misal 384"}/>
+              placeholder={overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?"misal 6":"misal 384"}/>
           </div>
           {!overrideResult?(
             <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
               <Btn outline color="#64748b" onClick={()=>setOverrideModal(null)}>Batal</Btn>
-              <Btn color="#1d4ed8" disabled={overrideSaving||!overrideValue} onClick={async()=>{
+              <Btn color="#1d4ed8" disabled={overrideSaving||!overrideValue||overrideModal.proses.length===0||!overrideModal.tanggalMulai||!overrideModal.tanggalAkhir} onClick={async()=>{
                 setOverrideSaving(true);
                 const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                 const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                const isOrangOv=["WIRING CONTROL","WIRING POWER"].includes(overrideModal.proses);
-                const res=await setOverrideAndRebalance({
-                  tanggal:overrideModal.tanggal,
-                  jenisPekerjaan:overrideModal.proses,
-                  kapasitasMenit:isOrangOv?undefined:Number(overrideValue),
-                  jumlahOrang:isOrangOv?Number(overrideValue):undefined,
-                  createdBy:uname,
-                });
+                const allShifted:any[]=[];
+                let cur=new Date(overrideModal.tanggalMulai);
+                const end=new Date(overrideModal.tanggalAkhir);
+                let safety=0;
+                while(cur<=end&&safety<366){
+                  const tgl=cur.toISOString().slice(0,10);
+                  for(const proses of overrideModal.proses){
+                    setOverrideProgress(tgl+" — "+proses);
+                    const isOrangOv=["WIRING CONTROL","WIRING POWER"].includes(proses);
+                    const res=await setOverrideAndRebalance({
+                      tanggal:tgl,
+                      jenisPekerjaan:proses,
+                      kapasitasMenit:isOrangOv?undefined:Number(overrideValue),
+                      jumlahOrang:isOrangOv?Number(overrideValue):undefined,
+                      createdBy:uname,
+                    });
+                    if(res.success)allShifted.push(...res.shifted);
+                  }
+                  cur.setDate(cur.getDate()+1);
+                  safety++;
+                }
                 setOverrideSaving(false);
-                if(!res.success){alert("Gagal: "+(res.error||"Error tidak diketahui"));return;}
-                setOverrideResult(res.shifted);
+                setOverrideProgress("");
+                setOverrideResult(allShifted);
                 if(refetchRaw) await refetchRaw();
               }}>
-                {overrideSaving?"Menyimpan...":"Simpan"}
+                {overrideSaving?(overrideProgress||"Menyimpan..."):"Simpan"}
               </Btn>
             </div>
           ):(
