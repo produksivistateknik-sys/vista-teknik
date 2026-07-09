@@ -1117,3 +1117,233 @@ export async function executeSwapKomponenOrang(params: {
     return { success: false, error: err.message }
   }
 }
+
+
+const PROSES_ORANG_LIST = ['WIRING CONTROL', 'WIRING POWER']
+
+export interface RebalanceShiftResult {
+  kodeKomponen: string
+  namaKomponen: string
+  panelNama: string
+  proyek: string
+  woNumber: string
+  dariTanggal: string
+  keTanggal: string
+  overflow: boolean
+}
+
+export async function setOverrideAndRebalance(params: {
+  tanggal: string
+  jenisPekerjaan: string
+  kapasitasMenit?: number
+  jumlahOrang?: number
+  createdBy: string
+}): Promise<{ success: boolean; shifted: RebalanceShiftResult[]; error?: string }> {
+  try {
+    const { tanggal, jenisPekerjaan, kapasitasMenit, jumlahOrang, createdBy } = params
+    const isOrang = PROSES_ORANG_LIST.includes(jenisPekerjaan)
+
+    const { data: existingOv } = await supabase.from('fcs_kapasitas_override')
+      .select('id').eq('tanggal', tanggal).eq('jenis_pekerjaan', jenisPekerjaan).maybeSingle()
+    const ovPayload: any = isOrang
+      ? { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'orang', jumlah_orang: Number(jumlahOrang) || 0, created_by: createdBy }
+      : { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'jam', kapasitas_menit: Number(kapasitasMenit) || 0, created_by: createdBy }
+    if (existingOv) {
+      await supabase.from('fcs_kapasitas_override').update(ovPayload).eq('id', existingOv.id)
+    } else {
+      await supabase.from('fcs_kapasitas_override').insert(ovPayload)
+    }
+    const kapasitasBaru = isOrang ? (Number(jumlahOrang) || 0) : (Number(kapasitasMenit) || 0)
+
+    const tanggalBatas = addDays(tanggal, 60)
+    const { data: overrideRows } = await supabase.from('fcs_kapasitas_override')
+      .select('tanggal, kapasitas_menit, jumlah_orang')
+      .eq('jenis_pekerjaan', jenisPekerjaan)
+      .gte('tanggal', tanggal).lte('tanggal', tanggalBatas)
+    const kapasitasMap: Record<string, number> = {}
+    ;(overrideRows || []).forEach((r: any) => {
+      kapasitasMap[r.tanggal] = isOrang ? Number(r.jumlah_orang || 0) : Number(r.kapasitas_menit || 0)
+    })
+    kapasitasMap[tanggal] = kapasitasBaru
+
+    const { data: rawRows } = await supabase.from('raw_schedule')
+      .select('id, wo_id, panel_id, panel, proyek, proses, schedule')
+      .eq('proses', jenisPekerjaan)
+
+    const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
+    const { data: panelRows } = await supabase.from('panels')
+      .select('id, nama, tipe, checklist').in('id', panelIds.length > 0 ? panelIds : [-1])
+    const panelMap: Record<number, any> = {}
+    ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
+
+    const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
+    const { data: woRows } = await supabase.from('work_orders').select('id, wo, target').in('id', woIds.length > 0 ? woIds : [-1])
+    const woMap: Record<number, { wo: string; target: string }> = {}
+    ;(woRows || []).forEach((w: any) => { woMap[w.id] = { wo: w.wo, target: w.target || '' } })
+
+    const { data: ptData } = await supabase.from('fcs_process_time')
+      .select('tipe_panel, kode_komponen, nama_komponen, menit_per_pcs')
+      .eq('jenis_pekerjaan', jenisPekerjaan).eq('is_active', true)
+    const ptMap: Record<string, any> = {}
+    ;(ptData || []).forEach((pt: any) => { ptMap[pt.tipe_panel + '|' + pt.kode_komponen] = pt })
+
+    type Item = {
+      rawId: number; wp: string; kode: string; beban: number
+      namaKomponen: string; panelNama: string; proyek: string; woNumber: string; woTarget: string
+      orangPerKomponen?: number
+    }
+    const itemsHariIni: Item[] = []
+    let bebanTotal = 0
+    for (const row of rawRows || []) {
+      const entries = row.schedule?.[tanggal] || []
+      const panel = panelMap[row.panel_id]
+      if (!panel) continue
+      const woInfo = woMap[row.wo_id] || { wo: '', target: '' }
+      for (const entry of entries) {
+        if (isOrang) {
+          const orangMap: Record<string, number> = entry.orangPerKomponen || {}
+          for (const kode of (entry.komponen || [])) {
+            const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
+            const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
+            if (progress >= 100) continue
+            bebanTotal += orang
+            itemsHariIni.push({
+              rawId: row.id, wp: entry.wp, kode, beban: orang,
+              namaKomponen: kode, panelNama: panel.nama, proyek: row.proyek, woNumber: woInfo.wo, woTarget: woInfo.target,
+              orangPerKomponen: orang,
+            })
+          }
+        } else {
+          for (const kode of (entry.komponen || [])) {
+            const qty = panel.checklist?.[kode]?.qty || 0
+            const pt = ptMap[panel.tipe + '|' + kode]
+            const menitPcs = pt ? Number(pt.menit_per_pcs) : 0
+            const totalMenit = qty * menitPcs
+            if (totalMenit <= 0) continue
+            bebanTotal += totalMenit
+            itemsHariIni.push({
+              rawId: row.id, wp: entry.wp, kode, beban: totalMenit,
+              namaKomponen: pt?.nama_komponen || kode, panelNama: panel.nama, proyek: row.proyek, woNumber: woInfo.wo, woTarget: woInfo.target,
+            })
+          }
+        }
+      }
+    }
+
+    const shifted: RebalanceShiftResult[] = []
+    if (bebanTotal <= kapasitasBaru) {
+      return { success: true, shifted: [] }
+    }
+
+    itemsHariIni.sort((a, b) => (b.woTarget || '9999-99-99').localeCompare(a.woTarget || '9999-99-99'))
+
+    let sisaLebih = bebanTotal - kapasitasBaru
+    const toShift: Item[] = []
+    for (const item of itemsHariIni) {
+      if (sisaLebih <= 0) break
+      toShift.push(item)
+      sisaLebih -= item.beban
+    }
+
+    const bebanTerpakaiTujuan: Record<string, number> = {}
+    const getBebanTerpakai = async (tgl: string): Promise<number> => {
+      if (bebanTerpakaiTujuan[tgl] !== undefined) return bebanTerpakaiTujuan[tgl]
+      let total = 0
+      for (const row of rawRows || []) {
+        const entries = row.schedule?.[tgl] || []
+        const panel = panelMap[row.panel_id]
+        if (!panel) continue
+        for (const entry of entries) {
+          if (isOrang) {
+            const orangMap: Record<string, number> = entry.orangPerKomponen || {}
+            for (const kode of (entry.komponen || [])) {
+              total += orangMap[kode] !== undefined ? orangMap[kode] : 1
+            }
+          } else {
+            for (const kode of (entry.komponen || [])) {
+              const qty = panel.checklist?.[kode]?.qty || 0
+              const pt = ptMap[panel.tipe + '|' + kode]
+              total += qty * (pt ? Number(pt.menit_per_pcs) : 0)
+            }
+          }
+        }
+      }
+      bebanTerpakaiTujuan[tgl] = total
+      return total
+    }
+
+    const mutasi: Record<number, any> = {}
+    const getScheduleMutable = (rawId: number) => {
+      if (!mutasi[rawId]) {
+        const row = (rawRows || []).find((r: any) => r.id === rawId)
+        mutasi[rawId] = JSON.parse(JSON.stringify(row?.schedule || {}))
+      }
+      return mutasi[rawId]
+    }
+
+    for (const item of toShift) {
+      let tujuan: string | null = null
+      let cur = addDays(tanggal, 1)
+      let attempts = 0
+      let overflow = false
+      while (attempts < 60) {
+        const kap = kapasitasMap[cur]
+        if (kap !== undefined && kap > 0) {
+          const terpakai = await getBebanTerpakai(cur)
+          if (kap - terpakai >= item.beban) {
+            tujuan = cur
+            break
+          }
+        }
+        cur = addDays(cur, 1)
+        attempts++
+      }
+      if (!tujuan) {
+        tujuan = addDays(tanggal, 60)
+        overflow = true
+      }
+
+      bebanTerpakaiTujuan[tujuan] = (bebanTerpakaiTujuan[tujuan] || 0) + item.beban
+
+      const schedSrc = getScheduleMutable(item.rawId)
+      const entrySrc = (schedSrc[tanggal] || []).find((e: any) => e.wp === item.wp)
+      if (entrySrc) {
+        entrySrc.komponen = (entrySrc.komponen || []).filter((k: string) => k !== item.kode)
+        if (isOrang && entrySrc.orangPerKomponen) delete entrySrc.orangPerKomponen[item.kode]
+      }
+      schedSrc[tanggal] = (schedSrc[tanggal] || []).filter((e: any) => (e.komponen || []).length > 0)
+
+      if (!schedSrc[tujuan]) schedSrc[tujuan] = []
+      let entryTuj = schedSrc[tujuan].find((e: any) => e.wp === item.wp)
+      if (!entryTuj) {
+        entryTuj = { wp: item.wp, komponen: [], orangPerKomponen: {} }
+        schedSrc[tujuan].push(entryTuj)
+      }
+      if (!entryTuj.komponen.includes(item.kode)) entryTuj.komponen.push(item.kode)
+      if (isOrang) {
+        if (!entryTuj.orangPerKomponen) entryTuj.orangPerKomponen = {}
+        entryTuj.orangPerKomponen[item.kode] = item.orangPerKomponen || 1
+      }
+
+      shifted.push({
+        kodeKomponen: item.kode,
+        namaKomponen: item.namaKomponen,
+        panelNama: item.panelNama,
+        proyek: item.proyek,
+        woNumber: item.woNumber,
+        dariTanggal: tanggal,
+        keTanggal: tujuan,
+        overflow,
+      })
+    }
+
+    for (const rawIdStr of Object.keys(mutasi)) {
+      const rawId = Number(rawIdStr)
+      await supabase.from('raw_schedule').update({ schedule: mutasi[rawId] }).eq('id', rawId)
+    }
+
+    return { success: true, shifted }
+  } catch (e: any) {
+    return { success: false, shifted: [], error: e?.message || 'Error tidak diketahui' }
+  }
+}
