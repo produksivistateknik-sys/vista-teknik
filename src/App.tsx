@@ -6059,9 +6059,6 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   };
 
   const updateItemQty=(woId,panelId,kode,qty)=>{
-    const panelForQtyMulti=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
-    const panelQtyMultiplier=Number(panelForQtyMulti?.qty)||1;
-    qty=(Number(qty)||0)*panelQtyMultiplier;
     const nq=Number(qty)||0;
     setOrigChecklist(prev=>{
       if(prev[String(panelId)])return prev;
@@ -6123,16 +6120,27 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     const currentWo=woData.find(w=>w.panels?.some((p:any)=>String(p.id)===String(panelId)))||woArg;
     const panel=currentWo?.panels?.find((p:any)=>String(p.id)===String(panelId));
     if(!panel){alert('Panel tidak ditemukan!');return;}
-    console.log('SAVE',panelId,panel.checklist);
-    const{error}=await supabase.from('panels').update({checklist:panel.checklist}).eq('id',panel.id);
-    if(error){alert('Gagal menyimpan: '+error.message);return;}
     const dirty=dirtyQty[String(panelId)]||{};
+    const panelQtyMultiplier=Number(panel.qty)||1;
+    const finalChecklist={...panel.checklist};
+    if(panelQtyMultiplier>1){
+      Object.keys(dirty).forEach(kode=>{
+        const dirtyEntry=(dirty as any)[kode];
+        if(dirtyEntry.newQty!==dirtyEntry.oldQty&&finalChecklist[kode]){
+          finalChecklist[kode]={...finalChecklist[kode],qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
+        }
+      });
+    }
+    const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
+    if(error){alert('Gagal menyimpan: '+error.message);return;}
+    setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
     const changes=Object.entries(dirty)
       .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
       .map(([kode,v])=>{
         const cfg=PANEL_TYPES[panel.tipe];
         const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-        return nama+': '+(v as any).oldQty+' -> '+(v as any).newQty;
+        const finalVal=panelQtyMultiplier>1?Math.round(Number((v as any).newQty)*panelQtyMultiplier):(v as any).newQty;
+        return nama+': '+(v as any).oldQty+' -> '+finalVal;
       });
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
     const uname=user?.name||user?.nama||sess?.nama||'Admin';
