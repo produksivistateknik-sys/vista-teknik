@@ -4943,9 +4943,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         const pctPr=pp.kapasitas>0?Math.min(Math.round((pp.terpakai/pp.kapasitas)*100),100):0;
                         const colorPr=pctPr>=95?"#dc2626":pctPr>=80?"#f59e0b":"#16a34a";
                         return(
-                          <div key={pp.nama}>
+                          <div key={pp.nama} onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:[pp.nama]});setOverrideValue("");setOverrideResult(null);}}
+                            style={{cursor:"pointer"}} title="Klik buat edit kapasitas">
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9,marginBottom:2}}>
-                              <span style={{color:"#64748b"}}>{pp.nama}</span>
+                              <span style={{color:"#64748b"}}>{pp.nama} ✎</span>
                               <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{pp.kapasitas} {pp.satuan}</span>
                             </div>
                             <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
