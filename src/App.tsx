@@ -4688,9 +4688,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   };
 
   const panelOpts=addForm.woId?(woData.find(w=>w.id===Number(addForm.woId))?.panels||[]).filter((p:any)=>{
-    const sudahPunyaRaw=rawData.some((r:any)=>(r.panel_id||r.panelId)===p.id);
-    const sudahSyncFCS=(p.synced_proses||[]).length>0;
-    return sudahSyncFCS&&!sudahPunyaRaw;
+    const existingProsesP=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
+    const syncedProsesP=p.synced_proses||[];
+    return syncedProsesP.some((pr:string)=>!existingProsesP.includes(pr));
   }):[]; 
   const [addLoading,setAddLoading]=useState(false);
   const submitAdd=async()=>{
@@ -5889,9 +5889,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelId:""})}>
                 <option value="">-- Pilih WO --</option>
                 {woData.filter((w:any)=>(w.panels||[]).some((p:any)=>{
-                  const sudahPunyaRaw=rawData.some((r:any)=>(r.panel_id||r.panelId)===p.id);
-                  const sudahSyncFCS=(p.synced_proses||[]).length>0;
-                  return sudahSyncFCS&&!sudahPunyaRaw;
+                  const existingProsesW=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
+                  const syncedProsesW=p.synced_proses||[];
+                  return syncedProsesW.some((pr:string)=>!existingProsesW.includes(pr));
                 })).map((w:any)=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
               </Sel>
             </div>
