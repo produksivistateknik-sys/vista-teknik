@@ -245,8 +245,8 @@ export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
-function initChecklist(tipe, qty=1){
-  const cfg=PANEL_TYPES[tipe]; if(!cfg) return {};
+function initChecklist(tipe, qty=1, customPanelTypes){
+  const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};
   const qtyAwal=qty>1?0:qty;
   cfg.wps.forEach(w=>w.items.forEach(it=>{
@@ -255,6 +255,26 @@ function initChecklist(tipe, qty=1){
       stepDates: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}) };
   }));
   return c;
+}
+
+function buildPanelTypesFromBom(bomList){
+  const byTipe={};
+  (bomList||[]).forEach(b=>{
+    if(!byTipe[b.tipe_panel])byTipe[b.tipe_panel]={};
+    if(!byTipe[b.tipe_panel][b.wp])byTipe[b.tipe_panel][b.wp]=[];
+    byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen,_urutan:b.urutan||0});
+  });
+  const result={};
+  Object.entries(byTipe).forEach(([tipe,wpMap])=>{
+    const origCfg=PANEL_TYPES[tipe];
+    if(!origCfg)return;
+    const wps=origCfg.wps.map(origWp=>{
+      const items=(wpMap[origWp.wp]||[]).slice().sort((a,b)=>(a._urutan||0)-(b._urutan||0)).map(it=>({kode:it.kode,nama:it.nama}));
+      return{...origWp,items:items.length>0?items:origWp.items};
+    });
+    result[tipe]={...origCfg,wps};
+  });
+  return result;
 }
 
 // Ambil progress per tanggal tertentu
@@ -5996,6 +6016,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
 
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO}:any){
+  const [bomPanelTypesCache,setBomPanelTypesCache]=useState<any>(null);
+  useEffect(()=>{
+    supabase.from("bom_master").select("*").then(({data}:any)=>{
+      if(data&&data.length>0)setBomPanelTypesCache(buildPanelTypesFromBom(data));
+    });
+  },[]);
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
   const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
   const blank={wo:"",proyek:"",target:""};
@@ -6117,7 +6143,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     }
     return{
       noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
-      checklist:initChecklist(p.tipe,Number(p.qty)||1),catatan:"",
+      checklist:initChecklist(p.tipe,Number(p.qty)||1,bomPanelTypesCache),catatan:"",
       tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
     };
   });
