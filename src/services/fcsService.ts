@@ -544,7 +544,7 @@ export async function syncFCSToRawSchedule(
 
       const { data: woRow } = await supabase
         .from('work_orders')
-        .select('id')
+        .select('id, proyek')
         .eq('wo', woNumber)
         .single()
 
@@ -558,13 +558,37 @@ export async function syncFCSToRawSchedule(
         .eq('proses', jenisPekerjaan)
         .maybeSingle()
 
-      const finalRawRow = rawRow
-
+      let finalRawRow = rawRow
       if (!finalRawRow) {
-        // Panel ini belum ditambahkan ke Raw Schedule (planner belum klik "+ Tambah Panel")
-        // JANGAN auto-create dan JANGAN hapus data FCS - biarkan tetap di FCS Schedule untuk sync ulang nanti
         const sampleFcsRow = fcsData.find((r: any) => r.panel_id === panelId)
-        skippedPanels.push(sampleFcsRow?.panel_nama || `panel_id ${panelId}`)
+        const initSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
+        for (const [tglInit, wpMapInit] of Object.entries(tanggalMap)) {
+          initSchedule[tglInit] = Object.entries(wpMapInit).map(([wp, komp]) => ({ wp, komponen: [...(komp as string[])] }))
+        }
+        const { data: newRawRow, error: createErr } = await supabase
+          .from('raw_schedule')
+          .insert({
+            wo_id: woRow.id,
+            panel_id: panelId,
+            proyek: (woRow as any).proyek || '',
+            panel: sampleFcsRow?.panel_nama || '',
+            proses: jenisPekerjaan,
+            prioritas: 'Sedang',
+            schedule: initSchedule,
+          })
+          .select('id, schedule')
+          .single()
+        if (createErr || !newRawRow) {
+          skippedPanels.push(sampleFcsRow?.panel_nama || `panel_id ${panelId}`)
+          continue
+        }
+        updatedCount++
+        await supabase
+          .from('fcs_schedule')
+          .update({ status: 'synced' })
+          .eq('wo_number', woNumber)
+          .eq('panel_id', panelId)
+          .eq('jenis_pekerjaan', jenisPekerjaan)
         continue
       }
 
