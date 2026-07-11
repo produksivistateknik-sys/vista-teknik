@@ -7928,6 +7928,33 @@ function KapasitasPekerjaanTab(){
   const [bomForm,setBomForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
   const [filterTipeBom,setFilterTipeBom]=useState("FS");
   const [bomSearch,setBomSearch]=useState("");
+  const [migrating,setMigrating]=useState(false);
+  const [migrateResult,setMigrateResult]=useState<string>("");
+
+  const migrateFromPanelTypes=async()=>{
+    if(!confirm("Ini bakal nambahin SEMUA komponen dari PANEL_TYPES (config lama) ke Master Data BOM. Komponen yang kode+tipe-nya sama bakal di-skip (gak dobel). Lanjut?"))return;
+    setMigrating(true);
+    setMigrateResult("");
+    const rows:any[]=[];
+    Object.entries(PANEL_TYPES).forEach(([tipe,cfg]:any)=>{
+      (cfg.wps||[]).forEach((wpDef:any)=>{
+        (wpDef.items||[]).forEach((item:any,idx:number)=>{
+          rows.push({
+            kode_komponen:item.kode,
+            nama_komponen:item.nama,
+            tipe_panel:tipe,
+            wp:wpDef.wp,
+            urutan:idx,
+          });
+        });
+      });
+    });
+    const{data,error}=await supabase.from("bom_master").upsert(rows,{onConflict:"kode_komponen,tipe_panel",ignoreDuplicates:true}).select();
+    setMigrating(false);
+    if(error){setMigrateResult("Gagal: "+error.message);return;}
+    setMigrateResult(`Selesai! ${data?.length||0} komponen baru ditambahkan dari total ${rows.length} yang diproses (sisanya sudah ada sebelumnya, di-skip).`);
+    await fetchBom();
+  };
   const [activeTab,setActiveTab]=useState("processtime");
   const [editProc,setEditProc]=useState<any>(null);
   const [showAddProc,setShowAddProc]=useState(false);
@@ -8351,9 +8378,16 @@ function KapasitasPekerjaanTab(){
               <option value="ALL">Semua Tipe</option>
               {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
             </select>
+            <button disabled={migrating} onClick={migrateFromPanelTypes}
+              style={{marginLeft:"auto",padding:"7px 16px",borderRadius:8,border:"1.5px solid #9333ea",background:"#faf5ff",color:"#9333ea",fontSize:12,fontWeight:700,cursor:migrating?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {migrating?"⏳ Migrasi...":"⬇ Migrasi dari PANEL_TYPES"}
+            </button>
             <button onClick={()=>{setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipeBom==="ALL"?"FS":filterTipeBom,wp:"WP1",urutan:0});}}
-              style={{marginLeft:"auto",padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
           </div>
+          {migrateResult&&(
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#16a34a",fontWeight:600}}>{migrateResult}</div>
+          )}
           <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
               <thead>
