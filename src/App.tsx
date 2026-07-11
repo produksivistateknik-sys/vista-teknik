@@ -8833,7 +8833,6 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
     {id:"mesin",label:"⚙️ Master Mesin"},
     {id:"pekerja",label:"👥 Master Pekerja"},
     {id:"stok",label:"📦 Inventaris"},
-    {id:"kapasitas",label:"⏱ Kapasitas Pekerjaan"},
     {id:"recycle",label:"🗑 Recycle Bin"},
   ];
 
@@ -8936,7 +8935,6 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
 
           {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={null} user={user}/>}
           {subTab==="stok"&&<InventarisWrapper user={user} activityLog={activityLog}/>}
-          {subTab==="kapasitas"&&<KapasitasPekerjaanTab/>}
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
         </>
       )}
