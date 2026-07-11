@@ -3158,24 +3158,15 @@ function Dashboard({woData}){
         </>}
 
         {/* TAB: KALENDER */}
-        {activeTab==="kalender"&&<KalenderTab/>}
+        {activeTab==="kalender"&&<KalenderTab woData={woData}/>}
       </div>
     </div>
   );
 }
 
-function KalenderTab(){
-  const [rawData,setRawData]=useState<any[]>([]);
-  const [loading,setLoading]=useState(true);
+function KalenderTab({woData}:{woData:any[]}){
   const [viewMonth,setViewMonth]=useState(()=>{const d=new Date();return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`;});
   const [selectedDay,setSelectedDay]=useState<string|null>(null);
-
-  useEffect(()=>{
-    supabase.from("raw_schedule").select("wo_number,proyek,panel,proses,schedule").then(({data}:any)=>{
-      setRawData(data??[]);
-      setLoading(false);
-    });
-  },[]);
 
   const [year,month]=viewMonth.split("-").map(Number);
   const firstDay=new Date(year,month-1,1);
@@ -3185,16 +3176,18 @@ function KalenderTab(){
 
   const eventsByDate=useMemo(()=>{
     const map:Record<string,any[]>={};
-    rawData.forEach((row:any)=>{
-      Object.entries(row.schedule||{}).forEach(([tgl,entries]:[string,any])=>{
-        if(!tgl.startsWith(viewMonth))return;
-        if(!Array.isArray(entries)||entries.length===0)return;
-        if(!map[tgl])map[tgl]=[];
-        map[tgl].push({wo:row.wo_number,proyek:row.proyek,panel:row.panel,proses:row.proses,count:entries.length});
-      });
+    (woData||[]).forEach((w:any)=>{
+      if(!w.target)return;
+      if(!w.target.startsWith(viewMonth))return;
+      const pct=woOverall(w);
+      const status=pct>=100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
+      if(!map[w.target])map[w.target]=[];
+      map[w.target].push({wo:w.wo,proyek:w.proyek,panelCount:(w.panels||[]).length,pct,status});
     });
     return map;
-  },[rawData,viewMonth]);
+  },[woData,viewMonth]);
+
+  const STATUS_COLOR_CAL:Record<string,string>={selesai:"#16a34a",terlambat:"#dc2626",mendesak:"#f59e0b",ontrack:"#2563eb"};
 
   const prevMonth=()=>{
     const d=new Date(year,month-2,1);
@@ -3212,8 +3205,6 @@ function KalenderTab(){
   const MONTH_NAMES=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
   const DAY_NAMES=["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
 
-  if(loading)return <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat kalender...</div>;
-
   return(
     <div style={{padding:12}}>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}}>
@@ -3222,6 +3213,7 @@ function KalenderTab(){
           <span style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{MONTH_NAMES[month-1]} {year}</span>
           <button onClick={nextMonth} style={{border:"1px solid #e2e8f0",borderRadius:6,background:"#fff",padding:"4px 10px",cursor:"pointer",fontFamily:"inherit"}}>›</button>
         </div>
+        <div style={{fontSize:10,color:"#94a3b8"}}>Menampilkan deadline Work Order</div>
       </div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:1,background:"#e2e8f0",border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden"}}>
         {DAY_NAMES.map(d=>(
@@ -3238,8 +3230,8 @@ function KalenderTab(){
               <div style={{fontSize:10,fontWeight:700,color:isToday?"#1d4ed8":"#64748b",marginBottom:4}}>{d}</div>
               <div style={{display:"flex",flexDirection:"column" as const,gap:2}}>
                 {events.slice(0,3).map((e:any,ei:number)=>(
-                  <div key={ei} style={{fontSize:8.5,background:(PROSES_COLOR[e.proses]||"#64748b")+"18",color:PROSES_COLOR[e.proses]||"#475569",borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>
-                    {e.proses} - {e.proyek} - {e.panel}
+                  <div key={ei} style={{fontSize:8.5,background:STATUS_COLOR_CAL[e.status]+"18",color:STATUS_COLOR_CAL[e.status],borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>
+                    WO {e.wo} - {e.proyek}
                   </div>
                 ))}
                 {events.length>3&&(
@@ -3251,13 +3243,19 @@ function KalenderTab(){
         })}
       </div>
       {selectedDay&&(
-        <Modal title={"Jadwal "+fmtDate(selectedDay)} onClose={()=>setSelectedDay(null)} width={480}>
+        <Modal title={"WO Jatuh Tempo "+fmtDate(selectedDay)} onClose={()=>setSelectedDay(null)} width={480}>
           <div style={{display:"flex",flexDirection:"column" as const,gap:8,maxHeight:400,overflowY:"auto" as const}}>
             {(eventsByDate[selectedDay]||[]).map((e:any,i:number)=>(
               <div key={i} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px"}}>
-                <span style={{background:(PROSES_COLOR[e.proses]||"#64748b")+"18",color:PROSES_COLOR[e.proses]||"#64748b",borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{e.proses}</span>
-                <div style={{fontSize:12,fontWeight:600,color:"#1e293b",marginTop:4}}>{e.proyek} — {e.panel}</div>
-                <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>WO {e.wo}</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {e.wo}</span>
+                  <span style={{background:STATUS_COLOR_CAL[e.status]+"18",color:STATUS_COLOR_CAL[e.status],borderRadius:6,padding:"1px 8px",fontSize:10,fontWeight:700}}>{e.status}</span>
+                </div>
+                <div style={{fontSize:12,color:"#64748b",marginTop:4}}>{e.proyek} · {e.panelCount} panel</div>
+                <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden",marginTop:6}}>
+                  <div style={{width:e.pct+"%",height:"100%",background:STATUS_COLOR_CAL[e.status],borderRadius:99}}/>
+                </div>
+                <div style={{fontSize:10,color:"#94a3b8",marginTop:2,textAlign:"right" as const}}>{e.pct}%</div>
               </div>
             ))}
           </div>
