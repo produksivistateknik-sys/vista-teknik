@@ -8337,7 +8337,8 @@ function KapasitasPekerjaanTab(){
               {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
             </select>
             <span style={{fontSize:11,color:"#94a3b8",marginLeft:"auto"}}>{filteredProcess.length} komponen</span>
-
+            <button onClick={()=>{setEditProc(null);setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipe,wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});setShowAddProc(true);}}
+              style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
           </div>
 
           {/* Grouped by Jenis Pekerjaan */}
