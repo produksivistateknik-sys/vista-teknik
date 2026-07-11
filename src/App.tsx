@@ -8126,9 +8126,28 @@ function KapasitasPekerjaanTab(){
   };
 
   const deleteBom=async(id:number)=>{
-    if(!confirm("Yakin hapus komponen ini dari Master Data BOM?"))return;
+    if(!confirm("Yakin hapus komponen ini dari Master Data BOM? Kode yang lebih besar bakal otomatis turun ngisi kekosongan."))return;
+    const target=bomList.find((b:any)=>b.id===id);
     const{error}=await supabase.from("bom_master").delete().eq("id",id);
     if(error){alert("Gagal: "+error.message);return;}
+    if(target){
+      const m=String(target.kode_komponen).match(/^(.*?)(\d+)$/);
+      if(m){
+        const prefix=m[1],delNum=parseInt(m[2],10);
+        const{data:remaining}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",target.tipe_panel);
+        const toShift=(remaining||[]).map((r:any)=>{
+          const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
+          if(!mm||mm[1]!==prefix)return null;
+          const num=parseInt(mm[2],10);
+          if(num<=delNum)return null;
+          return{id:r.id,num};
+        }).filter(Boolean).sort((a:any,b:any)=>a.num-b.num);
+        for(const item of toShift as any[]){
+          const newKode=prefix+(item.num-1);
+          await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+        }
+      }
+    }
     await fetchBom();
   };
 
