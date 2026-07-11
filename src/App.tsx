@@ -257,19 +257,29 @@ function initChecklist(tipe, qty=1, customPanelTypes){
   return c;
 }
 
+function naturalKodeSortGlobal(a,b){
+  const parse=(k)=>{
+    const m=String(k).match(/^(.*?)(\d+)$/);
+    return m?{prefix:m[1],num:parseInt(m[2],10)}:{prefix:k,num:0};
+  };
+  const pa=parse(a),pb=parse(b);
+  if(pa.prefix!==pb.prefix)return pa.prefix.localeCompare(pb.prefix);
+  return pa.num-pb.num;
+}
+
 function buildPanelTypesFromBom(bomList){
   const byTipe={};
   (bomList||[]).forEach(b=>{
     if(!byTipe[b.tipe_panel])byTipe[b.tipe_panel]={};
     if(!byTipe[b.tipe_panel][b.wp])byTipe[b.tipe_panel][b.wp]=[];
-    byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen,_urutan:b.urutan||0});
+    byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen});
   });
   const result={};
   Object.entries(byTipe).forEach(([tipe,wpMap])=>{
     const origCfg=PANEL_TYPES[tipe];
     if(!origCfg)return;
     const wps=origCfg.wps.map(origWp=>{
-      const items=(wpMap[origWp.wp]||[]).slice().sort((a,b)=>(a._urutan||0)-(b._urutan||0)).map(it=>({kode:it.kode,nama:it.nama}));
+      const items=(wpMap[origWp.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));
       return{...origWp,items:items.length>0?items:origWp.items};
     });
     result[tipe]={...origCfg,wps};
@@ -8065,9 +8075,23 @@ function KapasitasPekerjaanTab(){
     fetchBom();
   },[]);
 
+  const naturalKodeSort=(a:string,b:string)=>{
+    const parse=(k:string)=>{
+      const m=String(k).match(/^(.*?)(\d+)$/);
+      return m?{prefix:m[1],num:parseInt(m[2],10)}:{prefix:k,num:0};
+    };
+    const pa=parse(a),pb=parse(b);
+    if(pa.prefix!==pb.prefix)return pa.prefix.localeCompare(pb.prefix);
+    return pa.num-pb.num;
+  };
+
   const fetchBom=async()=>{
-    const{data}=await supabase.from("bom_master").select("*").order("tipe_panel").order("wp").order("urutan");
-    setBomList(data??[]);
+    const{data}=await supabase.from("bom_master").select("*");
+    const sorted=(data??[]).slice().sort((a:any,b:any)=>{
+      if(a.tipe_panel!==b.tipe_panel)return a.tipe_panel.localeCompare(b.tipe_panel);
+      return naturalKodeSort(a.kode_komponen,b.kode_komponen);
+    });
+    setBomList(sorted);
   };
 
   const saveBom=async()=>{
@@ -8076,6 +8100,22 @@ function KapasitasPekerjaanTab(){
       const{error}=await supabase.from("bom_master").update({...bomForm,updated_at:new Date().toISOString()}).eq("id",editBom.id);
       if(error){alert("Gagal: "+error.message);return;}
     } else {
+      const m=String(bomForm.kode_komponen).match(/^(.*?)(\d+)$/);
+      if(m){
+        const prefix=m[1],startNum=parseInt(m[2],10);
+        const{data:existingSameTipe}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
+        const toShift=(existingSameTipe||[]).map((r:any)=>{
+          const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
+          if(!mm||mm[1]!==prefix)return null;
+          const num=parseInt(mm[2],10);
+          if(num<startNum)return null;
+          return{id:r.id,num};
+        }).filter(Boolean).sort((a:any,b:any)=>b.num-a.num);
+        for(const item of toShift as any[]){
+          const newKode=prefix+(item.num+1);
+          await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+        }
+      }
       const{error}=await supabase.from("bom_master").insert(bomForm);
       if(error){alert("Gagal: "+error.message);return;}
     }
@@ -8422,7 +8462,6 @@ function KapasitasPekerjaanTab(){
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>NAMA KOMPONEN</th>
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>TIPE PANEL</th>
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>WP</th>
-                  <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>URUTAN</th>
                   <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>AKSI</th>
                 </tr>
               </thead>
@@ -8436,7 +8475,6 @@ function KapasitasPekerjaanTab(){
                     <td style={{padding:"7px 12px",color:"#374151"}}>{b.nama_komponen}</td>
                     <td style={{padding:"7px 12px"}}><span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.tipe_panel}</span></td>
                     <td style={{padding:"7px 12px"}}><span style={{background:"#f1f5f9",color:"#64748b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.wp}</span></td>
-                    <td style={{padding:"7px 12px",textAlign:"center" as const,color:"#94a3b8"}}>{b.urutan}</td>
                     <td style={{padding:"7px 12px",textAlign:"center" as const}}>
                       <button onClick={()=>{setEditBom(b);setBomForm({kode_komponen:b.kode_komponen,nama_komponen:b.nama_komponen,tipe_panel:b.tipe_panel,wp:b.wp,urutan:b.urutan||0});setShowAddBom(true);}}
                         style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:12,marginRight:8}}>✎</button>
@@ -8449,7 +8487,7 @@ function KapasitasPekerjaanTab(){
                   (filterTipeBom==="ALL"||b.tipe_panel===filterTipeBom) &&
                   (!bomSearch||b.kode_komponen.toLowerCase().includes(bomSearch.toLowerCase())||b.nama_komponen.toLowerCase().includes(bomSearch.toLowerCase()))
                 ).length===0&&(
-                  <tr><td colSpan={6} style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada komponen. Klik "+ Tambah Komponen" buat mulai.</td></tr>
+                  <tr><td colSpan={5} style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada komponen. Klik "+ Tambah Komponen" buat mulai.</td></tr>
                 )}
               </tbody>
             </table>
@@ -8482,10 +8520,6 @@ function KapasitasPekerjaanTab(){
                         {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
                       </Sel>
                     </div>
-                  </div>
-                  <div>
-                    <Lbl>Urutan Tampil</Lbl>
-                    <Inp type="number" value={bomForm.urutan} onChange={(e:any)=>setBomForm({...bomForm,urutan:Number(e.target.value)||0})}/>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
