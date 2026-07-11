@@ -7922,6 +7922,12 @@ function StokMonitoringTab({user,activityLog}:any){
 function KapasitasPekerjaanTab(){
   const [processList,setProcessList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
+  const [bomList,setBomList]=useState<any[]>([]);
+  const [showAddBom,setShowAddBom]=useState(false);
+  const [editBom,setEditBom]=useState<any>(null);
+  const [bomForm,setBomForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
+  const [filterTipeBom,setFilterTipeBom]=useState("FS");
+  const [bomSearch,setBomSearch]=useState("");
   const [activeTab,setActiveTab]=useState("processtime");
   const [editProc,setEditProc]=useState<any>(null);
   const [showAddProc,setShowAddProc]=useState(false);
@@ -8003,7 +8009,35 @@ function KapasitasPekerjaanTab(){
   useEffect(()=>{
     fetchAll();
     fetchOverride();
+    fetchBom();
   },[]);
+
+  const fetchBom=async()=>{
+    const{data}=await supabase.from("bom_master").select("*").order("tipe_panel").order("wp").order("urutan");
+    setBomList(data??[]);
+  };
+
+  const saveBom=async()=>{
+    if(!bomForm.kode_komponen||!bomForm.nama_komponen)return;
+    if(editBom){
+      const{error}=await supabase.from("bom_master").update({...bomForm,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+      if(error){alert("Gagal: "+error.message);return;}
+    } else {
+      const{error}=await supabase.from("bom_master").insert(bomForm);
+      if(error){alert("Gagal: "+error.message);return;}
+    }
+    await fetchBom();
+    setShowAddBom(false);
+    setEditBom(null);
+    setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
+  };
+
+  const deleteBom=async(id:number)=>{
+    if(!confirm("Yakin hapus komponen ini dari Master Data BOM?"))return;
+    const{error}=await supabase.from("bom_master").delete().eq("id",id);
+    if(error){alert("Gagal: "+error.message);return;}
+    await fetchBom();
+  };
 
   const fetchOverride=async()=>{
     const{data}=await supabase.from("fcs_kapasitas_override").select("*").order("tanggal",{ascending:false});
@@ -8146,7 +8180,7 @@ function KapasitasPekerjaanTab(){
     <div className="fi">
       {/* Sub-tab switcher */}
       <div style={{display:"flex",gap:2,marginBottom:16,borderBottom:"1px solid #e2e8f0"}}>
-        {[{id:"processtime",l:"⚡ Process Time"}].map(t=>(
+        {[{id:"processtime",l:"⚡ Process Time"},{id:"bom",l:"📋 Master Data BOM"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)}
             style={{padding:"8px 18px",fontSize:12,fontWeight:activeTab===t.id?700:500,
               color:activeTab===t.id?"#1d4ed8":"#64748b",cursor:"pointer",
@@ -8307,6 +8341,103 @@ function KapasitasPekerjaanTab(){
         </div>
       )}
 
+            {activeTab==="bom"&&(
+        <div>
+          <div style={{display:"flex",gap:8,marginBottom:14,alignItems:"center",flexWrap:"wrap" as const}}>
+            <input value={bomSearch} onChange={e=>setBomSearch(e.target.value)} placeholder="Cari kode/nama komponen..."
+              style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:12,minWidth:200}}/>
+            <select value={filterTipeBom} onChange={e=>setFilterTipeBom(e.target.value)}
+              style={{padding:"7px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:12}}>
+              <option value="ALL">Semua Tipe</option>
+              {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+            </select>
+            <button onClick={()=>{setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipeBom==="ALL"?"FS":filterTipeBom,wp:"WP1",urutan:0});}}
+              style={{marginLeft:"auto",padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
+          </div>
+          <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
+            <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <thead>
+                <tr style={{background:"#f8fafc"}}>
+                  <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>KODE</th>
+                  <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>NAMA KOMPONEN</th>
+                  <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>TIPE PANEL</th>
+                  <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>WP</th>
+                  <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>URUTAN</th>
+                  <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>AKSI</th>
+                </tr>
+              </thead>
+              <tbody>
+                {bomList.filter((b:any)=>
+                  (filterTipeBom==="ALL"||b.tipe_panel===filterTipeBom) &&
+                  (!bomSearch||b.kode_komponen.toLowerCase().includes(bomSearch.toLowerCase())||b.nama_komponen.toLowerCase().includes(bomSearch.toLowerCase()))
+                ).map((b:any,i:number)=>(
+                  <tr key={b.id} style={{background:i%2===0?"#fff":"#f8fafc",borderTop:"1px solid #f1f5f9"}}>
+                    <td style={{padding:"7px 12px",fontFamily:"'DM Mono',monospace",fontWeight:700,color:"#1e293b"}}>{b.kode_komponen}</td>
+                    <td style={{padding:"7px 12px",color:"#374151"}}>{b.nama_komponen}</td>
+                    <td style={{padding:"7px 12px"}}><span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.tipe_panel}</span></td>
+                    <td style={{padding:"7px 12px"}}><span style={{background:"#f1f5f9",color:"#64748b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.wp}</span></td>
+                    <td style={{padding:"7px 12px",textAlign:"center" as const,color:"#94a3b8"}}>{b.urutan}</td>
+                    <td style={{padding:"7px 12px",textAlign:"center" as const}}>
+                      <button onClick={()=>{setEditBom(b);setBomForm({kode_komponen:b.kode_komponen,nama_komponen:b.nama_komponen,tipe_panel:b.tipe_panel,wp:b.wp,urutan:b.urutan||0});setShowAddBom(true);}}
+                        style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:12,marginRight:8}}>✎</button>
+                      <button onClick={()=>deleteBom(b.id)}
+                        style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:12}}>🗑</button>
+                    </td>
+                  </tr>
+                ))}
+                {bomList.filter((b:any)=>
+                  (filterTipeBom==="ALL"||b.tipe_panel===filterTipeBom) &&
+                  (!bomSearch||b.kode_komponen.toLowerCase().includes(bomSearch.toLowerCase())||b.nama_komponen.toLowerCase().includes(bomSearch.toLowerCase()))
+                ).length===0&&(
+                  <tr><td colSpan={6} style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada komponen. Klik "+ Tambah Komponen" buat mulai.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+          {showAddBom&&(
+            <div onClick={()=>{setShowAddBom(false);setEditBom(null);}}
+              style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+              <div onClick={(e:any)=>e.stopPropagation()}
+                style={{background:"#fff",borderRadius:12,padding:20,width:400,maxWidth:"100%"}}>
+                <div style={{fontWeight:800,fontSize:14,marginBottom:14}}>{editBom?"Edit":"Tambah"} Komponen BOM</div>
+                <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+                  <div>
+                    <Lbl>Kode Komponen</Lbl>
+                    <Inp value={bomForm.kode_komponen} onChange={(e:any)=>setBomForm({...bomForm,kode_komponen:e.target.value})} placeholder="misal FS.1"/>
+                  </div>
+                  <div>
+                    <Lbl>Nama Komponen</Lbl>
+                    <Inp value={bomForm.nama_komponen} onChange={(e:any)=>setBomForm({...bomForm,nama_komponen:e.target.value})} placeholder="misal Groundplate"/>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
+                    <div>
+                      <Lbl>Tipe Panel</Lbl>
+                      <Sel value={bomForm.tipe_panel} onChange={(e:any)=>setBomForm({...bomForm,tipe_panel:e.target.value})}>
+                        {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+                      </Sel>
+                    </div>
+                    <div>
+                      <Lbl>WP</Lbl>
+                      <Sel value={bomForm.wp} onChange={(e:any)=>setBomForm({...bomForm,wp:e.target.value})}>
+                        {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
+                      </Sel>
+                    </div>
+                  </div>
+                  <div>
+                    <Lbl>Urutan Tampil</Lbl>
+                    <Inp type="number" value={bomForm.urutan} onChange={(e:any)=>setBomForm({...bomForm,urutan:Number(e.target.value)||0})}/>
+                  </div>
+                </div>
+                <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
+                  <Btn outline color="#64748b" onClick={()=>{setShowAddBom(false);setEditBom(null);}}>Batal</Btn>
+                  <Btn color="#1d4ed8" onClick={saveBom}>Simpan</Btn>
+                </div>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
       {showAddProc&&(
         <div onClick={()=>{setShowAddProc(false);setEditProc(null);}}
           style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
@@ -8417,7 +8548,7 @@ function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePeke
     {id:"mesin",label:"⚙️ Master Mesin"},
     {id:"pekerja",label:"👥 Master Pekerja"},
     {id:"stok",label:"📦 Inventaris"},
-    {id:"kapasitas",label:"⏱ Kapasitas Pekerjaan"},
+    {id:"kapasitas",label:"🗄 Database"},
     {id:"recycle",label:"🗑 Recycle Bin"},
   ];
 
