@@ -8573,18 +8573,17 @@ function KapasitasPekerjaanTab(){
               </div>
             </div>
             <div style={{marginBottom:10}}>
-              <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Komponen (dari Manajemen WO)</div>
+              <div style={{fontSize:10,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:4}}>Komponen (dari Master Data BOM)</div>
               <select value={procForm.kode_komponen} disabled={!!editProc}
                 onChange={e=>{
                   const kode=e.target.value;
-                  const cfg=(PANEL_TYPES as any)[procForm.tipe_panel];
-                  const item=cfg?.wps.find((w:any)=>w.wp===procForm.wp)?.items.find((it:any)=>it.kode===kode);
-                  setProcForm({...procForm,kode_komponen:kode,nama_komponen:item?.nama||""});
+                  const item=bomList.find((b:any)=>b.tipe_panel===procForm.tipe_panel&&b.wp===procForm.wp&&b.kode_komponen===kode);
+                  setProcForm({...procForm,kode_komponen:kode,nama_komponen:item?.nama_komponen||""});
                 }}
                 style={{width:"100%",padding:"9px 10px",borderRadius:7,border:"1.5px solid #e2e8f0",fontSize:13,background:editProc?"#f1f5f9":"#fff"}}>
                 <option value="">-- Pilih komponen --</option>
-                {((PANEL_TYPES as any)[procForm.tipe_panel]?.wps.find((w:any)=>w.wp===procForm.wp)?.items||[]).map((it:any)=>(
-                  <option key={it.kode} value={it.kode}>{it.kode} — {it.nama}</option>
+                {bomList.filter((b:any)=>b.tipe_panel===procForm.tipe_panel&&b.wp===procForm.wp).map((b:any)=>(
+                  <option key={b.kode_komponen} value={b.kode_komponen}>{b.kode_komponen} — {b.nama_komponen}</option>
                 ))}
               </select>
             </div>
