@@ -4144,6 +4144,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [swapOrangModal,setSwapOrangModal]=useState<any>(null);
   const [swapOrangSelected,setSwapOrangSelected]=useState<string[]>([]);
   const [swapOrangExpandedPanel,setSwapOrangExpandedPanel]=useState<Record<string,boolean>>({});
+  const [capacityCollapsed,setCapacityCollapsed]=useState(false);
   const [overrideModal,setOverrideModal]=useState<{tanggalMulai:string,tanggalAkhir:string,proses:string[]}|null>(null);
   const [overrideValue,setOverrideValue]=useState("");
   const [overrideJamKerja,setOverrideJamKerja]=useState("8");
@@ -4888,9 +4889,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
       {fcsKapasitas.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
+          <div onClick={()=>setCapacityCollapsed(!capacityCollapsed)}
+            style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:capacityCollapsed?0:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6,userSelect:"none" as const}}>
+            <span style={{fontSize:10,transition:"transform .15s",transform:capacityCollapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span>
             ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
           </div>
+          {!capacityCollapsed&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
@@ -4961,6 +4965,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               );
             })}
           </div>
+          )}
         </div>
       )}
 
