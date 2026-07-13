@@ -9903,7 +9903,7 @@ function FCSScheduleTab({woData,user}:any){
   const getKapTerpakaiExcludeWO=(woNum:string)=>{
     const map:Record<string,number>={};
     // Exclude WO yang sedang dihitung DAN data yang sudah synced (tidak perlu dihitung lagi)
-    scheduleList.filter((s:any)=>s.wo_number!==woNum&&s.status!=="synced").forEach((s:any)=>{
+    scheduleList.filter((s:any)=>String(s.wo_id)!==woNum&&s.status!=="synced").forEach((s:any)=>{
       // Untuk wiring (satuan orang), pakai qty_hari; untuk proses lain pakai total_menit
       const val=isProsesSatuanOrang?Number(s.qty_hari||0):Number(s.total_menit||0);
       map[s.tanggal]=(map[s.tanggal]||0)+val;
@@ -9919,12 +9919,13 @@ function FCSScheduleTab({woData,user}:any){
   },[scheduleList]);
 
   const woGroups=useMemo(()=>{
-    const groups:Record<string,{wo:string,proyek:string,panels:Record<string,{nama:string,wps:Record<string,any[]>}>}>={};
+    const groups:Record<string,{wo:string,woId:string,proyek:string,panels:Record<string,{nama:string,__wo_id:number,wps:Record<string,any[]>}>}>={};
     scheduleList.forEach((s:any)=>{
-      if(!groups[s.wo_number])groups[s.wo_number]={wo:s.wo_number,proyek:s.proyek,panels:{}};
-      if(!groups[s.wo_number].panels[s.panel_id])groups[s.wo_number].panels[s.panel_id]={nama:s.panel_nama,wps:{}};
-      if(!groups[s.wo_number].panels[s.panel_id].wps[s.wp])groups[s.wo_number].panels[s.panel_id].wps[s.wp]=[];
-      groups[s.wo_number].panels[s.panel_id].wps[s.wp].push(s);
+      const gk=String(s.wo_id);
+      if(!groups[gk])groups[gk]={wo:s.wo_number,woId:gk,proyek:s.proyek,panels:{}};
+      if(!groups[gk].panels[s.panel_id])groups[gk].panels[s.panel_id]={nama:s.panel_nama,__wo_id:s.wo_id,wps:{}};
+      if(!groups[gk].panels[s.panel_id].wps[s.wp])groups[gk].panels[s.panel_id].wps[s.wp]=[];
+      groups[gk].panels[s.panel_id].wps[s.wp].push(s);
     });
     return groups;
   },[scheduleList]);
@@ -10029,6 +10030,7 @@ function FCSScheduleTab({woData,user}:any){
   };
 
   const handleSync=async(woNum:string)=>{
+    const realWoNumber=woGroups[woNum]?.wo||"";
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     const panelIds=selectedPanels[woNum]||[];
@@ -10059,13 +10061,13 @@ function FCSScheduleTab({woData,user}:any){
           const preview=wpPreview[woNum]?.[bobotKey]||[];
           // Hapus data lama dan insert baru
           await supabase.from("fcs_schedule").delete()
-            .eq("panel_id",pid).eq("wo_number",woNum).eq("jenis_pekerjaan",filterPekerjaan);
+            .eq("panel_id",pid).eq("wo_number",realWoNumber).eq("jenis_pekerjaan",filterPekerjaan);
           const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
           const orangVal=parseInt((wpTanggal as any)[`${woNum}_${pid}_orang`]||"1")||1;
           if(preview.length>0){
             const items=preview.map((r:any,i:number)=>({
               wo_id:woGroups[woNum]?.panels[pid]?.__wo_id||0,
-              wo_number:woNum,
+              wo_number:realWoNumber,
               proyek:woGroups[woNum]?.proyek||"" ,
               panel_id:pid,
               panel_nama:woGroups[woNum]?.panels[pid]?.nama||"" ,
@@ -10105,7 +10107,7 @@ function FCSScheduleTab({woData,user}:any){
       for(const pid of panelIds){
         const panel=woGroups[woNum]?.panels[pid];
         if(!panel)continue;
-        const res=await syncFCSToRawSchedule(woNum,filterPekerjaan,uname,panel.nama,null);
+        const res=await syncFCSToRawSchedule(realWoNumber,filterPekerjaan,uname,panel.nama,null);
         if(res.success)sukses++;else gagal++;
       }
       alert(`Sync selesai! ${sukses} panel berhasil${gagal>0?`, ${gagal} gagal`:""}`);
@@ -10147,14 +10149,14 @@ function FCSScheduleTab({woData,user}:any){
         </div>
       ):(
         Object.values(woGroups).map((wo:any)=>{
-          const isExpanded=expandedWO===wo.wo;
+          const isExpanded=expandedWO===wo.woId;
           const allPanelIds=Object.keys(wo.panels).map(Number);
-          const selPanels=selectedPanels[wo.wo]||[];
+          const selPanels=selectedPanels[wo.woId]||[];
           const allWPs=[...new Set(Object.values(wo.panels).flatMap((p:any)=>Object.keys(p.wps)))].sort();
           const totalRows=Object.values(wo.panels).reduce((a:number,p:any)=>a+Object.values(p.wps).reduce((b:number,rows:any)=>b+(rows as any[]).length,0),0);
           return(
-            <div key={wo.wo} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,marginBottom:10,overflow:"hidden"}}>
-              <div onClick={()=>setExpandedWO(isExpanded?null:wo.wo)}
+            <div key={wo.woId} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,marginBottom:10,overflow:"hidden"}}>
+              <div onClick={()=>setExpandedWO(isExpanded?null:wo.woId)}
                 style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",cursor:"pointer",
                   background:isExpanded?"#f8faff":"var(--card-bg,#fff)",
                   borderBottom:isExpanded?"1px solid #e2e8f0":"none"}}>
@@ -10171,17 +10173,17 @@ function FCSScheduleTab({woData,user}:any){
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                       <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({selPanels.length}/{allPanelIds.length})</div>
                       <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.wo]:allPanelIds}))} style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Semua</button>
-                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.wo]:[]}))} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.woId]:allPanelIds}))} style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Semua</button>
+                        <button onClick={()=>setSelectedPanels(p=>({...p,[wo.woId]:[]}))} style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
                       </div>
                     </div>
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                       {Object.entries(wo.panels).map(([pid,panel]:any)=>{
                         const checked=selPanels.includes(Number(pid));
                         // Cek apakah panel sudah di-sync (status='synced' di fcs_schedule)
-                        const sudahSynced=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo&&s.status==="synced");
+                        const sudahSynced=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&String(s.wo_id)===wo.woId&&s.status==="synced");
                         // Cek apakah panel masih planning (belum di-sync)
-                        const adaDiFCS=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&s.wo_number===wo.wo&&s.status!=="synced");
+                        const adaDiFCS=scheduleList.some((s:any)=>s.panel_id===Number(pid)&&String(s.wo_id)===wo.woId&&s.status!=="synced");
                         return(
                           <label key={pid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,
                             border:`1.5px solid ${sudahSynced?"#16a34a":checked?"#1d4ed8":"#e2e8f0"}`,
@@ -10189,8 +10191,8 @@ function FCSScheduleTab({woData,user}:any){
                             cursor:sudahSynced?"not-allowed":"pointer",opacity:sudahSynced?0.65:1}}>
                             <input type="checkbox" checked={checked} disabled={sudahSynced} onChange={()=>{
                               setSelectedPanels(prev=>{
-                                const cur=prev[wo.wo]||[];
-                                return{...prev,[wo.wo]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
+                                const cur=prev[wo.woId]||[];
+                                return{...prev,[wo.woId]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
                               });
                             }}/>
                             <span style={{fontSize:12,color:sudahSynced?"#16a34a":checked?"#1d4ed8":"#1e293b",fontWeight:checked||sudahSynced?700:400}}>{panel.nama}</span>
@@ -10211,11 +10213,11 @@ function FCSScheduleTab({woData,user}:any){
                           {selPanels.map(pid=>{
                             const panel=wo.panels[pid];
                             if(!panel)return null;
-                            const bobotKey=`${wo.wo}_${pid}_bobot`;
+                            const bobotKey=`${wo.woId}_${pid}_bobot`;
                             const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
-                            const orangKey=`${wo.wo}_${pid}_orang`;
+                            const orangKey=`${wo.woId}_${pid}_orang`;
                             const orangVal=parseInt((wpTanggal as any)[orangKey]||"1")||1;
-                            const tglKey=`${wo.wo}_${pid}_tgl`;
+                            const tglKey=`${wo.woId}_${pid}_tgl`;
                             const tglVal=(wpTanggal as any)[tglKey]||new Date().toISOString().slice(0,10);
                             const BOBOT_CFG:any={
                               EASY:{label:"Easy",hariOrang:1,color:"#16a34a",bg:"#f0fdf4"},
@@ -10225,7 +10227,7 @@ function FCSScheduleTab({woData,user}:any){
                             };
                             const cfg=BOBOT_CFG[bobotVal]||BOBOT_CFG.MEDIUM;
                             const hariTotal=Math.ceil(cfg.hariOrang/orangVal);
-                            const previewW=wpPreview[wo.wo]?.[bobotKey];
+                            const previewW=wpPreview[wo.woId]?.[bobotKey];
                             return(
                               <div key={pid} style={{border:`1.5px solid ${cfg.color}30`,borderRadius:8,padding:"10px 12px",background:cfg.bg+"40"}}>
                                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" as const}}>
@@ -10250,9 +10252,9 @@ function FCSScheduleTab({woData,user}:any){
                                     onChange={e=>setWpTanggal((prev:any)=>({...prev,[tglKey]:e.target.value}))}
                                     style={{padding:"3px 8px",borderRadius:6,border:"1.5px solid #e2e8f0",fontSize:11,fontFamily:"inherit"}}/>
                                   <button onClick={()=>{
-                                    const kapExclude=getKapTerpakaiExcludeWO(wo.wo);
+                                    const kapExclude=getKapTerpakaiExcludeWO(wo.woId);
                                     const kapInclude:{[t:string]:number}={...kapExclude};
-                                    Object.entries(wpPreview[wo.wo]||{}).forEach(([k,rows]:any)=>{
+                                    Object.entries(wpPreview[wo.woId]||{}).forEach(([k,rows]:any)=>{
                                       if(k===bobotKey)return;
                                       rows.forEach((r:any)=>{kapInclude[r.tanggal]=(kapInclude[r.tanggal]||0)+r.total_menit_hari;});
                                     });
@@ -10263,7 +10265,7 @@ function FCSScheduleTab({woData,user}:any){
                                     }));
                                     const previewRows=hitungDistribusiWP(rows,tglVal,kapInclude);
                                     const sorted=[...previewRows].sort((a:any,b:any)=>a.tanggal.localeCompare(b.tanggal));
-                                    setWpPreview((prev:any)=>({...prev,[wo.wo]:{...(prev[wo.wo]||{}),[bobotKey]:sorted}}));
+                                    setWpPreview((prev:any)=>({...prev,[wo.woId]:{...(prev[wo.woId]||{}),[bobotKey]:sorted}}));
                                   }} style={{padding:"3px 10px",borderRadius:5,border:"none",background:cfg.color,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                                     Hitung →
                                   </button>
@@ -10294,8 +10296,8 @@ function FCSScheduleTab({woData,user}:any){
                       <div>
                       {allWPs.map(wp=>{
                         const wpColor=WP_COLORS[wp]||{color:"#64748b",bg:"#f1f5f9"};
-                        const key=`${wo.wo}_${wp}`;
-                        const preview=wpPreview[wo.wo]?.[wp];
+                        const key=`${wo.woId}_${wp}`;
+                        const preview=wpPreview[wo.woId]?.[wp];
                         const isCalc=calculating===key;
                         const komponenList:string[]=[];
                         selPanels.forEach(pid=>{
@@ -10311,10 +10313,10 @@ function FCSScheduleTab({woData,user}:any){
                             <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap" as const}}>
                               <div style={{fontSize:10,fontWeight:600,color:"#64748b"}}>Tanggal mulai:</div>
                               <input type="date"
-                                value={wpTanggal[wo.wo]?.[wp]||new Date().toISOString().slice(0,10)}
-                                onChange={e=>setWpTanggal(prev=>({...prev,[wo.wo]:{...(prev[wo.wo]||{}),[wp]:e.target.value}}))}
+                                value={wpTanggal[wo.woId]?.[wp]||new Date().toISOString().slice(0,10)}
+                                onChange={e=>setWpTanggal(prev=>({...prev,[wo.woId]:{...(prev[wo.woId]||{}),[wp]:e.target.value}}))}
                                 style={{padding:"4px 8px",borderRadius:6,border:"1.5px solid #e2e8f0",fontSize:11,fontFamily:"inherit"}}/>
-                              <button onClick={()=>handleHitung(wo.wo,wp,selPanels)} disabled={isCalc}
+                              <button onClick={()=>handleHitung(wo.woId,wp,selPanels)} disabled={isCalc}
                                 style={{padding:"4px 12px",borderRadius:6,border:"none",background:isCalc?"#94a3b8":wpColor.color,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                                 {isCalc?"⏳...":"Hitung →"}
                               </button>
@@ -10345,10 +10347,10 @@ function FCSScheduleTab({woData,user}:any){
                     </div>
                   )}
                   {/* Summary total orang per tanggal untuk WIRING */}
-                  {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)&&selPanels.length>0&&Object.keys(wpPreview[wo.wo]||{}).length>0&&(()=>{
+                  {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)&&selPanels.length>0&&Object.keys(wpPreview[wo.woId]||{}).length>0&&(()=>{
                     // Gabungkan semua preview panel per tanggal
                     const summaryMap:{[tgl:string]:number}={};
-                    Object.entries(wpPreview[wo.wo]||{}).forEach(([k,rows]:any)=>{
+                    Object.entries(wpPreview[wo.woId]||{}).forEach(([k,rows]:any)=>{
                       if(!k.includes('_bobot'))return;
                       rows.forEach((r:any)=>{summaryMap[r.tanggal]=(summaryMap[r.tanggal]||0)+r.total_menit_hari;});
                     });
@@ -10378,9 +10380,9 @@ function FCSScheduleTab({woData,user}:any){
                   {selPanels.length>0&&(
                     <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                       <button onClick={fetchAll} style={{padding:"7px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer"}}>↻ Refresh</button>
-                      <button onClick={()=>handleSync(wo.wo)} disabled={syncing===wo.wo}
-                        style={{padding:"7px 18px",borderRadius:7,border:"none",background:syncing===wo.wo?"#94a3b8":"#7c3aed",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-                        {syncing===wo.wo?"⏳ Syncing...":"⇄ Sync Panel Terpilih"}
+                      <button onClick={()=>handleSync(wo.woId)} disabled={syncing===wo.woId}
+                        style={{padding:"7px 18px",borderRadius:7,border:"none",background:syncing===wo.woId?"#94a3b8":"#7c3aed",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        {syncing===wo.woId?"⏳ Syncing...":"⇄ Sync Panel Terpilih"}
                       </button>
                     </div>
                   )}
