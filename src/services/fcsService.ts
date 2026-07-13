@@ -542,12 +542,17 @@ export async function syncFCSToRawSchedule(
     for (const [panelIdStr, tanggalMap] of Object.entries(panelScheduleMap)) {
       const panelId = Number(panelIdStr)
 
+      const { data: panelRowForSync } = await supabase
+        .from('panels')
+        .select('wo_id')
+        .eq('id', panelId)
+        .single()
+      if (!panelRowForSync) continue
       const { data: woRow } = await supabase
         .from('work_orders')
         .select('id, proyek')
-        .eq('wo', woNumber)
+        .eq('id', panelRowForSync.wo_id)
         .single()
-
       if (!woRow) continue
 
       const { data: rawRow } = await supabase
