@@ -8110,8 +8110,10 @@ function KapasitasPekerjaanTab(){
           return{id:r.id,num};
         }).filter(Boolean).sort((a:any,b:any)=>b.num-a.num);
         for(const item of toShift as any[]){
+          const oldKode=prefix+item.num;
           const newKode=prefix+(item.num+1);
           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+          await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",bomForm.tipe_panel);
         }
       }
       const{error}=await supabase.from("bom_master").insert(bomForm);
@@ -8141,8 +8143,10 @@ function KapasitasPekerjaanTab(){
           return{id:r.id,num};
         }).filter(Boolean).sort((a:any,b:any)=>a.num-b.num);
         for(const item of toShift as any[]){
+          const oldKode=prefix+item.num;
           const newKode=prefix+(item.num-1);
           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+          await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",target.tipe_panel);
         }
       }
     }
