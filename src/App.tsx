@@ -7985,6 +7985,57 @@ function KapasitasPekerjaanTab(){
   const [bomSearch,setBomSearch]=useState("");
   const [migrating,setMigrating]=useState(false);
   const [migrateResult,setMigrateResult]=useState<string>("");
+  const [migratingChecklist,setMigratingChecklist]=useState(false);
+  const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
+
+  const migrateChecklistKode=async()=>{
+    if(!confirm("Ini bakal SESUAIKAN ulang kode di checklist SEMUA panel yang udah ada, biar nyambung sama Master Data BOM terkini. Progress/qty/tanggal yang udah ada TETAP DIPINDAH (gak hilang), cuma kode-nya yang disesuaikan. Lanjut?"))return;
+    setMigratingChecklist(true);
+    setMigrateChecklistResult("");
+    try{
+      const mappingPerTipe:Record<string,Record<string,string>>={};
+      Object.entries(PANEL_TYPES).forEach(([tipe,cfg]:any)=>{
+        const oldKodeToNama:Record<string,string>={};
+        cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{oldKodeToNama[it.kode]=it.nama;}));
+        const namaToNewKode:Record<string,string>={};
+        bomList.filter((b:any)=>b.tipe_panel===tipe).forEach((b:any)=>{namaToNewKode[b.nama_komponen]=b.kode_komponen;});
+        const map:Record<string,string>={};
+        Object.entries(oldKodeToNama).forEach(([oldKode,nama])=>{
+          const newKode=namaToNewKode[nama as string];
+          if(newKode&&newKode!==oldKode)map[oldKode]=newKode;
+        });
+        mappingPerTipe[tipe]=map;
+      });
+
+      const{data:allPanels}=await supabase.from("panels").select("id,tipe,checklist");
+      let updatedCount=0,skippedCount=0,collisionCount=0;
+      for(const p of (allPanels||[]) as any[]){
+        const map=mappingPerTipe[p.tipe];
+        if(!map||Object.keys(map).length===0){skippedCount++;continue;}
+        const cl=p.checklist||{};
+        let changed=false;
+        let hasCollision=false;
+        const newCl:any={};
+        Object.entries(cl).forEach(([kode,val]:any)=>{
+          const target=map[kode]||kode;
+          if(target!==kode)changed=true;
+          if(newCl[target]!==undefined)hasCollision=true;
+          newCl[target]=val;
+        });
+        if(hasCollision){collisionCount++;continue;}
+        if(changed){
+          await supabase.from("panels").update({checklist:newCl}).eq("id",p.id);
+          updatedCount++;
+        } else {
+          skippedCount++;
+        }
+      }
+      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update, ${skippedCount} gak perlu diubah${collisionCount>0?`, ${collisionCount} dilewati karena ada bentrok kode (perlu dicek manual)`:""}.`);
+    }catch(err:any){
+      setMigrateChecklistResult("Gagal: "+err.message);
+    }
+    setMigratingChecklist(false);
+  };
 
   const migrateFromPanelTypes=async()=>{
     if(!confirm("Ini bakal nambahin SEMUA komponen dari PANEL_TYPES (config lama) ke Master Data BOM. Komponen yang kode+tipe-nya sama bakal di-skip (gak dobel). Lanjut?"))return;
@@ -8496,6 +8547,19 @@ function KapasitasPekerjaanTab(){
           </div>
           {migrateResult&&(
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#16a34a",fontWeight:600}}>{migrateResult}</div>
+          )}
+          <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const}}>
+            <div style={{flex:1,minWidth:200}}>
+              <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>Checklist Panel Existing Belum Sinkron?</div>
+              <div style={{fontSize:11,color:"#92400e",marginTop:2}}>Kalau kode di BOM pernah digeser, checklist panel LAMA bisa jadi gak nyambung lagi. Klik ini buat nyesuain ulang (progress/qty gak hilang).</div>
+            </div>
+            <button disabled={migratingChecklist} onClick={migrateChecklistKode}
+              style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #d97706",background:"#fff",color:"#d97706",fontSize:11,fontWeight:700,cursor:migratingChecklist?"not-allowed":"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
+              {migratingChecklist?"Memproses...":"Sinkronkan Checklist Panel"}
+            </button>
+          </div>
+          {migrateChecklistResult&&(
+            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#16a34a",fontWeight:600}}>{migrateChecklistResult}</div>
           )}
           <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
