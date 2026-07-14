@@ -10123,8 +10123,7 @@ function FCSScheduleTab({woData,user}:any){
 
   const handleHitung=async(woNum:string,wp:string,panelIds:number[])=>{
     const key=`${woNum}_${wp}`;
-    const tanggalMulai=wpTanggal[woNum]?.[wp];
-    if(!tanggalMulai){alert("Pilih tanggal mulai dulu!");return;}
+    const tanggalMulai=wpTanggal[woNum]?.[wp]||new Date().toISOString().slice(0,10);
     setCalculating(key);
     const rows:any[]=[];
     panelIds.forEach(pid=>{
