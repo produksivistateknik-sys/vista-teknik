@@ -11192,12 +11192,22 @@ useEffect(() => {
   if (!pekerjaLoading) setPekerja(pekerjaList)
 }, [pekerjaList, pekerjaLoading])
 
+const renharSyncTimerRef = useRef<any>(null);
 useEffect(() => {
-  if (!renharLoading) setRenhar(renharList)
+  if (!renharLoading) {
+    if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
+    renharSyncTimerRef.current = setTimeout(() => { setRenhar(renharList); }, 1200);
+  }
+  return () => { if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current); };
 }, [renharList, renharLoading])
 
+const rawSyncTimerRef = useRef<any>(null);
 useEffect(() => {
-  if (!rawLoading) setRawData(rawList)
+  if (!rawLoading) {
+    if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current);
+    rawSyncTimerRef.current = setTimeout(() => { setRawData(rawList); }, 1200);
+  }
+  return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
 if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login onLogin={u=>{
