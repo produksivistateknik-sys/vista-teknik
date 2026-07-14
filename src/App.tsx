@@ -11177,10 +11177,15 @@ const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, updat
 
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
+const woSyncTimerRef = useRef<any>(null);
 useEffect(() => {
   if (!woLoading) {
-    setWoData(woList);
-    }
+    if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current);
+    woSyncTimerRef.current = setTimeout(() => {
+      setWoData(woList);
+    }, 1200);
+  }
+  return () => { if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current); };
 }, [woList, woLoading])
 
 useEffect(() => {
