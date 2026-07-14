@@ -7995,6 +7995,56 @@ function KapasitasPekerjaanTab(){
   const [migrateResult,setMigrateResult]=useState<string>("");
   const [migratingChecklist,setMigratingChecklist]=useState(false);
   const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
+  const [panelTypeList,setPanelTypeList]=useState<any[]>([]);
+  const [panelWpList,setPanelWpList]=useState<any[]>([]);
+  const [expandedTipePanel,setExpandedTipePanel]=useState<string|null>(null);
+  const [showAddTipe,setShowAddTipe]=useState(false);
+  const [tipeForm,setTipeForm]=useState({tipe_panel:"",label:""});
+  const [editWpMeta,setEditWpMeta]=useState<any>(null);
+  const [wpForm,setWpForm]=useState({tipe_panel:"",wp:"",color:"#3b82f6",range_label:""});
+  const [showAddWp,setShowAddWp]=useState(false);
+
+  const fetchPanelTypeMeta=async()=>{
+    const{data:t}=await supabase.from("panel_type_meta").select("*").order("tipe_panel");
+    const{data:w}=await supabase.from("panel_wp_meta").select("*").order("wp");
+    setPanelTypeList(t??[]);
+    setPanelWpList(w??[]);
+  };
+  useEffect(()=>{fetchPanelTypeMeta();},[]);
+
+  const saveTipePanel=async()=>{
+    if(!tipeForm.tipe_panel||!tipeForm.label)return;
+    const{error}=await supabase.from("panel_type_meta").insert(tipeForm);
+    if(error){alert("Gagal: "+error.message);return;}
+    await fetchPanelTypeMeta();
+    setShowAddTipe(false);
+    setTipeForm({tipe_panel:"",label:""});
+  };
+  const deleteTipePanel=async(tipe:string)=>{
+    if(!confirm(`Yakin hapus tipe panel "${tipe}"? Semua WP di dalamnya juga ikut kehapus.`))return;
+    await supabase.from("panel_wp_meta").delete().eq("tipe_panel",tipe);
+    await supabase.from("panel_type_meta").delete().eq("tipe_panel",tipe);
+    await fetchPanelTypeMeta();
+  };
+  const saveWpMeta=async()=>{
+    if(!wpForm.tipe_panel||!wpForm.wp)return;
+    if(editWpMeta){
+      const{error}=await supabase.from("panel_wp_meta").update(wpForm).eq("id",editWpMeta.id);
+      if(error){alert("Gagal: "+error.message);return;}
+    } else {
+      const{error}=await supabase.from("panel_wp_meta").insert(wpForm);
+      if(error){alert("Gagal: "+error.message);return;}
+    }
+    await fetchPanelTypeMeta();
+    setShowAddWp(false);
+    setEditWpMeta(null);
+    setWpForm({tipe_panel:"",wp:"",color:"#3b82f6",range_label:""});
+  };
+  const deleteWpMeta=async(id:number)=>{
+    if(!confirm("Yakin hapus WP ini?"))return;
+    await supabase.from("panel_wp_meta").delete().eq("id",id);
+    await fetchPanelTypeMeta();
+  };
 
   const migrateChecklistKode=async()=>{
     if(!confirm("Ini bakal SESUAIKAN ulang kode di checklist SEMUA panel yang udah ada, biar nyambung sama Master Data BOM terkini. Progress/qty/tanggal yang udah ada TETAP DIPINDAH (gak hilang), cuma kode-nya yang disesuaikan. Lanjut?"))return;
@@ -8401,7 +8451,7 @@ function KapasitasPekerjaanTab(){
     <div className="fi">
       {/* Sub-tab switcher */}
       <div style={{display:"flex",gap:2,marginBottom:16,borderBottom:"1px solid #e2e8f0"}}>
-        {[{id:"processtime",l:"⚡ Process Time"},{id:"bom",l:"📋 Master Data BOM"}].map(t=>(
+        {[{id:"processtime",l:"⚡ Process Time"},{id:"bom",l:"📋 Master Data BOM"},{id:"jenispanel",l:"🗂 Jenis Panel"}].map(t=>(
           <button key={t.id} onClick={()=>setActiveTab(t.id)}
             style={{padding:"8px 18px",fontSize:12,fontWeight:activeTab===t.id?700:500,
               color:activeTab===t.id?"#1d4ed8":"#64748b",cursor:"pointer",
@@ -8671,6 +8721,99 @@ function KapasitasPekerjaanTab(){
               </div>
             </div>
           )}
+        </div>
+      )}
+      {activeTab==="jenispanel"&&(
+        <div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
+            <div style={{fontSize:12,color:"#64748b"}}>Kelola tipe panel & pembagian WP-nya (label, warna, range kode) - langsung dari sini, gak perlu edit kode lagi</div>
+            <button onClick={()=>{setShowAddTipe(true);setTipeForm({tipe_panel:"",label:""});}}
+              style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>+ Tambah Tipe Panel</button>
+          </div>
+          {panelTypeList.length===0?(
+            <div style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada tipe panel. Klik "+ Tambah Tipe Panel" buat mulai.</div>
+          ):(
+            panelTypeList.map((t:any)=>{
+              const wps=panelWpList.filter((w:any)=>w.tipe_panel===t.tipe_panel);
+              const isExp=expandedTipePanel===t.tipe_panel;
+              return(
+                <div key={t.tipe_panel} style={{border:"1px solid #e2e8f0",borderRadius:10,marginBottom:10,overflow:"hidden"}}>
+                  <div onClick={()=>setExpandedTipePanel(isExp?null:t.tipe_panel)}
+                    style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",cursor:"pointer",background:isExp?"#f8faff":"#fff"}}>
+                    <span style={{fontSize:14}}>{isExp?"▼":"▶"}</span>
+                    <div style={{flex:1}}>
+                      <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{t.tipe_panel} — {t.label}</div>
+                      <div style={{fontSize:11,color:"#64748b"}}>{wps.length} WP</div>
+                    </div>
+                    <button onClick={(e:any)=>{e.stopPropagation();deleteTipePanel(t.tipe_panel);}}
+                      style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:14}}>🗑</button>
+                  </div>
+                  {isExp&&(
+                    <div style={{padding:"12px 16px",borderTop:"1px solid #e2e8f0"}}>
+                      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+                        <button onClick={()=>{setEditWpMeta(null);setWpForm({tipe_panel:t.tipe_panel,wp:"",color:"#3b82f6",range_label:""});setShowAddWp(true);}}
+                          style={{padding:"5px 12px",borderRadius:6,border:"1px solid #1d4ed8",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah WP</button>
+                      </div>
+                      {wps.map((w:any)=>(
+                        <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:6}}>
+                          <span style={{width:16,height:16,borderRadius:4,background:w.color,flexShrink:0}}/>
+                          <span style={{fontWeight:700,fontSize:12,color:"#1e293b",minWidth:50}}>{w.wp}</span>
+                          <span style={{fontSize:11,color:"#64748b",flex:1}}>{w.range_label}</span>
+                          <button onClick={()=>{setEditWpMeta(w);setWpForm({tipe_panel:w.tipe_panel,wp:w.wp,color:w.color,range_label:w.range_label||""});setShowAddWp(true);}}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"#2563eb",fontSize:13}}>✎</button>
+                          <button onClick={()=>deleteWpMeta(w.id)}
+                            style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:13}}>🗑</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+      {showAddTipe&&(
+        <div onClick={()=>setShowAddTipe(false)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:360}}>
+            <div style={{fontWeight:800,fontSize:15,marginBottom:14}}>+ Tambah Tipe Panel</div>
+            <div style={{marginBottom:10}}>
+              <Lbl>Kode Tipe (unik, misal FS, WM_MS)</Lbl>
+              <Inp value={tipeForm.tipe_panel} onChange={(e:any)=>setTipeForm({...tipeForm,tipe_panel:e.target.value.toUpperCase()})}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <Lbl>Label Tampilan</Lbl>
+              <Inp value={tipeForm.label} onChange={(e:any)=>setTipeForm({...tipeForm,label:e.target.value})}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+              <Btn outline color="#64748b" onClick={()=>setShowAddTipe(false)}>Batal</Btn>
+              <Btn color="#1d4ed8" onClick={saveTipePanel}>Simpan</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+      {showAddWp&&(
+        <div onClick={()=>{setShowAddWp(false);setEditWpMeta(null);}} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:360}}>
+            <div style={{fontWeight:800,fontSize:15,marginBottom:14}}>{editWpMeta?"Edit WP":"+ Tambah WP"}</div>
+            <div style={{marginBottom:10}}>
+              <Lbl>Kode WP (misal WP1)</Lbl>
+              <Inp value={wpForm.wp} disabled={!!editWpMeta} onChange={(e:any)=>setWpForm({...wpForm,wp:e.target.value.toUpperCase()})}/>
+            </div>
+            <div style={{marginBottom:10}}>
+              <Lbl>Warna</Lbl>
+              <input type="color" value={wpForm.color} onChange={(e:any)=>setWpForm({...wpForm,color:e.target.value})}
+                style={{width:"100%",height:36,borderRadius:7,border:"1.5px solid #e2e8f0",cursor:"pointer"}}/>
+            </div>
+            <div style={{marginBottom:16}}>
+              <Lbl>Range/Keterangan (misal FS.1-10)</Lbl>
+              <Inp value={wpForm.range_label} onChange={(e:any)=>setWpForm({...wpForm,range_label:e.target.value})}/>
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+              <Btn outline color="#64748b" onClick={()=>{setShowAddWp(false);setEditWpMeta(null);}}>Batal</Btn>
+              <Btn color="#1d4ed8" onClick={saveWpMeta}>Simpan</Btn>
+            </div>
+          </div>
         </div>
       )}
 
