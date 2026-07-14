@@ -8008,10 +8008,12 @@ function KapasitasPekerjaanTab(){
       });
       console.log("=== MAPPING PER TIPE (buat debug) ===",JSON.stringify(mappingPerTipe,null,2));
 
+      const hasProgress=(val:any)=>Object.values(val?.progress||{}).some((v:any)=>Number(v)>0);
+
       const{data:allPanels}=await supabase.from("panels").select("id,tipe,nama,checklist");
-      let updatedCount=0,skippedCount=0;
-      let totalKodeDilewati=0;
-      const skippedDetails:string[]=[];
+      let updatedCount=0,skippedCount=0,duplikatDibersihkan=0,dipindahDariLama=0;
+      let totalAmbigu=0;
+      const ambiguDetails:string[]=[];
       for(const p of (allPanels||[]) as any[]){
         const map=mappingPerTipe[p.tipe];
         if(!map||Object.keys(map).length===0){skippedCount++;continue;}
@@ -8019,21 +8021,34 @@ function KapasitasPekerjaanTab(){
         const existingKodes=new Set(Object.keys(cl));
         const newCl:any={...cl};
         let changed=false;
-        const kodeDilewatiPanel:string[]=[];
+        const ambiguPanel:string[]=[];
         Object.entries(cl).forEach(([kode,val]:any)=>{
           const target=map[kode];
           if(!target||target===kode)return;
           if(existingKodes.has(target)){
-            kodeDilewatiPanel.push(`${kode}->${target}`);
-            totalKodeDilewati++;
+            const oldPunyaProgress=hasProgress(val);
+            const targetPunyaProgress=hasProgress(cl[target]);
+            if(!oldPunyaProgress){
+              delete newCl[kode];
+              changed=true;
+              duplikatDibersihkan++;
+            } else if(oldPunyaProgress&&!targetPunyaProgress){
+              newCl[target]=val;
+              delete newCl[kode];
+              changed=true;
+              dipindahDariLama++;
+            } else {
+              ambiguPanel.push(`${kode}(progress)<->${target}(progress)`);
+              totalAmbigu++;
+            }
             return;
           }
           newCl[target]=val;
           delete newCl[kode];
           changed=true;
         });
-        if(kodeDilewatiPanel.length>0&&skippedDetails.length<5){
-          skippedDetails.push(`${p.nama}(${p.tipe}): ${kodeDilewatiPanel.join(", ")}`);
+        if(ambiguPanel.length>0&&ambiguDetails.length<5){
+          ambiguDetails.push(`${p.nama}(${p.tipe}): ${ambiguPanel.join(", ")}`);
         }
         if(changed){
           await supabase.from("panels").update({checklist:newCl}).eq("id",p.id);
@@ -8042,7 +8057,7 @@ function KapasitasPekerjaanTab(){
           skippedCount++;
         }
       }
-      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update, ${skippedCount} gak perlu diubah${totalKodeDilewati>0?`. ${totalKodeDilewati} kode dilewati karena target udah ada sebagai komponen baru yang valid (perlu dicek manual). Contoh: ${skippedDetails.join(" | ")}`:""}.`);
+      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update (${duplikatDibersihkan} duplikat basi dihapus, ${dipindahDariLama} data lama dipindah ke posisi baru), ${skippedCount} gak perlu diubah${totalAmbigu>0?`. ${totalAmbigu} kode BENERAN ambigu (dua2nya ada progress) - PERLU DICEK MANUAL. Contoh: ${ambiguDetails.join(" | ")}`:""}.`);
     }catch(err:any){
       setMigrateChecklistResult("Gagal: "+err.message);
     }
