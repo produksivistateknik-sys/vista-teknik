@@ -258,7 +258,7 @@ function naturalKodeSortGlobal(a,b){
   return pa.num-pb.num;
 }
 
-function buildPanelTypesFromBom(bomList){
+function buildPanelTypesFromBom(bomList,panelTypeMetaList,panelWpMetaList){
   const byTipe={};
   (bomList||[]).forEach(b=>{
     if(!byTipe[b.tipe_panel])byTipe[b.tipe_panel]={};
@@ -267,13 +267,15 @@ function buildPanelTypesFromBom(bomList){
   });
   const result={};
   Object.entries(byTipe).forEach(([tipe,wpMap])=>{
-    const origCfg=PANEL_TYPES[tipe];
-    if(!origCfg)return;
-    const wps=origCfg.wps.map(origWp=>{
-      const items=(wpMap[origWp.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));
-      return{...origWp,items:items.length>0?items:origWp.items};
+    const metaTipe=(panelTypeMetaList||[]).find((m:any)=>m.tipe_panel===tipe);
+    const label=metaTipe?.label||tipe;
+    const wpMetas=(panelWpMetaList||[]).filter((m:any)=>m.tipe_panel===tipe).slice().sort((a:any,b:any)=>String(a.wp).localeCompare(String(b.wp)));
+    if(wpMetas.length===0)return;
+    const wps=wpMetas.map((wpMeta:any)=>{
+      const items=(wpMap[wpMeta.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));
+      return{wp:wpMeta.wp,color:wpMeta.color,range:wpMeta.range_label,items};
     });
-    result[tipe]={...origCfg,wps};
+    result[tipe]={label,wps};
   });
   return result;
 }
@@ -6023,8 +6025,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO}:any){
   const [bomPanelTypesCache,setBomPanelTypesCache]=useState<any>(null);
   useEffect(()=>{
-    supabase.from("bom_master").select("*").then(({data}:any)=>{
-      if(data&&data.length>0)setBomPanelTypesCache(buildPanelTypesFromBom(data));
+    Promise.all([
+      supabase.from("bom_master").select("*"),
+      supabase.from("panel_type_meta").select("*"),
+      supabase.from("panel_wp_meta").select("*"),
+    ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
+      if(bomRes.data&&bomRes.data.length>0){
+        setBomPanelTypesCache(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
+      }
     });
   },[]);
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
