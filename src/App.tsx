@@ -8414,29 +8414,23 @@ function KapasitasPekerjaanTab(){
 
   const combosList=useMemo(()=>{
     const combos:any[]=[];
-    ALL_TIPE.forEach((tipe:string)=>{
-      const cfg=(PANEL_TYPES as any)[tipe];
-      if(!cfg)return;
-      cfg.wps.forEach((wpObj:any)=>{
-        wpObj.items.forEach((item:any)=>{
-          ALL_PROSES.forEach((proses:string)=>{
-            if(!isKomponenRelevant(item.kode,proses))return;
-            const existing=processList.find((p:any)=>p.kode_komponen===item.kode&&p.tipe_panel===tipe&&p.jenis_pekerjaan===proses);
-            combos.push({
-              id:existing?existing.id:null,
-              kode_komponen:item.kode,
-              nama_komponen:item.nama,
-              tipe_panel:tipe,
-              wp:wpObj.wp,
-              jenis_pekerjaan:proses,
-              menit_per_pcs:existing?Number(existing.menit_per_pcs):0,
-            });
-          });
+    bomList.forEach((b:any)=>{
+      ALL_PROSES.forEach((proses:string)=>{
+        if(!isKomponenRelevant(b.kode_komponen,proses))return;
+        const existing=processList.find((p:any)=>p.kode_komponen===b.kode_komponen&&p.tipe_panel===b.tipe_panel&&p.jenis_pekerjaan===proses);
+        combos.push({
+          id:existing?existing.id:null,
+          kode_komponen:b.kode_komponen,
+          nama_komponen:b.nama_komponen,
+          tipe_panel:b.tipe_panel,
+          wp:b.wp,
+          jenis_pekerjaan:proses,
+          menit_per_pcs:existing?Number(existing.menit_per_pcs):0,
         });
       });
     });
     return combos;
-  },[processList]);
+  },[processList,bomList]);
 
   const filteredProcess=combosList.filter((p:any)=>{
     const matchTipe=filterTipe==="ALL"||p.tipe_panel===filterTipe;
