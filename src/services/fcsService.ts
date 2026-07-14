@@ -598,25 +598,30 @@ export async function syncFCSToRawSchedule(
       // Merge dengan schedule existing (jangan timpa total, gabung unik per WP per tanggal)
       const existingSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = finalRawRow.schedule || {}
       const mergedSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
-
-      // Mulai dari existing (deep copy)
       for (const [tgl, entries] of Object.entries(existingSchedule)) {
         mergedSchedule[tgl] = entries.map(e => ({ wp: e.wp, komponen: [...e.komponen] }))
       }
-
-      // Gabung data baru dari FCS
+      const wpYangDiSync = new Set<string>()
+      for (const wpMap of Object.values(tanggalMap)) {
+        Object.keys(wpMap).forEach(wp => wpYangDiSync.add(wp))
+      }
+      for (const tgl of Object.keys(mergedSchedule)) {
+        mergedSchedule[tgl] = mergedSchedule[tgl].filter(e => !wpYangDiSync.has(e.wp))
+      }
       for (const [tanggal, wpMap] of Object.entries(tanggalMap)) {
         if (!mergedSchedule[tanggal]) mergedSchedule[tanggal] = []
         for (const [wp, komponenBaru] of Object.entries(wpMap)) {
           const existingEntry = mergedSchedule[tanggal].find(e => e.wp === wp)
           if (existingEntry) {
-            // Set union: tambah komponen baru yang belum ada
             const setKomponen = new Set([...existingEntry.komponen, ...komponenBaru])
             existingEntry.komponen = Array.from(setKomponen)
           } else {
             mergedSchedule[tanggal].push({ wp, komponen: [...komponenBaru] })
           }
         }
+      }
+      for (const tgl of Object.keys(mergedSchedule)) {
+        if (mergedSchedule[tgl].length === 0) delete mergedSchedule[tgl]
       }
 
       const { error } = await supabase
