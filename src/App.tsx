@@ -4931,7 +4931,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     if(isOrangPr){
                       const orangMap:Record<string,number>=e.orangPerKomponen||{};
                       (e.komponen||[]).forEach((kode:string)=>{
-                        terpakaiPr+=(orangMap[kode]!==undefined?orangMap[kode]:1);
+                        if(!kode.startsWith('__wiring_'))return;
+                        if(orangMap[kode]!==undefined){
+                          terpakaiPr+=orangMap[kode];
+                        } else {
+                          const m=kode.match(/^__wiring_(\d+)org_/);
+                          terpakaiPr+=m?parseInt(m[1],10):1;
+                        }
                       });
                     } else {
                       (e.komponen||[]).forEach((kode:string)=>{
