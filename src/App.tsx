@@ -8006,6 +8006,7 @@ function KapasitasPekerjaanTab(){
         });
         mappingPerTipe[tipe]=map;
       });
+      console.log("=== MAPPING PER TIPE (buat debug) ===",JSON.stringify(mappingPerTipe,null,2));
 
       const{data:allPanels}=await supabase.from("panels").select("id,tipe,nama,checklist");
       let updatedCount=0,skippedCount=0,collisionCount=0;
