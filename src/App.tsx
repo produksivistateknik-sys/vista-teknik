@@ -6501,7 +6501,12 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const woToDelete=woData.find(w=>w.id===delId);
   // 1. Ambil panel ids
   const panelIds=(woToDelete?.panels||[]).map((p:any)=>p.id);
-  // 2. (kendala tidak terikat panel_id, skip)
+  // 2. Hapus data turunan yang nempel ke panel_id (bukan wo_id langsung)
+  if(panelIds.length>0){
+    await supabase.from('fcs_timer_kerja').delete().in('panel_id',panelIds);
+    await supabase.from('progress_checkpoint_log').delete().in('panel_id',panelIds);
+    await supabase.from('kendala').delete().in('panel_id',panelIds);
+  }
   // 3. Hapus renhar terkait wo
   await supabase.from('renhar').delete().eq('wo_id',delId);
   // 4. Hapus raw_schedule terkait wo

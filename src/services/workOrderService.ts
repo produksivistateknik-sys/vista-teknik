@@ -121,6 +121,9 @@ export const workOrderService = {
       await supabase.from('renhar').delete().in('panel_id', idsToDelete)
       await supabase.from('raw_schedule').delete().in('panel_id', idsToDelete)
       await supabase.from('fcs_schedule').delete().in('panel_id', idsToDelete)
+      await supabase.from('fcs_timer_kerja').delete().in('panel_id', idsToDelete)
+      await supabase.from('progress_checkpoint_log').delete().in('panel_id', idsToDelete)
+      await supabase.from('kendala').delete().in('panel_id', idsToDelete)
       await supabase.from('panels').delete().in('id', idsToDelete)
     }
 
