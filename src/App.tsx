@@ -10067,11 +10067,19 @@ function FCSScheduleTab({woData,user}:any){
     if(panelIds.length===0){alert("Pilih minimal 1 panel!");return;}
     const isWiring=["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan);
     if(isWiring){
-      // WIRING: cek semua panel sudah dihitung
-      const belumHitungW=panelIds.filter(pid=>!wpPreview[woNum]?.[`${woNum}_${pid}_bobot`]);
-      if(belumHitungW.length>0){
-        const namaBelum=belumHitungW.map(pid=>woGroups[woNum]?.panels[pid]?.nama||pid).join(", ");
-        alert(`Hitung dulu jadwal untuk panel: ${namaBelum}`);return;
+      const belumHitungList:string[]=[];
+      panelIds.forEach(pid=>{
+        const panel=woGroups[woNum]?.panels[pid];
+        if(!panel)return;
+        Object.keys(panel.wps||{}).forEach(wpItem=>{
+          const bobotKey=`${woNum}_${pid}_${wpItem}_bobot`;
+          if(!wpPreview[woNum]?.[bobotKey]){
+            belumHitungList.push(`${panel.nama} (${wpItem})`);
+          }
+        });
+      });
+      if(belumHitungList.length>0){
+        alert(`Hitung dulu jadwal untuk: ${belumHitungList.join(", ")}`);return;
       }
     } else {
       const wps=new Set<string>();
@@ -10085,37 +10093,39 @@ function FCSScheduleTab({woData,user}:any){
     setSyncing(woNum);
     try{
       if(isWiring){
-        // WIRING: update fcs_schedule per panel berdasarkan preview bobot
         for(const pid of panelIds){
-          const bobotKey=`${woNum}_${pid}_bobot`;
-          const preview=wpPreview[woNum]?.[bobotKey]||[];
-          // Hapus data lama dan insert baru
-          await supabase.from("fcs_schedule").delete()
-            .eq("panel_id",pid).eq("wo_number",realWoNumber).eq("jenis_pekerjaan",filterPekerjaan);
-          const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
-          const orangVal=parseInt((wpTanggal as any)[`${woNum}_${pid}_orang`]||"1")||1;
-          if(preview.length>0){
-            const items=preview.map((r:any,i:number)=>({
-              wo_id:woGroups[woNum]?.panels[pid]?.__wo_id||0,
-              wo_number:realWoNumber,
-              proyek:woGroups[woNum]?.proyek||"" ,
-              panel_id:pid,
-              panel_nama:woGroups[woNum]?.panels[pid]?.nama||"" ,
-              tipe_panel:"FS",
-              kode_komponen:bobotVal,
-              nama_komponen:`Wiring ${bobotVal}`,
-              wp:"WP1",
-              jenis_pekerjaan:filterPekerjaan,
-              tanggal:r.tanggal,
-              qty_total:orangVal,
-              qty_hari:orangVal,
-              menit_per_pcs:0,
-              total_menit:orangVal,
-              status:"planning",
-              urutan:i+1,
-              generated_by:uname,
-            }));
-            await supabase.from("fcs_schedule").insert(items);
+          const panel=woGroups[woNum]?.panels[pid];
+          if(!panel)continue;
+          for(const wpItem of Object.keys(panel.wps||{})){
+            const bobotKey=`${woNum}_${pid}_${wpItem}_bobot`;
+            const preview=wpPreview[woNum]?.[bobotKey]||[];
+            await supabase.from("fcs_schedule").delete()
+              .eq("panel_id",pid).eq("wo_number",realWoNumber).eq("jenis_pekerjaan",filterPekerjaan).eq("wp",wpItem);
+            const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
+            const orangVal=parseInt((wpTanggal as any)[`${woNum}_${pid}_${wpItem}_orang`]||"1")||1;
+            if(preview.length>0){
+              const items=preview.map((r:any,i:number)=>({
+                wo_id:woGroups[woNum]?.panels[pid]?.__wo_id||0,
+                wo_number:realWoNumber,
+                proyek:woGroups[woNum]?.proyek||"" ,
+                panel_id:pid,
+                panel_nama:woGroups[woNum]?.panels[pid]?.nama||"" ,
+                tipe_panel:"FS",
+                kode_komponen:bobotVal,
+                nama_komponen:`Wiring ${bobotVal}`,
+                wp:wpItem,
+                jenis_pekerjaan:filterPekerjaan,
+                tanggal:r.tanggal,
+                qty_total:orangVal,
+                qty_hari:orangVal,
+                menit_per_pcs:0,
+                total_menit:orangVal,
+                status:"planning",
+                urutan:i+1,
+                generated_by:uname,
+              }));
+              await supabase.from("fcs_schedule").insert(items);
+            }
           }
         }
       } else {
@@ -10240,14 +10250,18 @@ function FCSScheduleTab({woData,user}:any){
                       </div>
                       {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)?(
                         <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
-                          {selPanels.map(pid=>{
+                          {selPanels.flatMap(pid=>{
                             const panel=wo.panels[pid];
-                            if(!panel)return null;
-                            const bobotKey=`${wo.woId}_${pid}_bobot`;
+                            if(!panel)return[];
+                            const panelWps=Object.keys(panel.wps||{});
+                            if(panelWps.length===0)return[];
+                            return panelWps.map(wpItem=>{
+                            const wpColorX=WP_COLORS[wpItem]||{color:"#64748b",bg:"#f1f5f9"};
+                            const bobotKey=`${wo.woId}_${pid}_${wpItem}_bobot`;
                             const bobotVal=(wpTanggal as any)[bobotKey]||"MEDIUM";
-                            const orangKey=`${wo.woId}_${pid}_orang`;
+                            const orangKey=`${wo.woId}_${pid}_${wpItem}_orang`;
                             const orangVal=parseInt((wpTanggal as any)[orangKey]||"1")||1;
-                            const tglKey=`${wo.woId}_${pid}_tgl`;
+                            const tglKey=`${wo.woId}_${pid}_${wpItem}_tgl`;
                             const tglVal=(wpTanggal as any)[tglKey]||new Date().toISOString().slice(0,10);
                             const BOBOT_CFG:any={
                               EASY:{label:"Easy",hariOrang:1,color:"#16a34a",bg:"#f0fdf4"},
@@ -10259,8 +10273,9 @@ function FCSScheduleTab({woData,user}:any){
                             const hariTotal=Math.ceil(cfg.hariOrang/orangVal);
                             const previewW=wpPreview[wo.woId]?.[bobotKey];
                             return(
-                              <div key={pid} style={{border:`1.5px solid ${cfg.color}30`,borderRadius:8,padding:"10px 12px",background:cfg.bg+"40"}}>
+                              <div key={pid+"_"+wpItem} style={{border:`1.5px solid ${cfg.color}30`,borderRadius:8,padding:"10px 12px",background:cfg.bg+"40"}}>
                                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8,flexWrap:"wrap" as const}}>
+                                  <span style={{background:wpColorX.color,color:"#fff",borderRadius:5,padding:"2px 8px",fontSize:10,fontWeight:700}}>{wpItem}</span>
                                   <span style={{fontSize:12,fontWeight:700,color:"#1e293b",flex:1}}>{panel.nama}</span>
                                   <select value={bobotVal} onChange={e=>setWpTanggal((prev:any)=>({...prev,[bobotKey]:e.target.value}))}
                                     style={{padding:"3px 8px",borderRadius:5,border:`1.5px solid ${cfg.color}`,background:cfg.bg,color:cfg.color,fontSize:11,fontWeight:700,cursor:"pointer"}}>
@@ -10291,7 +10306,7 @@ function FCSScheduleTab({woData,user}:any){
                                     const rows=Array.from({length:hariTotal},(_,i)=>({
                                       qty_total:orangVal,qty_hari:orangVal,menit_per_pcs:0,
                                       kode_komponen:bobotVal,nama_komponen:`Wiring ${bobotVal}`,
-                                      wp:"WP1",id:`wiring_${pid}_${i}`,
+                                      wp:wpItem,id:`wiring_${pid}_${wpItem}_${i}`,
                                     }));
                                     const previewRows=hitungDistribusiWP(rows,tglVal,kapInclude);
                                     const sorted=[...previewRows].sort((a:any,b:any)=>a.tanggal.localeCompare(b.tanggal));
@@ -10320,6 +10335,7 @@ function FCSScheduleTab({woData,user}:any){
                                 )}
                               </div>
                             );
+                            });
                           })}
                         </div>
                       ):(
