@@ -6035,6 +6035,8 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
       }
     });
   },[]);
+  const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
+  const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
   const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
   const blank={wo:"",proyek:"",target:""};
@@ -6315,7 +6317,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     const changes=Object.entries(dirty)
       .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
       .map(([kode,v])=>{
-        const cfg=PANEL_TYPES[panel.tipe];
+        const cfg=getEffectiveCfg(panel.tipe);
         const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
         const finalVal=panelQtyMultiplier>1?Math.round(Number((v as any).newQty)*panelQtyMultiplier):(v as any).newQty;
         return nama+': '+(v as any).oldQty+' -> '+finalVal;
@@ -6386,7 +6388,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               </div>
             </div>
             {isExp&&[...(wo.panels||[])].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map(p=>{
-              const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=PANEL_TYPES[p.tipe];
+              const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=getEffectiveCfg(p.tipe);
               return(
                 <div key={p.id} style={{borderBottom:"1px solid #f1f5f9"}}>
                   <div style={{padding:"10px 16px 10px 28px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
@@ -6568,7 +6570,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                 <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={e=>{const n=[...panels];n[i]={...n[i],nama:e.target.value};setPanels(n);}} placeholder="Nama panel..."/></div>
                 <div><Lbl>Tipe</Lbl>
                   <Sel value={p.tipe} onChange={e=>{const n=[...panels];n[i]={...n[i],tipe:e.target.value};setPanels(n);}}>
-                    {Object.entries(PANEL_TYPES).map(([k,v])=><option key={k} value={k}>{v.label}</option>)}
+                    {Object.entries(effectivePanelTypes).map(([k,v]:any)=><option key={k} value={k}>{v.label}</option>)}
                   </Sel>
                 </div>
                 <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={e=>{const n=[...panels];n[i]={...n[i],qty:e.target.value};setPanels(n);}}/></div>
@@ -6657,7 +6659,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                       if((clVal?.qty||0)<=0)return;
                       (KOMPONEN_PROSES_MAP[kode]||[]).forEach((pr:string)=>prosesSet.add(pr));
                     });
-                    const cfgWpMap=(PANEL_TYPES as any)[panel.tipe];
+                    const cfgWpMap=getEffectiveCfg(panel.tipe);
                     const kodeToWpMap:Record<string,string>={};
                     if(cfgWpMap){
                       cfgWpMap.wps.forEach((w:any)=>{
