@@ -6649,18 +6649,37 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                       if((clVal?.qty||0)<=0)return;
                       (KOMPONEN_PROSES_MAP[kode]||[]).forEach((pr:string)=>prosesSet.add(pr));
                     });
+                    const cfgWpMap=(PANEL_TYPES as any)[panel.tipe];
+                    const kodeToWpMap:Record<string,string>={};
+                    if(cfgWpMap){
+                      cfgWpMap.wps.forEach((w:any)=>{
+                        w.items.forEach((it:any)=>{kodeToWpMap[it.kode]=w.wp;});
+                      });
+                    }
                     for(const proses of prosesSet){
-                      let res:any;
                       if(WIRING_PROSES.includes(proses)){
-                        res=await generateFCSWiring({
-                          woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                          panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                          jenisPekerjaan:proses,
-                          tanggalMulai:fcsForm.tanggalMulai,
-                          generatedBy:uname,
+                        const relevantWps=new Set<string>();
+                        Object.entries(cl).forEach(([kode,clVal]:any)=>{
+                          if((clVal?.qty||0)<=0)return;
+                          if(!(KOMPONEN_PROSES_MAP[kode]||[]).includes(proses))return;
+                          const wpFound=kodeToWpMap[kode];
+                          if(wpFound)relevantWps.add(wpFound);
                         });
+                        if(relevantWps.size===0)relevantWps.add("WP1");
+                        for(const wpTarget of relevantWps){
+                          const resWp=await generateFCSWiring({
+                            woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
+                            panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
+                            jenisPekerjaan:proses,
+                            wp:wpTarget,
+                            tanggalMulai:fcsForm.tanggalMulai,
+                            generatedBy:uname,
+                          });
+                          if(resWp.success)totalCount+=resWp.count;
+                          else errors.push(panel.nama+" ("+proses+" "+wpTarget+"): "+(resWp.error||"Error"));
+                        }
                       } else {
-                        res=await generateFCSSchedule({
+                        const res=await generateFCSSchedule({
                           woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
                           panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
                           checklist:panel.checklist||{},
@@ -6669,9 +6688,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                           generatedBy:uname,
                           selectedKomponen:null,
                         });
+                        if(res.success)totalCount+=res.count;
+                        else errors.push(panel.nama+" ("+proses+"): "+(res.error||"Error"));
                       }
-                      if(res.success)totalCount+=res.count;
-                      else errors.push(panel.nama+" ("+proses+"): "+(res.error||"Error"));
                     }
                   }
                   if(totalCount>0&&refetchWO)await refetchWO();

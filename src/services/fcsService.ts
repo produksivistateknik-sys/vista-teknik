@@ -422,21 +422,20 @@ export async function generateFCSWiring(params: {
   panelNama: string
   tipePanel: string
   jenisPekerjaan: string
+  wp?: string
   tanggalMulai: string
   generatedBy: string
 }): Promise<{ success: boolean; count: number; error?: string }> {
   const { woId, woNumber, proyek, panelId, panelNama, tipePanel, jenisPekerjaan, tanggalMulai, generatedBy } = params
-
+  const wpTarget = params.wp || 'WP1'
   try {
-    // Hapus data lama untuk panel ini
     await supabase
       .from('fcs_schedule')
       .delete()
       .eq('wo_id', woId)
       .eq('panel_id', panelId)
       .eq('jenis_pekerjaan', jenisPekerjaan)
-
-    // Insert 1 row placeholder - bobot dan jadwal akan diatur di FCS Schedule
+      .eq('wp', wpTarget)
     const { error } = await supabase.from('fcs_schedule').insert([{
       wo_id: woId,
       wo_number: woNumber,
@@ -444,9 +443,9 @@ export async function generateFCSWiring(params: {
       panel_id: panelId,
       panel_nama: panelNama,
       tipe_panel: tipePanel,
-      kode_komponen: 'MEDIUM', // default bobot, bisa diubah di FCS Schedule
+      kode_komponen: 'MEDIUM',
       nama_komponen: 'Wiring (belum dijadwalkan)',
-      wp: 'WP1',
+      wp: wpTarget,
       jenis_pekerjaan: jenisPekerjaan,
       tanggal: tanggalMulai,
       qty_total: 1,
@@ -457,7 +456,6 @@ export async function generateFCSWiring(params: {
       urutan: 1,
       generated_by: generatedBy,
     }])
-
     if (error) return { success: false, count: 0, error: error.message }
     return { success: true, count: 1 }
   } catch (err: any) {
