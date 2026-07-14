@@ -10319,8 +10319,9 @@ function FCSScheduleTab({woData,user}:any){
                           <label key={pid} style={{display:"flex",alignItems:"center",gap:6,padding:"5px 10px",borderRadius:7,
                             border:`1.5px solid ${sudahSynced?"#16a34a":checked?"#1d4ed8":"#e2e8f0"}`,
                             background:sudahSynced?"#f0fdf4":checked?"#eff6ff":"#f8fafc",
-                            cursor:sudahSynced?"not-allowed":"pointer",opacity:sudahSynced?0.65:1}}>
-                            <input type="checkbox" checked={checked} disabled={sudahSynced} onChange={()=>{
+                            cursor:"pointer"}}>
+                            <input type="checkbox" checked={checked} onChange={()=>{
+                              if(sudahSynced&&!checked&&!confirm("Panel ini udah pernah di-sync. Pilih ulang buat SYNC ULANG (jadwal lama bakal ditimpa jadwal baru hasil Hitung ulang). Lanjut?"))return;
                               setSelectedPanels(prev=>{
                                 const cur=prev[wo.woId]||[];
                                 return{...prev,[wo.woId]:checked?cur.filter(x=>x!==Number(pid)):[...cur,Number(pid)]};
