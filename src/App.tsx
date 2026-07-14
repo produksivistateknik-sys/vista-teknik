@@ -8007,8 +8007,9 @@ function KapasitasPekerjaanTab(){
         mappingPerTipe[tipe]=map;
       });
 
-      const{data:allPanels}=await supabase.from("panels").select("id,tipe,checklist");
+      const{data:allPanels}=await supabase.from("panels").select("id,tipe,nama,checklist");
       let updatedCount=0,skippedCount=0,collisionCount=0;
+      const collisionDetails:string[]=[];
       for(const p of (allPanels||[]) as any[]){
         const map=mappingPerTipe[p.tipe];
         if(!map||Object.keys(map).length===0){skippedCount++;continue;}
@@ -8016,13 +8017,21 @@ function KapasitasPekerjaanTab(){
         let changed=false;
         let hasCollision=false;
         const newCl:any={};
+        const collisionPairs:string[]=[];
         Object.entries(cl).forEach(([kode,val]:any)=>{
           const target=map[kode]||kode;
           if(target!==kode)changed=true;
-          if(newCl[target]!==undefined)hasCollision=true;
+          if(newCl[target]!==undefined){
+            hasCollision=true;
+            collisionPairs.push(`${kode}->${target}(udah ada)`);
+          }
           newCl[target]=val;
         });
-        if(hasCollision){collisionCount++;continue;}
+        if(hasCollision){
+          collisionCount++;
+          if(collisionDetails.length<5)collisionDetails.push(`${p.nama}(${p.tipe}): ${collisionPairs.join(", ")}`);
+          continue;
+        }
         if(changed){
           await supabase.from("panels").update({checklist:newCl}).eq("id",p.id);
           updatedCount++;
@@ -8030,7 +8039,7 @@ function KapasitasPekerjaanTab(){
           skippedCount++;
         }
       }
-      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update, ${skippedCount} gak perlu diubah${collisionCount>0?`, ${collisionCount} dilewati karena ada bentrok kode (perlu dicek manual)`:""}.`);
+      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update, ${skippedCount} gak perlu diubah${collisionCount>0?`, ${collisionCount} dilewati karena bentrok. Contoh: ${collisionDetails.join(" | ")}`:""}.`);
     }catch(err:any){
       setMigrateChecklistResult("Gagal: "+err.message);
     }
