@@ -10464,7 +10464,7 @@ function FCSScheduleTab({woData,user}:any){
                               <div style={{marginTop:8,display:"flex",flexWrap:"wrap" as const,gap:4}}>
                                 {([...new Set(preview.map((p:any)=>p.tanggal))] as string[]).map((tgl:string)=>{
                                   const dayRows=preview.filter((p:any)=>p.tanggal===tgl);
-                                  const mnt=dayRows.reduce((a:number,b:any)=>a+b.total_menit_hari,0);
+                                  const mnt=Math.round(dayRows.reduce((a:number,b:any)=>a+b.total_menit_hari,0)*100)/100;
                                   const kap=kapasitasMap[tgl]||0;
                                   const pct=kap>0?Math.round(mnt/kap*100):0;
                                   const color=pct>=90?"#dc2626":pct>=70?"#d97706":"#16a34a";
