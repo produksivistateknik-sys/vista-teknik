@@ -4130,6 +4130,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
   const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
+  const [bobotCepat,setBobotCepat]=useState<string>("");
+  const [jumlahOrangBobot,setJumlahOrangBobot]=useState(1);
+  const BOBOT_HARI_MAP:Record<string,number>={EASY:1,MEDIUM:2,HARD:4,VERY_HARD:6};
+  const BOBOT_LABEL_MAP:Record<string,string>={EASY:"Easy",MEDIUM:"Medium",HARD:"Hard",VERY_HARD:"Very Hard"};
+  const BOBOT_COLOR_MAP:Record<string,string>={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
+  const totalHariBobot=bobotCepat?Math.ceil((BOBOT_HARI_MAP[bobotCepat]||1)/(jumlahOrangBobot||1)):0;
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
@@ -4579,6 +4585,45 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     } else {
       setRenhar(prev=>prev.filter(r=>!((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)));
     }
+  };
+
+  const previewTanggalBobot=(()=>{
+    if(!bobotCepat||!cellModal)return[] as string[];
+    const dates:string[]=[];
+    let cur=cellModal.date;
+    let attempts=0;
+    while(dates.length<totalHariBobot&&attempts<30){
+      const d=new Date(cur+"T00:00:00");
+      if(d.getDay()!==0)dates.push(cur);
+      const next=new Date(cur+"T00:00:00");next.setDate(next.getDate()+1);
+      cur=next.toISOString().slice(0,10);
+      attempts++;
+    }
+    return dates;
+  })();
+  const simpanDenganBobot=async()=>{
+    if(!bobotCepat||!modalWp||modalKomponen.length===0||!cellModal)return;
+    const dates=previewTanggalBobot;
+    if(dates.length===0)return;
+    const row=rawData.find((r:any)=>r.id===cellModal.rawId);
+    if(!row)return;
+    const schedule={...(row.schedule||{})};
+    const token=`__wiring_${jumlahOrangBobot}org_${bobotCepat}`;
+    for(const tgl of dates){
+      const existing=schedule[tgl]||[];
+      const wpEntry=existing.find((e:any)=>e.wp===modalWp);
+      const newKomp=[token,...modalKomponen];
+      if(wpEntry){
+        schedule[tgl]=existing.map((e:any)=>e.wp===modalWp?{...e,komponen:Array.from(new Set([...e.komponen,...newKomp]))}:e);
+      } else {
+        schedule[tgl]=[...existing,{wp:modalWp,komponen:newKomp}];
+      }
+    }
+    setRawData((prev:any[])=>prev.map((r:any)=>r.id===cellModal.rawId?{...r,schedule}:r));
+    await supabase.from("raw_schedule").update({schedule}).eq("id",cellModal.rawId);
+    setCellModal(null);
+    setModalWp("");setModalKomponen([]);setBobotCepat("");setJumlahOrangBobot(1);setModalOrangPerKomponen({});
+    alert(`Berhasil! Jadwal masuk ke ${dates.length} hari: ${dates.join(", ")}`);
   };
 
   const addEntry=async()=>{
@@ -5427,6 +5472,40 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             {modalWp&&wpItems.length>0&&(
               <>
                 <Lbl>Pilih Komponen {modalWp}</Lbl>
+                {PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(
+                  <div style={{background:"#faf5ff",border:"1px solid #e9d5ff",borderRadius:8,padding:10,marginBottom:10}}>
+                    <div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:6}}>🎚 Bobot Cepat (opsional - otomatis distribusi ke beberapa hari)</div>
+                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
+                      {Object.keys(BOBOT_HARI_MAP).map(b=>{
+                        const sel=bobotCepat===b;const bc=BOBOT_COLOR_MAP[b];
+                        return(
+                          <button key={b} type="button" onClick={()=>setBobotCepat(sel?"":b)}
+                            style={{padding:"6px 4px",borderRadius:7,border:`2px solid ${sel?bc:"#e2e8f0"}`,background:sel?bc+"18":"#fff",color:sel?bc:"#64748b",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                            {BOBOT_LABEL_MAP[b]}
+                          </button>
+                        );
+                      })}
+                    </div>
+                    {bobotCepat&&(
+                      <div>
+                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                          <span style={{fontSize:11,color:"#64748b"}}>Jumlah orang:</span>
+                          <input type="number" min="1" step="1" value={jumlahOrangBobot}
+                            onChange={e=>setJumlahOrangBobot(parseInt(e.target.value)||1)}
+                            style={{width:50,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #e9d5ff",fontSize:12}}/>
+                          <span style={{fontSize:11,color:"#7c3aed",fontWeight:600}}>= {totalHariBobot} hari</span>
+                        </div>
+                        {previewTanggalBobot.length>0&&(
+                          <div style={{fontSize:10,color:"#64748b",marginBottom:8}}>Jadwal akan masuk ke {previewTanggalBobot.length} hari: {previewTanggalBobot.join(", ")}</div>
+                        )}
+                        <button type="button" onClick={simpanDenganBobot} disabled={!modalWp||modalKomponen.length===0}
+                          style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:modalKomponen.length>0?"#7c3aed":"#e2e8f0",color:"#fff",fontSize:12,fontWeight:700,cursor:modalKomponen.length>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
+                          Simpan dengan Distribusi Bobot →
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
                 {PROSES_ORANG_RAW.includes(rawRow?.proses||"")?(
                   <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14}}>
                     {wpItems.map(it=>{
