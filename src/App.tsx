@@ -4102,6 +4102,25 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [cellModal,setCellModal]=useState(null);
+  const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
+  const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,wp:string,kode:string)=>{
+    const row=rawData.find((r:any)=>r.id===rawId);
+    if(!row)return;
+    const schedule={...(row.schedule||{})};
+    const fromEntries=(schedule[fromDate]||[]).map((e:any)=>e.wp===wp?{...e,komponen:e.komponen.filter((k:string)=>k!==kode)}:e).filter((e:any)=>e.komponen.length>0);
+    schedule[fromDate]=fromEntries;
+    const toEntries=schedule[toDate]||[];
+    const existingEntry=toEntries.find((e:any)=>e.wp===wp);
+    if(existingEntry){
+      if(!existingEntry.komponen.includes(kode))existingEntry.komponen=[...existingEntry.komponen,kode];
+      schedule[toDate]=toEntries.map((e:any)=>e.wp===wp?existingEntry:e);
+    } else {
+      schedule[toDate]=[...toEntries,{wp,komponen:[kode]}];
+    }
+    setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule}:r));
+    await supabase.from("raw_schedule").update({schedule}).eq("id",rawId);
+    setMoveKomponenState(null);
+  };
   const [dragInfo,setDragInfo]=useState(null);
   const [dragOverCell,setDragOverCell]=useState(null);
   const [dragMode,setDragMode]=useState(null);
@@ -4367,6 +4386,18 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   },[selectedCells,copiedCells,lastSelected,rawData,woData]);
   // ── COPY PASTE FUNCTIONS ──
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
+    if(moveKomponenState){
+      if(moveKomponenState.rawId!==rawId){
+        alert("Cuma bisa pindahin ke tanggal lain di BARIS (proses) yang sama.");
+        return;
+      }
+      if(moveKomponenState.date===date){
+        setMoveKomponenState(null);
+        return;
+      }
+      executeMoveKomponen(rawId,moveKomponenState.date,date,moveKomponenState.wp,moveKomponenState.kode);
+      return;
+    }
     setCtxMenu(null);
     if(e.shiftKey&&lastSelected){
       // Select range - hanya di row yang sama (seperti spreadsheet horizontal)
@@ -5323,6 +5354,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         </Card>
       )}
 
+      {moveKomponenState&&(
+        <div style={{position:"fixed" as const,top:16,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:"#1e293b",color:"#fff",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
+          <span style={{fontSize:12}}>🔀 Klik tanggal TUJUAN buat pindahin komponen ini (di baris yang sama)</span>
+          <button onClick={()=>setMoveKomponenState(null)} style={{background:"#334155",border:"none",color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+        </div>
+      )}
       {cellModal&&rawRow&&(
         <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} · {rawRow.panel}</div>
@@ -5362,7 +5399,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           return <span key={k} style={{background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>⚡ {org} · {bobotLabel}</span>;
                         }
                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
-                        return <span key={k} style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>{item?.nama||k}</span>;
+                        return <span key={k} onClick={()=>{setCellModal(null);setMoveKomponenState({rawId:cellModal.rawId,date:cellModal.date,wp:e.wp,kode:k});}} title="Klik buat pindahin ke tanggal lain"
+                          style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>🔀 {item?.nama||k}</span>;
                       })}
                     </div>
                   </div>
