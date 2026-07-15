@@ -8028,6 +8028,40 @@ function KapasitasPekerjaanTab(){
   const [migrateResult,setMigrateResult]=useState<string>("");
   const [migratingChecklist,setMigratingChecklist]=useState(false);
   const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
+  const [prosesRelevanModal,setProsesRelevanModal]=useState<any>(null);
+  const [selectedProsesRelevan,setSelectedProsesRelevan]=useState<string[]>([]);
+  const [savingProsesRelevan,setSavingProsesRelevan]=useState(false);
+
+  const openProsesModal=async(b:any)=>{
+    const{data}=await supabase.from("bom_proses_relevan").select("jenis_pekerjaan")
+      .eq("kode_komponen",b.kode_komponen).eq("tipe_panel",b.tipe_panel);
+    setSelectedProsesRelevan((data||[]).map((r:any)=>r.jenis_pekerjaan));
+    setProsesRelevanModal(b);
+  };
+  const toggleProsesRelevan=(proses:string)=>{
+    setSelectedProsesRelevan(prev=>prev.includes(proses)?prev.filter(p=>p!==proses):[...prev,proses]);
+  };
+  const saveProsesRelevan=async()=>{
+    if(!prosesRelevanModal)return;
+    setSavingProsesRelevan(true);
+    await supabase.from("bom_proses_relevan").delete()
+      .eq("kode_komponen",prosesRelevanModal.kode_komponen).eq("tipe_panel",prosesRelevanModal.tipe_panel);
+    if(selectedProsesRelevan.length>0){
+      const rows=selectedProsesRelevan.map(p=>({kode_komponen:prosesRelevanModal.kode_komponen,tipe_panel:prosesRelevanModal.tipe_panel,jenis_pekerjaan:p}));
+      await supabase.from("bom_proses_relevan").insert(rows);
+    }
+    const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+    const relevanSet=new Set<string>();
+    const hasMappingSet=new Set<string>();
+    (allRelevan||[]).forEach((r:any)=>{
+      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+    });
+    GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+    GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+    setSavingProsesRelevan(false);
+    setProsesRelevanModal(null);
+  };
   const [panelTypeList,setPanelTypeList]=useState<any[]>([]);
   const [panelWpList,setPanelWpList]=useState<any[]>([]);
   const [expandedTipePanel,setExpandedTipePanel]=useState<string|null>(null);
@@ -8695,6 +8729,8 @@ function KapasitasPekerjaanTab(){
                     <td style={{padding:"7px 12px"}}><span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.tipe_panel}</span></td>
                     <td style={{padding:"7px 12px"}}><span style={{background:"#f1f5f9",color:"#64748b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.wp}</span></td>
                     <td style={{padding:"7px 12px",textAlign:"center" as const}}>
+                      <button onClick={()=>openProsesModal(b)} title="Atur proses relevan"
+                        style={{background:"none",border:"none",cursor:"pointer",color:"#7c3aed",fontSize:12,marginRight:8}}>🔧</button>
                       <button onClick={()=>{setEditBom(b);setBomForm({kode_komponen:b.kode_komponen,nama_komponen:b.nama_komponen,tipe_panel:b.tipe_panel,wp:b.wp,urutan:b.urutan||0});setShowAddBom(true);}}
                         style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:12,marginRight:8}}>✎</button>
                       <button onClick={()=>deleteBom(b.id)}
@@ -8839,6 +8875,27 @@ function KapasitasPekerjaanTab(){
             <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
               <Btn outline color="#64748b" onClick={()=>{setShowAddWp(false);setEditWpMeta(null);}}>Batal</Btn>
               <Btn color="#1d4ed8" onClick={saveWpMeta}>Simpan</Btn>
+            </div>
+          </div>
+        </div>
+      )}
+      {prosesRelevanModal&&(
+        <div onClick={()=>setProsesRelevanModal(null)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:380,maxHeight:"80vh",overflowY:"auto" as const}}>
+            <div style={{fontWeight:800,fontSize:15,marginBottom:4}}>🔧 Atur Proses Relevan</div>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>{prosesRelevanModal.kode_komponen} — {prosesRelevanModal.nama_komponen} ({prosesRelevanModal.tipe_panel})</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Centang proses yang BUTUH komponen ini. Yang gak dicentang berarti komponen ini gak muncul di proses itu.</div>
+            <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:16}}>
+              {ALL_PROSES.map((proses:string)=>(
+                <label key={proses} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 10px",borderRadius:7,border:`1.5px solid ${selectedProsesRelevan.includes(proses)?"#7c3aed":"#e2e8f0"}`,background:selectedProsesRelevan.includes(proses)?"#f5f3ff":"#f8fafc",cursor:"pointer"}}>
+                  <input type="checkbox" checked={selectedProsesRelevan.includes(proses)} onChange={()=>toggleProsesRelevan(proses)}/>
+                  <span style={{fontSize:12,fontWeight:selectedProsesRelevan.includes(proses)?700:400,color:selectedProsesRelevan.includes(proses)?"#7c3aed":"#475569"}}>{proses}</span>
+                </label>
+              ))}
+            </div>
+            <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+              <Btn outline color="#64748b" onClick={()=>setProsesRelevanModal(null)}>Batal</Btn>
+              <Btn color="#7c3aed" onClick={saveProsesRelevan}>{savingProsesRelevan?"Menyimpan...":"Simpan"}</Btn>
             </div>
           </div>
         </div>
