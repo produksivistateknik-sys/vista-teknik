@@ -6690,11 +6690,20 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                 <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
-                <Btn color="#16a34a" onClick={async()=>{
+<Btn color="#16a34a" onClick={async()=>{
                   setQuickGenLoading(true);
                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  const res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+                  let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+                  if(!res.success&&res.error==="__ALREADY_EXISTS__"){
+                    const lanjut=confirm("WO ini UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal NAMBAHIN jadwal baru (bukan ganti yang lama). Kalau kamu udah pernah generate sebelumnya, ini bisa bikin dobel.\n\nYakin mau lanjut?");
+                    if(lanjut){
+                      res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname);
+                    } else {
+                      setQuickGenLoading(false);
+                      return;
+                    }
+                  }
                   setQuickGenResult(res);
                   setQuickGenLoading(false);
                   if(res.success&&refetchWO)await refetchWO();
@@ -6723,50 +6732,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
           )}
         </Modal>
       )}
-      {quickGenModal&&(
-        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={420}>
-          {!quickGenResult?(
-            <div>
-              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin SEMUA komponen aktif dari SEMUA panel di WO ini, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
-              <div style={{marginBottom:16}}>
-                <Lbl>Tanggal Mulai</Lbl>
-                <Inp type="date" value={quickGenTanggal} onChange={(e:any)=>setQuickGenTanggal(e.target.value)}/>
-              </div>
-              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-                <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
-                <Btn color="#16a34a" onClick={async()=>{
-                  setQuickGenLoading(true);
-                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  const res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
-                  setQuickGenResult(res);
-                  setQuickGenLoading(false);
-                  if(res.success&&refetchWO)await refetchWO();
-                }}>{quickGenLoading?"⏳ Generating...":"Generate →"}</Btn>
-              </div>
-            </div>
-          ):(
-            <div style={{textAlign:"center" as const,padding:"20px 0"}}>
-              {quickGenResult.success?(
-                <div>
-                  <div style={{fontSize:40,marginBottom:12}}>✅</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Berhasil!</div>
-                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.count} jadwal dibuat di Raw Schedule</div>
-                </div>
-              ):(
-                <div>
-                  <div style={{fontSize:40,marginBottom:12}}>❌</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#dc2626",marginBottom:8}}>Gagal</div>
-                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.error}</div>
-                </div>
-              )}
-              <div style={{marginTop:16}}>
-                <Btn color="#1d4ed8" onClick={()=>{setQuickGenModal(null);setQuickGenResult(null);}}>Tutup</Btn>
-              </div>
-            </div>
-          )}
-        </Modal>
-      )}
+      
       {fcsModal&&(
         <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);setPanelBobot({});}} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>

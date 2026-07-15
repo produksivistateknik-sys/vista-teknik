@@ -1448,6 +1448,12 @@ export async function generateAndSaveToRawSchedule(
     const { data: panels } = await supabase.from('panels').select('*').eq('wo_id', woId)
     if (!panels || panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
 
+    const panelIdsForCheck = panels.map((p: any) => p.id)
+    const { data: existingCheck } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
+    if (existingCheck && existingCheck.length > 0 && !_generatedBy.startsWith('__force__')) {
+      return { success: false, count: 0, error: '__ALREADY_EXISTS__' }
+    }
+
     const tipeSet = [...new Set(panels.map((p: any) => p.tipe))]
 
     const { data: bomRows } = await supabase.from('bom_master').select('*').in('tipe_panel', tipeSet)
@@ -1528,11 +1534,11 @@ export async function generateAndSaveToRawSchedule(
           }
           let cur = tanggalMulai
           let attempts = 0
-          while (attempts < 90 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
+          while (attempts < 21 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
 
           let sisaKodes = [...kodes]
           let dayAttempts = 0
-          while (sisaKodes.length > 0 && dayAttempts < 90) {
+          while (sisaKodes.length > 0 && dayAttempts < 21) {
             const kap = getKapasitas(cur)
             const terpakai = terpakaiTracker[cur + '|' + proses] || 0
             let sisaKap = kap - terpakai
@@ -1556,9 +1562,12 @@ export async function generateAndSaveToRawSchedule(
             if (sisaKodes.length > 0) {
               cur = addDaysStr(cur, 1)
               let skip = 0
-              while (skip < 30 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
+              while (skip < 14 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
             }
             dayAttempts++
+          }
+          if (sisaKodes.length > 0) {
+            console.warn(`Kapasitas ${proses} penuh terus dalam 21 hari, ${sisaKodes.length} komponen di WP ${wp} panel ${panel.nama} belum kejadwal - atur manual lewat klik cell.`)
           }
         }
       }
@@ -1613,7 +1622,7 @@ export async function generateAndSaveToRawSchedule(
 
           let cur = tanggalMulai
           let attempts = 0
-          while (attempts < 90) {
+          while (attempts < 21) {
             const sisaAwal = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
             if (sisaAwal >= jumlahOrang) break
             cur = addDaysStr(cur, 1)
@@ -1622,7 +1631,7 @@ export async function generateAndSaveToRawSchedule(
 
           let hariTerisi = 0
           let dayAttempts = 0
-          while (hariTerisi < totalHari && dayAttempts < 90) {
+          while (hariTerisi < totalHari && dayAttempts < 21) {
             const sisa = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
             if (sisa >= jumlahOrang) {
               const token = `__wiring_${jumlahOrang}org_MEDIUM`
