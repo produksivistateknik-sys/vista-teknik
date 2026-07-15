@@ -8028,6 +8028,75 @@ function KapasitasPekerjaanTab(){
   const [migrateResult,setMigrateResult]=useState<string>("");
   const [migratingChecklist,setMigratingChecklist]=useState(false);
   const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
+  const [wizardTipe,setWizardTipe]=useState<string>("");
+  const [wizardStep,setWizardStep]=useState(0);
+  const [wizardWp,setWizardWp]=useState("WP1");
+  const [wizardColor,setWizardColor]=useState("#3b82f6");
+  const [wizardRange,setWizardRange]=useState("");
+  const [wizardAllNama,setWizardAllNama]=useState<string[]>([]);
+  const [wizardSelectedNama,setWizardSelectedNama]=useState<string[]>([]);
+  const [wizardProsesPerNama,setWizardProsesPerNama]=useState<Record<string,string[]>>({});
+  const [wizardSaving,setWizardSaving]=useState(false);
+  const WP_OPTIONS=["WP1","WP2","WP3","WP4","WP5","WP6"];
+
+  const openWizard=async(tipe:string)=>{
+    const{data}=await supabase.from("bom_master").select("nama_komponen");
+    const uniqueNama=Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))).sort();
+    setWizardAllNama(uniqueNama);
+    setWizardTipe(tipe);
+    setWizardWp("WP1");
+    setWizardColor("#3b82f6");
+    setWizardRange("");
+    setWizardSelectedNama([]);
+    setWizardProsesPerNama({});
+    setWizardStep(1);
+  };
+  const toggleWizardNama=(nama:string)=>{
+    setWizardSelectedNama(prev=>prev.includes(nama)?prev.filter(n=>n!==nama):[...prev,nama]);
+  };
+  const toggleWizardProses=(nama:string,proses:string)=>{
+    setWizardProsesPerNama(prev=>{
+      const curr=prev[nama]||[];
+      const next=curr.includes(proses)?curr.filter(p=>p!==proses):[...curr,proses];
+      return{...prev,[nama]:next};
+    });
+  };
+  const saveWizardWp=async()=>{
+    setWizardSaving(true);
+    try{
+      await supabase.from("panel_wp_meta").upsert({tipe_panel:wizardTipe,wp:wizardWp,color:wizardColor,range_label:wizardRange},{onConflict:"tipe_panel,wp"});
+      const{data:existingBom}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",wizardTipe);
+      let maxNum=0;
+      (existingBom||[]).forEach((r:any)=>{
+        const m=String(r.kode_komponen).match(/(\d+)$/);
+        if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
+      });
+      for(const nama of wizardSelectedNama){
+        maxNum++;
+        const kodeBaru=`${wizardTipe}.${maxNum}`;
+        await supabase.from("bom_master").insert({kode_komponen:kodeBaru,nama_komponen:nama,tipe_panel:wizardTipe,wp:wizardWp,urutan:0});
+        const prosesList=wizardProsesPerNama[nama]||[];
+        if(prosesList.length>0){
+          await supabase.from("bom_proses_relevan").insert(prosesList.map(p=>({kode_komponen:kodeBaru,tipe_panel:wizardTipe,jenis_pekerjaan:p})));
+        }
+      }
+      const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+      const relevanSet=new Set<string>();
+      const hasMappingSet=new Set<string>();
+      (allRelevan||[]).forEach((r:any)=>{
+        relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+        hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+      });
+      GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+      GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+      await fetchPanelTypeMeta();
+      await fetchBom();
+      setWizardStep(0);
+    }catch(err:any){
+      alert("Gagal: "+err.message);
+    }
+    setWizardSaving(false);
+  };
   const [prosesRelevanModal,setProsesRelevanModal]=useState<any>(null);
   const [selectedProsesRelevan,setSelectedProsesRelevan]=useState<string[]>([]);
   const [savingProsesRelevan,setSavingProsesRelevan]=useState(false);
@@ -8814,7 +8883,7 @@ function KapasitasPekerjaanTab(){
                   {isExp&&(
                     <div style={{padding:"12px 16px",borderTop:"1px solid #e2e8f0"}}>
                       <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
-                        <button onClick={()=>{setEditWpMeta(null);setWpForm({tipe_panel:t.tipe_panel,wp:"",color:"#3b82f6",range_label:""});setShowAddWp(true);}}
+                        <button onClick={()=>openWizard(t.tipe_panel)}
                           style={{padding:"5px 12px",borderRadius:6,border:"1px solid #1d4ed8",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah WP</button>
                       </div>
                       {wps.map((w:any)=>(
@@ -8897,6 +8966,84 @@ function KapasitasPekerjaanTab(){
               <Btn outline color="#64748b" onClick={()=>setProsesRelevanModal(null)}>Batal</Btn>
               <Btn color="#7c3aed" onClick={saveProsesRelevan}>{savingProsesRelevan?"Menyimpan...":"Simpan"}</Btn>
             </div>
+          </div>
+        </div>
+      )}
+      {wizardStep>0&&(
+        <div onClick={()=>setWizardStep(0)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:480,maxHeight:"85vh",overflowY:"auto" as const}}>
+            <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>+ Tambah WP — {wizardTipe}</div>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:16}}>Langkah {wizardStep} dari 3</div>
+
+            {wizardStep===1&&(
+              <div>
+                <div style={{marginBottom:10}}>
+                  <Lbl>Pilih WP</Lbl>
+                  <Sel value={wizardWp} onChange={(e:any)=>setWizardWp(e.target.value)}>
+                    {WP_OPTIONS.map(wp=><option key={wp} value={wp}>{wp}</option>)}
+                  </Sel>
+                </div>
+                <div style={{marginBottom:10}}>
+                  <Lbl>Warna</Lbl>
+                  <input type="color" value={wizardColor} onChange={(e:any)=>setWizardColor(e.target.value)}
+                    style={{width:"100%",height:36,borderRadius:7,border:"1.5px solid #e2e8f0",cursor:"pointer"}}/>
+                </div>
+                <div style={{marginBottom:16}}>
+                  <Lbl>Range/Keterangan (opsional)</Lbl>
+                  <Inp value={wizardRange} onChange={(e:any)=>setWizardRange(e.target.value)} placeholder={`misal ${wizardTipe}.1-5`}/>
+                </div>
+                <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                  <Btn outline color="#64748b" onClick={()=>setWizardStep(0)}>Batal</Btn>
+                  <Btn color="#1d4ed8" onClick={()=>setWizardStep(2)}>Lanjut →</Btn>
+                </div>
+              </div>
+            )}
+
+            {wizardStep===2&&(
+              <div>
+                <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Centang komponen yang dipakai di {wizardWp} buat tipe panel ini:</div>
+                <div style={{display:"flex",flexDirection:"column" as const,gap:5,maxHeight:320,overflowY:"auto" as const,marginBottom:16}}>
+                  {wizardAllNama.map(nama=>(
+                    <label key={nama} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderRadius:6,border:`1.5px solid ${wizardSelectedNama.includes(nama)?"#1d4ed8":"#e2e8f0"}`,background:wizardSelectedNama.includes(nama)?"#eff6ff":"#f8fafc",cursor:"pointer"}}>
+                      <input type="checkbox" checked={wizardSelectedNama.includes(nama)} onChange={()=>toggleWizardNama(nama)}/>
+                      <span style={{fontSize:12,fontWeight:wizardSelectedNama.includes(nama)?700:400}}>{nama}</span>
+                    </label>
+                  ))}
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                  <Btn outline color="#64748b" onClick={()=>setWizardStep(1)}>← Kembali</Btn>
+                  <Btn color="#1d4ed8" onClick={()=>wizardSelectedNama.length>0&&setWizardStep(3)}>Lanjut ({wizardSelectedNama.length} dipilih) →</Btn>
+                </div>
+              </div>
+            )}
+
+            {wizardStep===3&&(
+              <div>
+                <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Centang proses yang butuh tiap komponen:</div>
+                <div style={{display:"flex",flexDirection:"column" as const,gap:12,maxHeight:400,overflowY:"auto" as const,marginBottom:16}}>
+                  {wizardSelectedNama.map(nama=>(
+                    <div key={nama} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:10}}>
+                      <div style={{fontWeight:700,fontSize:12,marginBottom:6}}>{nama}</div>
+                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:5}}>
+                        {ALL_PROSES.map((proses:string)=>{
+                          const checked=(wizardProsesPerNama[nama]||[]).includes(proses);
+                          return(
+                            <button key={proses} onClick={()=>toggleWizardProses(nama,proses)}
+                              style={{padding:"3px 8px",borderRadius:5,border:`1.5px solid ${checked?"#7c3aed":"#e2e8f0"}`,background:checked?"#f5f3ff":"#fff",color:checked?"#7c3aed":"#94a3b8",fontSize:10,fontWeight:checked?700:400,cursor:"pointer"}}>
+                              {proses}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+                  <Btn outline color="#64748b" onClick={()=>setWizardStep(2)}>← Kembali</Btn>
+                  <Btn color="#16a34a" onClick={saveWizardWp}>{wizardSaving?"Menyimpan...":"Simpan WP Ini"}</Btn>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}
