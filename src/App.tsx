@@ -226,6 +226,13 @@ const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string)
   if(!relevanProses) return true;
   return relevanProses.includes(proses);
 };
+function getRelevantProsesForKode(kode:string,tipe:string):string[]{
+  const mapKey=kode+"|"+tipe;
+  if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
+    return ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr));
+  }
+  return KOMPONEN_PROSES_MAP[kode]||[];
+}
 
 
 export const DIVISI_CONFIG = {
@@ -3301,7 +3308,7 @@ function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:an
     const qty=selectedPanel.checklist?.[kode]?.qty||0;
     if(qty<=0)return null;
     const proses=ALL_PROSES[prosesIdx];
-    if(!isKomponenRelevant(kode,proses))return null;
+    if(!isKomponenRelevant(kode,selectedPanel.tipe,proses))return null;
     const progress=selectedPanel.checklist?.[kode]?.progress?.[proses]||0;
     if(progress>=100)return{status:"DONE",pct:100};
     if(prosesIdx===0){
@@ -4521,7 +4528,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const wpItems=wpItemsAll.filter(it=>{
     const qty=livePanelForCell?.checklist?.[it.kode]?.qty||0;
     if(qty<=0)return false;
-    return isKomponenRelevant(it.kode,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
+    return isKomponenRelevant(it.kode,livePanelForCell?.tipe||"",rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
   });
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
@@ -6681,7 +6688,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                     const prosesSet=new Set<string>();
                     Object.entries(cl).forEach(([kode,clVal]:any)=>{
                       if((clVal?.qty||0)<=0)return;
-                      (KOMPONEN_PROSES_MAP[kode]||[]).forEach((pr:string)=>prosesSet.add(pr));
+                      getRelevantProsesForKode(kode,panel.tipe).forEach((pr:string)=>prosesSet.add(pr));
                     });
                     const cfgWpMap=getEffectiveCfg(panel.tipe);
                     const kodeToWpMap:Record<string,string>={};
@@ -6695,7 +6702,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                         const relevantWps=new Set<string>();
                         Object.entries(cl).forEach(([kode,clVal]:any)=>{
                           if((clVal?.qty||0)<=0)return;
-                          if(!(KOMPONEN_PROSES_MAP[kode]||[]).includes(proses))return;
+                          if(!isKomponenRelevant(kode,panel.tipe,proses))return;
                           const wpFound=kodeToWpMap[kode];
                           if(wpFound)relevantWps.add(wpFound);
                         });
@@ -8440,7 +8447,7 @@ function KapasitasPekerjaanTab(){
     const combos:any[]=[];
     bomList.forEach((b:any)=>{
       ALL_PROSES.forEach((proses:string)=>{
-        if(!isKomponenRelevant(b.kode_komponen,proses))return;
+        if(!isKomponenRelevant(b.kode_komponen,b.tipe_panel,proses))return;
         const existing=processList.find((p:any)=>p.kode_komponen===b.kode_komponen&&p.tipe_panel===b.tipe_panel&&p.jenis_pekerjaan===proses);
         combos.push({
           id:existing?existing.id:null,
