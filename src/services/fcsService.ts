@@ -1564,6 +1564,80 @@ export async function generateAndSaveToRawSchedule(
       }
     }
 
+    const terpakaiOrangTracker: Record<string, number> = {}
+    ;(existingRaw || []).forEach((row: any) => {
+      if (!WIRING_LIST.includes(row.proses)) return
+      const schedule = row.schedule || {}
+      Object.entries(schedule).forEach(([tgl, entries]: any) => {
+        ;(entries as any[]).forEach((e: any) => {
+          const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_'))
+          if (token) {
+            const m = token.match(/^__wiring_(\d+)org_/)
+            const orang = m ? parseInt(m[1], 10) : 0
+            const key = tgl + '|' + row.proses
+            terpakaiOrangTracker[key] = (terpakaiOrangTracker[key] || 0) + orang
+          }
+        })
+      })
+    })
+
+    const getKapOrang = (tgl: string, proses: string) => {
+      const k = kapMap[tgl + '|' + proses]
+      return k ? Number(k.jumlah_orang) || 0 : 0
+    }
+
+    for (const panel of panels as any[]) {
+      const checklist = panel.checklist || {}
+      const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
+      if (activeKodes.length === 0) continue
+
+      for (const proses of WIRING_LIST) {
+        const relevantKodes = activeKodes.filter((kode) => {
+          const mapKey = kode + '|' + panel.tipe
+          if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + proses)
+          return false
+        })
+        if (relevantKodes.length === 0) continue
+
+        const wpGroups: Record<string, string[]> = {}
+        relevantKodes.forEach((kode) => {
+          const wp = kodeToWp[panel.tipe + '|' + kode] || 'WP1'
+          if (!wpGroups[wp]) wpGroups[wp] = []
+          wpGroups[wp].push(kode)
+        })
+
+        for (const [wp, kodes] of Object.entries(wpGroups)) {
+          const jumlahOrang = 1
+          const bobotHariDefault = 2
+          const totalHari = Math.ceil(bobotHariDefault / jumlahOrang)
+
+          let cur = tanggalMulai
+          let attempts = 0
+          while (attempts < 90) {
+            const sisaAwal = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
+            if (sisaAwal >= jumlahOrang) break
+            cur = addDaysStr(cur, 1)
+            attempts++
+          }
+
+          let hariTerisi = 0
+          let dayAttempts = 0
+          while (hariTerisi < totalHari && dayAttempts < 90) {
+            const sisa = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
+            if (sisa >= jumlahOrang) {
+              const token = `__wiring_${jumlahOrang}org_MEDIUM`
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, [token, ...kodes])
+              terpakaiOrangTracker[cur + '|' + proses] = (terpakaiOrangTracker[cur + '|' + proses] || 0) + jumlahOrang
+              hariTerisi++
+              count++
+            }
+            cur = addDaysStr(cur, 1)
+            dayAttempts++
+          }
+        }
+      }
+    }
+
     return { success: true, count }
   } catch (err: any) {
     return { success: false, count: 0, error: err.message }
