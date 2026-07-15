@@ -236,6 +236,11 @@ export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+let GLOBAL_LIVE_PANEL_TYPES:any={};
+function getEffCfgGlobal(tipe:string){
+  return (GLOBAL_LIVE_PANEL_TYPES?.[tipe]?.wps?.length>0)?GLOBAL_LIVE_PANEL_TYPES[tipe]:(PANEL_TYPES as any)[tipe];
+}
+
 function initChecklist(tipe, qty=1, customPanelTypes){
   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};
@@ -327,7 +332,7 @@ function getBestProgress(cl:any, proses:string):number{
 }
 
 function calcPanelProgress(panel): Record<string, number> {
-  const cfg=PANEL_TYPES[panel.tipe];
+  const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
   if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
@@ -704,7 +709,7 @@ function Modal({children,onClose,title,width=480}){
 // compute progress % for a WP (all komponen in WP across all proses for that divisi)
 const wpProgress=(panelData,wp,proses)=>{
   if(!panelData)return 0;
-  const cfg=PANEL_TYPES[panelData.tipe];
+  const cfg=getEffCfgGlobal(panelData.tipe);
   const wpDef=cfg?.wps.find(w=>w.wp===wp);
   if(!wpDef)return 0;
   const items=wpDef.items;
@@ -11337,6 +11342,7 @@ useEffect(()=>{
     }
   });
 },[]);
+useEffect(()=>{GLOBAL_LIVE_PANEL_TYPES=livePanelTypes;},[livePanelTypes]);
 const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
 
