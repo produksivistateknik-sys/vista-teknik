@@ -11357,6 +11357,18 @@ useEffect(()=>{
   });
 },[]);
 useEffect(()=>{GLOBAL_LIVE_PANEL_TYPES=livePanelTypes;},[livePanelTypes]);
+useEffect(()=>{
+  supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+    const relevanSet=new Set<string>();
+    const hasMappingSet=new Set<string>();
+    (data||[]).forEach((r:any)=>{
+      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+    });
+    GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+    GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+  });
+},[]);
 const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
 
