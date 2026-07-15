@@ -11320,6 +11320,19 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 
 
 const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO, refetch: refetchWO } = useWorkOrders()
+const [livePanelTypes,setLivePanelTypes]=useState<any>({});
+useEffect(()=>{
+  Promise.all([
+    supabase.from("bom_master").select("*"),
+    supabase.from("panel_type_meta").select("*"),
+    supabase.from("panel_wp_meta").select("*"),
+  ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
+    if(bomRes.data&&bomRes.data.length>0){
+      setLivePanelTypes(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
+    }
+  });
+},[]);
+const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
 
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
