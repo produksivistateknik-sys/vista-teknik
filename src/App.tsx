@@ -4569,12 +4569,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   });
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
+    const newKompBersih=(newKomp||[]).filter((k:string)=>!k.startsWith("__wiring_"));
     const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
     if(existing){
-      await updateRenhar(existing.id,{komponen:newKomp});
+      await updateRenhar(existing.id,{komponen:newKompBersih});
       if(refetchRenhar) await refetchRenhar();
     } else {
-      setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKomp}:r));
+      setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKompBersih}:r));
     }
   };
   const syncRenharDel=async(rawId,date,wp)=>{
