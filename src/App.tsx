@@ -9,7 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, generateFCSWiring, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance } from './services/fcsService'
+import { generateFCSSchedule, generateFCSWiring, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, generateAndSaveToRawSchedule } from './services/fcsService'
 
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -6073,6 +6073,10 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,tingkatKesulitan:"EASY"};
   const [fcsModal,setFcsModal]=useState<any>(null);
+  const [quickGenModal,setQuickGenModal]=useState<any>(null);
+  const [quickGenTanggal,setQuickGenTanggal]=useState(new Date().toISOString().slice(0,10));
+  const [quickGenLoading,setQuickGenLoading]=useState(false);
+  const [quickGenResult,setQuickGenResult]=useState<any>(null);
   const [fcsLoading,setFcsLoading]=useState(false);
   const [fcsResult,setFcsResult]=useState<any>(null);
   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
@@ -6412,7 +6416,7 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                <button onClick={()=>{setFcsModal(wo);setFcsResult(null);setFcsForm({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});setSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
+                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
                 <button onClick={()=>setDelId(wo.id)}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
@@ -6636,6 +6640,94 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
             <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah WO"}</Btn>
           </div>
         </Card>
+      )}
+      {quickGenModal&&(
+        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={420}>
+          {!quickGenResult?(
+            <div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin SEMUA komponen aktif dari SEMUA panel di WO ini, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
+              <div style={{marginBottom:16}}>
+                <Lbl>Tanggal Mulai</Lbl>
+                <Inp type="date" value={quickGenTanggal} onChange={(e:any)=>setQuickGenTanggal(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
+                <Btn color="#16a34a" onClick={async()=>{
+                  setQuickGenLoading(true);
+                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
+                  const res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+                  setQuickGenResult(res);
+                  setQuickGenLoading(false);
+                  if(res.success&&refetchWO)await refetchWO();
+                }}>{quickGenLoading?"⏳ Generating...":"Generate →"}</Btn>
+              </div>
+            </div>
+          ):(
+            <div style={{textAlign:"center" as const,padding:"20px 0"}}>
+              {quickGenResult.success?(
+                <div>
+                  <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Berhasil!</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.count} jadwal dibuat di Raw Schedule</div>
+                </div>
+              ):(
+                <div>
+                  <div style={{fontSize:40,marginBottom:12}}>❌</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#dc2626",marginBottom:8}}>Gagal</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.error}</div>
+                </div>
+              )}
+              <div style={{marginTop:16}}>
+                <Btn color="#1d4ed8" onClick={()=>{setQuickGenModal(null);setQuickGenResult(null);}}>Tutup</Btn>
+              </div>
+            </div>
+          )}
+        </Modal>
+      )}
+      {quickGenModal&&(
+        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={420}>
+          {!quickGenResult?(
+            <div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin SEMUA komponen aktif dari SEMUA panel di WO ini, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
+              <div style={{marginBottom:16}}>
+                <Lbl>Tanggal Mulai</Lbl>
+                <Inp type="date" value={quickGenTanggal} onChange={(e:any)=>setQuickGenTanggal(e.target.value)}/>
+              </div>
+              <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
+                <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
+                <Btn color="#16a34a" onClick={async()=>{
+                  setQuickGenLoading(true);
+                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
+                  const res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+                  setQuickGenResult(res);
+                  setQuickGenLoading(false);
+                  if(res.success&&refetchWO)await refetchWO();
+                }}>{quickGenLoading?"⏳ Generating...":"Generate →"}</Btn>
+              </div>
+            </div>
+          ):(
+            <div style={{textAlign:"center" as const,padding:"20px 0"}}>
+              {quickGenResult.success?(
+                <div>
+                  <div style={{fontSize:40,marginBottom:12}}>✅</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Berhasil!</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.count} jadwal dibuat di Raw Schedule</div>
+                </div>
+              ):(
+                <div>
+                  <div style={{fontSize:40,marginBottom:12}}>❌</div>
+                  <div style={{fontSize:16,fontWeight:700,color:"#dc2626",marginBottom:8}}>Gagal</div>
+                  <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.error}</div>
+                </div>
+              )}
+              <div style={{marginTop:16}}>
+                <Btn color="#1d4ed8" onClick={()=>{setQuickGenModal(null);setQuickGenResult(null);}}>Tutup</Btn>
+              </div>
+            </div>
+          )}
+        </Modal>
       )}
       {fcsModal&&(
         <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);setPanelBobot({});}} width={520}>
