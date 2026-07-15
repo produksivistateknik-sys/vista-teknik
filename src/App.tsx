@@ -1412,7 +1412,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanel
         txt+='      Proses: '+t.proses+' | WP: '+t.wp+' | Progress: '+pct+'% ['+st.label+']\n';
         if(t.komponen?.length){
           const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id||t.panelId));
-          const cfg=panel?PANEL_TYPES[panel.tipe]:null;
+          const cfg=panel?getEffCfg(panel.tipe):null;
           const namaKomp=(t.komponen||[]).map((k:string)=>cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===k)?.nama||k).join(', ');
           txt+='      Komponen: '+namaKomp+'\n';
         }
@@ -1511,7 +1511,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanel
                       {g.tasks.map((t:any)=>{
                         const wo2=woData.find((w:any)=>(w.panels||[]).some((p:any)=>String(p.id)===String(t.panel_id)));
                         const panel2=wo2?(wo2.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id)):null;
-                        const cfg=panel2?(PANEL_TYPES as any)[panel2.tipe]:null;
+                        const cfg=panel2?getEffCfg(panel2.tipe):null;
                         const namaKomp=t.kode_komponen&&t.kode_komponen.indexOf("__wiring_")===0
                           ?"Wiring"
                           :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
@@ -1723,7 +1723,7 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanel
                           const pct=getProgressKomponenSpesifik(t);
                           const st=getStatus(pct);
                           const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id||t.panelId));
-                          const cfg=panelData?PANEL_TYPES[panelData.tipe]:null;
+                          const cfg=panelData?getEffCfg(panelData.tipe):null;
                           const pc=PROSES_COLOR[t.proses]||"#64748b";
                           const wc=WP_COLOR[t.wp]||"#64748b";
                           const rBg2=ti%2===0?"#fff":"#f8fafc";
@@ -2088,7 +2088,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
                   {tasks.flatMap((t,ti)=>{
                     const dist=isDist(t);const rh=getRenharEntry(t);
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
-                    const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
+                    const cfg2=panelData?getEffCfg(panelData.tipe):null;
                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
                     const isWiringTask=true; // semua proses pakai flow Rilis/Tarik per-komponen (operator pilih sendiri di Vista Pekerja)
 
@@ -3275,7 +3275,7 @@ function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:an
   const selectedWo=woData.find((w:any)=>w.id===selectedWoId);
   const panelList=selectedWo?.panels||[];
   const selectedPanel=panelList.find((p:any)=>p.id===selectedPanelId);
-  const cfg=selectedPanel?(PANEL_TYPES as any)[selectedPanel.tipe]:null;
+  const cfg=selectedPanel?getEffCfg(selectedPanel.tipe):null;
 
   const getStatus=(kode:string,prosesIdx:number):{status:string;pct:number}|null=>{
     if(!selectedPanel)return null;
@@ -3873,7 +3873,7 @@ function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:an
         const statusColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#2563eb";
         const statusBg=done?"#f0fdf4":late?"#fef2f2":urg?"#fffbeb":"#eff6ff";
         const borderColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#e2e8f0";
-        const cfg=(PANEL_TYPES as any)[p.tipe];
+        const cfg=getEffCfg(p.tipe);
         const wps=cfg?.wps||[];
         // Tampilkan BUSBAR jika tipe panel punya komponen busbar (WM) atau ada progress
         const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
@@ -4220,7 +4220,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
     const tipe=panelData?.tipe;
     if(!tipe)return kode;
-    const item=(PANEL_TYPES as any)[tipe]?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+    const item=getEffCfg(tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
     return item?.nama||kode;
   };
 
@@ -4237,7 +4237,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
             if(sudahDitambah.has(kode))return;
             const progress=panelData.checklist?.[kode]?.progress?.[proses]||0;
             if(progress>0)return;
-            const cfg=(PANEL_TYPES as any)[panelData.tipe];
+            const cfg=getEffCfg(panelData.tipe);
             const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
             if(!item)return;
             sudahDitambah.add(kode);
@@ -4287,7 +4287,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
 
   const isWpDone=(panelData,wp,proses)=>{
     if(!panelData)return false;
-    const cfg=PANEL_TYPES[panelData.tipe];
+    const cfg=getEffCfg(panelData.tipe);
     const wpDef=cfg?.wps.find(w=>w.wp===wp);
     if(!wpDef||!wpDef.items.length)return false;
     return wpDef.items.every(it=>{
@@ -4481,7 +4481,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
-  const panelCfg=livePanelForCell?PANEL_TYPES[livePanelForCell.tipe]:null;
+  const panelCfg=livePanelForCell?getEffCfg(livePanelForCell.tipe):null;
   const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
   const komponenSudahAda=cellEntries.find(e=>e.wp===modalWp)?.komponen||[];
   const komponenSudahDipakaiTanggalLain=(()=>{
@@ -5215,7 +5215,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               const cardKey=`panelcard__${gk}__${selDate}`;
               const isExpanded=expandedTasks[cardKey];
               const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t0.panelId);
-              const cfg2=panelData?PANEL_TYPES[panelData.tipe]:null;
+              const cfg2=panelData?getEffCfg(panelData.tipe):null;
               const allSt=tasks.map(t=>getTaskStatus(t,t.tanggal,t.wp,t.komponen));
               const overallSt=allSt.every(s=>s==="finish")?"finish":allSt.some(s=>s==="on_progress"||s==="finish")?"on_progress":"belum_mulai";
               const stColor=overallSt==="finish"?"#16a34a":overallSt==="on_progress"?"#f59e0b":"#64748b";
