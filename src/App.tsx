@@ -8038,6 +8038,7 @@ function KapasitasPekerjaanTab(){
   const [wizardProsesPerNama,setWizardProsesPerNama]=useState<Record<string,string[]>>({});
   const [wizardSaving,setWizardSaving]=useState(false);
   const WP_OPTIONS=["WP1","WP2","WP3","WP4","WP5","WP6"];
+  const [expandedWpKey,setExpandedWpKey]=useState<string|null>(null);
   const WP_COLOR_PRESET=["#f59e0b","#22c55e","#06b6d4","#f97316","#8b5cf6","#ec4899","#3b82f6","#ef4444"];
 
   const openWizard=async(tipe:string)=>{
@@ -8887,17 +8888,51 @@ function KapasitasPekerjaanTab(){
                         <button onClick={()=>openWizard(t.tipe_panel)}
                           style={{padding:"5px 12px",borderRadius:6,border:"1px solid #1d4ed8",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah WP</button>
                       </div>
-                      {wps.map((w:any)=>(
-                        <div key={w.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:6}}>
-                          <span style={{width:16,height:16,borderRadius:4,background:w.color,flexShrink:0}}/>
-                          <span style={{fontWeight:700,fontSize:12,color:"#1e293b",minWidth:50}}>{w.wp}</span>
-                          <span style={{fontSize:11,color:"#64748b",flex:1}}>{w.range_label}</span>
-                          <button onClick={()=>{setEditWpMeta(w);setWpForm({tipe_panel:w.tipe_panel,wp:w.wp,color:w.color,range_label:w.range_label||""});setShowAddWp(true);}}
-                            style={{background:"none",border:"none",cursor:"pointer",color:"#2563eb",fontSize:13}}>✎</button>
-                          <button onClick={()=>deleteWpMeta(w.id)}
-                            style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:13}}>🗑</button>
+                      {wps.map((w:any)=>{
+                        const wpKey=w.tipe_panel+"_"+w.wp;
+                        const isWpExp=expandedWpKey===wpKey;
+                        const komponenDiWp=bomList.filter((b:any)=>b.tipe_panel===w.tipe_panel&&b.wp===w.wp);
+                        return(
+                        <div key={w.id} style={{borderRadius:8,border:"1px solid #e2e8f0",marginBottom:6,overflow:"hidden"}}>
+                          <div onClick={()=>setExpandedWpKey(isWpExp?null:wpKey)} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",cursor:"pointer",background:isWpExp?"#f8faff":"#fff"}}>
+                            <span style={{fontSize:11}}>{isWpExp?"▼":"▶"}</span>
+                            <span style={{width:16,height:16,borderRadius:4,background:w.color,flexShrink:0}}/>
+                            <span style={{fontWeight:700,fontSize:12,color:"#1e293b",minWidth:50}}>{w.wp}</span>
+                            <span style={{fontSize:11,color:"#64748b",flex:1}}>{w.range_label} · {komponenDiWp.length} komponen</span>
+                            <button onClick={(e:any)=>{e.stopPropagation();setEditWpMeta(w);setWpForm({tipe_panel:w.tipe_panel,wp:w.wp,color:w.color,range_label:w.range_label||""});setShowAddWp(true);}}
+                              style={{background:"none",border:"none",cursor:"pointer",color:"#2563eb",fontSize:13}}>✎</button>
+                            <button onClick={(e:any)=>{e.stopPropagation();deleteWpMeta(w.id);}}
+                              style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:13}}>🗑</button>
+                          </div>
+                          {isWpExp&&(
+                            <div style={{padding:"8px 10px",borderTop:"1px solid #e2e8f0",background:"#fafbfc"}}>
+                              {komponenDiWp.length===0?(
+                                <div style={{fontSize:11,color:"#94a3b8",padding:"8px 0"}}>Belum ada komponen di WP ini.</div>
+                              ):komponenDiWp.map((b:any)=>(
+                                <div key={b.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,background:"#fff",border:"1px solid #f1f5f9",marginBottom:4}}>
+                                  <span style={{fontSize:10,color:"#94a3b8",fontWeight:700,minWidth:60}}>{b.kode_komponen}</span>
+                                  <span style={{fontSize:12,color:"#1e293b",flex:1}}>{b.nama_komponen}</span>
+                                  <button onClick={()=>openProsesModal(b)} title="Atur proses relevan"
+                                    style={{background:"none",border:"none",cursor:"pointer",color:"#7c3aed",fontSize:12,marginRight:4}}>🔧</button>
+                                  <button onClick={()=>{setEditBom(b);setBomForm({kode_komponen:b.kode_komponen,nama_komponen:b.nama_komponen,tipe_panel:b.tipe_panel,wp:b.wp,urutan:b.urutan||0});setShowAddBom(true);}}
+                                    style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:12,marginRight:4}}>✎</button>
+                                  <button onClick={()=>deleteBom(b.id)}
+                                    style={{background:"none",border:"none",cursor:"pointer",color:"#dc2626",fontSize:12}}>🗑</button>
+                                </div>
+                              ))}
+                              <button onClick={()=>{
+                                setWizardTipe(w.tipe_panel);setWizardWp(w.wp);setWizardColor(w.color);setWizardRange(w.range_label||"");
+                                supabase.from("bom_master").select("nama_komponen").then(({data}:any)=>{
+                                  const uniqueNama=Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))).sort();
+                                  setWizardAllNama(uniqueNama);
+                                  setWizardSelectedNama([]);setWizardProsesPerNama({});setWizardStep(2);
+                                });
+                              }} style={{marginTop:6,padding:"5px 10px",borderRadius:6,border:"1px dashed #94a3b8",background:"#fff",color:"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen ke WP Ini</button>
+                            </div>
+                          )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
