@@ -8038,6 +8038,7 @@ function KapasitasPekerjaanTab(){
   const [wizardProsesPerNama,setWizardProsesPerNama]=useState<Record<string,string[]>>({});
   const [wizardSaving,setWizardSaving]=useState(false);
   const WP_OPTIONS=["WP1","WP2","WP3","WP4","WP5","WP6"];
+  const WP_COLOR_PRESET=["#f59e0b","#22c55e","#06b6d4","#f97316","#8b5cf6","#ec4899","#3b82f6","#ef4444"];
 
   const openWizard=async(tipe:string)=>{
     const{data}=await supabase.from("bom_master").select("nama_komponen");
@@ -8934,8 +8935,12 @@ function KapasitasPekerjaanTab(){
             </div>
             <div style={{marginBottom:10}}>
               <Lbl>Warna</Lbl>
-              <input type="color" value={wpForm.color} onChange={(e:any)=>setWpForm({...wpForm,color:e.target.value})}
-                style={{width:"100%",height:36,borderRadius:7,border:"1.5px solid #e2e8f0",cursor:"pointer"}}/>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
+                {WP_COLOR_PRESET.map(c=>(
+                  <button key={c} type="button" onClick={()=>setWpForm({...wpForm,color:c})}
+                    style={{width:30,height:30,borderRadius:8,background:c,cursor:"pointer",border:wpForm.color===c?"3px solid #1e293b":"1.5px solid #e2e8f0"}}/>
+                ))}
+              </div>
             </div>
             <div style={{marginBottom:16}}>
               <Lbl>Range/Keterangan (misal FS.1-10)</Lbl>
@@ -8985,8 +8990,12 @@ function KapasitasPekerjaanTab(){
                 </div>
                 <div style={{marginBottom:10}}>
                   <Lbl>Warna</Lbl>
-                  <input type="color" value={wizardColor} onChange={(e:any)=>setWizardColor(e.target.value)}
-                    style={{width:"100%",height:36,borderRadius:7,border:"1.5px solid #e2e8f0",cursor:"pointer"}}/>
+                  <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
+                    {WP_COLOR_PRESET.map(c=>(
+                      <button key={c} type="button" onClick={()=>setWizardColor(c)}
+                        style={{width:30,height:30,borderRadius:8,background:c,cursor:"pointer",border:wizardColor===c?"3px solid #1e293b":"1.5px solid #e2e8f0"}}/>
+                    ))}
+                  </div>
                 </div>
                 <div style={{marginBottom:16}}>
                   <Lbl>Range/Keterangan (opsional)</Lbl>
