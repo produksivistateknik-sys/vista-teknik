@@ -1397,3 +1397,175 @@ export async function setOverrideAndRebalance(params: {
     return { success: false, shifted: [], error: e?.message || 'Error tidak diketahui' }
   }
 }
+
+
+// ============================================================
+// GENERATE LANGSUNG KE RAW SCHEDULE (skip fcs_schedule sebagai staging)
+// Dipanggil dari tombol "FCS" di card WO - Manajemen WO
+// ============================================================
+async function upsertRawScheduleEntry(
+  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[]
+) {
+  const { data: existing } = await supabase
+    .from('raw_schedule')
+    .select('id, schedule')
+    .eq('wo_id', wo.id)
+    .eq('panel_id', panel.id)
+    .eq('proses', proses)
+    .maybeSingle()
+  if (existing) {
+    const schedule = existing.schedule || {}
+    if (!schedule[tanggal]) schedule[tanggal] = []
+    const existingEntry = schedule[tanggal].find((e: any) => e.wp === wp)
+    if (existingEntry) {
+      const setKomp = new Set([...existingEntry.komponen, ...komponenList])
+      existingEntry.komponen = Array.from(setKomp)
+    } else {
+      schedule[tanggal].push({ wp, komponen: komponenList })
+    }
+    await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+  } else {
+    await supabase.from('raw_schedule').insert({
+      wo_id: wo.id,
+      panel_id: panel.id,
+      proyek: wo.proyek,
+      panel: panel.nama,
+      proses,
+      prioritas: 'Sedang',
+      schedule: { [tanggal]: [{ wp, komponen: komponenList }] },
+    })
+  }
+}
+
+export async function generateAndSaveToRawSchedule(
+  woId: number,
+  tanggalMulai: string,
+  _generatedBy: string
+): Promise<{ success: boolean; count: number; error?: string }> {
+  try {
+    const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
+    if (!wo) return { success: false, count: 0, error: 'WO tidak ditemukan' }
+    const { data: panels } = await supabase.from('panels').select('*').eq('wo_id', woId)
+    if (!panels || panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
+
+    const tipeSet = [...new Set(panels.map((p: any) => p.tipe))]
+
+    const { data: bomRows } = await supabase.from('bom_master').select('*').in('tipe_panel', tipeSet)
+    const kodeToWp: Record<string, string> = {}
+    ;(bomRows || []).forEach((b: any) => { kodeToWp[b.tipe_panel + '|' + b.kode_komponen] = b.wp })
+
+    const { data: relevanRows } = await supabase.from('bom_proses_relevan').select('*')
+    const relevanSet = new Set<string>()
+    const hasMappingSet = new Set<string>()
+    ;(relevanRows || []).forEach((r: any) => {
+      relevanSet.add(r.kode_komponen + '|' + r.tipe_panel + '|' + r.jenis_pekerjaan)
+      hasMappingSet.add(r.kode_komponen + '|' + r.tipe_panel)
+    })
+
+    const { data: ptRows } = await supabase.from('fcs_process_time').select('*').in('tipe_panel', tipeSet)
+    const menitMap: Record<string, number> = {}
+    ;(ptRows || []).forEach((p: any) => {
+      menitMap[p.tipe_panel + '|' + p.kode_komponen + '|' + p.jenis_pekerjaan] = Number(p.menit_per_pcs) || 0
+    })
+
+    const { data: kapRows } = await supabase.from('fcs_kapasitas_override').select('*')
+    const kapMap: Record<string, any> = {}
+    ;(kapRows || []).forEach((k: any) => { kapMap[k.tanggal + '|' + k.jenis_pekerjaan] = k })
+
+    const { data: existingRaw } = await supabase.from('raw_schedule').select('*')
+
+    const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
+    const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
+
+    const addDaysStr = (date: string, n: number) => {
+      const d = new Date(date); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10)
+    }
+
+    const terpakaiTracker: Record<string, number> = {}
+    ;(existingRaw || []).forEach((row: any) => {
+      if (WIRING_LIST.includes(row.proses)) return
+      const schedule = row.schedule || {}
+      Object.entries(schedule).forEach(([tgl, entries]: any) => {
+        ;(entries as any[]).forEach((e: any) => {
+          ;(e.komponen || []).forEach((kode: string) => {
+            const p = (panels as any[]).find((pp: any) => pp.id === row.panel_id)
+            const tipe = p ? p.tipe : tipeSet[0]
+            const menit = menitMap[tipe + '|' + kode + '|' + row.proses] || 0
+            const key = tgl + '|' + row.proses
+            terpakaiTracker[key] = (terpakaiTracker[key] || 0) + menit
+          })
+        })
+      })
+    })
+
+    let count = 0
+    for (const panel of panels as any[]) {
+      const checklist = panel.checklist || {}
+      const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
+      if (activeKodes.length === 0) continue
+
+      for (const proses of ALL_PROSES_LIST) {
+        if (WIRING_LIST.includes(proses)) continue
+
+        const relevantKodes = activeKodes.filter((kode) => {
+          const mapKey = kode + '|' + panel.tipe
+          if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + proses)
+          return false
+        })
+        if (relevantKodes.length === 0) continue
+
+        const wpGroups: Record<string, string[]> = {}
+        relevantKodes.forEach((kode) => {
+          const wp = kodeToWp[panel.tipe + '|' + kode] || 'WP1'
+          if (!wpGroups[wp]) wpGroups[wp] = []
+          wpGroups[wp].push(kode)
+        })
+
+        for (const [wp, kodes] of Object.entries(wpGroups)) {
+          const getKapasitas = (tgl: string) => {
+            const k = kapMap[tgl + '|' + proses]
+            return k ? Number(k.kapasitas_menit) || 0 : 0
+          }
+          let cur = tanggalMulai
+          let attempts = 0
+          while (attempts < 90 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
+
+          let sisaKodes = [...kodes]
+          let dayAttempts = 0
+          while (sisaKodes.length > 0 && dayAttempts < 90) {
+            const kap = getKapasitas(cur)
+            const terpakai = terpakaiTracker[cur + '|' + proses] || 0
+            let sisaKap = kap - terpakai
+            const kodeHariIni: string[] = []
+            const sisaBerikutnya: string[] = []
+            for (const kode of sisaKodes) {
+              const menit = menitMap[panel.tipe + '|' + kode + '|' + proses] || 0
+              if (menit > 0 && sisaKap >= menit) {
+                kodeHariIni.push(kode)
+                sisaKap -= menit
+                terpakaiTracker[cur + '|' + proses] = (terpakaiTracker[cur + '|' + proses] || 0) + menit
+              } else {
+                sisaBerikutnya.push(kode)
+              }
+            }
+            if (kodeHariIni.length > 0) {
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni)
+              count++
+            }
+            sisaKodes = sisaBerikutnya
+            if (sisaKodes.length > 0) {
+              cur = addDaysStr(cur, 1)
+              let skip = 0
+              while (skip < 30 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
+            }
+            dayAttempts++
+          }
+        }
+      }
+    }
+
+    return { success: true, count }
+  } catch (err: any) {
+    return { success: false, count: 0, error: err.message }
+  }
+}
