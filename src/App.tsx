@@ -1176,7 +1176,8 @@ function LaporanQCView({woData}:{woData:any[]}){
   );
 }
 
-function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
+function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
+  const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selPekerja,setSelPekerja]=useState<any>(null);
   const [filterDiv,setFilterDiv]=useState("ALL");
   const [search,setSearch]=useState("");
@@ -1832,7 +1833,8 @@ function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData}){
 // ─────────────────────────────────────────────────────────────────────────────
 // RENCANA HARIAN
 // ─────────────────────────────────────────────────────────────────────────────
-function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user}){
+function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+  const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
@@ -3258,7 +3260,8 @@ function KalenderTab({woData}:{woData:any[]}){
   );
 }
 
-function TaskMonitoring({woData}:{woData:any[]}){
+function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:any}){
+  const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selectedWoId,setSelectedWoId]=useState<number|null>(null);
   const [selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
 
@@ -3687,7 +3690,8 @@ function SummaryProgress({woData}:{woData:any[]}){
   );
 }
 
-function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
+function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
+  const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [search,setSearch]=useState("");
   const [woFilter,setWoFilter]=useState("semua");
   const [panelFilter,setPanelFilter]=useState("semua");
@@ -4064,7 +4068,8 @@ function DetailProgress({woData,rawData}:{woData:any[],rawData:any[]}){
   );
 }
 
-function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user}){
+function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+  const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [weekStart,setWeekStart]=useState(TODAY);
   const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
   const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
@@ -11795,12 +11800,12 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {tab==="arsip"&&<ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/>}
               {tab==="stok"&&<StokMonitoringTab user={user} activityLog={activityLog}/>}
               {tab==="summary"&&<SummaryProgress woData={woData}/>}
-              {tab==="taskmonitoring"&&<TaskMonitoring woData={woData}/>}
-              {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData}/>}
-              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
-              {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user}/>}
+              {tab==="taskmonitoring"&&<TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/>}
+              {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/>}
+              {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
+              {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/>}
-              {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData}/>}
+              {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/>}
               {tab==="laporan_qc"&&<LaporanQCView woData={woData}/>}
               {tab==="forum"&&<ForumWO user={user}/>}
               {tab==="trackingkomponen"&&<TrackingKomponenAdmin/>}
