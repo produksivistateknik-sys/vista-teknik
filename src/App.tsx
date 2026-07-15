@@ -207,9 +207,23 @@ const BUSBAR_COLORS:Record<string,string>={
   "COUPLER":"#f97316",
 };
 
-const isKomponenRelevant=(kode:string, proses:string):boolean=>{
+let GLOBAL_PROSES_RELEVAN_SET:Set<string>=new Set();
+let GLOBAL_PROSES_RELEVAN_HAS_MAPPING:Set<string>=new Set();
+const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
+  if(prosesMaybe===undefined){
+    const proses=tipeOrProses;
+    const relevanProses=KOMPONEN_PROSES_MAP[kode];
+    if(!relevanProses) return true;
+    return relevanProses.includes(proses);
+  }
+  const tipe=tipeOrProses;
+  const proses=prosesMaybe;
+  const mapKey=kode+"|"+tipe;
+  if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
+    return GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+proses);
+  }
   const relevanProses=KOMPONEN_PROSES_MAP[kode];
-  if(!relevanProses) return true; // kalau tidak ada mapping, tampilkan semua
+  if(!relevanProses) return true;
   return relevanProses.includes(proses);
 };
 
