@@ -504,6 +504,16 @@ export async function syncFCSToRawSchedule(
       })
     }
 
+    let prosesRelevanSet = new Set<string>()
+    let prosesRelevanHasMapping = new Set<string>()
+    if (isWiringProses) {
+      const { data: relevanData } = await supabase.from('bom_proses_relevan').select('*')
+      ;(relevanData || []).forEach((r: any) => {
+        prosesRelevanSet.add(r.kode_komponen + '|' + r.tipe_panel + '|' + r.jenis_pekerjaan)
+        prosesRelevanHasMapping.add(r.kode_komponen + '|' + r.tipe_panel)
+      })
+    }
+
     fcsData.forEach((row: any) => {
       if (selectedWP && selectedWP.length > 0 && !selectedWP.includes(row.wp)) return
       const panelId = row.panel_id
@@ -523,9 +533,17 @@ export async function syncFCSToRawSchedule(
       // milih & tracking progress per-komponen di Vista Pekerja
       if (isWiringProses) {
         const checklist = panelChecklistMap[panelId] || {}
+        const tipePanelBaris = row.tipe_panel || ''
         Object.entries(checklist).forEach(([kodeKomp, clVal]: any) => {
-          const prosesKomp = KOMPONEN_PROSES_MAP[kodeKomp] || []
-          if (!prosesKomp.includes(jenisPekerjaan)) return
+          const mapKey = kodeKomp + '|' + tipePanelBaris
+          let isRelevantKomp: boolean
+          if (prosesRelevanHasMapping.has(mapKey)) {
+            isRelevantKomp = prosesRelevanSet.has(kodeKomp + '|' + tipePanelBaris + '|' + jenisPekerjaan)
+          } else {
+            const prosesKomp = KOMPONEN_PROSES_MAP[kodeKomp] || []
+            isRelevantKomp = prosesKomp.includes(jenisPekerjaan)
+          }
+          if (!isRelevantKomp) return
           if ((clVal?.qty || 0) <= 0) return
           if (!panelScheduleMap[panelId][tanggal][wp].includes(kodeKomp)) {
             panelScheduleMap[panelId][tanggal][wp].push(kodeKomp)
