@@ -5477,7 +5477,11 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 {qtyChangeLog.map((d:any)=>{
                   const naik=Number(d.qty_baru)>Number(d.qty_lama);
                   return(
-                    <div key={d.id} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px"}}>
+                    <div key={d.id} onClick={()=>{setFilterProyek(d.proyek||"ALL");setFilterPanel(d.panel||"ALL");setRiwayatOpen(false);}}
+                      title="Klik buat langsung liat baris ini di Raw Schedule"
+                      style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",cursor:"pointer",border:"1px solid transparent",transition:"border-color .15s"}}
+                      onMouseEnter={(e:any)=>e.currentTarget.style.borderColor="#93c5fd"}
+                      onMouseLeave={(e:any)=>e.currentTarget.style.borderColor="transparent"}>
                       <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:4}}>
                         <span>{d.proyek} · {d.panel}</span>
                         <span>{new Date(d.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
@@ -5494,7 +5498,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         {d.is_read?(
                           <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>✓ Sudah dibaca</span>
                         ):(
-                          <button onClick={()=>confirmQtyChange(d.id)} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✓ Konfirmasi</button>
+                          <button onClick={(e:any)=>{e.stopPropagation();confirmQtyChange(d.id);}} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✓ Konfirmasi</button>
                         )}
                       </div>
                     </div>
