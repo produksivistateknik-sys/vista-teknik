@@ -5324,7 +5324,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
                                   return(
                                     <div key={entry.wp+kode} style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
-                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
+                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                 </div>
                                   );
@@ -5583,7 +5583,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
                         const isSelMove=selectedForMove.some(x=>x.wp===e.wp&&x.kode===k);
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title="Klik buat pilih/batal pilih buat dipindah"
-                          style={{background:isSelMove?wc:wc+"18",color:isSelMove?"#fff":wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":"🔀 "}{item?.nama||k}</span>;
+                          style={{background:isSelMove?wc:wc+"18",color:isSelMove?"#fff":wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":"🔀 "}{item?.nama||k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
                       })}
                     </div>
                   </div>
