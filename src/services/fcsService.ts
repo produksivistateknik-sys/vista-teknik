@@ -1437,6 +1437,27 @@ async function upsertRawScheduleEntry(
   }
 }
 
+async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
+  const { data: existing } = await supabase
+    .from('raw_schedule')
+    .select('id')
+    .eq('wo_id', wo.id)
+    .eq('panel_id', panel.id)
+    .eq('proses', proses)
+    .maybeSingle()
+  if (!existing) {
+    await supabase.from('raw_schedule').insert({
+      wo_id: wo.id,
+      panel_id: panel.id,
+      proyek: wo.proyek,
+      panel: panel.nama,
+      proses,
+      prioritas: 'Sedang',
+      schedule: {},
+    })
+  }
+}
+
 export async function generateAndSaveToRawSchedule(
   woId: number,
   tanggalMulai: string,
@@ -1523,6 +1544,15 @@ export async function generateAndSaveToRawSchedule(
       const checklist = panel.checklist || {}
       const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
       if (activeKodes.length === 0) continue
+
+      for (const prosesSkeleton of ALL_PROSES_LIST) {
+        const adaRelevan = activeKodes.some((kode) => {
+          const mapKey = kode + '|' + panel.tipe
+          if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
+          return false
+        })
+        if (adaRelevan) await ensureSkeletonRow(wo, panel, prosesSkeleton)
+      }
 
       for (const proses of ALL_PROSES_LIST) {
         if (WIRING_LIST.includes(proses)) continue
