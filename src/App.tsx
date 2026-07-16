@@ -4239,7 +4239,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const toggleFilterProses=(pr:string)=>{
     setFilterProses(prev=>prev.includes(pr)?prev.filter(p=>p!==pr):[...prev,pr]);
   };
-  const [filterProyek,setFilterProyek]=useState("ALL");
+  const [filterProyek,setFilterProyek]=useState<string[]>([]);
+  const [proyekDropdownOpen,setProyekDropdownOpen]=useState(false);
+  const toggleFilterProyek=(p:string)=>{
+    setFilterProyek(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]);
+    setFilterPanel("ALL");
+  };
   const [filterPanel,setFilterPanel]=useState("ALL");
   const [expandedTasks,setExpandedTasks]=useState({});
   const [assignModal,setAssignModal]=useState(null);
@@ -4992,16 +4997,35 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       </div>
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
         <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
-        <select value={filterProyek} onChange={e=>{setFilterProyek(e.target.value);setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer"}}>
-          <option value="ALL">Semua Proyek</option>
-          {[...new Set(rawData.map(r=>r.proyek))].map(p=><option key={p} value={p}>{p}</option>)}
-        </select>
+        <div style={{position:"relative" as const}}>
+          <button onClick={()=>setProyekDropdownOpen(!proyekDropdownOpen)} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+            {filterProyek.length===0?"Semua Proyek":`${filterProyek.length} Proyek dipilih`}
+            <span style={{fontSize:9}}>▾</span>
+          </button>
+          {proyekDropdownOpen&&(
+            <>
+              <div onClick={()=>setProyekDropdownOpen(false)} style={{position:"fixed" as const,inset:0,zIndex:998}}/>
+              <div style={{position:"absolute" as const,top:"110%",left:0,zIndex:999,background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",boxShadow:"0 8px 24px rgba(0,0,0,0.12)",padding:8,minWidth:200,maxHeight:280,overflowY:"auto" as const}}>
+                <label style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12,fontWeight:700,borderBottom:"1px solid #f1f5f9",marginBottom:4}}>
+                  <input type="checkbox" checked={filterProyek.length===0} onChange={()=>{setFilterProyek([]);setFilterPanel("ALL");}}/>
+                  Semua Proyek
+                </label>
+                {[...new Set(rawData.map(r=>r.proyek))].map(p=>(
+                  <label key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}>
+                    <input type="checkbox" checked={filterProyek.includes(p)} onChange={()=>toggleFilterProyek(p)}/>
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
         <select value={filterPanel} onChange={e=>setFilterPanel(e.target.value)} style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer",maxWidth:260}}>
           <option value="ALL">Semua Panel</option>
-          {[...new Set(rawData.filter(r=>filterProyek==="ALL"||r.proyek===filterProyek).map(r=>r.panel))].map(p=>(<option key={p} value={p}>{p}</option>))}
+          {[...new Set(rawData.filter(r=>filterProyek.length===0||filterProyek.includes(r.proyek)).map(r=>r.panel))].map(p=>(<option key={p} value={p}>{p}</option>))}
         </select>
-        {(filterProyek!=="ALL"||filterPanel!=="ALL")&&(
-          <button onClick={()=>{setFilterProyek("ALL");setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Reset</button>
+        {(filterProyek.length>0||filterPanel!=="ALL")&&(
+          <button onClick={()=>{setFilterProyek([]);setFilterPanel("ALL");}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Reset</button>
         )}
       </div>
       <div style={{display:"flex",gap:6,marginBottom:12,flexWrap:"wrap",alignItems:"center"}}>
@@ -5192,7 +5216,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
               const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
               const visibleRows=rawData.filter(row=>
                 (filterProses.length===0||filterProses.includes(row.proses))&&
-                (filterProyek==="ALL"||row.proyek===filterProyek)&&
+                (filterProyek.length===0||filterProyek.includes(row.proyek))&&
                 (filterPanel==="ALL"||row.panel===filterPanel)
               ).sort((a,b)=>{
                 const pa=PRIO_ORDER[a.prioritas]??1;const pb=PRIO_ORDER[b.prioritas]??1;
