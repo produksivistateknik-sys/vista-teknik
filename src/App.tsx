@@ -4983,10 +4983,10 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={()=>setAddModal(true)} style={{height:28,padding:"0 14px",borderRadius:5,border:"none",background:"#3b5bdb",color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Panel</button>
-            <button onClick={openRiwayat} title="Riwayat Perubahan Qty" style={{height:28,width:28,borderRadius:5,border:"0.5px solid #e2e8f0",background:"#fff",color:"#64748b",cursor:"pointer",position:"relative" as const,display:"flex",alignItems:"center",justifyContent:"center"}}>
-              🔔
+            <button onClick={openRiwayat} style={{height:28,padding:"0 12px",borderRadius:5,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
+              🔔 Riwayat Perubahan
               {qtyChangeUnread>0&&(
-                <span style={{position:"absolute" as const,top:-4,right:-4,background:"#dc2626",color:"#fff",borderRadius:"50%",minWidth:15,height:15,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{qtyChangeUnread}</span>
+                <span style={{background:"#dc2626",color:"#fff",borderRadius:"50%",minWidth:16,height:16,fontSize:10,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}}>{qtyChangeUnread}</span>
               )}
             </button>
           </div>
