@@ -5678,13 +5678,23 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                     })}
                   </div>
                 ):(
+                  <>
+                  {wpItems.length>0&&(
+                    <button onClick={()=>{
+                      const semuaKode=wpItems.map((it:any)=>it.kode);
+                      const semuaTerpilih=semuaKode.every((k:string)=>modalKomponen.includes(k));
+                      setModalKomponen(semuaTerpilih?[]:semuaKode);
+                    }} style={{marginBottom:8,padding:"5px 12px",borderRadius:7,border:"1px dashed #94a3b8",background:"#f8fafc",color:"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+                      {wpItems.every((it:any)=>modalKomponen.includes(it.kode))?"✕ Batal Pilih Semua":"✓ Pilih Semua"}
+                    </button>
+                  )}
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
                     {wpItems.map(it=>{
                       const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
                       return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>{sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></button>);
                     })}
                   </div>
-                )}
+                </>)}
                 <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
                   {PROSES_ORANG_RAW.includes(rawRow?.proses||"")
                     ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0)+" orang)"
