@@ -4111,14 +4111,13 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     setQtyChangeUnread((data||[]).filter((d:any)=>!d.is_read).length);
   };
   useEffect(()=>{fetchQtyChangeLog();},[]);
-  const openRiwayat=async()=>{
+  const openRiwayat=()=>{
     setRiwayatOpen(true);
-    const unreadIds=qtyChangeLog.filter(d=>!d.is_read).map(d=>d.id);
-    if(unreadIds.length>0){
-      await supabase.from("qty_change_log").update({is_read:true}).in("id",unreadIds);
-      setQtyChangeLog(prev=>prev.map(d=>unreadIds.includes(d.id)?{...d,is_read:true}:d));
-      setQtyChangeUnread(0);
-    }
+  };
+  const confirmQtyChange=async(id:number)=>{
+    await supabase.from("qty_change_log").update({is_read:true}).eq("id",id);
+    setQtyChangeLog(prev=>prev.map(d=>d.id===id?{...d,is_read:true}:d));
+    setQtyChangeUnread(prev=>Math.max(0,prev-1));
   };
   const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
   const [selectedForMove,setSelectedForMove]=useState<{wp:string;kode:string}[]>([]);
@@ -5490,7 +5489,14 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                         <span style={{color:"#94a3b8"}}>→</span>
                         <span style={{color:naik?"#16a34a":"#dc2626",fontWeight:700}}>{d.qty_baru}</span>
                       </div>
-                      <div style={{fontSize:10,color:"#94a3b8",marginTop:6}}>Diubah oleh {d.changed_by}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
+                        <div style={{fontSize:10,color:"#94a3b8"}}>Diubah oleh {d.changed_by}</div>
+                        {d.is_read?(
+                          <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>✓ Sudah dibaca</span>
+                        ):(
+                          <button onClick={()=>confirmQtyChange(d.id)} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✓ Konfirmasi</button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}
