@@ -4593,8 +4593,8 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
       (entries||[]).forEach((e:any)=>{
         (e.komponen||[]).forEach((kode:string)=>{
           const progress=livePanelForCell?.checklist?.[kode]?.progress?.[rawRow?.proses||""]||0;
-          if(progress<100)return;
-          result.add(kode);
+          if(progress>=100){result.add(kode);return;}
+          if(tgl>=TODAY)result.add(kode);
         });
       });
     });
