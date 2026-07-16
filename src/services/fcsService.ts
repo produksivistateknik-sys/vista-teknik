@@ -1504,7 +1504,7 @@ export async function generateAndSaveToRawSchedule(
 
     const { data: existingRaw } = await supabase.from('raw_schedule').select('*')
 
-    const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
+    const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
     const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
 
     const addDaysStr = (date: string, n: number) => {
