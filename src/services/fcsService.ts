@@ -1404,7 +1404,7 @@ export async function setOverrideAndRebalance(params: {
 // Dipanggil dari tombol "FCS" di card WO - Manajemen WO
 // ============================================================
 async function upsertRawScheduleEntry(
-  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[]
+  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>
 ) {
   const { data: existing } = await supabase
     .from('raw_schedule')
@@ -1420,8 +1420,11 @@ async function upsertRawScheduleEntry(
     if (existingEntry) {
       const setKomp = new Set([...existingEntry.komponen, ...komponenList])
       existingEntry.komponen = Array.from(setKomp)
+      if (qtyPerKomponen) {
+        existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyPerKomponen }
+      }
     } else {
-      schedule[tanggal].push({ wp, komponen: komponenList })
+      schedule[tanggal].push({ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) })
     }
     await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
   } else {
@@ -1432,7 +1435,7 @@ async function upsertRawScheduleEntry(
       panel: panel.nama,
       proses,
       prioritas: 'Sedang',
-      schedule: { [tanggal]: [{ wp, komponen: komponenList }] },
+      schedule: { [tanggal]: [{ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) }] },
     })
   }
 }
@@ -1517,7 +1520,8 @@ export async function generateAndSaveToRawSchedule(
           ;(e.komponen || []).forEach((kode: string) => {
             const p = (panels as any[]).find((pp: any) => pp.id === row.panel_id)
             const tipe = p ? p.tipe : tipeSet[0]
-            const menit = menitMap[tipe + '|' + kode + '|' + row.proses] || 0
+            const qtyKomp = p?.checklist?.[kode]?.qty || 0
+            const menit = (menitMap[tipe + '|' + kode + '|' + row.proses] || 0) * qtyKomp
             const key = tgl + '|' + row.proses
             terpakaiTracker[key] = (terpakaiTracker[key] || 0) + menit
           })
@@ -1580,39 +1584,64 @@ export async function generateAndSaveToRawSchedule(
           let attempts = 0
           while (attempts < 21 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
 
-          let sisaKodes = [...kodes]
+          let sisaQty: Record<string, number> = {}
+          kodes.forEach((kode) => { sisaQty[kode] = checklist[kode]?.qty || 0 })
+
           let dayAttempts = 0
-          while (sisaKodes.length > 0 && dayAttempts < 21) {
+          while (Object.keys(sisaQty).length > 0 && dayAttempts < 21) {
             const kap = getKapasitas(cur)
             const terpakai = terpakaiTracker[cur + '|' + proses] || 0
             let sisaKap = kap - terpakai
             const kodeHariIni: string[] = []
-            const sisaBerikutnya: string[] = []
-            for (const kode of sisaKodes) {
-              const menit = menitMap[panel.tipe + '|' + kode + '|' + proses] || 0
-              if (menit > 0 && sisaKap >= menit) {
+            const qtyHariIni: Record<string, number> = {}
+            const sisaQtyBerikutnya: Record<string, number> = {}
+
+            for (const kode of Object.keys(sisaQty)) {
+              const menitPerPcs = menitMap[panel.tipe + '|' + kode + '|' + proses] || 0
+              const qtySisa = sisaQty[kode]
+              if (menitPerPcs <= 0) {
+                sisaQtyBerikutnya[kode] = qtySisa
+                continue
+              }
+              const menitTotal = qtySisa * menitPerPcs
+              if (sisaKap >= menitTotal) {
                 kodeHariIni.push(kode)
-                sisaKap -= menit
-                terpakaiTracker[cur + '|' + proses] = (terpakaiTracker[cur + '|' + proses] || 0) + menit
+                qtyHariIni[kode] = qtySisa
+                sisaKap -= menitTotal
+                terpakaiTracker[cur + '|' + proses] = (terpakaiTracker[cur + '|' + proses] || 0) + menitTotal
               } else {
-                sisaBerikutnya.push(kode)
+                const qtyMuat = Math.floor(sisaKap / menitPerPcs)
+                if (qtyMuat > 0) {
+                  kodeHariIni.push(kode)
+                  qtyHariIni[kode] = qtyMuat
+                  const menitDipakai = qtyMuat * menitPerPcs
+                  sisaKap -= menitDipakai
+                  terpakaiTracker[cur + '|' + proses] = (terpakaiTracker[cur + '|' + proses] || 0) + menitDipakai
+                  const sisaBelumKejadwal = qtySisa - qtyMuat
+                  if (sisaBelumKejadwal > 0) sisaQtyBerikutnya[kode] = sisaBelumKejadwal
+                } else {
+                  sisaQtyBerikutnya[kode] = qtySisa
+                }
               }
             }
+
             if (kodeHariIni.length > 0) {
-              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni)
-              kodeHariIni.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni)
+              kodeHariIni.forEach((kd) => {
+                if (!sisaQtyBerikutnya[kd]) scheduledOk.add(panel.id + '|' + kd + '|' + proses)
+              })
               count++
             }
-            sisaKodes = sisaBerikutnya
-            if (sisaKodes.length > 0) {
+            sisaQty = sisaQtyBerikutnya
+            if (Object.keys(sisaQty).length > 0) {
               cur = addDaysStr(cur, 1)
               let skip = 0
               while (skip < 14 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
             }
             dayAttempts++
           }
-          if (sisaKodes.length > 0) {
-            console.warn(`Kapasitas ${proses} penuh terus dalam 21 hari, ${sisaKodes.length} komponen di WP ${wp} panel ${panel.nama} belum kejadwal - atur manual lewat klik cell.`)
+          if (Object.keys(sisaQty).length > 0) {
+            console.warn(`Kapasitas ${proses} penuh terus dalam 21 hari, ${Object.keys(sisaQty).length} komponen di WP ${wp} panel ${panel.nama} belum full kejadwal - atur manual lewat klik cell.`)
           }
         }
       }
