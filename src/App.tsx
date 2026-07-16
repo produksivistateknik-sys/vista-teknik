@@ -4642,11 +4642,35 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     alert(`Berhasil! Jadwal masuk ke ${dates.length} hari: ${dates.join(", ")}`);
   };
 
+  const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
+    const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
+    const idx=relevantProses.indexOf(targetProses);
+    if(idx<=0)return{ok:true};
+    const prosesSebelum=relevantProses[idx-1];
+    const rowSebelum=rawData.find((r:any)=>(r.panel_id||r.panelId)===panelId&&r.proses===prosesSebelum);
+    if(!rowSebelum)return{ok:false,prosesSebelum};
+    const schedule=rowSebelum.schedule||{};
+    const adaTerjadwal=Object.values(schedule).some((entries:any)=>(entries||[]).some((e:any)=>(e.komponen||[]).includes(kode)));
+    return{ok:adaTerjadwal,prosesSebelum};
+  };
+
   const addEntry=async()=>{
     if(!modalWp||!modalKomponen.length)return;
 
     const tipePanelCek=livePanelForCell?.tipe;
     const prosesCek=rawRow?.proses;
+
+    if(tipePanelCek&&prosesCek){
+      const panelIdCek=livePanelForCell?.id;
+      for(const kode of modalKomponen){
+        const cekEstafet=checkEstafet(kode,tipePanelCek,prosesCek,panelIdCek);
+        if(!cekEstafet.ok){
+          const namaKomp=getNamaKomponenDariKode(panelIdCek,kode);
+          alert(`⛔ Gak bisa dijadwalkan!\n\n"${namaKomp}" belum terjadwal di proses "${cekEstafet.prosesSebelum}".\n\nJadwalkan dulu di proses "${cekEstafet.prosesSebelum}" sebelum lanjut ke "${prosesCek}".`);
+          return;
+        }
+      }
+    }
 
     // Validasi kuota ORANG (khusus WIRING POWER/CONTROL)
     if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
@@ -5197,9 +5221,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           )}
                           {days.map(d=>renderKotakWiring(komp,d,row.id,row.panel_id||row.panelId))}
                           <td style={{...td,textAlign:"center" as const,position:"sticky",right:0,zIndex:2,background:"#fff"}}>
-                            {ki===0&&(
-                              <button onClick={async()=>{const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";await removeRaw(row.id);await activityLogService.insert({user_name:uname,action:"HAPUS RAW SCHEDULE",description:"Hapus proses "+row.proses+" - "+row.panel+" ("+row.proyek+")",module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||""});setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
-                            )}
+                            
                           </td>
                         </tr>
                       ))}
@@ -5296,7 +5318,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                       );
                     })}
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
-                      <button onClick={async()=>{const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";await removeRaw(row.id);await activityLogService.insert({user_name:uname,action:"HAPUS RAW SCHEDULE",description:"Hapus proses "+row.proses+" - "+row.panel+" ("+row.proyek+")",module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||""});setRawData(prev=>prev.filter(r=>r.id!==row.id));}} style={{background:"none",border:"none",cursor:"pointer",color:"#fca5a5",fontSize:14}}>🗑</button>
+                      
                     </td>
                   </tr>
                 );

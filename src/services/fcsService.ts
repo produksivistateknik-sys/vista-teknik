@@ -1505,6 +1505,20 @@ export async function generateAndSaveToRawSchedule(
     })
 
     let count = 0
+    const scheduledOk = new Set<string>()
+    const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES_LIST.filter((pr) => {
+      const mapKey = kode + '|' + tipe
+      if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + tipe + '|' + pr)
+      return false
+    })
+    const isEstafetOk = (panelId: number, kode: string, tipe: string, proses: string) => {
+      const urutan = getRelevantProsesUrut(kode, tipe)
+      const idx = urutan.indexOf(proses)
+      if (idx <= 0) return true
+      const prosesSebelum = urutan[idx - 1]
+      return scheduledOk.has(panelId + '|' + kode + '|' + prosesSebelum)
+    }
+
     for (const panel of panels as any[]) {
       const checklist = panel.checklist || {}
       const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
@@ -1517,7 +1531,7 @@ export async function generateAndSaveToRawSchedule(
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + proses)
           return false
-        })
+        }).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
         if (relevantKodes.length === 0) continue
 
         const wpGroups: Record<string, string[]> = {}
@@ -1556,6 +1570,7 @@ export async function generateAndSaveToRawSchedule(
             }
             if (kodeHariIni.length > 0) {
               await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni)
+              kodeHariIni.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
               count++
             }
             sisaKodes = sisaBerikutnya
@@ -1605,7 +1620,7 @@ export async function generateAndSaveToRawSchedule(
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + proses)
           return false
-        })
+        }).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
         if (relevantKodes.length === 0) continue
 
         const wpGroups: Record<string, string[]> = {}
@@ -1637,6 +1652,7 @@ export async function generateAndSaveToRawSchedule(
               const token = `__wiring_${jumlahOrang}org_MEDIUM`
               await upsertRawScheduleEntry(wo, panel, proses, cur, wp, [token, ...kodes])
               terpakaiOrangTracker[cur + '|' + proses] = (terpakaiOrangTracker[cur + '|' + proses] || 0) + jumlahOrang
+              kodes.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
               hariTerisi++
               count++
             }
