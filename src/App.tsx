@@ -4102,6 +4102,24 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [cellModal,setCellModal]=useState(null);
+  const [riwayatOpen,setRiwayatOpen]=useState(false);
+  const [qtyChangeLog,setQtyChangeLog]=useState<any[]>([]);
+  const [qtyChangeUnread,setQtyChangeUnread]=useState(0);
+  const fetchQtyChangeLog=async()=>{
+    const{data}=await supabase.from("qty_change_log").select("*").order("created_at",{ascending:false}).limit(100);
+    setQtyChangeLog(data||[]);
+    setQtyChangeUnread((data||[]).filter((d:any)=>!d.is_read).length);
+  };
+  useEffect(()=>{fetchQtyChangeLog();},[]);
+  const openRiwayat=async()=>{
+    setRiwayatOpen(true);
+    const unreadIds=qtyChangeLog.filter(d=>!d.is_read).map(d=>d.id);
+    if(unreadIds.length>0){
+      await supabase.from("qty_change_log").update({is_read:true}).in("id",unreadIds);
+      setQtyChangeLog(prev=>prev.map(d=>unreadIds.includes(d.id)?{...d,is_read:true}:d));
+      setQtyChangeUnread(0);
+    }
+  };
   const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
   const [selectedForMove,setSelectedForMove]=useState<{wp:string;kode:string}[]>([]);
   const toggleSelectForMove=(wp:string,kode:string)=>{
@@ -4964,6 +4982,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
         </div>
         <button onClick={()=>setAddModal(true)} style={{height:28,padding:"0 14px",borderRadius:5,border:"none",background:"#3b5bdb",color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Panel</button>
+          <button onClick={openRiwayat} title="Riwayat Perubahan Qty" style={{height:28,width:28,borderRadius:5,border:"0.5px solid #e2e8f0",background:"#fff",color:"#64748b",cursor:"pointer",position:"relative" as const,display:"flex",alignItems:"center",justifyContent:"center"}}>
+            🔔
+            {qtyChangeUnread>0&&(
+              <span style={{position:"absolute" as const,top:-4,right:-4,background:"#dc2626",color:"#fff",borderRadius:"50%",minWidth:15,height:15,fontSize:9,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{qtyChangeUnread}</span>
+            )}
+          </button>
       </div>
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
         <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
@@ -5435,6 +5459,42 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         <div style={{position:"fixed" as const,top:16,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:"#1e293b",color:"#fff",borderRadius:10,padding:"10px 16px",display:"flex",alignItems:"center",gap:12,boxShadow:"0 8px 24px rgba(0,0,0,0.25)"}}>
           <span style={{fontSize:12}}>🔀 Klik tanggal TUJUAN buat pindahin komponen ini (di baris yang sama)</span>
           <button onClick={()=>setMoveKomponenState(null)} style={{background:"#334155",border:"none",color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+        </div>
+      )}
+      {riwayatOpen&&(
+        <div onClick={()=>setRiwayatOpen(false)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.4)",zIndex:10000,display:"flex",justifyContent:"flex-end"}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{width:380,maxWidth:"100%",background:"#fff",height:"100%",padding:20,overflowY:"auto" as const,boxShadow:"-4px 0 20px rgba(0,0,0,0.15)"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontWeight:800,fontSize:16}}>Riwayat Perubahan Qty</div>
+              <button onClick={()=>setRiwayatOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8"}}>✕</button>
+            </div>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Perubahan qty komponen dari Manajemen WO.</div>
+            {qtyChangeLog.length===0?(
+              <div style={{textAlign:"center" as const,color:"#94a3b8",fontSize:12,padding:"30px 0"}}>Belum ada riwayat perubahan.</div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                {qtyChangeLog.map((d:any)=>{
+                  const naik=Number(d.qty_baru)>Number(d.qty_lama);
+                  return(
+                    <div key={d.id} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:4}}>
+                        <span>{d.proyek} · {d.panel}</span>
+                        <span>{new Date(d.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
+                      </div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}>
+                        {d.wp&&<span style={{background:WP_COLOR[d.wp]||"#64748b",color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{d.wp}</span>}
+                        <span style={{flex:1}}>{d.nama_komponen}</span>
+                        <span style={{color:"#94a3b8"}}>{d.qty_lama}</span>
+                        <span style={{color:"#94a3b8"}}>→</span>
+                        <span style={{color:naik?"#16a34a":"#dc2626",fontWeight:700}}>{d.qty_baru}</span>
+                      </div>
+                      <div style={{fontSize:10,color:"#94a3b8",marginTop:6}}>Diubah oleh {d.changed_by}</div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
         </div>
       )}
       {cellModal&&rawRow&&(
@@ -6508,16 +6568,26 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
     if(error){alert('Gagal menyimpan: '+error.message);return;}
     setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
+    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+    const uname=user?.name||user?.nama||sess?.nama||'Admin';
+    const qtyChangeLogRows:any[]=[];
     const changes=Object.entries(dirty)
       .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
       .map(([kode,v])=>{
         const cfg=getEffectiveCfg(panel.tipe);
+        const wpFound=cfg?.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
         const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
         const finalVal=panelQtyMultiplier>1?Math.round(Number((v as any).newQty)*panelQtyMultiplier):(v as any).newQty;
+        qtyChangeLogRows.push({
+          wo_id:currentWo.id,panel_id:panel.id,proyek:currentWo.proyek||'',panel:panel.nama||'',tipe_panel:panel.tipe||'',
+          wp:wpFound?.wp||'',kode_komponen:kode,nama_komponen:nama,
+          qty_lama:(v as any).oldQty,qty_baru:finalVal,changed_by:uname,
+        });
         return nama+': '+(v as any).oldQty+' -> '+finalVal;
       });
-    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-    const uname=user?.name||user?.nama||sess?.nama||'Admin';
+    if(qtyChangeLogRows.length>0){
+      await supabase.from('qty_change_log').insert(qtyChangeLogRows);
+    }
     const tgl=new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
     await activityLogService.insert({
       user_name:uname,
