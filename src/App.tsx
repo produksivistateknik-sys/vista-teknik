@@ -258,6 +258,7 @@ export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
 let GLOBAL_LIVE_PANEL_TYPES:any={};
+let GLOBAL_DIRTY_PANEL_IDS:Set<string>=new Set();
 function getEffCfgGlobal(tipe:string){
   return (GLOBAL_LIVE_PANEL_TYPES?.[tipe]?.wps?.length>0)?GLOBAL_LIVE_PANEL_TYPES[tipe]:(PANEL_TYPES as any)[tipe];
 }
@@ -6499,6 +6500,9 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
     setOpen(false);
   };
   const [dirtyQty,setDirtyQty]=useState<Record<string,Record<string,{newQty:number,oldQty:number}>>>({});
+  useEffect(()=>{
+    GLOBAL_DIRTY_PANEL_IDS=new Set(Object.keys(dirtyQty).filter(pid=>Object.keys(dirtyQty[pid]||{}).length>0));
+  },[dirtyQty]);
   const [origChecklist,setOrigChecklist]=useState<Record<string,any>>({});
 
   const handleQtyCellClick=(panelId:number,kode:string,flatKodes:string[],shiftKey:boolean)=>{
@@ -11978,7 +11982,23 @@ useEffect(() => {
   if (!woLoading) {
     if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current);
     woSyncTimerRef.current = setTimeout(() => {
-      setWoData(woList);
+      if(GLOBAL_DIRTY_PANEL_IDS.size===0){
+        setWoData(woList);
+        return;
+      }
+      setWoData(prev=>{
+        const prevPanelMap:Record<string,any>={};
+        prev.forEach((wo:any)=>(wo.panels||[]).forEach((p:any)=>{prevPanelMap[String(p.id)]=p;}));
+        return woList.map((wo:any)=>({
+          ...wo,
+          panels:(wo.panels||[]).map((p:any)=>{
+            if(GLOBAL_DIRTY_PANEL_IDS.has(String(p.id))&&prevPanelMap[String(p.id)]){
+              return{...p,checklist:prevPanelMap[String(p.id)].checklist};
+            }
+            return p;
+          }),
+        }));
+      });
     }, 1200);
   }
   return () => { if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current); };
