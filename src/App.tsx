@@ -5501,7 +5501,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                 {qtyChangeLog.map((d:any)=>{
                   const naik=Number(d.qty_baru)>Number(d.qty_lama);
                   return(
-                    <div key={d.id} onClick={()=>{setFilterProyek(d.proyek||"ALL");setFilterPanel(d.panel||"ALL");setRiwayatOpen(false);}}
+                    <div key={d.id} onClick={()=>{setFilterProyek(d.proyek?[d.proyek]:[]);setFilterPanel(d.panel||"ALL");setRiwayatOpen(false);}}
                       title="Klik buat langsung liat baris ini di Raw Schedule"
                       style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",cursor:"pointer",border:"1px solid transparent",transition:"border-color .15s"}}
                       onMouseEnter={(e:any)=>e.currentTarget.style.borderColor="#93c5fd"}
