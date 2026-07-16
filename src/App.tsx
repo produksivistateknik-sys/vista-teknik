@@ -6739,8 +6739,19 @@ function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,lo
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
-                                    <input type="number" min="0" value={cl.qty}
+                                    <input type="number" min="0" id={`qtyinput_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
                                       onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
+                                      onKeyDown={e=>{
+                                        if(e.key!=="Enter")return;
+                                        e.preventDefault();
+                                        const flatKodes2=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+                                        const curIdx=flatKodes2.indexOf(item.kode);
+                                        const nextKode=flatKodes2[curIdx+1];
+                                        if(nextKode){
+                                          const nextEl=document.getElementById(`qtyinput_${p.id}_${nextKode}`);
+                                          if(nextEl){(nextEl as HTMLInputElement).focus();(nextEl as HTMLInputElement).select();}
+                                        }
+                                      }}
                                       onClick={e=>{
                                         e.stopPropagation();
                                         const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
