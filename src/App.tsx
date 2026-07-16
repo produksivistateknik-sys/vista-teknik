@@ -4103,23 +4103,38 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [cellModal,setCellModal]=useState(null);
   const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
-  const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,wp:string,kode:string)=>{
+  const [selectedForMove,setSelectedForMove]=useState<{wp:string;kode:string}[]>([]);
+  const toggleSelectForMove=(wp:string,kode:string)=>{
+    setSelectedForMove(prev=>{
+      const exists=prev.some(x=>x.wp===wp&&x.kode===kode);
+      return exists?prev.filter(x=>!(x.wp===wp&&x.kode===kode)):[...prev,{wp,kode}];
+    });
+  };
+  const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,items:{wp:string;kode:string}[])=>{
     const row=rawData.find((r:any)=>r.id===rawId);
     if(!row)return;
     const schedule={...(row.schedule||{})};
-    const fromEntries=(schedule[fromDate]||[]).map((e:any)=>e.wp===wp?{...e,komponen:e.komponen.filter((k:string)=>k!==kode)}:e).filter((e:any)=>e.komponen.length>0);
-    schedule[fromDate]=fromEntries;
-    const toEntries=schedule[toDate]||[];
-    const existingEntry=toEntries.find((e:any)=>e.wp===wp);
-    if(existingEntry){
-      if(!existingEntry.komponen.includes(kode))existingEntry.komponen=[...existingEntry.komponen,kode];
-      schedule[toDate]=toEntries.map((e:any)=>e.wp===wp?existingEntry:e);
-    } else {
-      schedule[toDate]=[...toEntries,{wp,komponen:[kode]}];
+    let fromEntries=schedule[fromDate]||[];
+    for(const{wp,kode}of items){
+      fromEntries=fromEntries.map((e:any)=>e.wp===wp?{...e,komponen:e.komponen.filter((k:string)=>k!==kode)}:e);
     }
+    fromEntries=fromEntries.filter((e:any)=>e.komponen.length>0);
+    schedule[fromDate]=fromEntries;
+    let toEntries=schedule[toDate]||[];
+    for(const{wp,kode}of items){
+      const existingEntry=toEntries.find((e:any)=>e.wp===wp);
+      if(existingEntry){
+        if(!existingEntry.komponen.includes(kode))existingEntry.komponen=[...existingEntry.komponen,kode];
+        toEntries=toEntries.map((e:any)=>e.wp===wp?existingEntry:e);
+      } else {
+        toEntries=[...toEntries,{wp,komponen:[kode]}];
+      }
+    }
+    schedule[toDate]=toEntries;
     setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule}:r));
     await supabase.from("raw_schedule").update({schedule}).eq("id",rawId);
     setMoveKomponenState(null);
+    setSelectedForMove([]);
   };
   const [dragInfo,setDragInfo]=useState(null);
   const [dragOverCell,setDragOverCell]=useState(null);
@@ -4401,7 +4416,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         setMoveKomponenState(null);
         return;
       }
-      executeMoveKomponen(rawId,moveKomponenState.date,date,moveKomponenState.wp,moveKomponenState.kode);
+      executeMoveKomponen(rawId,moveKomponenState.date,date,moveKomponenState.items);
       return;
     }
     setCtxMenu(null);
@@ -5406,6 +5421,15 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           {cellEntries.length>0&&(
             <div style={{marginBottom:16}}>
               <Lbl>WP & Komponen Terjadwal</Lbl>
+              {selectedForMove.length>0&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
+                  <span style={{fontSize:11,color:"#1d4ed8",flex:1}}>{selectedForMove.length} komponen dipilih</span>
+                  <button onClick={()=>{setCellModal(null);setMoveKomponenState({rawId:cellModal.rawId,date:cellModal.date,items:selectedForMove});}}
+                    style={{padding:"4px 10px",borderRadius:6,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>🔀 Pindahin →</button>
+                  <button onClick={()=>setSelectedForMove([])}
+                    style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
+                </div>
+              )}
               {cellEntries.map(e=>{
                 const wc=WP_COLOR[e.wp]||"#64748b";
                 return(
@@ -5439,8 +5463,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                           return <span key={k} style={{background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600}}>⚡ {org} · {bobotLabel}</span>;
                         }
                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
-                        return <span key={k} onClick={()=>{setCellModal(null);setMoveKomponenState({rawId:cellModal.rawId,date:cellModal.date,wp:e.wp,kode:k});}} title="Klik buat pindahin ke tanggal lain"
-                          style={{background:wc+"18",color:wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>🔀 {item?.nama||k}</span>;
+                        const isSelMove=selectedForMove.some(x=>x.wp===e.wp&&x.kode===k);
+                        return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title="Klik buat pilih/batal pilih buat dipindah"
+                          style={{background:isSelMove?wc:wc+"18",color:isSelMove?"#fff":wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":"🔀 "}{item?.nama||k}</span>;
                       })}
                     </div>
                   </div>
