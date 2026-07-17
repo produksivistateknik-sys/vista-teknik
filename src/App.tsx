@@ -4407,7 +4407,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     setDragInfo(null);
   };
 
-  const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+  const days=useMemo(()=>Array.from({length:30},(_,i)=>addDays(weekStart,i)),[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
 
@@ -5323,8 +5323,12 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
                                     if(kode.startsWith("__wiring_"))return null;
                                     const jmlOrang=entry.orangPerKomponen?.[kode]||1;
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
+                                  const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
+                                  const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
+                                  const isTelat=d<TODAY&&progressUntukTelat<100;
                                   return(
-                                    <div key={entry.wp+kode} style={{display:"inline-flex",alignItems:"center",gap:3,background:wc+"22",color:wc,border:`1px solid ${wc}44`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+                                    <div key={entry.wp+kode} title={isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+                                      {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                 </div>

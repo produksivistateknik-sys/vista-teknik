@@ -1,0 +1,36 @@
+1914   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+--- konteks 15 baris sebelumnya ---
+1899     e.preventDefault();
+1900     e.dataTransfer.dropEffect="move";
+1901     setDragOverCell({rawId,date});
+1902   };
+1903 
+1904   const onDrop=(e,rawId,toDate)=>{
+1905     e.preventDefault();
+1906     setDragOverCell(null);
+1907     if(!dragInfo)return;
+1908     if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
+1909     if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
+1910     setDragMode({...dragInfo,toDate});
+1911     setDragInfo(null);
+1912   };
+1913 
+---
+4410   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+--- konteks 15 baris sebelumnya ---
+4395     e.preventDefault();
+4396     e.dataTransfer.dropEffect="move";
+4397     setDragOverCell({rawId,date});
+4398   };
+4399 
+4400   const onDrop=(e,rawId,toDate)=>{
+4401     e.preventDefault();
+4402     setDragOverCell(null);
+4403     if(!dragInfo)return;
+4404     if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
+4405     if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
+4406     setDragMode({...dragInfo,toDate});
+4407     setDragInfo(null);
+4408   };
+4409 
+---
