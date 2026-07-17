@@ -1,0 +1,65 @@
+210 let GLOBAL_PROSES_RELEVAN_SET:Set<string>=new Set();
+212 const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
+223     return GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+proses);
+232     return ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr));
+397 const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
+3312     if(!isKomponenRelevant(kode,selectedPanel.tipe,proses))return null;
+4164   const [modalKomponen,setModalKomponen]=useState([]);
+4172   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
+4196     if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+4218     if(!PROSES_ORANG_RAW.includes(row.proses))return null;
+4485           openCellModal(rawId,date);
+4489         openCellModal(rawId,date);
+4574   const openCellModal=(rawId,date)=>{
+4606     return isKomponenRelevant(it.kode,livePanelForCell?.tipe||"",rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
+4644     if(!bobotCepat||!modalWp||modalKomponen.length===0||!cellModal)return;
+4654       const newKomp=[token,...modalKomponen];
+4671     const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
+4683     if(!modalWp||!modalKomponen.length)return;
+4690       for(const kode of modalKomponen){
+4701     if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
+4702       const orangDibutuhkan=modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0);
+4706         orangDibutuhkan,
+4715         setSwapOrangModal({tanggal:cellModal.date,proses:prosesCek,orangDibutuhkan,...cekOrang});
+4722     if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"&&!PROSES_ORANG_RAW.includes(prosesCek)){
+4725       for(const kode of modalKomponen){
+4752     let finalKomp=modalKomponen;
+4756     const isProsesOrangRow=prosesCek&&PROSES_ORANG_RAW.includes(prosesCek);
+4770           finalKomp=[...new Set([...komponenLamaBelumSelesai,...modalKomponen])];
+4772           finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+4778         updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
+4803       const added=modalKomponen.filter(k=>!oldKomp.includes(k)).map(getName);
+4804       const removed=oldKomp.filter(k=>!modalKomponen.includes(k)).map(getName);
+5056                       openCellModal(k.rawId,TODAY);
+5115             ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+5122                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
+5319                             PROSES_ORANG_RAW.includes(row.proses)?(
+5566                           const isWiringProses=PROSES_ORANG_RAW.includes(rawRow?.proses||"");
+5620                 {PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(
+5646                         <button type="button" onClick={simpanDenganBobot} disabled={!modalWp||modalKomponen.length===0}
+5647                           style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:modalKomponen.length>0?"#7c3aed":"#e2e8f0",color:"#fff",fontSize:12,fontWeight:700,cursor:modalKomponen.length>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
+5654                 {PROSES_ORANG_RAW.includes(rawRow?.proses||"")?(
+5657                       const sel=modalKomponen.includes(it.kode);
+5692                       const semuaTerpilih=semuaKode.every((k:string)=>modalKomponen.includes(k));
+5695                       {wpItems.every((it:any)=>modalKomponen.includes(it.kode))?"✕ Batal Pilih Semua":"✓ Pilih Semua"}
+5700                       const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
+5705                 <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
+5706                   {PROSES_ORANG_RAW.includes(rawRow?.proses||"")
+5707                     ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0)+" orang)"
+5708                     :"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen)"}
+5935             <span>Kuota {swapOrangModal.proses} tanggal {fmtDate(swapOrangModal.tanggal)}: {Math.round(swapOrangModal.terpakaiSaatIni)}/{Math.round(swapOrangModal.kuotaHari)} orang sudah terisi. Komponen baru butuh {Math.round(swapOrangModal.orangDibutuhkan)} orang lagi (total jadi {Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}). Pilih salah satu:</span>
+6008                 const cukupSetelahSwap=sisaSetelahSwap>=swapOrangModal.orangDibutuhkan;
+6022                   if(sisaSetelahSwap<swapOrangModal.orangDibutuhkan){alert("Kuota masih belum cukup, pilih komponen tambahan");return;}
+6295             <button onClick={()=>{openCellModal(ctxMenu.rawId,ctxMenu.date);setCtxMenu(null);}}
+7059                           if(!isKomponenRelevant(kode,panel.tipe,proses))return;
+8436           await supabase.from("bom_proses_relevan").insert(prosesList.map(p=>({kode_komponen:kodeBaru,tipe_panel:wizardTipe,jenis_pekerjaan:p})));
+8439       const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+8446       GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+8461     const{data}=await supabase.from("bom_proses_relevan").select("jenis_pekerjaan")
+8472     await supabase.from("bom_proses_relevan").delete()
+8476       await supabase.from("bom_proses_relevan").insert(rows);
+8478     const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+8485     GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+8909         if(!isKomponenRelevant(b.kode_komponen,b.tipe_panel,proses))return;
+11970   supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+11977     GLOBAL_PROSES_RELEVAN_SET=relevanSet;

@@ -4429,7 +4429,29 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     return()=>window.removeEventListener("keydown",handler);
   },[selectedCells,copiedCells,lastSelected,rawData,woData]);
   // ── COPY PASTE FUNCTIONS ──
+  const toggleMarkerCell=async(rawId:number,date:string)=>{
+    const rowM=rawData.find((r:any)=>r.id===rawId);
+    if(!rowM)return;
+    const existing=rowM.schedule?.[date]||[];
+    const newSchedule={...(rowM.schedule||{})};
+    if(existing.length>0){
+      delete newSchedule[date];
+    } else {
+      newSchedule[date]=[{wp:rowM.proses,komponen:["MARKED"]}];
+    }
+    await updateRaw(rowM.id,{schedule:newSchedule});
+    setRawData((prev:any)=>prev.map((r:any)=>r.id===rawId?{...r,schedule:newSchedule}:r));
+  };
+  // PROSES yang cuma penanda tanggal (bukan per-komponen) - klik cell langsung toggle, gak ada modal, gak masuk renhar
+  const PROSES_MARKER_ONLY=["QC TEST","PACKING"];
+
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
+    const rowClicked=rawData.find((r:any)=>r.id===rawId);
+    if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)){
+      e.stopPropagation();
+      toggleMarkerCell(rawId,date);
+      return;
+    }
     if(moveKomponenState){
       if(moveKomponenState.rawId!==rawId){
         alert("Cuma bisa pindahin ke tanggal lain di BARIS (proses) yang sama.");
@@ -4919,6 +4941,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     if(!selDate)return[];
     const tasks:any[]=[];
     rawData.forEach(r=>{
+      if(PROSES_MARKER_ONLY.includes(r.proses))return; // QC TEST/PACKING cuma penanda, gak masuk Rencana Harian
       // WP biasa dari schedule
       (r.schedule?.[selDate]||[]).forEach((e:any)=>{
         tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,

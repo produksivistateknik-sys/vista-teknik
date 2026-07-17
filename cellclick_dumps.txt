@@ -1,0 +1,117 @@
+4460       for(let r=minRow;r<=maxRow;r++){
+4461         for(let d=minDay;d<=maxDay;d++){
+4462           newSelected.push({rawId:rows[r].id,date:allDays[d]});
+4463         }
+4464       }
+4465       setSelectedCells(newSelected);
+4466     } else if(e.altKey){
+4467       // Alt+klik = toggle individual cell (multi select tidak berurutan)
+4468       setSelectedCells(prev=>{
+4469         const exists=prev.some((c:any)=>c.rawId===rawId&&c.date===date);
+4470         return exists?prev.filter((c:any)=>!(c.rawId===rawId&&c.date===date)):[...prev,{rawId,date}];
+4471       });
+4472       setLastSelected({rawId,date});
+4473     } else {
+4474       // Klik biasa tanpa modifier
+4475       if(selectedCells.length>0||copiedCells.length>0){
+4476         // Ada selection/copied → clear dan mulai fresh atau buka modal
+4477         if(copiedCells.length>0){
+4478           // Dalam mode paste → set anchor
+4479           setSelectedCells([{rawId,date}]);
+4480           setLastSelected({rawId,date});
+4481         } else {
+4482           // Clear selection, buka modal
+4483           setSelectedCells([]);
+4484           setLastSelected(null);
+4485           openCellModal(rawId,date);
+4486         }
+4487       } else {
+4488         // Tidak ada selection → buka modal
+4489         openCellModal(rawId,date);
+4490       }
+4491     }
+4492   };
+4493 
+4494   const handleContextMenu=(rawId:number,date:string,e:React.MouseEvent)=>{
+4495     e.preventDefault();
+4496     setCtxMenu({x:e.clientX,y:e.clientY,rawId,date});
+4497     // Jika cell belum ter-select, select dulu
+4498     if(!selectedCells.some(c=>c.rawId===rawId&&c.date===date)){
+4499       setSelectedCells([{rawId,date}]);
+4500       setLastSelected({rawId,date});
+---SPLIT2---
+4916   };
+4917 
+4918   const dateTasks=useMemo(()=>{
+4919     if(!selDate)return[];
+4920     const tasks:any[]=[];
+4921     rawData.forEach(r=>{
+4922       // WP biasa dari schedule
+4923       (r.schedule?.[selDate]||[]).forEach((e:any)=>{
+4924         tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+4925           proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+4926           wp:e.wp,komponen:e.komponen,tanggal:selDate});
+4927       });
+4928       // Busbar dari busbar_schedule
+4929       if(r.proses==="BUSBAR"){
+4930         const busbarItems=r.busbar_schedule?.[selDate]||[];
+4931         if(busbarItems.length>0){
+4932           tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+4933             proyek:r.proyek,panel:r.panel,proses:r.proses,prioritas:r.prioritas,
+4934             wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,isBusbar:true});
+4935         }
+4936       }
+4937     });
+4938     return tasks;
+4939   },[rawData,selDate]);
+4940 
+4941   const openAssign=(task)=>{
+4942     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+4943     const existing=renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+4944     setSelPekerja(existing?.pekerja||[]);
+4945     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
+4946   };
+4947 
+4948   const confirmDistribute=async()=>{
+4949     if(!assignModal)return;
+4950     const{task,divisi,existing}=assignModal;
+4951     if(existing){
+4952       await updateRenhar(existing.id,{pekerja:selPekerja});
+4953       setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
+4954     } else {
+4955       const result=await createRenhar({
+4956         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+4957         proyek:task.proyek,panel:task.panel,proses:task.proses,
+4958         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+4959         tanggal:task.tanggal,divisi,pekerja:selPekerja,
+4960       });
+4961       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+4962     }
+4963     if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
+4964     setAssignModal(null);setSelPekerja([]);
+4965   };
+4966 
+4967   const distributeAll=async()=>{
+4968     for(const task of dateTasks){
+4969       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+4970       if(renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal))continue;
+4971       const result=await createRenhar({
+4972         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+4973         proyek:task.proyek,panel:task.panel,proses:task.proses,
+4974         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+4975         tanggal:task.tanggal,divisi,pekerja:[],
+4976       });
+4977       if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+4978     }
+4979   };
+4980 
+4981   const thS={background:"#1e2330",color:"#c8d0e8",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
+4982 
+4983   return(
+4984     <div className="fi">
+4985       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
+4986         <div style={{display:"flex",gap:8,alignItems:"center"}}>
+4987           <button onClick={()=>setWeekStart(addDays(weekStart,-7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
+4988           <button onClick={()=>setWeekStart(TODAY)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:weekStart===TODAY?"#eff3ff":"#fff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
+4989           <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+4990         </div>

@@ -1,0 +1,143 @@
+4430   },[selectedCells,copiedCells,lastSelected,rawData,woData]);
+4431   // ── COPY PASTE FUNCTIONS ──
+4432   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
+4433     if(moveKomponenState){
+4434       if(moveKomponenState.rawId!==rawId){
+4435         alert("Cuma bisa pindahin ke tanggal lain di BARIS (proses) yang sama.");
+4436         return;
+4437       }
+4438       if(moveKomponenState.date===date){
+4439         setMoveKomponenState(null);
+4440         return;
+4441       }
+4442       executeMoveKomponen(rawId,moveKomponenState.date,date,moveKomponenState.items);
+4443       return;
+4444     }
+4445     setCtxMenu(null);
+4446     if(e.shiftKey&&lastSelected){
+4447       // Select range - hanya di row yang sama (seperti spreadsheet horizontal)
+4448       const allDays=days;
+4449       const startDayIdx=allDays.indexOf(lastSelected.date);
+4450       const endDayIdx=allDays.indexOf(date);
+4451       const minDay=Math.min(startDayIdx,endDayIdx);
+4452       const maxDay=Math.max(startDayIdx,endDayIdx);
+4453       // Jika row berbeda, select semua row di antara keduanya
+4454       const rows=rawData;
+4455       const startRowIdx=rows.findIndex(r=>r.id===lastSelected.rawId);
+4456       const endRowIdx=rows.findIndex(r=>r.id===rawId);
+4457       const minRow=Math.min(startRowIdx,endRowIdx);
+4458       const maxRow=Math.max(startRowIdx,endRowIdx);
+4459       const newSelected:any[]=[];
+4460       for(let r=minRow;r<=maxRow;r++){
+---SPLIT2---
+5290                       </>
+5291                     )}
+5292                     <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center",background:rBg}}>
+5293                       <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap"}}>{row.proses}</span>
+5294                     </td>
+5295                     <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center",background:rBg}}>
+5296                       <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+5297                         style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
+5298                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+5299                       </select>
+5300                     </td>
+5301                     {days.map(d=>{
+5302                       const rentangInfo=getRentangInfoUntukTanggal(row,d);
+5303                       if(rentangInfo&&!rentangInfo.isStart)return null;
+5304                       let colSpanCount=1;
+5305                       if(rentangInfo&&rentangInfo.isStart){
+5306                         colSpanCount=days.filter(dd=>dd>=rentangInfo.mulai&&dd<=rentangInfo.selesai).length;
+5307                       }
+5308                       const entries=row.schedule?.[d]||[];
+5309                       const busbarEntries:string[]=row.busbar_schedule?.[d]||[];
+5310                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
+5311                       const isSelDate=selDate===d;
+5312                       const isDraggableEntry=!rentangInfo;
+5313                       return(
+5314                         <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+5315                           onDragOver={e=>onDragOver(e,row.id,d)}
+5316                           onDrop={e=>onDrop(e,row.id,d)}
+5317                           onDragLeave={()=>setDragOverCell(null)}>
+5318                           {entries.length>0?(
+5319                             PROSES_ORANG_RAW.includes(row.proses)?(
+5320                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
+5321                                 onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+5322                                 draggable={true} onDragStart={e=>onDragStart(e,row.id,d,entries)}
+5323                                 style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:"grab"}}>
+5324                                 {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
+5325                                     if(kode.startsWith("__wiring_"))return null;
+5326                                     const jmlOrang=entry.orangPerKomponen?.[kode]||1;
+5327                                   const wc=WP_COLOR[entry.wp]||"#64748b";
+5328                                   const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
+5329                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
+5330                                   const isTelat=d<TODAY&&progressUntukTelat<100;
+5331                                   return(
+5332                                     <div key={entry.wp+kode} title={isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+5333                                       {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
+5334                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
+5335                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
+5336                                 </div>
+5337                                   );
+5338                                 }))}
+5339                               </div>
+5340                             ):(
+5341                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
+5342                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+5343                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
+5344                               {entries.map(e=>{
+5345                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
+5346                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
+5347                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
+5348                                 return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+5349                               })}
+5350                             </div>
+5351                             )
+5352                           ):(
+5353                             <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+5354                               style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
+5355                               onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
+5356                               onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
+5357                               {row.proses==="BUSBAR"&&busbarEntries.length>0?(
+5358                                 <div style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center"}}>
+5359                                   {busbarEntries.map((b:string)=>(
+5360                                     <span key={b} style={{background:(BUSBAR_COLORS[b]||"#64748b")+"22",
+5361                                       color:BUSBAR_COLORS[b]||"#64748b",
+5362                                       border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
+5363                                       borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700}}>
+5364                                       {b}
+5365                                     </span>
+5366                                   ))}
+5367                                 </div>
+5368                               ):(
+5369                                 <span>+</span>
+5370                               )}
+5371                             </div>
+5372                           )}
+5373                         </td>
+5374                       );
+5375                     })}
+5376                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
+5377 
+5378                     </td>
+5379                   </tr>
+5380                 );
+5381               });
+5382             })()}
+5383           </tbody>
+5384         </table>
+5385       </div>
+5386 
+5387       {selDate&&(
+5388         <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#f0f8ff"}} className="su">
+5389           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:8}}>
+5390             <div>
+5391               <div style={{fontWeight:800,fontSize:15,color:"#1d4ed8"}}>📋 {fmtDateFull(selDate)}</div>
+5392               <div style={{fontSize:12,color:"#64748b",marginTop:2}}>{dateTasks.length} pekerjaan · Distribusi dilakukan di tab Rencana Harian</div>
+5393             </div>
+5394             <button onClick={()=>setSelDate(null)} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:20}}>✕</button>
+5395           </div>
+5396           {(()=>{
+5397             const panelGroupMap:Record<string,any[]>={};
+5398             dateTasks.forEach(t=>{
+5399               const gk=`${t.proyek}__${t.panel}__${t.panelId}`;
+5400               if(!panelGroupMap[gk])panelGroupMap[gk]=[];
