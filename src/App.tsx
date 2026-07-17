@@ -9885,6 +9885,13 @@ function SubBagianPasswordCard(){
     Rendam:"💧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
   };
 
+  const SUBBAGIAN_GROUPS:{label:string,icon:string,color:string,members:string[]}[]=[
+    {label:"Mekanik",icon:"🔧",color:"#d97706",members:["Potong","Bending","Stel","Finishing"]},
+    {label:"Painting",icon:"🎨",color:"#7c3aed",members:["Rendam","Painting"]},
+    {label:"Assembling",icon:"⚙️",color:"#059669",members:["Assembling Luar","Assembling Dalam"]},
+    {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Warehouse","Assembling","QS","QC"]},
+  ];
+
   const fetchPwList=async()=>{
     setLoading(true);
     const{data}=await supabase.from("fcs_sub_bagian_password").select("*").order("sub_bagian");
@@ -9903,6 +9910,8 @@ function SubBagianPasswordCard(){
     else{await fetchPwList();setPwEdit(prev=>({...prev,[subBagian]:""}));}
   };
 
+  const findPw=(sb:string)=>pwList.find((p:any)=>p.sub_bagian===sb);
+
   return(
     <div style={{marginBottom:32}}>
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:10,borderBottom:"2px solid #e2e8f0"}}>
@@ -9916,23 +9925,39 @@ function SubBagianPasswordCard(){
       {loading?(
         <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>Memuat...</div>
       ):(
-        <Card>
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
-            {pwList.map((p:any)=>(
-              <div key={p.sub_bagian} style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
-                <div style={{minWidth:160}}>
-                  <Lbl>{subBagianIconLocal[p.sub_bagian]||"🔑"} {p.sub_bagian}</Lbl>
-                  <div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>Sekarang: {p.password}</div>
-                </div>
-                <Inp value={pwEdit[p.sub_bagian]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[p.sub_bagian]:e.target.value}))}
-                  placeholder="Password baru..." style={{maxWidth:200}}/>
-                <Btn color="#1d4ed8" onClick={()=>savePassword(p.sub_bagian)} style={{padding:"9px 16px"}}>
-                  {pwSaving===p.sub_bagian?"...":"Simpan"}
-                </Btn>
+        <div style={{display:"flex",flexDirection:"column",gap:20}}>
+          {SUBBAGIAN_GROUPS.map(group=>(
+            <div key={group.label}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                <span style={{fontSize:14}}>{group.icon}</span>
+                <span style={{fontWeight:800,fontSize:12,color:group.color,textTransform:"uppercase" as const,letterSpacing:.4}}>{group.label}</span>
+                <div style={{flex:1,height:1,background:"#f1f5f9"}}/>
               </div>
-            ))}
-          </div>
-        </Card>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
+                {group.members.map(sb=>{
+                  const p=findPw(sb);
+                  if(!p)return null;
+                  return(
+                    <Card key={sb} style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <span style={{fontSize:15}}>{subBagianIconLocal[sb]||"🔑"}</span>
+                        <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>{sb}</span>
+                      </div>
+                      <div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>Sekarang: {p.password}</div>
+                      <div style={{display:"flex",gap:6}}>
+                        <Inp value={pwEdit[sb]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[sb]:e.target.value}))}
+                          placeholder="Password baru..." style={{flex:1,fontSize:12}}/>
+                        <Btn color="#1d4ed8" onClick={()=>savePassword(sb)} style={{padding:"7px 12px",fontSize:11}}>
+                          {pwSaving===sb?"...":"Simpan"}
+                        </Btn>
+                      </div>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
       )}
     </div>
   );
