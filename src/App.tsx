@@ -11665,7 +11665,7 @@ function TrackingKomponenAdmin(){
 
   const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):"-";
 
-  const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍"};
+  const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍",Potong:"✂️",Bending:"📐",Stel:"🔩",Finishing:"✨",Rendam:"💧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌"};
 
   const countPerSubBagian=["Warehouse","Assembling","QS"].map(sb=>({
     sb,

@@ -1,0 +1,51 @@
+80 const DIVISI_CONFIG: Record<string,any> = {
+81   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",proses:null,manualName:true,
+82     subBagianPassword:{Potong:"potong123",Bending:"bending123",Stel:"stel123",Finishing:"finishing123"},
+83     subBagianProses:{Potong:["POTONG"],Bending:["BENDING"],Stel:["STEL"],Finishing:["FINISHING"]}},
+84   painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:null,manualName:true,
+85     subBagianPassword:{Rendam:"rendam123",Painting:"painting123"},
+86     subBagianProses:{Rendam:["RENDAM"],Painting:["PAINTING"]}},
+87   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:null,manualName:true,
+88     subBagianPassword:{"Assembling Luar":"asmluar123","Assembling Dalam":"asmdalam123"},
+89     subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
+90   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
+91   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
+92   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
+93   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null},
+94   komponen:   {label:"Komponen",       icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
+95     subBagianPassword:{Warehouse:"warehouse123",Assembling:"assemblingkomp123",QS:"qs123"}},
+96 };
+97 
+98 function getLocalDateStr(d:Date=new Date()){
+99   const y=d.getFullYear();
+100   const m=String(d.getMonth()+1).padStart(2,"0");
+101   const day=String(d.getDate()).padStart(2,"0");
+102   return `${y}-${m}-${day}`;
+103 }
+104 const TODAY = getLocalDateStr();
+105 
+106 // ─────────────────────────────────────────────────────────────────────────────
+107 // HELPERS
+108 // ─────────────────────────────────────────────────────────────────────────────
+109 function getProgressOnDate(cl:any, proses:string, date:string){
+110   const byDate=cl?.progressByDate?.[proses];
+111   if(byDate&&byDate[date]!==undefined) return byDate[date];
+112   return cl?.progress?.[proses]||0;
+113 }
+114 function getLatestProgress(cl:any, proses:string){
+115   const byDate=cl?.progressByDate?.[proses];
+116   if(byDate&&Object.keys(byDate).length>0){
+117     const dates=Object.keys(byDate).sort();
+118     return byDate[dates[dates.length-1]];
+119   }
+120   return cl?.progress?.[proses]||0;
+121 }
+122 function getFirstCompletionDate(cl:any, proses:string){
+123   const byDate=cl?.progressByDate?.[proses];
+124   if(!byDate) return null;
+125   const doneDates=Object.keys(byDate).filter(d=>byDate[d]>=100).sort();
+126   return doneDates.length>0?doneDates[0]:null;
+127 }
+128 function pColor(v:number){
+129   if(v===100)return"#16a34a"; if(v>=75)return"#ca8a04";
+130   if(v>=50)return"#ea580c";  if(v>=25)return"#dc2626";

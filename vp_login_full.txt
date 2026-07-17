@@ -1,0 +1,73 @@
+228 function Login({onLogin}:any){
+229   const [div,setDiv]=useState("mekanik");
+230   const [username,setUsername]=useState("");
+231   const [userList,setUserList]=useState<any[]>([]);
+232   const [pwd,setPwd]=useState("");
+233   const [err,setErr]=useState("");
+234   const [show,setShow]=useState(false);
+235   const [loading,setLoading]=useState(false);
+236   const [success,setSuccess]=useState(false);
+237 
+238   const operatorDivisi=Object.entries(DIVISI_CONFIG)
+239     .filter(([k])=>k!=="admin")
+240     .map(([k,v]:any)=>({key:k,...v}));
+241 
+242   useEffect(()=>{
+243     if(div){
+244       supabase.from("operator_users").select("id,nama,username").eq("divisi",div).eq("is_active",true)
+245         .then(({data})=>{setUserList(data??[]);setUsername("");});
+246       setSubBagianTerpilih(null);
+247     }
+248   },[div]);
+249 
+250   const isManualName=!!(DIVISI_CONFIG as any)[div]?.manualName;
+251   const subBagianOptions=(DIVISI_CONFIG as any)[div]?.subBagianPassword;
+252   const [subBagianTerpilih,setSubBagianTerpilih]=useState<string|null>(null);
+253 
+254   const go=async()=>{
+255     if(isManualName&&subBagianOptions){
+256       if(!subBagianTerpilih){setErr("Pilih sub-bagian dulu!");return;}
+257       if(!username.trim()){setErr("Tulis nama kamu!");return;}
+258       if(!pwd){setErr("Masukkan password!");return;}
+259       setLoading(true);
+260       const{data:pwRow,error:pwErr}=await supabase.from("fcs_sub_bagian_password").select("password").eq("sub_bagian",subBagianTerpilih).single();
+261       const expectedPwd=pwErr?subBagianOptions[subBagianTerpilih]:pwRow?.password;
+262       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+263       setSuccess(true);
+264       setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div,sub_bagian:subBagianTerpilih}),800);
+265       setLoading(false);
+266       return;
+267     }
+268     if(isManualName){
+269       if(!username.trim()){setErr("Tulis nama kamu!");return;}
+270       if(!pwd){setErr("Masukkan password!");return;}
+271       setLoading(true);
+272       const expectedPwd=(DIVISI_CONFIG as any)[div]?.password;
+273       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+274       setSuccess(true);
+275       setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div}),800);
+276       setLoading(false);
+277       return;
+278     }
+279     if(!username){setErr("Pilih nama!");return;}
+280     if(!pwd){setErr("Masukkan password!");return;}
+281     setLoading(true);
+282     const{data,error}=await supabase.from("operator_users").select("*")
+283       .eq("username",username).eq("password",pwd).eq("is_active",true).single();
+284     if(error||!data){setErr("Password salah!");setLoading(false);return;}
+285     await supabase.from("operator_users").update({last_login:new Date().toISOString()}).eq("id",data.id);
+286     setSuccess(true);
+287     setTimeout(()=>onLogin({...data,name:data.nama}),800);
+288     setLoading(false);
+289   };
+290 
+291   const css=`
+292     @keyframes lgFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+293     @keyframes lgSpin{to{transform:rotate(360deg)}}
+294     .lg-card{animation:lgFadeIn .5s cubic-bezier(.22,1,.36,1) forwards}
+295     .lg-inp{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;font-family:inherit;outline:none;transition:border .2s,box-shadow .2s}
+296     .lg-inp:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+297     .lg-inp.err{border-color:#f87171}
+298     .lg-sel{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;font-family:inherit;outline:none;cursor:pointer;appearance:none}
+299     .lg-sel:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+300     .lg-btn{width:100%;height:50px;border-radius:10px;border:none;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(37,99,235,.3)}

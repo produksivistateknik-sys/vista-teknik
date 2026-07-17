@@ -1,0 +1,20 @@
+80 const DIVISI_CONFIG: Record<string,any> = {
+83     subBagianProses:{Potong:["POTONG"],Bending:["BENDING"],Stel:["STEL"],Finishing:["FINISHING"]}},
+86     subBagianProses:{Rendam:["RENDAM"],Painting:["PAINTING"]}},
+89     subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
+238   const operatorDivisi=Object.entries(DIVISI_CONFIG)
+250   const isManualName=!!(DIVISI_CONFIG as any)[div]?.manualName;
+251   const subBagianOptions=(DIVISI_CONFIG as any)[div]?.subBagianPassword;
+272       const expectedPwd=(DIVISI_CONFIG as any)[div]?.password;
+929   const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍"};
+938           {subBagianIcon[subBagian]}
+1052                       {subBagianIcon[r.sub_bagian]}
+1383   const cfg=DIVISI_CONFIG[user.divisi];
+1390   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
+2426                                     background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",borderRadius:20,padding:"4px 8px 4px 12px"}}>
+2427                                     <span style={{fontSize:12,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>
+2428                                       {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+2658                                       background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+2660                                       <span style={{fontSize:10}}>{DIVISI_CONFIG[w.divisi]?.icon}</span>
+2661                                       <span style={{fontSize:10,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>{w.nama}</span>
+2813   const cfg=user?DIVISI_CONFIG[user.divisi]:null;

@@ -1,0 +1,13 @@
+228 function Login({onLogin}:any){
+244       supabase.from("operator_users").select("id,nama,username").eq("divisi",div).eq("is_active",true)
+260       const{data:pwRow,error:pwErr}=await supabase.from("fcs_sub_bagian_password").select("password").eq("sub_bagian",subBagianTerpilih).single();
+264       setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div,sub_bagian:subBagianTerpilih}),800);
+282     const{data,error}=await supabase.from("operator_users").select("*")
+285     await supabase.from("operator_users").update({last_login:new Date().toISOString()}).eq("id",data.id);
+799   const subBagian:string=user?.sub_bagian||"Warehouse";
+895       sub_bagian:subBagian,
+1052                       {subBagianIcon[r.sub_bagian]}
+1055                       <div style={{fontWeight:800,fontSize:14,color:"#0f172a"}}>{r.sub_bagian}</div>
+1302   const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
+1390   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
+2844               borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>

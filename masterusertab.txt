@@ -1,0 +1,299 @@
+9692 function MasterUserTab({ admins, setAdmins, user, pekerja }){
+9693   const [form, setForm] = useState({ nama: "", username: "", password: "", is_active: true });
+9694   const [editId, setEditId] = useState(null);
+9695   const [delId, setDelId] = useState(null);
+9696   const [showPwd, setShowPwd] = useState({});
+9697   const [resetId, setResetId] = useState(null);
+9698   const [newPwd, setNewPwd] = useState("");
+9699 
+9700   const save = async () => {
+9701     if (!form.nama.trim() || !form.username.trim()) return;
+9702     if (editId) {
+9703       const { data, error } = await supabase
+9704         .from("admins")
+9705         .update({ nama: form.nama, username: form.username, is_active: form.is_active })
+9706         .eq("id", editId).select().single();
+9707       if (!error) {
+9708         setAdmins(prev => prev.map(a => a.id === editId ? data : a));
+9709         setEditId(null);
+9710         setForm({ nama: "", username: "", password: "", is_active: true });
+9711       }
+9712     } else {
+9713       if (!form.password.trim()) return;
+9714       const { data, error } = await supabase
+9715         .from("admins")
+9716         .insert({ nama: form.nama, username: form.username, password: form.password, is_active: form.is_active })
+9717         .select().single();
+9718       if (!error) {
+9719         setAdmins(prev => [...prev, data]);
+9720         setForm({ nama: "", username: "", password: "", is_active: true });
+9721       }
+9722     }
+9723   };
+9724 
+9725   const resetPwd = async () => {
+9726     if (!newPwd.trim()) return;
+9727     const { error } = await supabase.from("admins").update({ password: newPwd }).eq("id", resetId);
+9728     if (!error) {
+9729       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9730       const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9731       const target=admins.find((a:any)=>a.id===resetId);
+9732       await activityLogService.insert({user_name:uname,action:"RESET PASSWORD ADMIN",description:"Reset password admin: "+(target?.nama||"-"),module:"auth",halaman:"System"});
+9733       setResetId(null); setNewPwd("");
+9734     }
+9735   };
+9736 
+9737   const toggleActive = async (id, val) => {
+9738     await supabase.from("admins").update({ is_active: val }).eq("id", id);
+9739     setAdmins(prev => prev.map(a => a.id === id ? { ...a, is_active: val } : a));
+9740     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9741     const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9742     const target=admins.find((a:any)=>a.id===id);
+9743     await activityLogService.insert({user_name:uname,action:val?"AKTIFKAN ADMIN":"NONAKTIFKAN ADMIN",description:(val?"Aktifkan":"Nonaktifkan")+" admin: "+(target?.nama||"-"),module:"auth",halaman:"System"});
+9744   };
+9745 
+9746   const del = async () => {
+9747     const target=admins.find((a:any)=>a.id===delId);
+9748     await supabase.from("admins").delete().eq("id", delId);
+9749     setAdmins(prev => prev.filter(a => a.id !== delId));
+9750     setDelId(null);
+9751     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9752     const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9753     await activityLogService.insert({user_name:uname,action:"HAPUS ADMIN",description:"Hapus admin: "+(target?.nama||"-")+" ("+target?.username+")",module:"auth",halaman:"System"});
+9754   };
+9755 
+9756   const fmtTime = (ts) => {
+9757     if (!ts) return "\u2014";
+9758     return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) + " " +
+9759       new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+9760   };
+9761 
+9762   const thS = {
+9763     background: "#1e2330", color: "#c8d0e8", padding: "8px 10px",
+9764     fontWeight: 600, fontSize: 10, textAlign: "left" as const,
+9765     whiteSpace: "nowrap" as const, borderRight: "1px solid #ffffff10",
+9766   };
+9767 
+9768   return (
+9769     <div>
+9770       <div style={{ marginBottom: 32 }}>
+9771         <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "2px solid #e2e8f0" }}>
+9772           <div style={{ width: 32, height: 32, borderRadius: 8, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{"⚙️"}</div>
+9773           <div>
+9774             <div style={{ fontWeight: 800, fontSize: 15, color: "#1e293b" }}>Admin</div>
+9775             <div style={{ fontSize: 11, color: "#94a3b8" }}>Akun login untuk dashboard admin Vista Teknik</div>
+9776           </div>
+9777           <span style={{ marginLeft: "auto", background: "#eff6ff", color: "#1d4ed8", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700 }}>{admins.length} admin</span>
+9778         </div>
+9779         <Card style={{ marginBottom: 16 }}>
+9780           <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit Admin" : "Tambah Admin Baru"}</div>
+9781           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
+9782             <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama admin..." /></div>
+9783             <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_admin" /></div>
+9784             {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password awal..." /></div>)}
+9785             <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 2 }}>
+9786               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
+9787                 <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
+9788               </label>
+9789               <Btn color="#1d4ed8" onClick={save}>{editId ? "Simpan" : "+ Tambah"}</Btn>
+9790               {editId && (<Btn outline color="#64748b" onClick={() => { setEditId(null); setForm({ nama: "", username: "", password: "", is_active: true }); }}>Batal</Btn>)}
+9791             </div>
+9792           </div>
+9793         </Card>
+9794         <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
+9795           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+9796             <thead><tr>
+9797               <th style={thS}>NAMA</th>
+9798               <th style={thS}>USERNAME</th>
+9799               <th style={thS}>PASSWORD</th>
+9800               <th style={{ ...thS, textAlign: "center" as const }}>STATUS</th>
+9801               <th style={thS}>LAST LOGIN</th>
+9802               <th style={thS}>DIBUAT</th>
+9803               <th style={{ ...thS, textAlign: "center" as const }}>AKSI</th>
+9804             </tr></thead>
+9805             <tbody>
+9806               {admins.map((a, i) => {
+9807                 const rBg = i % 2 === 0 ? "#fff" : "#f8fafc";
+9808                 const td: any = { padding: "9px 10px", borderBottom: "1px solid #f1f5f9", borderRight: "1px solid #f1f5f9", background: rBg, verticalAlign: "middle" };
+9809                 const isSelf = user?.id === a.id;
+9810                 return (
+9811                   <tr key={a.id}>
+9812                     <td style={{ ...td, fontWeight: 700, color: "#1e293b" }}>
+9813                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+9814                         <div style={{ width: 28, height: 28, borderRadius: 7, background: "#eff6ff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 800, color: "#1d4ed8", flexShrink: 0 }}>{a.nama?.slice(0, 2).toUpperCase()}</div>
+9815                         {a.nama}
+9816                         {isSelf && (<span style={{ fontSize: 10, background: "#eff6ff", color: "#1d4ed8", borderRadius: 20, padding: "1px 7px", fontWeight: 700 }}>Saya</span>)}
+9817                       </div>
+9818                     </td>
+9819                     <td style={{ ...td, fontFamily: "monospace", color: "#475569" }}>{a.username}</td>
+9820                     <td style={td}>
+9821                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+9822                         <span style={{ fontFamily: "monospace", fontSize: 12, color: "#94a3b8", letterSpacing: 2 }}>{showPwd[a.id] ? a.password : "••••••••"}</span>
+9823                         <button onClick={() => setShowPwd(prev => ({ ...prev, [a.id]: !prev[a.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>{showPwd[a.id] ? "hide" : "show"}</button>
+9824                       </div>
+9825                     </td>
+9826                     <td style={{ ...td, textAlign: "center" as const }}>
+9827                       <button onClick={() => !isSelf && toggleActive(a.id, !a.is_active)}
+9828                         style={{ background: a.is_active ? "#f0fdf4" : "#fef2f2", border: "1px solid "+(a.is_active ? "#bbf7d0" : "#fecaca"), color: a.is_active ? "#16a34a" : "#dc2626", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700, cursor: isSelf ? "not-allowed" : "pointer" }}>
+9829                         {a.is_active ? "Aktif" : "Nonaktif"}
+9830                       </button>
+9831                     </td>
+9832                     <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(a.last_login)}</td>
+9833                     <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(a.created_at)}</td>
+9834                     <td style={{ ...td, textAlign: "center" as const }}>
+9835                       <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
+9836                         <button onClick={() => { setEditId(a.id); setForm({ nama: a.nama, username: a.username, password: a.password, is_active: a.is_active }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#475569" }}>Edit</button>
+9837                         <button onClick={() => { setResetId(a.id); setNewPwd(""); }} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#92400e" }}>Reset Pwd</button>
+9838                         {!isSelf && (<button onClick={() => setDelId(a.id)} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#dc2626" }}>Hapus</button>)}
+9839                       </div>
+9840                     </td>
+9841                   </tr>
+9842                 );
+9843               })}
+9844               {admins.length === 0 && (<tr><td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Belum ada admin</td></tr>)}
+9845             </tbody>
+9846           </table>
+9847         </div>
+9848       </div>
+9849       <div style={{ borderTop: "2px dashed #e2e8f0", margin: "8px 0 28px" }} />
+9850       <MasterPekerjaInline pekerja={pekerja} />
+9851       {resetId && (
+9852         <Modal title="Reset Password Admin" onClose={() => setResetId(null)} width={380}>
+9853           <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>Reset password untuk <strong>{admins.find(a => a.id === resetId)?.nama}</strong></div>
+9854           <Lbl>Password Baru</Lbl>
+9855           <Inp type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Password baru..." style={{ marginBottom: 16 }} />
+9856           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+9857             <Btn outline color="#64748b" onClick={() => setResetId(null)}>Batal</Btn>
+9858             <Btn color="#f59e0b" onClick={resetPwd}>Reset Password</Btn>
+9859           </div>
+9860         </Modal>
+9861       )}
+9862       {delId && (
+9863         <Modal title="Hapus Admin?" onClose={() => setDelId(null)} width={360}>
+9864           <div style={{ fontSize: 13, color: "#475569", marginBottom: 20 }}>Admin <strong>{admins.find(a => a.id === delId)?.nama}</strong> akan dihapus permanen.</div>
+9865           <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+9866             <Btn outline color="#64748b" onClick={() => setDelId(null)}>Batal</Btn>
+9867             <Btn color="#dc2626" onClick={del}>Hapus</Btn>
+9868           </div>
+9869         </Modal>
+9870       )}
+9871     </div>
+9872   );
+9873 }
+9874 
+9875 function MasterPekerjaInline({pekerja}:any){
+9876   const [ops, setOps] = useState<any[]>([]);
+9877   const [loading, setLoading] = useState(true);
+9878   const [form, setForm] = useState({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+9879   const [editId, setEditId] = useState<any>(null);
+9880   const [delId, setDelId] = useState<any>(null);
+9881   const [showPwd, setShowPwd] = useState<any>({});
+9882   const [resetId, setResetId] = useState<any>(null);
+9883   const [newPwd, setNewPwd] = useState("");
+9884   const [filterDiv, setFilterDiv] = useState("ALL");
+9885   const [search, setSearch] = useState("");
+9886 
+9887   useEffect(() => {
+9888     const load = async () => {
+9889       setLoading(true);
+9890       const { data, error } = await supabase
+9891         .from("operator_users")
+9892         .select("*")
+9893         .order("divisi", { ascending: true })
+9894         .order("nama", { ascending: true });
+9895       if (!error) setOps(data ?? []);
+9896       setLoading(false);
+9897     };
+9898     load();
+9899   }, []);
+9900 
+9901   const opDiv = Object.entries(DIVISI_CONFIG)
+9902     .filter(([k]) => OPERATOR_ROLES.includes(k))
+9903     .map(([k, v]: any) => ({ key: k, ...v }));
+9904 
+9905   const save = async () => {
+9906     if (!form.nama.trim() || !form.username.trim()) return;
+9907     if (editId) {
+9908       const { data, error } = await supabase
+9909         .from("operator_users")
+9910         .update({ nama: form.nama, username: form.username, divisi: form.divisi, is_active: form.is_active })
+9911         .eq("id", editId).select().single();
+9912       if (!error) {
+9913         setOps(p => p.map((o: any) => o.id === editId ? data : o));
+9914         setEditId(null);
+9915         setForm({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+9916       }
+9917     } else {
+9918       if (!form.password.trim()) return;
+9919       const { data, error } = await supabase
+9920         .from("operator_users")
+9921         .insert({ nama: form.nama, username: form.username, password: form.password, divisi: form.divisi, is_active: form.is_active })
+9922         .select().single();
+9923       if (!error) {
+9924         setOps(p => [...p, data]);
+9925         setForm({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });
+9926       }
+9927     }
+9928   };
+9929 
+9930   const resetPwd = async () => {
+9931     if (!newPwd.trim()) return;
+9932     const { error } = await supabase.from("operator_users").update({ password: newPwd }).eq("id", resetId);
+9933     if (!error) {
+9934       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9935       const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9936       const target=ops.find((o:any)=>o.id===resetId);
+9937       await activityLogService.insert({user_name:uname,action:"RESET PASSWORD PEKERJA",description:"Reset password pekerja: "+(target?.nama||"-"),module:"pekerja",halaman:"System"});
+9938       setResetId(null); setNewPwd("");
+9939     }
+9940   };
+9941 
+9942   const toggleActive = async (id: any, val: boolean) => {
+9943     await supabase.from("operator_users").update({ is_active: val }).eq("id", id);
+9944     setOps(p => p.map((o: any) => o.id === id ? { ...o, is_active: val } : o));
+9945     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9946     const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9947     const target=ops.find((o:any)=>o.id===id);
+9948     await activityLogService.insert({user_name:uname,action:val?"AKTIFKAN PEKERJA":"NONAKTIFKAN PEKERJA",description:(val?"Aktifkan":"Nonaktifkan")+" user pekerja: "+(target?.nama||"-"),module:"pekerja",halaman:"System"});
+9949   };
+9950 
+9951   const del = async () => {
+9952     const target=ops.find((o:any)=>o.id===delId);
+9953     await supabase.from("operator_users").delete().eq("id", delId);
+9954     setOps(p => p.filter((o: any) => o.id !== delId));
+9955     setDelId(null);
+9956     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9957     const uname=user?.name||user?.nama||sess?.nama||"Admin";
+9958     await activityLogService.insert({user_name:uname,action:"HAPUS USER PEKERJA",description:"Hapus user pekerja: "+(target?.nama||"-")+" ("+target?.username+")",module:"pekerja",halaman:"System"});
+9959   };
+9960 
+9961   const fmtTime = (ts: string) => {
+9962     if (!ts) return "\u2014";
+9963     return new Date(ts).toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" }) +
+9964       " " + new Date(ts).toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" });
+9965   };
+9966 
+9967   const filtered = ops.filter((o: any) =>
+9968     (filterDiv === "ALL" || o.divisi === filterDiv) &&
+9969     (!search || o.nama.toLowerCase().includes(search.toLowerCase()) ||
+9970       o.username.toLowerCase().includes(search.toLowerCase()))
+9971   );
+9972 
+9973   const thS: any = {
+9974     background: "#1e2330", color: "#c8d0e8", padding: "8px 10px",
+9975     fontWeight: 600, fontSize: 10, textAlign: "left",
+9976     whiteSpace: "nowrap", borderRight: "1px solid #ffffff10",
+9977   };
+9978 
+9979   return (
+9980     <div>
+9981       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16, paddingBottom: 10, borderBottom: "2px solid #e2e8f0" }}>
+9982         <div style={{ width: 32, height: 32, borderRadius: 8, background: "#f0fdf4", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16 }}>{"👷"}</div>
+9983         <div>
+9984           <div style={{ fontWeight: 800, fontSize: 15, color: "#1e293b" }}>User Pekerja</div>
+9985           <div style={{ fontSize: 11, color: "#94a3b8" }}>Akun login untuk Vista Pekerja (username + password)</div>
+9986         </div>
+9987         <span style={{ marginLeft: "auto", background: "#f0fdf4", color: "#16a34a", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700 }}>{ops.length} pekerja</span>
+9988       </div>
+9989       <Card style={{ marginBottom: 16 }}>
+9990         <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit User Pekerja" : "Tambah User Pekerja"}</div>

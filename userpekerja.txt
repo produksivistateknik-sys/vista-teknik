@@ -1,0 +1,25 @@
+9577     {id:"masteruser",label:"👤 Master User"},
+9679           {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user} pekerja={pekerja}/>}
+9692 function MasterUserTab({ admins, setAdmins, user, pekerja }){
+9984           <div style={{ fontWeight: 800, fontSize: 15, color: "#1e293b" }}>User Pekerja</div>
+9990         <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit User Pekerja" : "Tambah User Pekerja"}</div>
+10106         <Modal title="Hapus User Pekerja?" onClose={() => setDelId(null)} width={360}>
+11593     const{data}=await supabase.from("fcs_sub_bagian_password").select("*").order("sub_bagian");
+11640   const savePassword=async(subBagian:string)=>{
+11641     const newPwd=pwEdit[subBagian];
+11643     setPwSaving(subBagian);
+11645     const{error}=await supabase.from("fcs_sub_bagian_password").update({
+11649     }).eq("sub_bagian",subBagian);
+11651     else{await fetchPwList();setPwEdit(prev=>({...prev,[subBagian]:""}));}
+11668   const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍"};
+11672     count:riwayat.filter((r:any)=>r.sub_bagian===sb).length,
+11676   const riwayatModalSubBagian=modalSubBagian?riwayat.filter((r:any)=>r.sub_bagian===modalSubBagian):[];
+11695               <div key={p.sub_bagian} style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
+11697                   <Lbl>{subBagianIcon[p.sub_bagian]} {p.sub_bagian}</Lbl>
+11701                   <Inp value={pwEdit[p.sub_bagian]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[p.sub_bagian]:e.target.value}))}
+11704                 <Btn color="#1d4ed8" onClick={()=>savePassword(p.sub_bagian)} style={{padding:"9px 16px"}}>
+11705                   {pwSaving===p.sub_bagian?"...":"Simpan"}
+11750                 {subBagianIcon[sb]}
+11778                         {subBagianIcon[r.sub_bagian]}
+11781                         <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>{r.sub_bagian}</div>
+11814                   {subBagianIcon[modalSubBagian]}
