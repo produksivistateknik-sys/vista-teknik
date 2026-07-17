@@ -1,0 +1,101 @@
+5100             );
+5101           })()}
+5102         </Modal>
+5103       )}
+5104 
+5105       {notifAvailable.length>0&&(
+5106         <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+5107           <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
+5108             💡 Operator Selesai Lebih Cepat ({notifAvailable.length})
+5109           </div>
+5110           <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+5111             {notifAvailable.map((n:any)=>(
+5112               <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #dbeafe"}}>
+5113                 <div style={{flex:1}}>
+5114                   <div style={{fontSize:12,color:"#1e293b"}}>
+5115                     <strong>{n.pekerja_nama}</strong> selesai <strong>{n.nama_komponen}</strong> ({n.panel_nama}) lebih cepat
+5116                   </div>
+5117                   <div style={{fontSize:10,color:"#64748b",marginTop:2}}>
+5118                     Rencana selesai {fmtDate(n.tanggal_rencana_selesai)}, aktual {fmtDate(n.tanggal_aktual_selesai)}. Ada komponen lain yang bisa diambil.
+5119                   </div>
+5120                 </div>
+5121                 <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
+5122                   <button onClick={()=>setPilihKomponenModal({notifId:n.id,proses:n.proses})}
+5123                     style={{background:"#1d4ed8",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap" as const}}>Pilih Komponen</button>
+5124                   <button onClick={()=>tandaiNotifDibaca(n.id)}
+5125                     style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#64748b",whiteSpace:"nowrap" as const}}>Tandai dibaca</button>
+5126                 </div>
+5127               </div>
+5128             ))}
+5129           </div>
+5130         </div>
+5131       )}
+5132 
+5133       {fcsKapasitas.length>0&&(
+5134         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
+5135           <div onClick={()=>setCapacityCollapsed(!capacityCollapsed)}
+5136             style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:capacityCollapsed?0:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6,userSelect:"none" as const}}>
+5137             <span style={{fontSize:10,transition:"transform .15s",transform:capacityCollapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span>
+5138             ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+5139           </div>
+5140           {!capacityCollapsed&&(
+5141           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
+5142             {days.map(d=>{
+5143               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
+5144               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
+5145                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
+5146                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
+5147                 const kapasitasPr=ov?(isOrangPr?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0)):0;
+5148                 let terpakaiPr=0;
+5149                 rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
+5150                   const panelId=r.panel_id||r.panelId;
+5151                   const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+5152                   if(!panelData)return;
+5153                   const entries=r.schedule?.[d]||[];
+5154                   entries.forEach((e:any)=>{
+5155                     if(isOrangPr){
+5156                       const orangMap:Record<string,number>=e.orangPerKomponen||{};
+5157                       (e.komponen||[]).forEach((kode:string)=>{
+5158                         if(!kode.startsWith('__wiring_'))return;
+5159                         if(orangMap[kode]!==undefined){
+5160                           terpakaiPr+=orangMap[kode];
+5161                         } else {
+5162                           const m=kode.match(/^__wiring_(\d+)org_/);
+5163                           terpakaiPr+=m?parseInt(m[1],10):1;
+5164                         }
+5165                       });
+5166                     } else {
+5167                       (e.komponen||[]).forEach((kode:string)=>{
+5168                         const qty=panelData.checklist?.[kode]?.qty||0;
+5169                         const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
+5170                         terpakaiPr+=qty*menitPcs;
+5171                       });
+5172                     }
+5173                   });
+5174                 });
+5175                 return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov,satuan:isOrangPr?"orang":"mnt"};
+5176               });
+5177               const adaOverride=perProses.some(pp=>pp.adaOverride);
+5178               return(
+5179                 <div key={d} style={{background:"var(--card-bg,#fff)",border:"1px solid #e2e8f030",borderRadius:8,padding:"8px 12px",minWidth:130,textAlign:"center" as const}}>
+5180                   <div style={{fontSize:10,color:"#64748b",marginBottom:4}}>{getDayLabel(d)}</div>
+5181                   {!adaOverride?(
+5182                     <button onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:filterProses.length>0?filterProses:["POTONG"]});setOverrideValue("");setOverrideResult(null);}}
+5183                       style={{fontSize:9,color:"#dc2626",fontWeight:700,marginBottom:4,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0,fontFamily:"inherit"}}>⚠ Belum diatur · Atur</button>
+5184                   ):(
+5185                     <div style={{display:"flex",flexDirection:"column" as const,gap:5,textAlign:"left" as const}}>
+5186                       {perProses.map(pp=>{
+5187                         if(!pp.adaOverride){
+5188                           return(
+5189                             <div key={pp.nama} style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9}}>
+5190                               <span style={{color:"#64748b"}}>{pp.nama}</span>
+5191                               <button onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:[pp.nama]});setOverrideValue("");setOverrideResult(null);}}
+5192                                 style={{color:"#dc2626",fontWeight:700,background:"none",border:"none",cursor:"pointer",textDecoration:"underline",padding:0,fontSize:9,fontFamily:"inherit"}}>Belum diatur · Atur</button>
+5193                             </div>
+5194                           );
+5195                         }
+5196                         const pctPr=pp.kapasitas>0?Math.min(Math.round((pp.terpakai/pp.kapasitas)*100),100):0;
+5197                         const colorPr=pctPr>=95?"#dc2626":pctPr>=80?"#f59e0b":"#16a34a";
+5198                         return(
+5199                           <div key={pp.nama} onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:[pp.nama]});setOverrideValue("");setOverrideResult(null);}}
+5200                             style={{cursor:"pointer"}} title="Klik buat edit kapasitas">

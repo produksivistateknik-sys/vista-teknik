@@ -5139,7 +5139,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
           </div>
           {!capacityCollapsed&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
-            {days.map(d=>{
+            {days.slice(0,7).map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);

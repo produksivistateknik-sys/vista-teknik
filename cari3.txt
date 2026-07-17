@@ -1,0 +1,33 @@
+=== baris 2045 ===
+1863 function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+2040           <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
+2041           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>{"▶"}</Btn>
+2042           <span style={{fontSize:13,fontWeight:700,color:"#1e293b",marginLeft:4}}>{fmtShort(weekStart)} — {fmtShort(addDays(weekStart,6))}</span>
+2043         </div>
+2044         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+2045           {days.map(d=>{
+2046             const isSel=d===selDate;const isToday=d===TODAY;const cnt=taskCountByDay[d]||0;
+2047             return(
+
+=== baris 5142 ===
+4098 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+5137             <span style={{fontSize:10,transition:"transform .15s",transform:capacityCollapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span>
+5138             ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+5139           </div>
+5140           {!capacityCollapsed&&(
+5141           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
+5142             {days.map(d=>{
+5143               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
+5144               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
+
+=== baris 5324 ===
+4098 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+5319                       <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+5320                         style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
+5321                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+5322                       </select>
+5323                     </td>
+5324                     {days.map(d=>{
+5325                       const rentangInfo=getRentangInfoUntukTanggal(row,d);
+5326                       if(rentangInfo&&!rentangInfo.isStart)return null;
+
