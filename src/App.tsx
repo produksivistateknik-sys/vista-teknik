@@ -9848,6 +9848,7 @@ function MasterUserTab({ admins, setAdmins, user, pekerja }){
       </div>
       <div style={{ borderTop: "2px dashed #e2e8f0", margin: "8px 0 28px" }} />
       <MasterPekerjaInline pekerja={pekerja} />
+      <SubBagianPasswordCard/>
       {resetId && (
         <Modal title="Reset Password Admin" onClose={() => setResetId(null)} width={380}>
           <div style={{ fontSize: 13, color: "#475569", marginBottom: 14 }}>Reset password untuk <strong>{admins.find(a => a.id === resetId)?.nama}</strong></div>
@@ -9867,6 +9868,71 @@ function MasterUserTab({ admins, setAdmins, user, pekerja }){
             <Btn color="#dc2626" onClick={del}>Hapus</Btn>
           </div>
         </Modal>
+      )}
+    </div>
+  );
+}
+
+function SubBagianPasswordCard(){
+  const [pwList,setPwList]=useState<any[]>([]);
+  const [pwEdit,setPwEdit]=useState<Record<string,string>>({});
+  const [pwSaving,setPwSaving]=useState<string|null>(null);
+  const [loading,setLoading]=useState(true);
+
+  const subBagianIconLocal:Record<string,string>={
+    Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍",
+    Potong:"✂️",Bending:"📐",Stel:"🔩",Finishing:"✨",
+    Rendam:"💧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
+  };
+
+  const fetchPwList=async()=>{
+    setLoading(true);
+    const{data}=await supabase.from("fcs_sub_bagian_password").select("*").order("sub_bagian");
+    setPwList(data??[]);
+    setLoading(false);
+  };
+  useEffect(()=>{fetchPwList();},[]);
+
+  const savePassword=async(subBagian:string)=>{
+    const newPwd=pwEdit[subBagian];
+    if(!newPwd||!newPwd.trim())return;
+    setPwSaving(subBagian);
+    const{error}=await supabase.from("fcs_sub_bagian_password").update({password:newPwd}).eq("sub_bagian",subBagian);
+    setPwSaving(null);
+    if(error){alert("Gagal: "+error.message);}
+    else{await fetchPwList();setPwEdit(prev=>({...prev,[subBagian]:""}));}
+  };
+
+  return(
+    <div style={{marginBottom:32}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,paddingBottom:10,borderBottom:"2px solid #e2e8f0"}}>
+        <div style={{width:32,height:32,borderRadius:8,background:"#fef3c7",display:"flex",alignItems:"center",justifyContent:"center",fontSize:16}}>{"🔑"}</div>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Password Sub-Bagian</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>Password bersama per sub-bagian untuk login Vista Pekerja (tanpa akun individual, nama bebas diketik)</div>
+        </div>
+        <span style={{marginLeft:"auto",background:"#fef3c7",color:"#b45309",borderRadius:20,padding:"2px 12px",fontSize:11,fontWeight:700}}>{pwList.length} sub-bagian</span>
+      </div>
+      {loading?(
+        <div style={{padding:20,textAlign:"center",color:"#94a3b8",fontSize:12}}>Memuat...</div>
+      ):(
+        <Card>
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {pwList.map((p:any)=>(
+              <div key={p.sub_bagian} style={{display:"flex",gap:10,alignItems:"flex-end",flexWrap:"wrap" as const}}>
+                <div style={{minWidth:160}}>
+                  <Lbl>{subBagianIconLocal[p.sub_bagian]||"🔑"} {p.sub_bagian}</Lbl>
+                  <div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>Sekarang: {p.password}</div>
+                </div>
+                <Inp value={pwEdit[p.sub_bagian]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[p.sub_bagian]:e.target.value}))}
+                  placeholder="Password baru..." style={{maxWidth:200}}/>
+                <Btn color="#1d4ed8" onClick={()=>savePassword(p.sub_bagian)} style={{padding:"9px 16px"}}>
+                  {pwSaving===p.sub_bagian?"...":"Simpan"}
+                </Btn>
+              </div>
+            ))}
+          </div>
+        </Card>
       )}
     </div>
   );
