@@ -1,0 +1,33 @@
+4668   const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
+4669     const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
+4670     const idx=relevantProses.indexOf(targetProses);
+4671     if(idx<=0)return{ok:true};
+4672     const prosesSebelum=relevantProses[idx-1];
+4673     const rowSebelum=rawData.find((r:any)=>(r.panel_id||r.panelId)===panelId&&r.proses===prosesSebelum);
+4674     if(!rowSebelum)return{ok:false,prosesSebelum};
+4675     const schedule=rowSebelum.schedule||{};
+4676     const adaTerjadwal=Object.values(schedule).some((entries:any)=>(entries||[]).some((e:any)=>(e.komponen||[]).includes(kode)));
+4677     return{ok:adaTerjadwal,prosesSebelum};
+4678   };
+4679 
+4680   const addEntry=async()=>{
+4681     if(!modalWp||!modalKomponen.length)return;
+4682 
+4683     const tipePanelCek=livePanelForCell?.tipe;
+4684     const prosesCek=rawRow?.proses;
+4685 
+4686     if(tipePanelCek&&prosesCek){
+4687       const panelIdCek=livePanelForCell?.id;
+4688       for(const kode of modalKomponen){
+4689         const cekEstafet=checkEstafet(kode,tipePanelCek,prosesCek,panelIdCek);
+4690         if(!cekEstafet.ok){
+4691           const namaKomp=getNamaKomponenDariKode(panelIdCek,kode);
+4692           alert(`⛔ Gak bisa dijadwalkan!\n\n"${namaKomp}" belum terjadwal di proses "${cekEstafet.prosesSebelum}".\n\nJadwalkan dulu di proses "${cekEstafet.prosesSebelum}" sebelum lanjut ke "${prosesCek}".`);
+4693           return;
+4694         }
+4695       }
+4696     }
+4697 
+4698     // Validasi kuota ORANG (khusus WIRING POWER/CONTROL)
+4699     if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
+4700       const orangDibutuhkan=modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0);

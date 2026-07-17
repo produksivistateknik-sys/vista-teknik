@@ -4665,7 +4665,9 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     alert(`Berhasil! Jadwal masuk ke ${dates.length} hari: ${dates.join(", ")}`);
   };
 
+  const ESTAFET_LOCK_AKTIF=false; // ganti ke true buat nyalain lock estafet lagi
   const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
+    if(!ESTAFET_LOCK_AKTIF)return{ok:true};
     const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
     const idx=relevantProses.indexOf(targetProses);
     if(idx<=0)return{ok:true};
