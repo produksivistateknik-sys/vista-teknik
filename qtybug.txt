@@ -1,0 +1,122 @@
+266 function initChecklist(tipe, qty=1, customPanelTypes){
+267   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
+268   const c={};
+269   const qtyAwal=qty>1?0:qty;
+270   cfg.wps.forEach(w=>w.items.forEach(it=>{
+271     c[it.kode]={ qty:qtyAwal, qtyProses:{}, progress: ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{}),
+272       progressByDate: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}),
+273       stepDates: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}) };
+274   }));
+275   return c;
+276 }
+277 
+278 function naturalKodeSortGlobal(a,b){
+279   const parse=(k)=>{
+280     const m=String(k).match(/^(.*?)(\d+)$/);
+281     return m?{prefix:m[1],num:parseInt(m[2],10)}:{prefix:k,num:0};
+282   };
+283   const pa=parse(a),pb=parse(b);
+284   if(pa.prefix!==pb.prefix)return pa.prefix.localeCompare(pb.prefix);
+285   return pa.num-pb.num;
+286 }
+287 
+288 function buildPanelTypesFromBom(bomList,panelTypeMetaList,panelWpMetaList){
+289   const byTipe={};
+290   (bomList||[]).forEach(b=>{
+291     if(!byTipe[b.tipe_panel])byTipe[b.tipe_panel]={};
+292     if(!byTipe[b.tipe_panel][b.wp])byTipe[b.tipe_panel][b.wp]=[];
+293     byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen});
+294   });
+295   const result={};
+296   Object.entries(byTipe).forEach(([tipe,wpMap])=>{
+297     const metaTipe=(panelTypeMetaList||[]).find((m:any)=>m.tipe_panel===tipe);
+298     const label=metaTipe?.label||tipe;
+299     const wpMetas=(panelWpMetaList||[]).filter((m:any)=>m.tipe_panel===tipe).slice().sort((a:any,b:any)=>String(a.wp).localeCompare(String(b.wp)));
+300     if(wpMetas.length===0)return;
+301     const wps=wpMetas.map((wpMeta:any)=>{
+302       const items=(wpMap[wpMeta.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));
+303       return{wp:wpMeta.wp,color:wpMeta.color,range:wpMeta.range_label,items};
+304     });
+305     result[tipe]={label,wps};
+306   });
+307   return result;
+308 }
+309 
+310 // Ambil progress per tanggal tertentu
+---SPLIT2---
+6755                     <div style={{padding:"12px 16px 12px 28px",background:"#fafbff"}}>
+6756                       {cfg.wps.map(wpDef=>(
+6757                         <div key={wpDef.wp} style={{marginBottom:12}}>
+6758                           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+6759                             <span style={{fontWeight:800,fontSize:12,color:wpDef.color,background:wpDef.color+"18",border:`1px solid ${wpDef.color}33`,borderRadius:6,padding:"2px 10px"}}>{wpDef.wp}</span>
+6760                             <span style={{fontSize:11,color:"#94a3b8"}}>{wpDef.range}</span>
+6761                           </div>
+6762                           <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+6763                             {wpDef.items.map((item,ii)=>{
+6764                               const cl=(p.checklist||{})[item.kode]||{qty:0};const isLocked=cl.qty===0;
+6765                               return(
+6766                                 <div key={item.kode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
+6767                                   borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",
+6768                                   background:isLocked?"#fffbfb":ii%2===0?wpDef.bg+"66":"#fff",opacity:isLocked?.6:1}}>
+6769                                   <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8",minWidth:44}}>{item.kode}</span>
+6770                                   <span style={{fontSize:12,fontWeight:600,color:"var(--text-primary,#374151)",flex:1}}>
+6771                                     {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#fca5a5"}}>🔒</span>}
+6772                                   </span>
+6773                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
+6774                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
+6775                                     <input type="number" min="0" id={`qtyinput_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
+6776                                       onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
+6777                                       onKeyDown={e=>{
+6778                                         if(e.key!=="Enter")return;
+6779                                         e.preventDefault();
+6780                                         const flatKodes2=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+6781                                         const curIdx=flatKodes2.indexOf(item.kode);
+6782                                         const nextKode=flatKodes2[curIdx+1];
+6783                                         if(nextKode){
+6784                                           const nextEl=document.getElementById(`qtyinput_${p.id}_${nextKode}`);
+6785                                           if(nextEl){(nextEl as HTMLInputElement).focus();(nextEl as HTMLInputElement).select();}
+6786                                         }
+6787                                       }}
+6788                                       onClick={e=>{
+6789                                         e.stopPropagation();
+6790                                         const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+6791                                         handleQtyCellClick(p.id,item.kode,flatKodes,e.shiftKey);
+6792                                       }}
+6793                                       onCopy={e=>handleQtyCopy(wo.id,p.id,e)}
+6794                                       onPaste={e=>{
+6795                                         if(selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode)){
+6796                                           handleQtyPasteMulti(wo.id,p.id,e);
+6797                                           return;
+6798                                         }
+6799                                         const text=e.clipboardData.getData("text");
+6800                                         const values=text.split(/\r?\n|\t/).map(v=>v.trim()).filter(v=>v!=="");
+6801                                         if(values.length<=1)return;
+6802                                         e.preventDefault();
+6803                                         const flatItems=cfg.wps.flatMap((w:any)=>w.items);
+6804                                         const startIdx2=flatItems.findIndex((it:any)=>it.kode===item.kode);
+6805                                         if(startIdx2===-1)return;
+6806                                         values.forEach((val,idx)=>{
+6807                                           const target=flatItems[startIdx2+idx];
+6808                                           if(!target)return;
+6809                                           const numVal=parseFloat(val)||0;
+6810                                           updateItemQty(wo.id,p.id,target.kode,numVal);
+6811                                         });
+6812                                       }}
+6813                                       style={{width:56,padding:"4px 6px",borderRadius:6,
+6814                                         border:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"1.5px solid #2563eb":`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
+6815                                         background:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"#eff6ff":isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
+6816                                         fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"var(--text-primary,#1e293b)"}}/>
+6817                                   </div>
+6818                                 </div>
+6819                               );
+6820                             })}
+6821                           </div>
+6822                         </div>
+6823                       ))}
+6824                     </div>
+6825                   )}
+6826                   {dirtyQty[String(p.id)]&&Object.keys(dirtyQty[String(p.id)]).length>0&&(
+6827                     <div style={{display:"flex",gap:10,justifyContent:"flex-end",padding:"12px 16px",borderTop:"1px dashed #e2e8f0",marginTop:4,background:"#f8faff"}}>
+6828                       <button onClick={()=>cancelQtyEdit(String(p.id))}
+6829                         style={{padding:"8px 20px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
+6830                         Batal

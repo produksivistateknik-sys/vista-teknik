@@ -1,0 +1,15 @@
+6355       supabase.from("bom_master").select("*"),
+8422     const{data}=await supabase.from("bom_master").select("nama_komponen");
+8447       const{data:existingBom}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",wizardTipe);
+8456         await supabase.from("bom_master").insert({kode_komponen:kodeBaru,nama_komponen:nama,tipe_panel:wizardTipe,wp:wizardWp,urutan:0});
+8658     const{data,error}=await supabase.from("bom_master").upsert(rows,{onConflict:"kode_komponen,tipe_panel",ignoreDuplicates:true}).select();
+8759     const{data}=await supabase.from("bom_master").select("*");
+8770       const{error}=await supabase.from("bom_master").update({...bomForm,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+8776         const{data:existingSameTipe}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
+8787           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+8791       const{error}=await supabase.from("bom_master").insert(bomForm);
+8803     const{error}=await supabase.from("bom_master").delete().eq("id",id);
+8809         const{data:remaining}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",target.tipe_panel);
+8820           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+9302                                 supabase.from("bom_master").select("nama_komponen").then(({data}:any)=>{
+11982     supabase.from("bom_master").select("*"),

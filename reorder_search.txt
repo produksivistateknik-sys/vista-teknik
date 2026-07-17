@@ -1,0 +1,5 @@
+8587       let updatedCount=0,skippedCount=0,duplikatDibersihkan=0,dipindahDariLama=0;
+8612               dipindahDariLama++;
+8633       setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update (${duplikatDibersihkan} duplikat basi dihapus, ${dipindahDariLama} data lama dipindah ke posisi baru), ${skippedCount} gak perlu diubah${totalAmbigu>0?`. ${totalAmbigu} kode BENERAN ambigu (dua2nya ada progress) - PERLU DICEK MANUAL. Contoh: ${ambiguDetails.join(" | ")}`:""}.`);
+8801     if(!confirm("Yakin hapus komponen ini dari Master Data BOM? Kode yang lebih besar bakal otomatis turun ngisi kekosongan."))return;
+9148               <div style={{fontSize:11,color:"#92400e",marginTop:2}}>Kalau kode di BOM pernah digeser, checklist panel LAMA bisa jadi gak nyambung lagi. Klik ini buat nyesuain ulang (progress/qty gak hilang).</div>

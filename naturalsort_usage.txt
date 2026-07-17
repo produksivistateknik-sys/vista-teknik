@@ -1,0 +1,2 @@
+278 function naturalKodeSortGlobal(a,b){
+302       const items=(wpMap[wpMeta.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));

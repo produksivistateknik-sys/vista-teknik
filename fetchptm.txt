@@ -1,0 +1,21 @@
+8515   const [expandedTipePanel,setExpandedTipePanel]=useState<string|null>(null);
+8516   const [showAddTipe,setShowAddTipe]=useState(false);
+8517   const [tipeForm,setTipeForm]=useState({tipe_panel:"",label:""});
+8518   const [editWpMeta,setEditWpMeta]=useState<any>(null);
+8519   const [wpForm,setWpForm]=useState({tipe_panel:"",wp:"",color:"#3b82f6",range_label:""});
+8520   const [showAddWp,setShowAddWp]=useState(false);
+8521 
+8522   const fetchPanelTypeMeta=async()=>{
+8523     const{data:t}=await supabase.from("panel_type_meta").select("*").order("tipe_panel");
+8524     const{data:w}=await supabase.from("panel_wp_meta").select("*").order("wp");
+8525     setPanelTypeList(t??[]);
+8526     setPanelWpList(w??[]);
+8527   };
+8528   useEffect(()=>{fetchPanelTypeMeta();},[]);
+8529 
+8530   const saveTipePanel=async()=>{
+8531     if(!tipeForm.tipe_panel||!tipeForm.label)return;
+8532     const{error}=await supabase.from("panel_type_meta").insert(tipeForm);
+8533     if(error){alert("Gagal: "+error.message);return;}
+8534     await fetchPanelTypeMeta();
+8535     setShowAddTipe(false);

@@ -1,0 +1,3 @@
+4110     const{data}=await supabase.from("qty_change_log").select("*").order("created_at",{ascending:false}).limit(100);
+4119     await supabase.from("qty_change_log").update({is_read:true}).eq("id",id);
+6668       await supabase.from('qty_change_log').insert(qtyChangeLogRows);

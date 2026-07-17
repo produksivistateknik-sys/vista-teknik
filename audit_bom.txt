@@ -1,0 +1,75 @@
+18 const PANEL_TYPES = {
+21     wps:[
+45     wps:[
+72     wps:[
+81     wps:[
+260 let GLOBAL_LIVE_PANEL_TYPES:any={};
+263   return (GLOBAL_LIVE_PANEL_TYPES?.[tipe]?.wps?.length>0)?GLOBAL_LIVE_PANEL_TYPES[tipe]:(PANEL_TYPES as any)[tipe];
+267   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
+1206 function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
+1207   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+1236     const ch=supabase.channel("realtime-timer-kerja-tracking")
+1237       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimer)
+1238       .subscribe();
+1863 function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+1864   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+1887     const ch=supabase.channel("realtime-fcs-cap-raw")
+1888       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
+1889       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+1890       .subscribe();
+3290 function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:any}){
+3291   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+3720 function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
+3721   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+4098 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+4099   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+4300     const ch=supabase.channel("realtime-fcs-cap-raw")
+4301       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
+4302       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+4303       .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_notifikasi"},fetchNotifAvailable)
+4304       .subscribe();
+6364   const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
+6365   const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
+7646     const ch=supabase.channel("realtime-komponen-stok")
+7647       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"komponen_stok"},
+7649       .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok"},
+7651       .on("postgres_changes",{event:"DELETE",schema:"public",table:"komponen_stok"},
+7653       .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_masuk"},
+7655       .subscribe();
+8124     const ch=supabase.channel("realtime-stok-monitor")
+8125       .on("postgres_changes",{event:"*",schema:"public",table:"komponen_stok"},
+8127       .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_masuk"},
+8129       .subscribe();
+8570       Object.entries(PANEL_TYPES).forEach(([tipe,cfg]:any)=>{
+8641     if(!confirm("Ini bakal nambahin SEMUA komponen dari PANEL_TYPES (config lama) ke Master Data BOM. Komponen yang kode+tipe-nya sama bakal di-skip (gak dobel). Lanjut?"))return;
+8645     Object.entries(PANEL_TYPES).forEach(([tipe,cfg]:any)=>{
+9137               {migrating?"⏳ Migrasi...":"⬇ Migrasi dari PANEL_TYPES"}
+9559     const ch=supabase.channel("realtime-maintenance-log")
+9560       .on("postgres_changes",{event:"INSERT",schema:"public",table:"maintenance_log"},
+9565       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"maintenance_log"},
+9570       .on("postgres_changes",{event:"DELETE",schema:"public",table:"maintenance_log"},
+9572       .subscribe();
+10846     const groups:Record<string,{wo:string,woId:string,proyek:string,panels:Record<string,{nama:string,__wo_id:number,wps:Record<string,any[]>}>}>={};
+10850       if(!groups[gk].panels[s.panel_id])groups[gk].panels[s.panel_id]={nama:s.panel_nama,__wo_id:s.wo_id,wps:{}};
+11371     const ch=supabase.channel("realtime-forum-wo")
+11372       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_forum_post"},fetchPosts)
+11373       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_forum_attachment"},fetchPosts)
+11374       .subscribe();
+11863     const ch=supabase.channel("realtime-qc-gagal-global")
+11864       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_notifikasi"},fetchQcGagal)
+11865       .subscribe();
+11920     const ch=supabase.channel("realtime-forum-unread")
+11921       .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_forum_post"},fetchForumUnread)
+11922       .subscribe();
+11938     const ch = supabase.channel('realtime-maint-alert')
+11939       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_rutin' }, fetchMaintAlert)
+11940       .subscribe()
+11979 const [livePanelTypes,setLivePanelTypes]=useState<any>({});
+11987       setLivePanelTypes(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
+11991 useEffect(()=>{GLOBAL_LIVE_PANEL_TYPES=livePanelTypes;},[livePanelTypes]);
+12004 const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+12483               {tab==="taskmonitoring"&&<TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/>}
+12484               {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/>}
+12485               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
+12486               {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
+12488               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/>}

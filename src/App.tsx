@@ -8736,7 +8736,7 @@ function KapasitasPekerjaanTab(){
 
   const HARI_LABEL:any={1:"Sen",2:"Sel",3:"Rab",4:"Kam",5:"Jum",6:"Sab",7:"Min"};
   const ALL_PROSES=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
-  const ALL_TIPE=["FS","F3B","WM_MS","WM_POLY"];
+  const ALL_TIPE=panelTypeList.length>0?panelTypeList.map((t:any)=>t.tipe_panel):["FS","F3B","WM_MS","WM_POLY"];
   const ALL_WP=["WP1","WP2","WP3","WP4","WP5","WP6"];
 
   useEffect(()=>{

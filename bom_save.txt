@@ -1,0 +1,36 @@
+11975 
+11976 
+11977 
+11978 const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO, refetch: refetchWO } = useWorkOrders()
+11979 const [livePanelTypes,setLivePanelTypes]=useState<any>({});
+11980 useEffect(()=>{
+11981   Promise.all([
+11982     supabase.from("bom_master").select("*"),
+11983     supabase.from("panel_type_meta").select("*"),
+11984     supabase.from("panel_wp_meta").select("*"),
+11985   ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
+11986     if(bomRes.data&&bomRes.data.length>0){
+11987       setLivePanelTypes(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
+11988     }
+11989   });
+11990 },[]);
+11991 useEffect(()=>{GLOBAL_LIVE_PANEL_TYPES=livePanelTypes;},[livePanelTypes]);
+11992 useEffect(()=>{
+11993   supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+11994     const relevanSet=new Set<string>();
+11995     const hasMappingSet=new Set<string>();
+11996     (data||[]).forEach((r:any)=>{
+11997       relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+11998       hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+11999     });
+12000     GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+12001     GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+12002   });
+12003 },[]);
+12004 const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+12005 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
+12006 
+12007 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
+12008 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
+12009 const woSyncTimerRef = useRef<any>(null);
+12010 useEffect(() => {

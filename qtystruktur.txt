@@ -1,0 +1,35 @@
+266 function initChecklist(tipe, qty=1, customPanelTypes){
+359   const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
+1443           const namaKomp=(t.komponen||[]).map((k:string)=>cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===k)?.nama||k).join(', ');
+1544                           :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
+1759                           const namaKomp=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+2126                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
+2173                             {t.komponen.map(k=>{const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===k);return(<span key={k} style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||k}</span>);})}
+3333     const allItems=cfg.wps.flatMap((w:any)=>w.items);
+3406                 {cfg.wps.flatMap((wp:any)=>wp.items).map((item:any,ii:number)=>{
+4312     const item=getEffCfg(tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+4330             const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+4823     const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
+5473                           const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
+5489                               {t.komponen.map(k=>{const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===k);return <span key={k} style={{background:"#e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||k}</span>;})}
+5613                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
+6473       let finalChecklist=(p as any).checklist||initChecklist(p.tipe,newQty);
+6484         checklist:finalChecklist,
+6491       checklist:initChecklist(p.tipe,Number(p.qty)||1,bomPanelTypesCache),catatan:"",
+6619       return{...p,checklist:nc};
+6626     setWoData(prev=>prev.map(wo=>({...wo,panels:wo.panels.map(p=>p.id!==panelId?p:{...p,checklist:orig})})));
+6637     const panelQtyMultiplier=Number(panel.qty)||1;
+6647     const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
+6649     setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
+6658         const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+6725                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
+6763                             {wpDef.items.map((item,ii)=>{
+6780                                         const flatKodes2=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+6790                                         const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
+6803                                         const flatItems=cfg.wps.flatMap((w:any)=>w.items);
+7074                         w.items.forEach((it:any)=>{kodeToWpMap[it.kode]=w.wp;});
+7103                           checklist:panel.checklist||{},
+8572         cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{oldKodeToNama[it.kode]=it.nama;}));
+8627           await supabase.from("panels").update({checklist:newCl}).eq("id",p.id);
+12025               return{...p,checklist:prevPanelMap[String(p.id)].checklist};
+12282                   {group.items.map((item:any)=>(

@@ -1,0 +1,76 @@
+8755     return pa.num-pb.num;
+8756   };
+8757 
+8758   const fetchBom=async()=>{
+8759     const{data}=await supabase.from("bom_master").select("*");
+8760     const sorted=(data??[]).slice().sort((a:any,b:any)=>{
+8761       if(a.tipe_panel!==b.tipe_panel)return a.tipe_panel.localeCompare(b.tipe_panel);
+8762       return naturalKodeSort(a.kode_komponen,b.kode_komponen);
+8763     });
+8764     setBomList(sorted);
+8765   };
+8766 
+8767   const saveBom=async()=>{
+8768     if(!bomForm.kode_komponen||!bomForm.nama_komponen)return;
+8769     if(editBom){
+8770       const{error}=await supabase.from("bom_master").update({...bomForm,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+8771       if(error){alert("Gagal: "+error.message);return;}
+8772     } else {
+8773       const m=String(bomForm.kode_komponen).match(/^(.*?)(\d+)$/);
+8774       if(m){
+8775         const prefix=m[1],startNum=parseInt(m[2],10);
+8776         const{data:existingSameTipe}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
+8777         const toShift=(existingSameTipe||[]).map((r:any)=>{
+8778           const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
+8779           if(!mm||mm[1]!==prefix)return null;
+8780           const num=parseInt(mm[2],10);
+8781           if(num<startNum)return null;
+8782           return{id:r.id,num};
+8783         }).filter(Boolean).sort((a:any,b:any)=>b.num-a.num);
+8784         for(const item of toShift as any[]){
+8785           const oldKode=prefix+item.num;
+8786           const newKode=prefix+(item.num+1);
+8787           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+8788           await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",bomForm.tipe_panel);
+8789         }
+8790       }
+8791       const{error}=await supabase.from("bom_master").insert(bomForm);
+8792       if(error){alert("Gagal: "+error.message);return;}
+8793     }
+8794     await fetchBom();
+8795     setShowAddBom(false);
+8796     setEditBom(null);
+8797     setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
+8798   };
+8799 
+8800   const deleteBom=async(id:number)=>{
+8801     if(!confirm("Yakin hapus komponen ini dari Master Data BOM? Kode yang lebih besar bakal otomatis turun ngisi kekosongan."))return;
+8802     const target=bomList.find((b:any)=>b.id===id);
+8803     const{error}=await supabase.from("bom_master").delete().eq("id",id);
+8804     if(error){alert("Gagal: "+error.message);return;}
+8805     if(target){
+8806       const m=String(target.kode_komponen).match(/^(.*?)(\d+)$/);
+8807       if(m){
+8808         const prefix=m[1],delNum=parseInt(m[2],10);
+8809         const{data:remaining}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",target.tipe_panel);
+8810         const toShift=(remaining||[]).map((r:any)=>{
+8811           const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
+8812           if(!mm||mm[1]!==prefix)return null;
+8813           const num=parseInt(mm[2],10);
+8814           if(num<=delNum)return null;
+8815           return{id:r.id,num};
+8816         }).filter(Boolean).sort((a:any,b:any)=>a.num-b.num);
+8817         for(const item of toShift as any[]){
+8818           const oldKode=prefix+item.num;
+8819           const newKode=prefix+(item.num-1);
+8820           await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
+8821           await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",target.tipe_panel);
+8822         }
+8823       }
+8824     }
+8825     await fetchBom();
+8826   };
+8827 
+8828   const fetchOverride=async()=>{
+8829     const{data}=await supabase.from("fcs_kapasitas_override").select("*").order("tanggal",{ascending:false});
+8830     setOverrideList(data??[]);

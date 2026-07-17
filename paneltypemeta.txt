@@ -1,0 +1,14 @@
+288 function buildPanelTypesFromBom(bomList,panelTypeMetaList,panelWpMetaList){
+297     const metaTipe=(panelTypeMetaList||[]).find((m:any)=>m.tipe_panel===tipe);
+6356       supabase.from("panel_type_meta").select("*"),
+8471       await fetchPanelTypeMeta();
+8522   const fetchPanelTypeMeta=async()=>{
+8523     const{data:t}=await supabase.from("panel_type_meta").select("*").order("tipe_panel");
+8528   useEffect(()=>{fetchPanelTypeMeta();},[]);
+8532     const{error}=await supabase.from("panel_type_meta").insert(tipeForm);
+8534     await fetchPanelTypeMeta();
+8541     await supabase.from("panel_type_meta").delete().eq("tipe_panel",tipe);
+8542     await fetchPanelTypeMeta();
+8553     await fetchPanelTypeMeta();
+8561     await fetchPanelTypeMeta();
+11983     supabase.from("panel_type_meta").select("*"),

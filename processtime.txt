@@ -1,0 +1,17 @@
+79   WM_POLY: {
+174   // WM_MS & WM_POLY (hasil rekonsiliasi otomatis ke Master Data BOM terkini)
+196   WM_POLY: ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
+3906         const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
+4272   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
+4296       setProcessTimeList(pt??[]);
+4746       let adaDataProcessTime=false;
+4750         if(menitPcs>0)adaDataProcessTime=true;
+4753       if(adaDataProcessTime&&menitDibutuhkan>0){
+8739   const ALL_TIPE=["FS","F3B","WM_MS","WM_POLY"];
+8963         {[{id:"processtime",l:"⚡ Process Time"},{id:"bom",l:"📋 Master Data BOM"},{id:"jenispanel",l:"🗂 Jenis Panel"}].map(t=>(
+8976       {/* TAB: Process Time */}
+8981             {ALL_TIPE.map(t=>{
+9133               {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+9217                         {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
+9477             <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:14}}>{editProc?"✏️ Edit Process Time":"➕ Tambah Process Time"}</div>
+9483                   {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}

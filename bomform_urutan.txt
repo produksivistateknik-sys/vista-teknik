@@ -1,0 +1,5 @@
+8401   const [bomForm,setBomForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
+9207                     <Inp value={bomForm.kode_komponen} onChange={(e:any)=>setBomForm({...bomForm,kode_komponen:e.target.value})} placeholder="misal FS.1"/>
+9211                     <Inp value={bomForm.nama_komponen} onChange={(e:any)=>setBomForm({...bomForm,nama_komponen:e.target.value})} placeholder="misal Groundplate"/>
+9216                       <Sel value={bomForm.tipe_panel} onChange={(e:any)=>setBomForm({...bomForm,tipe_panel:e.target.value})}>
+9222                       <Sel value={bomForm.wp} onChange={(e:any)=>setBomForm({...bomForm,wp:e.target.value})}>
