@@ -1,0 +1,1 @@
+3731 function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){

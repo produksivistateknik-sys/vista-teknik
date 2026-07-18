@@ -1,0 +1,106 @@
+1 ﻿import { useState, useEffect, useCallback } from 'react'
+2 import { workOrderService } from '../services/workOrderService'
+3 import { supabase } from '../lib/supabase'
+4 
+5 export function useWorkOrders() {
+6   const [data, setData] = useState<any[]>([])
+7   const [loading, setLoading] = useState(true)
+8   const [error, setError] = useState<string | null>(null)
+9 
+10   const fetch = useCallback(async () => {
+11     try {
+12       setLoading(true)
+13       setError(null)
+14       const result = await workOrderService.getAll()
+15       setData(result)
+16     } catch (err) {
+17       setError(err instanceof Error ? err.message : 'Error')
+18     } finally {
+19       setLoading(false)
+20     }
+21   }, [])
+22 
+23   useEffect(() => {
+24     fetch()
+25     const channel = supabase
+26       .channel('realtime-wo')
+27       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'work_orders' },
+28         (payload) => { setData(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) }
+29       )
+30       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'work_orders' },
+31         (payload) => { setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r)) }
+32       )
+33       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'work_orders' },
+34         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
+35       )
+36       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
+37         (payload) => {
+38           setData(prev => prev.map(wo => ({
+39             ...wo,
+40             panels: (wo.panels || []).map((p: any) =>
+41               p.id === payload.new.id ? { ...p, ...payload.new } : p
+42             )
+43           })))
+44         }
+45       )
+46       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'panels' },
+47         (payload) => {
+48           setData(prev => prev.map(wo => {
+49             if (wo.id !== payload.new.wo_id) return wo
+50             if ((wo.panels || []).some((p: any) => p.id === payload.new.id)) return wo
+51             return { ...wo, panels: [...(wo.panels || []), payload.new] }
+52           }))
+53         }
+54       )
+55       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'panels' },
+56         (payload) => {
+57           setData(prev => prev.map(wo => ({
+58             ...wo,
+59             panels: (wo.panels || []).filter((p: any) => p.id !== payload.old.id)
+60           })))
+61         }
+62       )
+63       .subscribe()
+64     return () => { supabase.removeChannel(channel) }
+65   }, [fetch])
+66 
+67   const getUname = () => {
+68     const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+69     return sess?.nama || sess?.name || 'Admin'
+70   }
+71 
+72   const create = async (payload: any) => {
+73     try {
+74       const uname = getUname()
+75       const result = await workOrderService.create({ ...payload, updated_by: uname }, uname)
+76       // setData tidak dipanggil di sini - App.tsx handle via setWoData dengan panels
+77       return { success: true, data: result }
+78     } catch (err) {
+79       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+80     }
+81   }
+82 
+83   const update = async (id: number, payload: any) => {
+84     try {
+85       const uname = getUname()
+86       const result = await workOrderService.update(id, { ...payload, updated_by: uname }, uname)
+87       setData(prev => prev.map(r => r.id === id ? { ...r, ...result } : r))
+88       return { success: true, data: result }
+89     } catch (err) {
+90       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+91     }
+92   }
+93 
+94   const remove = async (id: number) => {
+95     try {
+96       const uname = getUname()
+97       await workOrderService.remove(id, uname)
+98       setData(prev => prev.filter(r => r.id !== id))
+99       return { success: true }
+100     } catch (err) {
+101       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+102     }
+103   }
+104 
+105   return { data, loading, error, refetch: fetch, create, update, remove }
+106 }

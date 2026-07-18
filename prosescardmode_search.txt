@@ -1,0 +1,2 @@
+1387   const PROSES_CARD_MODE:Record<string,string>={
+2213       const cardMode=PROSES_CARD_MODE[proses]||'qty';

@@ -1,0 +1,18 @@
+12579               {tab==="dashboard"&&<Dashboard woData={woData}/>}
+12580               {tab==="fcs"&&<FCSScheduleTab woData={woData} user={user}/>}
+12581               {tab==="arsip"&&<ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/>}
+12582               {tab==="stok"&&<StokMonitoringTab user={user} activityLog={activityLog}/>}
+12583               {tab==="summary"&&<SummaryProgress woData={woData}/>}
+12584               {tab==="taskmonitoring"&&<TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/>}
+12585               {tab==="detail"&&<DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/>}
+12586               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
+12587               {tab==="rencana"&&<RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}
+12588               {tab==="wo"&&<ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/>}
+12589               {tab==="tracking"&&<TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/>}
+12590               {tab==="laporan_qc"&&<LaporanQCView woData={woData}/>}
+12591               {tab==="forum"&&<ForumWO user={user}/>}
+12592               {tab==="trackingkomponen"&&<TrackingKomponenAdmin/>}
+12593               {tab==="maintenance"&&<MaintenancePageTab user={user}/>}
+12594               {tab==="kendala"&&<KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/>}
+12595               {tab==="activity"&&<ActivityLogView activityLog={activityLog} user={user}/>}
+12596               {tab==="masteruser"&&<SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/>}

@@ -1,0 +1,9 @@
+1387   const PROSES_CARD_MODE:Record<string,string>={
+1388     POTONG:'batch',RENDAM:'batch',PAINTING:'batch',
+1389     BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',BUSBAR:'qty',
+1390     "WIRING CONTROL":'timer',"WIRING POWER":'timer',
+1391   };
+1392   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
+1393 
+1394   // Load data dari Supabase
+1395   useEffect(()=>{

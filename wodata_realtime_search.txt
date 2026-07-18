@@ -1,0 +1,2 @@
+7 import { useWorkOrders } from './hooks/useWorkOrders'
+12079 const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO, refetch: refetchWO } = useWorkOrders()

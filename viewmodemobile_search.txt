@@ -1,0 +1,3 @@
+2211         const visibleRows=(isDrilldownProses||viewMode==='mobile')?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+2226             {(isDrilldownProses||viewMode==='mobile')&&(
+2342             {viewMode==='mobile'?(
