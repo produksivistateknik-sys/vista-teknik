@@ -1,0 +1,65 @@
+1406 async function upsertRawScheduleEntry(
+1407   wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>
+1408 ) {
+1409   const { data: existing } = await supabase
+1410     .from('raw_schedule')
+1411     .select('id, schedule')
+1412     .eq('wo_id', wo.id)
+1413     .eq('panel_id', panel.id)
+1414     .eq('proses', proses)
+1415     .maybeSingle()
+1416   if (existing) {
+1417     const schedule = existing.schedule || {}
+1418     if (!schedule[tanggal]) schedule[tanggal] = []
+1419     const existingEntry = schedule[tanggal].find((e: any) => e.wp === wp)
+1420     if (existingEntry) {
+1421       const setKomp = new Set([...existingEntry.komponen, ...komponenList])
+1422       existingEntry.komponen = Array.from(setKomp)
+1423       if (qtyPerKomponen) {
+1424         existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyPerKomponen }
+1425       }
+1426     } else {
+1427       schedule[tanggal].push({ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) })
+1428     }
+1429     await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+1430   } else {
+1431     await supabase.from('raw_schedule').insert({
+1432       wo_id: wo.id,
+1433       panel_id: panel.id,
+1434       proyek: wo.proyek,
+1435       panel: panel.nama,
+1436       proses,
+1437       prioritas: 'Sedang',
+1438       schedule: { [tanggal]: [{ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) }] },
+1439     })
+1440   }
+1441 }
+1442 
+1443 async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
+1444   const { data: existing } = await supabase
+1445     .from('raw_schedule')
+1446     .select('id')
+1447     .eq('wo_id', wo.id)
+1448     .eq('panel_id', panel.id)
+1449     .eq('proses', proses)
+1450     .maybeSingle()
+1451   if (!existing) {
+1452     await supabase.from('raw_schedule').insert({
+1453       wo_id: wo.id,
+1454       panel_id: panel.id,
+1455       proyek: wo.proyek,
+1456       panel: panel.nama,
+1457       proses,
+1458       prioritas: 'Sedang',
+1459       schedule: {},
+1460     })
+1461   }
+1462 }
+1463 
+1464 export async function generateAndSaveToRawSchedule(
+1465   woId: number,
+1466   tanggalMulai: string,
+1467   _generatedBy: string
+1468 ): Promise<{ success: boolean; count: number; error?: string }> {
+1469   try {
+1470     const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()

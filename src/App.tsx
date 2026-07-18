@@ -4797,7 +4797,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
         updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
+        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{}),createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
       }
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch};
@@ -8672,7 +8672,7 @@ function KapasitasPekerjaanTab(){
   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
   const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
-  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
+  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5,7] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
   const [rentangSaving,setRentangSaving]=useState(false);
   const [rentangResult,setRentangResult]=useState<{sukses:number;skip:number}|null>(null);
 

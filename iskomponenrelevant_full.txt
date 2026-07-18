@@ -1,0 +1,28 @@
+208 };
+209 
+210 let GLOBAL_PROSES_RELEVAN_SET:Set<string>=new Set();
+211 let GLOBAL_PROSES_RELEVAN_HAS_MAPPING:Set<string>=new Set();
+212 const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
+213   if(prosesMaybe===undefined){
+214     const proses=tipeOrProses;
+215     const relevanProses=KOMPONEN_PROSES_MAP[kode];
+216     if(!relevanProses) return true;
+217     return relevanProses.includes(proses);
+218   }
+219   const tipe=tipeOrProses;
+220   const proses=prosesMaybe;
+221   const mapKey=kode+"|"+tipe;
+222   if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
+223     return GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+proses);
+224   }
+225   const relevanProses=KOMPONEN_PROSES_MAP[kode];
+226   if(!relevanProses) return true;
+227   return relevanProses.includes(proses);
+228 };
+229 function getRelevantProsesForKode(kode:string,tipe:string):string[]{
+230   const mapKey=kode+"|"+tipe;
+231   if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
+232     return ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr));
+233   }
+234   return KOMPONEN_PROSES_MAP[kode]||[];
+235 }

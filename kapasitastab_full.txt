@@ -1,0 +1,151 @@
+8395 function KapasitasPekerjaanTab(){
+8396   const [processList,setProcessList]=useState<any[]>([]);
+8397   const [loading,setLoading]=useState(true);
+8398   const [bomList,setBomList]=useState<any[]>([]);
+8399   const [showAddBom,setShowAddBom]=useState(false);
+8400   const [editBom,setEditBom]=useState<any>(null);
+8401   const [bomForm,setBomForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
+8402   const [filterTipeBom,setFilterTipeBom]=useState("FS");
+8403   const [bomSearch,setBomSearch]=useState("");
+8404   const [migrating,setMigrating]=useState(false);
+8405   const [migrateResult,setMigrateResult]=useState<string>("");
+8406   const [migratingChecklist,setMigratingChecklist]=useState(false);
+8407   const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
+8408   const [wizardTipe,setWizardTipe]=useState<string>("");
+8409   const [wizardStep,setWizardStep]=useState(0);
+8410   const [wizardWp,setWizardWp]=useState("WP1");
+8411   const [wizardColor,setWizardColor]=useState("#3b82f6");
+8412   const [wizardRange,setWizardRange]=useState("");
+8413   const [wizardAllNama,setWizardAllNama]=useState<string[]>([]);
+8414   const [wizardSelectedNama,setWizardSelectedNama]=useState<string[]>([]);
+8415   const [wizardProsesPerNama,setWizardProsesPerNama]=useState<Record<string,string[]>>({});
+8416   const [wizardSaving,setWizardSaving]=useState(false);
+8417   const WP_OPTIONS=["WP1","WP2","WP3","WP4","WP5","WP6"];
+8418   const [expandedWpKey,setExpandedWpKey]=useState<string|null>(null);
+8419   const WP_COLOR_PRESET=["#f59e0b","#22c55e","#06b6d4","#f97316","#8b5cf6","#ec4899","#3b82f6","#ef4444"];
+8420 
+8421   const openWizard=async(tipe:string)=>{
+8422     const{data}=await supabase.from("bom_master").select("nama_komponen");
+8423     const uniqueNama=Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))).sort();
+8424     setWizardAllNama(uniqueNama);
+8425     setWizardTipe(tipe);
+8426     setWizardWp("WP1");
+8427     setWizardColor("#3b82f6");
+8428     setWizardRange("");
+8429     setWizardSelectedNama([]);
+8430     setWizardProsesPerNama({});
+8431     setWizardStep(1);
+8432   };
+8433   const toggleWizardNama=(nama:string)=>{
+8434     setWizardSelectedNama(prev=>prev.includes(nama)?prev.filter(n=>n!==nama):[...prev,nama]);
+8435   };
+8436   const toggleWizardProses=(nama:string,proses:string)=>{
+8437     setWizardProsesPerNama(prev=>{
+8438       const curr=prev[nama]||[];
+8439       const next=curr.includes(proses)?curr.filter(p=>p!==proses):[...curr,proses];
+8440       return{...prev,[nama]:next};
+8441     });
+8442   };
+8443   const saveWizardWp=async()=>{
+8444     setWizardSaving(true);
+8445     try{
+8446       await supabase.from("panel_wp_meta").upsert({tipe_panel:wizardTipe,wp:wizardWp,color:wizardColor,range_label:wizardRange},{onConflict:"tipe_panel,wp"});
+8447       const{data:existingBom}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",wizardTipe);
+8448       let maxNum=0;
+8449       (existingBom||[]).forEach((r:any)=>{
+8450         const m=String(r.kode_komponen).match(/(\d+)$/);
+8451         if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
+8452       });
+8453       for(const nama of wizardSelectedNama){
+8454         maxNum++;
+8455         const kodeBaru=`${wizardTipe}.${maxNum}`;
+8456         await supabase.from("bom_master").insert({kode_komponen:kodeBaru,nama_komponen:nama,tipe_panel:wizardTipe,wp:wizardWp,urutan:0});
+8457         const prosesList=wizardProsesPerNama[nama]||[];
+8458         if(prosesList.length>0){
+8459           await supabase.from("bom_proses_relevan").insert(prosesList.map(p=>({kode_komponen:kodeBaru,tipe_panel:wizardTipe,jenis_pekerjaan:p})));
+8460         }
+8461       }
+8462       const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+8463       const relevanSet=new Set<string>();
+8464       const hasMappingSet=new Set<string>();
+8465       (allRelevan||[]).forEach((r:any)=>{
+8466         relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+8467         hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+8468       });
+8469       GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+8470       GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+8471       await fetchPanelTypeMeta();
+8472       await fetchBom();
+8473       setWizardStep(0);
+8474     }catch(err:any){
+8475       alert("Gagal: "+err.message);
+8476     }
+8477     setWizardSaving(false);
+8478   };
+8479   const [prosesRelevanModal,setProsesRelevanModal]=useState<any>(null);
+8480   const [selectedProsesRelevan,setSelectedProsesRelevan]=useState<string[]>([]);
+8481   const [savingProsesRelevan,setSavingProsesRelevan]=useState(false);
+8482 
+8483   const openProsesModal=async(b:any)=>{
+8484     const{data}=await supabase.from("bom_proses_relevan").select("jenis_pekerjaan")
+8485       .eq("kode_komponen",b.kode_komponen).eq("tipe_panel",b.tipe_panel);
+8486     setSelectedProsesRelevan((data||[]).map((r:any)=>r.jenis_pekerjaan));
+8487     setProsesRelevanModal(b);
+8488   };
+8489   const toggleProsesRelevan=(proses:string)=>{
+8490     setSelectedProsesRelevan(prev=>prev.includes(proses)?prev.filter(p=>p!==proses):[...prev,proses]);
+8491   };
+8492   const saveProsesRelevan=async()=>{
+8493     if(!prosesRelevanModal)return;
+8494     setSavingProsesRelevan(true);
+8495     await supabase.from("bom_proses_relevan").delete()
+8496       .eq("kode_komponen",prosesRelevanModal.kode_komponen).eq("tipe_panel",prosesRelevanModal.tipe_panel);
+8497     if(selectedProsesRelevan.length>0){
+8498       const rows=selectedProsesRelevan.map(p=>({kode_komponen:prosesRelevanModal.kode_komponen,tipe_panel:prosesRelevanModal.tipe_panel,jenis_pekerjaan:p}));
+8499       await supabase.from("bom_proses_relevan").insert(rows);
+8500     }
+8501     const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
+8502     const relevanSet=new Set<string>();
+8503     const hasMappingSet=new Set<string>();
+8504     (allRelevan||[]).forEach((r:any)=>{
+8505       relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+8506       hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+8507     });
+8508     GLOBAL_PROSES_RELEVAN_SET=relevanSet;
+8509     GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMappingSet;
+8510     setSavingProsesRelevan(false);
+8511     setProsesRelevanModal(null);
+8512   };
+8513   const [panelTypeList,setPanelTypeList]=useState<any[]>([]);
+8514   const [panelWpList,setPanelWpList]=useState<any[]>([]);
+8515   const [expandedTipePanel,setExpandedTipePanel]=useState<string|null>(null);
+8516   const [showAddTipe,setShowAddTipe]=useState(false);
+8517   const [tipeForm,setTipeForm]=useState({tipe_panel:"",label:""});
+8518   const [editWpMeta,setEditWpMeta]=useState<any>(null);
+8519   const [wpForm,setWpForm]=useState({tipe_panel:"",wp:"",color:"#3b82f6",range_label:""});
+8520   const [showAddWp,setShowAddWp]=useState(false);
+8521 
+8522   const fetchPanelTypeMeta=async()=>{
+8523     const{data:t}=await supabase.from("panel_type_meta").select("*").order("tipe_panel");
+8524     const{data:w}=await supabase.from("panel_wp_meta").select("*").order("wp");
+8525     setPanelTypeList(t??[]);
+8526     setPanelWpList(w??[]);
+8527   };
+8528   useEffect(()=>{fetchPanelTypeMeta();},[]);
+8529 
+8530   const saveTipePanel=async()=>{
+8531     if(!tipeForm.tipe_panel||!tipeForm.label)return;
+8532     const{error}=await supabase.from("panel_type_meta").insert(tipeForm);
+8533     if(error){alert("Gagal: "+error.message);return;}
+8534     await fetchPanelTypeMeta();
+8535     setShowAddTipe(false);
+8536     setTipeForm({tipe_panel:"",label:""});
+8537   };
+8538   const deleteTipePanel=async(tipe:string)=>{
+8539     if(!confirm(`Yakin hapus tipe panel "${tipe}"? Semua WP di dalamnya juga ikut kehapus.`))return;
+8540     await supabase.from("panel_wp_meta").delete().eq("tipe_panel",tipe);
+8541     await supabase.from("panel_type_meta").delete().eq("tipe_panel",tipe);
+8542     await fetchPanelTypeMeta();
+8543   };
+8544   const saveWpMeta=async()=>{
+8545     if(!wpForm.tipe_panel||!wpForm.wp)return;

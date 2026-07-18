@@ -1,0 +1,46 @@
+8690   const toggleHariRentang=(h:number)=>{
+8691     setRentangForm(prev=>({...prev,hariAktif:prev.hariAktif.includes(h)?prev.hariAktif.filter(x=>x!==h):[...prev.hariAktif,h].sort()}));
+8692   };
+8693 
+8694   const saveRentangOverride=async()=>{
+8695     if(!rentangForm.tanggalMulai||!rentangForm.tanggalAkhir||rentangForm.hariAktif.length===0)return;
+8696     if(rentangForm.tanggalAkhir<rentangForm.tanggalMulai){alert("Tanggal akhir harus setelah tanggal mulai");return;}
+8697     setRentangSaving(true);
+8698     setRentangResult(null);
+8699     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+8700     const createdBy=sess?.nama||sess?.name||"Admin";
+8701     const prosesList=Array.isArray(rentangForm.jenis_pekerjaan)?rentangForm.jenis_pekerjaan:[rentangForm.jenis_pekerjaan];
+8702     const rows:any[]=[];
+8703     let cur=new Date(rentangForm.tanggalMulai);
+8704     const end=new Date(rentangForm.tanggalAkhir);
+8705     let safety=0;
+8706     while(cur<=end&&safety<366){
+8707       const hari=cur.getDay()===0?7:cur.getDay();
+8708       if(rentangForm.hariAktif.includes(hari)){
+8709         const tgl=cur.toISOString().slice(0,10);
+8710         for(const proses of prosesList){
+8711           const isOrangRentang=isProsesOrang(proses);
+8712           rows.push({
+8713             tanggal:tgl,
+8714             jenis_pekerjaan:proses,
+8715             ...(isOrangRentang
+8716               ?{tipe_kapasitas:"orang",jumlah_orang:Number(rentangForm.jumlah_orang),jam_kerja:null,efektivitas_pct:100}
+8717               :{tipe_kapasitas:"jam",jam_kerja:Number(rentangForm.jam_kerja),efektivitas_pct:Number(rentangForm.efektivitas_pct),jumlah_orang:null}),
+8718             keterangan:rentangForm.keterangan,
+8719             created_by:createdBy,
+8720           });
+8721         }
+8722       }
+8723       cur.setDate(cur.getDate()+1);
+8724       safety++;
+8725     }
+8726     if(rows.length===0){setRentangSaving(false);alert("Tidak ada tanggal yang match dengan hari terpilih");return;}
+8727     const{data,error}=await supabase.from("fcs_kapasitas_override").upsert(rows,{onConflict:"tanggal,jenis_pekerjaan",ignoreDuplicates:false}).select();
+8728     setRentangSaving(false);
+8729     if(error){alert("Gagal: "+error.message);return;}
+8730     setRentangResult({sukses:data?.length||0,skip:rows.length-(data?.length||0)});
+8731     await fetchOverride();
+8732   };
+8733   const [filterTipe,setFilterTipe]=useState("FS");
+8734   const [filterPekerjaan,setFilterPekerjaan]=useState("ALL");
+8735   const [search,setSearch]=useState("");

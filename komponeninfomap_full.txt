@@ -1,0 +1,66 @@
+1490     if(wiringTasks.length>0){
+1491       const wiringPanelIds=[...new Set(wiringTasks.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
+1492       const wiringProsesNames=[...new Set(wiringTasks.map((t:any)=>t.proses))];
+1493       const[{data:fcsData},{data:rawData}]=await Promise.all([
+1494         supabase.from("fcs_schedule").select("panel_id,jenis_pekerjaan,kode_komponen,qty_total,generated_by,created_at")
+1495           .in("panel_id",wiringPanelIds as any).in("jenis_pekerjaan",wiringProsesNames),
+1496         supabase.from("raw_schedule").select("panel_id,proses,schedule")
+1497           .in("panel_id",wiringPanelIds as any).in("proses",wiringProsesNames),
+1498       ]);
+1499       const infoMap:Record<string,any>={};
+1500       (fcsData||[]).forEach((row:any)=>{
+1501         const key=`${row.panel_id}_${row.jenis_pekerjaan}`;
+1502         if(!infoMap[key])infoMap[key]={bobot:row.kode_komponen,jumlahOrang:row.qty_total,createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
+1503       });
+1504       (rawData||[]).forEach((row:any)=>{
+1505         const key=`${row.panel_id}_${row.proses}`;
+1506         let lastTgl:string|null=null;
+1507         Object.entries(row.schedule||{}).forEach(([tgl,entries]:any)=>{
+1508           (entries||[]).forEach((e:any)=>{
+1509             (e.komponen||[]).forEach((k:string)=>{
+1510               if(k.startsWith("__wiring_")){if(!lastTgl||tgl>lastTgl)lastTgl=tgl;}
+1511             });
+1512           });
+1513         });
+1514         if(lastTgl&&infoMap[key])infoMap[key].targetSelesai=lastTgl;
+1515       });
+1516       setWiringInfoMap(infoMap);
+1517     } else {
+1518       setWiringInfoMap({});
+1519     }
+1520 
+1521     // Ambil info komponen (CREATE BY, CREATE ON, TARGET SELESAI) untuk proses biasa
+1522     const nonWiringProses=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"];
+1523     const nonWiringTasks=tasks.filter((t:any)=>nonWiringProses.includes(t.proses));
+1524     if(nonWiringTasks.length>0){
+1525       const nwPanelIds=[...new Set(nonWiringTasks.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
+1526       const nwProsesNames=[...new Set(nonWiringTasks.map((t:any)=>t.proses))];
+1527       const[{data:fcsDtNw},{data:rawDtNw}]=await Promise.all([
+1528         supabase.from("fcs_schedule").select("panel_id,jenis_pekerjaan,kode_komponen,generated_by,created_at")
+1529           .in("panel_id",nwPanelIds as any).in("jenis_pekerjaan",nwProsesNames),
+1530         supabase.from("raw_schedule").select("panel_id,proses,schedule")
+1531           .in("panel_id",nwPanelIds as any).in("proses",nwProsesNames),
+1532       ]);
+1533       const kompMap:Record<string,any>={};
+1534       (fcsDtNw||[]).forEach((row:any)=>{
+1535         const key=`${row.panel_id}_${row.jenis_pekerjaan}_${row.kode_komponen}`;
+1536         if(!kompMap[key])kompMap[key]={createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
+1537       });
+1538       (rawDtNw||[]).forEach((row:any)=>{
+1539         Object.entries(row.schedule||{}).forEach(([tgl,entries]:any)=>{
+1540           (entries||[]).forEach((e:any)=>{
+1541             (e.komponen||[]).forEach((k:string)=>{
+1542               if(k.startsWith("__wiring_"))return;
+1543               const key=`${row.panel_id}_${row.proses}_${k}`;
+1544               if(!kompMap[key])kompMap[key]={createdBy:null,createdAt:null,targetSelesai:null};
+1545               if(!kompMap[key].targetSelesai||tgl>kompMap[key].targetSelesai)kompMap[key].targetSelesai=tgl;
+1546             });
+1547           });
+1548         });
+1549       });
+1550       setKomponenInfoMap(kompMap);
+1551     } else {
+1552       setKomponenInfoMap({});
+1553     }
+1554     setLoadingData(false);
+1555   };

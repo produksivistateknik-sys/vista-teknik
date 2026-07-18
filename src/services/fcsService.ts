@@ -1404,7 +1404,7 @@ export async function setOverrideAndRebalance(params: {
 // Dipanggil dari tombol "FCS" di card WO - Manajemen WO
 // ============================================================
 async function upsertRawScheduleEntry(
-  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>
+  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>, generatedBy?: string
 ) {
   const { data: existing } = await supabase
     .from('raw_schedule')
@@ -1424,7 +1424,7 @@ async function upsertRawScheduleEntry(
         existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyPerKomponen }
       }
     } else {
-      schedule[tanggal].push({ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) })
+      schedule[tanggal].push({ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })
     }
     await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
   } else {
@@ -1435,7 +1435,7 @@ async function upsertRawScheduleEntry(
       panel: panel.nama,
       proses,
       prioritas: 'Sedang',
-      schedule: { [tanggal]: [{ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}) }] },
+      schedule: { [tanggal]: [{ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) }] },
     })
   }
 }
@@ -1464,7 +1464,7 @@ async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
 export async function generateAndSaveToRawSchedule(
   woId: number,
   tanggalMulai: string,
-  _generatedBy: string
+  generatedBy: string
 ): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
@@ -1626,7 +1626,7 @@ export async function generateAndSaveToRawSchedule(
             }
 
             if (kodeHariIni.length > 0) {
-              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni)
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni, generatedBy)
               kodeHariIni.forEach((kd) => {
                 if (!sisaQtyBerikutnya[kd]) scheduledOk.add(panel.id + '|' + kd + '|' + proses)
               })
@@ -1709,7 +1709,7 @@ export async function generateAndSaveToRawSchedule(
             const sisa = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
             if (sisa >= jumlahOrang) {
               const token = `__wiring_${jumlahOrang}org_MEDIUM`
-              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, [token, ...kodes])
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, [token, ...kodes], undefined, generatedBy)
               terpakaiOrangTracker[cur + '|' + proses] = (terpakaiOrangTracker[cur + '|' + proses] || 0) + jumlahOrang
               kodes.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
               hariTerisi++

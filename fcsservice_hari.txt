@@ -1,0 +1,76 @@
+26   qty_hari: number
+42 function addDays(tanggal: string, n: number): string {
+49 function nextTanggalDenganKapasitas(dari: string, kapasitasMap: Record<string, number>, batasHari = 60): string | null {
+51   for (let i = 0; i < batasHari; i++) {
+53     cur = addDays(cur, 1)
+80     : nextTanggalDenganKapasitas(addDays(tanggalMulai, 1), kapasitasMap)
+108       const kapasitasHari = kapasitasMap[tanggal] || 0
+110       const sisaKapasitas = kapasitasHari - terpakai
+113         const tanggalBerikutnya = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+115           // Kapasitas habis di 60 hari ke depan: JANGAN buang sisa qty.
+133             qty_hari: sisaQty,
+148       const maxQtyHariIni = Math.floor(sisaKapasitas / komponen.menit_per_pcs)
+149       const qtyHariIni = Math.min(sisaQty, maxQtyHariIni)
+150       const totalMenitHariIni = qtyHariIni * komponen.menit_per_pcs
+165         qty_hari: qtyHariIni,
+167         total_menit: totalMenitHariIni,
+173       addKap(tanggal, totalMenitHariIni)
+177       sisaQty -= qtyHariIni
+181         const tanggalBerikutnya = nextTanggalDenganKapasitas(addDays(tanggal, 1), kapasitasMap)
+200             qty_hari: sisaQty,
+219     // WP berikutnya mulai di hari SETELAH WP ini selesai semua
+221     const tanggalMulaiWPBerikutnya = nextTanggalDenganKapasitas(addDays(tanggalSelesaiWP, 1), kapasitasMap)
+222     tanggalMulaiWP = tanggalMulaiWPBerikutnya || addDays(tanggalSelesaiWP, 1)
+267     // 3. Ambil kapasitas dari OVERRIDE (bukan default lagi), 60 hari ke depan
+268     const tanggalAkhirCari = addDays(tanggalMulai, 60)
+284         error: `Tidak ada kapasitas ${jenisPekerjaan} yang diatur dalam 60 hari ke depan dari ${tanggalMulai}. Silakan isi Override Tanggal dulu di System > Kapasitas Pekerjaan.`
+452       qty_hari: 1,
+524         ? `__wiring_${row.qty_hari}org_${row.kode_komponen}`
+705   kapasitasHari: number
+722       cukup: false, kapasitasHari: 0, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [],
+726   const kapasitasHari = Number(overrideRow.kapasitas_menit)
+799   const sisaKapasitas = kapasitasHari - terpakaiSaatIni
+802     return { cukup: true, kapasitasHari, terpakaiSaatIni, sisaKapasitas, opsiSwap: [] }
+811   return { cukup: false, kapasitasHari, terpakaiSaatIni, sisaKapasitas, opsiSwap }
+866     let tanggalTujuan = addDays(tanggalAsal, 1)
+884       tanggalTujuan = addDays(tanggalTujuan, 1)
+888       return { success: false, error: 'Tidak ada tanggal dengan kapasitas cukup dalam 60 hari ke depan untuk semua komponen yang dipindah' }
+963   kuotaHari: number
+981       cukup: false, kuotaHari: 0, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [],
+985   const kuotaHari = Number(overrideRow.jumlah_orang)
+1052   const sisaKuota = kuotaHari - terpakaiSaatIni
+1055     return { cukup: true, kuotaHari, terpakaiSaatIni, sisaKuota, opsiSwap: [] }
+1064   return { cukup: false, kuotaHari, terpakaiSaatIni, sisaKuota, opsiSwap }
+1096     let tanggalTujuan = addDays(tanggalAsal, 1)
+1115       tanggalTujuan = addDays(tanggalTujuan, 1)
+1119       return { success: false, error: 'Tidak ada tanggal dengan kuota orang cukup dalam 60 hari ke depan' }
+1208     const tanggalBatas = addDays(tanggal, 60)
+1245     const itemsHariIni: Item[] = []
+1260             itemsHariIni.push({
+1274             itemsHariIni.push({
+1288     itemsHariIni.sort((a, b) => (b.woTarget || '9999-99-99').localeCompare(a.woTarget || '9999-99-99'))
+1292     for (const item of itemsHariIni) {
+1336       let cur = addDays(tanggal, 1)
+1348         cur = addDays(cur, 1)
+1352         tujuan = addDays(tanggal, 60)
+1510     const addDaysStr = (date: string, n: number) => {
+1585           while (attempts < 21 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
+1595             const kodeHariIni: string[] = []
+1596             const qtyHariIni: Record<string, number> = {}
+1608                 kodeHariIni.push(kode)
+1609                 qtyHariIni[kode] = qtySisa
+1615                   kodeHariIni.push(kode)
+1616                   qtyHariIni[kode] = qtyMuat
+1628             if (kodeHariIni.length > 0) {
+1629               await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni)
+1630               kodeHariIni.forEach((kd) => {
+1637               cur = addDaysStr(cur, 1)
+1639               while (skip < 14 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
+1644             console.warn(`Kapasitas ${proses} penuh terus dalam 21 hari, ${Object.keys(sisaQty).length} komponen di WP ${wp} panel ${panel.nama} belum full kejadwal - atur manual lewat klik cell.`)
+1694           const bobotHariDefault = 2
+1695           const totalHari = Math.ceil(bobotHariDefault / jumlahOrang)
+1702             cur = addDaysStr(cur, 1)
+1706           let hariTerisi = 0
+1708           while (hariTerisi < totalHari && dayAttempts < 21) {
+1715               hariTerisi++
+1718             cur = addDaysStr(cur, 1)

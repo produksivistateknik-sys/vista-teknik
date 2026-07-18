@@ -1,0 +1,18 @@
+1330   const [wiringInfoMap,setWiringInfoMap]=useState<Record<string,any>>({});
+1331   const [komponenInfoMap,setKomponenInfoMap]=useState<Record<string,any>>({});
+1502         if(!infoMap[key])infoMap[key]={bobot:row.kode_komponen,jumlahOrang:row.qty_total,createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
+1514         if(lastTgl&&infoMap[key])infoMap[key].targetSelesai=lastTgl;
+1536         if(!kompMap[key])kompMap[key]={createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
+1544               if(!kompMap[key])kompMap[key]={createdBy:null,createdAt:null,targetSelesai:null};
+1545               if(!kompMap[key].targetSelesai||tgl>kompMap[key].targetSelesai)kompMap[key].targetSelesai=tgl;
+2134               // Token wiring cuma buat ekstrak badge bobot/jumlah orang (via wiringInfoMap di row komponen real).
+2148             const wInfoLookup=wiringInfoMap[`${panelId}_${proses}`];
+2328                         const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+2362                               <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
+2363                               <div>TARGET: <b style={{color:"#1d4ed8"}}>{fmtD(kInfo.targetSelesai)}</b></div>
+2538                           const wInfo=wiringInfoMap[`${r.panelId}_${proses}`]||{};
+2550                               <td style={{...td,fontSize:10,color:"#475569"}}>{wInfo.createdBy||"–"}</td>
+2552                               <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(wInfo.targetSelesai)}</td>
+2584                               const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+2614                                   <td style={{...td,fontSize:10,color:"#475569"}}>{kInfo.createdBy||"–"}</td>
+2616                                   <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(kInfo.targetSelesai)}</td>

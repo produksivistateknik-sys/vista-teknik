@@ -1,0 +1,10 @@
+1881         supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
+1889       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+4291         supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
+4302       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+8727     const{data,error}=await supabase.from("fcs_kapasitas_override").upsert(rows,{onConflict:"tanggal,jenis_pekerjaan",ignoreDuplicates:false}).select();
+8829     const{data}=await supabase.from("fcs_kapasitas_override").select("*").order("tanggal",{ascending:false});
+8843       const{error}=await supabase.from("fcs_kapasitas_override").update(payload).eq("id",editOverride.id);
+8860       const{error}=await supabase.from("fcs_kapasitas_override").insert(rows);
+8873     await supabase.from("fcs_kapasitas_override").delete().eq("id",id);
+10893       supabase.from("fcs_kapasitas_override").select("*")

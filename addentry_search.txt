@@ -1,0 +1,41 @@
+2610     localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
+4704   const addEntry=async()=>{
+4800         updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{})}];
+4822     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
+4849     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";
+4886     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+5778                 const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+5930               const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+6050                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+6132                 const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+6452       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+6497     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+6650     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+6869   const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+6976                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+7059                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+7215   const getUname=()=>{const s=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");return user?.name||user?.nama||s?.nama||"Admin";};
+7365     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
+7402   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+7409     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
+7535     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+7542     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+7639     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+8699     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+8853       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9646             const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9729       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9740     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+9751     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+10025       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+10036     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+10047     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+10226         const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+10234         const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+11048     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+11735     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+11987     const saved=localStorage.getItem("vista_admin_session");
+12055     const sess = JSON.parse(localStorage.getItem('vista_admin_session')||'{}')
+12177           <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}}
+12352               <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:5,padding:"4px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Keluar</button>
+12393               {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}

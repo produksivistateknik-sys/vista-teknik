@@ -1,0 +1,3 @@
+8675   const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
+8695     if(!rentangForm.tanggalMulai||!rentangForm.tanggalAkhir||rentangForm.hariAktif.length===0)return;
+8708       if(rentangForm.hariAktif.includes(hari)){
