@@ -1,0 +1,9 @@
+10651                       <div key={w.id} onClick={()=>{setTab("wo");onClose();}}
+10682                     <div key={i} onClick={()=>{setTab("detail");onClose();}}
+10711                       <div key={p.id} onClick={()=>{setTab("pekerja");onClose();}}
+12008         setTab("dashboard");
+12167     setTab("redirect");
+12391                       onClick={()=>setTab(item.id)}
+12496                               <div key={n.id} onClick={()=>{setTab("wo");setShowNotif(false);}}
+12532                               <div key={k.id} onClick={()=>{setTab("kendala");setShowNotif(false);}}
+12550                           <button onClick={()=>{setTab("wo");setShowNotif(false);}}

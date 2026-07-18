@@ -12005,7 +12005,6 @@ export default function App(){
         const parsed=JSON.parse(saved);
         setUser({...parsed,name:parsed.name||parsed.nama});
         setPage("app");
-        setTab("dashboard");
       }catch(e){ console.error('Session restore error:',e); }
     }
   },[]);

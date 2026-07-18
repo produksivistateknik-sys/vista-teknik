@@ -1,0 +1,21 @@
+11995     return()=>{
+11996       document.removeEventListener("contextmenu",handleContextMenu);
+11997       document.removeEventListener("click",handleClick);
+11998     };
+11999   },[]);
+12000   // Restore admin session
+12001   useEffect(()=>{
+12002     const saved=localStorage.getItem("vista_admin_session");
+12003     if(saved){
+12004       try{
+12005         const parsed=JSON.parse(saved);
+12006         setUser({...parsed,name:parsed.name||parsed.nama});
+12007         setPage("app");
+12008         setTab("dashboard");
+12009       }catch(e){ console.error('Session restore error:',e); }
+12010     }
+12011   },[]);
+12012 const [woData, setWoData] = useState<any[]>([]);
+12013 const [rawData, setRawData] = useState<any[]>([]);
+12014 const [renhar, setRenhar] = useState<any[]>([]);
+12015 const [pekerja, setPekerja] = useState<any[]>([]);
