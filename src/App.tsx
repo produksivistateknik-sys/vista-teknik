@@ -4654,8 +4654,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     let cur=cellModal.date;
     let attempts=0;
     while(dates.length<totalHariBobot&&attempts<30){
-      const d=new Date(cur);
-      if(d.getDay()!==0)dates.push(cur);
+      dates.push(cur);
       const next=new Date(cur);next.setDate(next.getDate()+1);
       cur=next.toISOString().slice(0,10);
       attempts++;

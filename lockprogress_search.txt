@@ -1,0 +1,13 @@
+109 function getProgressOnDate(cl:any, proses:string, date:string){
+1680   const canLockKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
+1783   const lockProgress=async()=>{
+1786     const checkpointLogEntries:any[]=[];
+1802             if(!canLockKomponen(task,kode,Number(panelId),pr))return;
+1803             const pct=getProgressOnDate(cl,pr,viewDate);
+1815                 checkpointLogEntries.push({
+1839               checkpointLogEntries.push({
+1861             const pct=cl?.progress?.["BUSBAR"]||getProgressOnDate(cl,"BUSBAR",viewDate)||0;
+1901     if(checkpointLogEntries.length>0){
+1902       await supabase.from("progress_checkpoint_log").insert(checkpointLogEntries);
+2146             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
+2765           <button onClick={lockProgress}

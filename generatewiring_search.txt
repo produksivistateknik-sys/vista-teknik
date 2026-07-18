@@ -1,0 +1,9 @@
+417 export async function generateFCSWiring(params: {
+1510     const addDaysStr = (date: string, n: number) => {
+1585           while (attempts < 21 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
+1637               cur = addDaysStr(cur, 1)
+1639               while (skip < 14 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); skip++ }
+1694           const bobotHariDefault = 2
+1695           const totalHari = Math.ceil(bobotHariDefault / jumlahOrang)
+1702             cur = addDaysStr(cur, 1)
+1718             cur = addDaysStr(cur, 1)

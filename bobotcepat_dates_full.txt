@@ -1,0 +1,56 @@
+4645       if(refetchRenhar) await refetchRenhar();
+4646     } else {
+4647       setRenhar(prev=>prev.filter(r=>!((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)));
+4648     }
+4649   };
+4650 
+4651   const previewTanggalBobot=(()=>{
+4652     if(!bobotCepat||!cellModal)return[] as string[];
+4653     const dates:string[]=[];
+4654     let cur=cellModal.date;
+4655     let attempts=0;
+4656     while(dates.length<totalHariBobot&&attempts<30){
+4657       const d=new Date(cur);
+4658       if(d.getDay()!==0)dates.push(cur);
+4659       const next=new Date(cur);next.setDate(next.getDate()+1);
+4660       cur=next.toISOString().slice(0,10);
+4661       attempts++;
+4662     }
+4663     return dates;
+4664   })();
+4665   const simpanDenganBobot=async()=>{
+4666     if(!bobotCepat||!modalWp||modalKomponen.length===0||!cellModal)return;
+4667     const dates=previewTanggalBobot;
+4668     if(dates.length===0)return;
+4669     const row=rawData.find((r:any)=>r.id===cellModal.rawId);
+4670     if(!row)return;
+4671     const schedule={...(row.schedule||{})};
+4672     const token=`__wiring_${jumlahOrangBobot}org_${bobotCepat}`;
+4673     for(const tgl of dates){
+4674       const existing=schedule[tgl]||[];
+4675       const wpEntry=existing.find((e:any)=>e.wp===modalWp);
+4676       const newKomp=[token,...modalKomponen];
+4677       if(wpEntry){
+4678         schedule[tgl]=existing.map((e:any)=>e.wp===modalWp?{...e,komponen:Array.from(new Set([...e.komponen,...newKomp]))}:e);
+4679       } else {
+4680         schedule[tgl]=[...existing,{wp:modalWp,komponen:newKomp}];
+4681       }
+4682     }
+4683     setRawData((prev:any[])=>prev.map((r:any)=>r.id===cellModal.rawId?{...r,schedule}:r));
+4684     await supabase.from("raw_schedule").update({schedule}).eq("id",cellModal.rawId);
+4685     setCellModal(null);
+4686     setModalWp("");setModalKomponen([]);setBobotCepat("");setJumlahOrangBobot(1);setModalOrangPerKomponen({});
+4687     alert(`Berhasil! Jadwal masuk ke ${dates.length} hari: ${dates.join(", ")}`);
+4688   };
+4689 
+4690   const ESTAFET_LOCK_AKTIF=false; // ganti ke true buat nyalain lock estafet lagi
+4691   const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
+4692     if(!ESTAFET_LOCK_AKTIF)return{ok:true};
+4693     const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
+4694     const idx=relevantProses.indexOf(targetProses);
+4695     if(idx<=0)return{ok:true};
+4696     const prosesSebelum=relevantProses[idx-1];
+4697     const rowSebelum=rawData.find((r:any)=>(r.panel_id||r.panelId)===panelId&&r.proses===prosesSebelum);
+4698     if(!rowSebelum)return{ok:false,prosesSebelum};
+4699     const schedule=rowSebelum.schedule||{};
+4700     const adaTerjadwal=Object.values(schedule).some((entries:any)=>(entries||[]).some((e:any)=>(e.komponen||[]).includes(kode)));
