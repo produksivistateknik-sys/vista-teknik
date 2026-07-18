@@ -11951,10 +11951,15 @@ export default function App(){
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
-  const [visitedTabs,setVisitedTabs]=useState<Set<string>>(()=>new Set([localStorage.getItem("vista_teknik_active_tab")||"dashboard"]));
+  const MAX_MOUNTED_TABS=4;
+  const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[localStorage.getItem("vista_teknik_active_tab")||"dashboard"]);
   useEffect(()=>{
     localStorage.setItem("vista_teknik_active_tab",tab);
-    setVisitedTabs(prev=>prev.has(tab)?prev:new Set(prev).add(tab));
+    setVisitedTabs(prev=>{
+      const without=prev.filter(t=>t!==tab);
+      const next=[...without,tab];
+      return next.length>MAX_MOUNTED_TABS?next.slice(next.length-MAX_MOUNTED_TABS):next;
+    });
   },[tab]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
   const [showNotif,setShowNotif]=useState(false);
@@ -12580,24 +12585,24 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   </div>
                 </div>
               )}
-              {visitedTabs.has("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Dashboard woData={woData}/></div>}
-              {visitedTabs.has("fcs")&&<div style={{display:tab==="fcs"?"block":"none"}}><FCSScheduleTab woData={woData} user={user}/></div>}
-              {visitedTabs.has("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></div>}
-              {visitedTabs.has("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><StokMonitoringTab user={user} activityLog={activityLog}/></div>}
-              {visitedTabs.has("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><SummaryProgress woData={woData}/></div>}
-              {visitedTabs.has("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.has("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.has("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.has("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.has("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></div>}
-              {visitedTabs.has("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.has("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><LaporanQCView woData={woData}/></div>}
-              {visitedTabs.has("forum")&&<div style={{display:tab==="forum"?"block":"none"}}><ForumWO user={user}/></div>}
-              {visitedTabs.has("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><TrackingKomponenAdmin/></div>}
-              {visitedTabs.has("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><MaintenancePageTab user={user}/></div>}
-              {visitedTabs.has("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></div>}
-              {visitedTabs.has("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><ActivityLogView activityLog={activityLog} user={user}/></div>}
-              {visitedTabs.has("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></div>}
+              {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Dashboard woData={woData}/></div>}
+              {visitedTabs.includes("fcs")&&<div style={{display:tab==="fcs"?"block":"none"}}><FCSScheduleTab woData={woData} user={user}/></div>}
+              {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></div>}
+              {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><StokMonitoringTab user={user} activityLog={activityLog}/></div>}
+              {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><SummaryProgress woData={woData}/></div>}
+              {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></div>}
+              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></div>}
+              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
+              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
+              {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></div>}
+              {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></div>}
+              {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><LaporanQCView woData={woData}/></div>}
+              {visitedTabs.includes("forum")&&<div style={{display:tab==="forum"?"block":"none"}}><ForumWO user={user}/></div>}
+              {visitedTabs.includes("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><TrackingKomponenAdmin/></div>}
+              {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><MaintenancePageTab user={user}/></div>}
+              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></div>}
+              {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><ActivityLogView activityLog={activityLog} user={user}/></div>}
+              {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></div>}
             </div>
           </div>
         </div>

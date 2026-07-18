@@ -1,0 +1,10 @@
+11953   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
+11954   const [visitedTabs,setVisitedTabs]=useState<Set<string>>(()=>new Set([localStorage.getItem("vista_teknik_active_tab")||"dashboard"]));
+11955   useEffect(()=>{
+11956     localStorage.setItem("vista_teknik_active_tab",tab);
+11957     setVisitedTabs(prev=>prev.has(tab)?prev:new Set(prev).add(tab));
+11958   },[tab]);
+11959   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+11960   const [showNotif,setShowNotif]=useState(false);
+11961   const [notifQcGagal,setNotifQcGagal]=useState<any[]>([]);
+11962 
