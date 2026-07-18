@@ -1884,7 +1884,7 @@ function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,upd
       setFcsKapasitas(k??[]);
     };
     fetchCap();
-    const ch=supabase.channel("realtime-fcs-cap-raw")
+    const ch=supabase.channel("realtime-fcs-cap-raw-rencana")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .subscribe();
@@ -4308,7 +4308,7 @@ function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createR
     };
     fetchCap();
     fetchNotifAvailable();
-    const ch=supabase.channel("realtime-fcs-cap-raw")
+    const ch=supabase.channel("realtime-fcs-cap-raw-rawschedule")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_notifikasi"},fetchNotifAvailable)
