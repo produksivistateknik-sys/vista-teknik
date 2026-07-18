@@ -1,0 +1,61 @@
+2100               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+2101                 <thead>
+2102                   <tr>
+2103                     <th style={{...thS,minWidth:40,textAlign:"center"}}>No</th>
+2104                     <th style={{...thS,minWidth:130}}>Proyek</th>
+2105                     <th style={{...thS,minWidth:200}}>Nama Panel</th>
+2106                     <th style={{...thS,minWidth:60,textAlign:"center"}}>WP</th>
+2107                     <th style={{...thS,minWidth:80,textAlign:"center"}}>Prioritas</th>
+2108                     <th style={{...thS,minWidth:250}}>Komponen</th>
+2109                     <th style={{...thS,minWidth:160}}>Operator</th>
+2110                     <th style={{...thS,minWidth:110,textAlign:"center"}}>Status</th>
+2111                     <th style={{...thS,minWidth:120,textAlign:"center"}}>Aksi</th>
+2112                   </tr>
+2113                 </thead>
+2114                 <tbody>
+2115                   {tasks.flatMap((t,ti)=>{
+2116                     const dist=isDist(t);const rh=getRenharEntry(t);
+2117                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
+2118                     const cfg2=panelData?getEffCfg(panelData.tipe):null;
+2119                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+2120                     const isWiringTask=true; // semua proses pakai flow Rilis/Tarik per-komponen (operator pilih sendiri di Vista Pekerja)
+2121 
+2122                     if(isWiringTask){
+2123                       const ppk=rh?.pekerja_per_komponen||{};
+2124                       const released=rh?.komponen_released||[];
+2125                       return(t.komponen||[]).map((kode,ki)=>{
+2126                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
+2127                         const idxGlobal=ti*100+ki;
+2128                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
+2129                         const sudahRelease=released.includes(kode);
+2130                         const workersKode=(ppk[kode]||[]).map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+2131                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle"};
+2132                         return(
+2133                           <tr key={ti+"-"+kode}>
+2134                             <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
+2135                             <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
+2136                             <td style={{...td,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
+2137                             <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span></td>
+2138                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
+2139                             <td style={{...td}}>
+2140                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
+2141                             </td>
+2142                             <td style={{...td}}>
+2143                               {!sudahRelease?(
+2144                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
+2145                               ):workersKode.length>0?(
+2146                                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{workersKode.map((n:string)=>(<span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}</div>
+2147                               ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
+2148                             </td>
+2149                             <td style={{...td,textAlign:"center"}}>
+2150                               {sudahRelease?<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Dirilis</span>
+2151                                 :<span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⏳ Belum</span>}
+2152                             </td>
+2153                             <td style={{...td,textAlign:"center"}}>
+2154                               <Btn color={sudahRelease?"#dc2626":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>toggleReleaseKomponen(t,kode,sudahRelease)}>{sudahRelease?"↩️ Tarik":"📤 Rilis"}</Btn>
+2155                             </td>
+2156                           </tr>
+2157                         );
+2158                       });
+2159                     }
+2160 
