@@ -1474,7 +1474,7 @@ export async function generateAndSaveToRawSchedule(
 
     const panelIdsForCheck = panels.map((p: any) => p.id)
     const { data: existingCheck } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
-    if (existingCheck && existingCheck.length > 0 && !_generatedBy.startsWith('__force__')) {
+    if (existingCheck && existingCheck.length > 0 && !generatedBy.startsWith('__force__')) {
       return { success: false, count: 0, error: '__ALREADY_EXISTS__' }
     }
 
