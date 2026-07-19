@@ -9,7 +9,7 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
   const [selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
 
   const PROSES_LABEL:Record<string,string>={
-    POTONG:"Potong",BENDING:"Bending",STEL:"Stel",RENDAM:"Rendam",PAINTING:"Painting",
+    POTONG:"Potong",BENDING:"Bending",STEL:"Stel",FINISHING:"Finishing",RENDAM:"Rendam",PAINTING:"Painting",
     RAKIT:"Rakit","PASANG KOMPONEN":"Pasang Komponen",
     BUSBAR:"Busbar","WIRING CONTROL":"Wiring Control","WIRING POWER":"Wiring Power",
     "QC TEST":"QC Test",PACKING:"Packing",
@@ -114,7 +114,7 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
                 <tr style={{background:"#1e3a5f"}}>
                   <th style={{padding:"7px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,left:0,background:"#1e3a5f",minWidth:160,zIndex:1,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,fontWeight:600,borderRight:"1px solid rgba(255,255,255,.1)"}}>Komponen</th>
                   {ALL_PROSES.map((proses:string)=>(
-                    <th key={proses} style={{padding:"7px 10px",color:"#fff",minWidth:90,fontWeight:600,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,borderRight:"1px solid rgba(255,255,255,.1)"}}>{PROSES_LABEL[proses]}</th>
+                    <th key={proses} style={{padding:"7px 10px",color:"#fff",minWidth:90,fontWeight:600,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,borderRight:"1px solid rgba(255,255,255,.1)"}}>{PROSES_LABEL[proses]||proses}</th>
                   ))}
                 </tr>
               </thead>
