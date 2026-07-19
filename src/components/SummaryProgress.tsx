@@ -1,13 +1,13 @@
 import { useState } from 'react'
 import { woOverall, panelOverall, calcPanelProgress } from '../lib/panelHelpers'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
-import { PROSES_COLOR } from '../constants/panelTypes'
+import { PROSES_COLOR, ALL_PROSES } from '../constants/panelTypes'
 
 export function SummaryProgress({woData}:{woData:any[]}){
   const [search,setSearch]=useState("");
   const [statusFilter,setStatusFilter]=useState<string[]>([]);
 
-  const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+  const PROSES_LIST=ALL_PROSES;
 
   const filtered=woData.filter(w=>{
     const pct=woOverall(w);

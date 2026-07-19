@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { PANEL_TYPES, PROSES_COLOR, WP_COLOR } from '../constants/panelTypes'
+import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { calcPanelProgress, panelOverall, getBestProgress } from '../lib/panelHelpers'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
@@ -10,7 +10,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   const [panelFilter,setPanelFilter]=useState("semua");
   const [statusFilter,setStatusFilter]=useState<string[]>([]);
 
-  const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+  const PROSES_LIST=ALL_PROSES;
 
   const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
     ...p,
