@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Fragment } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment, lazy, Suspense } from 'react';
 import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
@@ -35,37 +35,30 @@ import {
 } from './lib/globalState'
 import { GCss } from './styles/globalCss'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
-import { MasterPekerja } from './components/MasterPekerja'
-import { LaporanQCView } from './components/LaporanQCView'
-import { TrackingPekerja } from './components/TrackingPekerja'
-import { RencanaHarian } from './components/RencanaHarian'
-import { ActivityLogView } from './components/ActivityLogView'
-import { KendalaInbox } from './components/KendalaInbox'
 import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
-import { KalenderTab } from './components/KalenderTab'
-import { Dashboard } from './components/Dashboard'
-import { TaskMonitoring } from './components/TaskMonitoring'
-import { SummaryProgress } from './components/SummaryProgress'
-import { DetailProgress } from './components/DetailProgress'
-import { RawSchedule } from './components/RawSchedule'
-import { ManajemenWO } from './components/ManajemenWO'
-import { MaintenancePageTab } from './components/MaintenancePageTab'
-import { RecycleBinTab } from './components/RecycleBinTab'
-import { InventarisWrapper } from './components/InventarisWrapper'
-import { StokMonitoringTab } from './components/StokMonitoringTab'
-import { KapasitasPekerjaanTab } from './components/KapasitasPekerjaanTab'
-import { MasterMesinTab } from './components/MasterMesinTab'
-import { MaintenanceTab } from './components/MaintenanceTab'
 import { GlobalSearch } from './components/GlobalSearch'
-import { ArsipTab } from './components/ArsipTab'
-import { FCSScheduleTab } from './components/FCSScheduleTab'
-import { ForumWO } from './components/ForumWO'
-import { TrackingKomponenAdmin } from './components/TrackingKomponenAdmin'
-import { MasterPekerjaInline } from './components/MasterPekerjaInline'
-import { SubBagianPasswordCard } from './components/SubBagianPasswordCard'
-import { MasterUserTab } from './components/MasterUserTab'
-import { SystemTab } from './components/SystemTab'
+
+const LaporanQCView = lazy(() => import('./components/LaporanQCView').then(m => ({ default: m.LaporanQCView })))
+const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
+const RencanaHarian = lazy(() => import('./components/RencanaHarian').then(m => ({ default: m.RencanaHarian })))
+const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
+const KendalaInbox = lazy(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
+const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
+const TaskMonitoring = lazy(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
+const SummaryProgress = lazy(() => import('./components/SummaryProgress').then(m => ({ default: m.SummaryProgress })))
+const DetailProgress = lazy(() => import('./components/DetailProgress').then(m => ({ default: m.DetailProgress })))
+const RawSchedule = lazy(() => import('./components/RawSchedule').then(m => ({ default: m.RawSchedule })))
+const ManajemenWO = lazy(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
+const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
+const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
+const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
+const FCSScheduleTab = lazy(() => import('./components/FCSScheduleTab').then(m => ({ default: m.FCSScheduleTab })))
+const ForumWO = lazy(() => import('./components/ForumWO').then(m => ({ default: m.ForumWO })))
+const TrackingKomponenAdmin = lazy(() => import('./components/TrackingKomponenAdmin').then(m => ({ default: m.TrackingKomponenAdmin })))
+const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
+
+const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
 export default function App(){
   const [page,setPage]=useState("landing");
@@ -704,24 +697,24 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   </div>
                 </div>
               )}
-              {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Dashboard woData={woData}/></div>}
-              {visitedTabs.includes("fcs")&&<div style={{display:tab==="fcs"?"block":"none"}}><FCSScheduleTab woData={woData} user={user}/></div>}
-              {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></div>}
-              {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><StokMonitoringTab user={user} activityLog={activityLog}/></div>}
-              {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><SummaryProgress woData={woData}/></div>}
-              {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></div>}
-              {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></div>}
-              {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><LaporanQCView woData={woData}/></div>}
-              {visitedTabs.includes("forum")&&<div style={{display:tab==="forum"?"block":"none"}}><ForumWO user={user}/></div>}
-              {visitedTabs.includes("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><TrackingKomponenAdmin/></div>}
-              {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><MaintenancePageTab user={user}/></div>}
-              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></div>}
-              {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><ActivityLogView activityLog={activityLog} user={user}/></div>}
-              {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></div>}
+              {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("fcs")&&<div style={{display:tab==="fcs"?"block":"none"}}><Suspense fallback={TabFallback}><FCSScheduleTab woData={woData} user={user}/></Suspense></div>}
+              {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></Suspense></div>}
+              {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
+              {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></Suspense></div>}
+              {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanQCView woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("forum")&&<div style={{display:tab==="forum"?"block":"none"}}><Suspense fallback={TabFallback}><ForumWO user={user}/></Suspense></div>}
+              {visitedTabs.includes("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingKomponenAdmin/></Suspense></div>}
+              {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
+              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
+              {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
+              {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>
         </div>
