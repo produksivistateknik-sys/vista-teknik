@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { KOMPONEN_PROSES_MAP } from '../App'
+import { KOMPONEN_PROSES_MAP } from '../constants/panelTypes'
 
 interface FCSProcessTime {
   kode_komponen: string
