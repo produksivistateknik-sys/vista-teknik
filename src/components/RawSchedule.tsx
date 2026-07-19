@@ -1054,7 +1054,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           {!capacityCollapsed&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
             {days.slice(0,7).map(d=>{
-              const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
+              const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","FINISHING","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
@@ -1995,14 +1995,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
               <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Jenis Pekerjaan ({overrideModal.proses.length} dipilih)</div>
               <div style={{display:"flex",gap:6}}>
-                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]})}
+                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:[...ALL_PROSES]})}
                   style={{fontSize:10,color:"#16a34a",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
                 <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:[]})}
                   style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
               </div>
             </div>
             <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
-              {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+              {ALL_PROSES.map(p=>{
                 const checked=overrideModal.proses.includes(p);
                 return(
                   <button key={p} type="button" onClick={()=>{
