@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
-import { PANEL_TYPES } from '../constants/panelTypes'
+import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant } from '../lib/panelHelpers'
 import { setGlobalProsesRelevan } from '../lib/globalState'
 import { Lbl, Inp, Sel, Btn } from './ui/Primitives'
@@ -283,7 +283,7 @@ export function KapasitasPekerjaanTab(){
   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
   const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
-  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5,7] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
+  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5,7] as number[],jenis_pekerjaan:[...ALL_PROSES] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
   const [rentangSaving,setRentangSaving]=useState(false);
   const [rentangResult,setRentangResult]=useState<{sukses:number;skip:number}|null>(null);
 
@@ -346,7 +346,6 @@ export function KapasitasPekerjaanTab(){
   const [search,setSearch]=useState("");
 
   const HARI_LABEL:any={1:"Sen",2:"Sel",3:"Rab",4:"Kam",5:"Jum",6:"Sab",7:"Min"};
-  const ALL_PROSES=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
   const ALL_TIPE=panelTypeList.length>0?panelTypeList.map((t:any)=>t.tipe_panel):["FS","F3B","WM_MS","WM_POLY"];
   const ALL_WP=["WP1","WP2","WP3","WP4","WP5","WP6"];
 
