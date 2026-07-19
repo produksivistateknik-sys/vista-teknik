@@ -167,11 +167,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     }
   };
   const isDist=(task)=>!!getRenharEntry(task);
-  const countKomponen=(list)=>list.reduce((s,t)=>s+(t.komponen||[]).length,0);
+  const countKomponen=(list)=>list.reduce((s,t)=>s+(t.komponen||[]).filter(k=>!k.startsWith("__wiring_")).length,0);
   const countReleased=(list)=>list.reduce((s,t)=>{
     const rh=getRenharEntry(t);
     const released=rh?.komponen_released||[];
-    return s+(t.komponen||[]).filter(k=>released.includes(k)).length;
+    return s+(t.komponen||[]).filter(k=>!k.startsWith("__wiring_")).filter(k=>released.includes(k)).length;
   },0);
   const distCount=countReleased(filteredTasks);
   const totalKompFiltered=countKomponen(filteredTasks);
@@ -266,7 +266,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     if(isWiringTask){
                       const ppk=rh?.pekerja_per_komponen||{};
                       const released=rh?.komponen_released||[];
-                      return(t.komponen||[]).map((kode,ki)=>{
+                      return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).map((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
