@@ -638,7 +638,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
                   let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
                   if(!res.success&&res.error==="__ALREADY_EXISTS__"){
-                    const lanjut=confirm("WO ini UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal NAMBAHIN jadwal baru (bukan ganti yang lama). Kalau kamu udah pernah generate sebelumnya, ini bisa bikin dobel.\n\nYakin mau lanjut?");
+                    const lanjut=confirm("WO ini UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP komponen yang udah lengkap terjadwal, dan cuma nambahin kekurangannya aja (top-up) - jadwal yang udah ada gak bakal dobel.\n\nYakin mau lanjut?");
                     if(lanjut){
                       res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname);
                     } else {

@@ -1529,6 +1529,26 @@ export async function generateAndSaveToRawSchedule(
       })
     })
 
+    // Qty yang sudah terjadwal sebelumnya per panel+proses+kode - biar generate ulang/force
+    // cuma nambahin kekurangannya (top-up), bukan qty penuh lagi (mencegah dobel).
+    const sudahTerjadwalQtyMap: Record<string, number> = {}
+    ;(existingRaw || []).forEach((row: any) => {
+      if (WIRING_LIST.includes(row.proses)) return
+      const panelRow = (panels as any[]).find((pp: any) => pp.id === row.panel_id)
+      if (!panelRow) return
+      const checklistPanel = panelRow.checklist || {}
+      const schedule = row.schedule || {}
+      Object.values(schedule).forEach((entries: any) => {
+        ;(entries as any[]).forEach((e: any) => {
+          ;(e.komponen || []).forEach((kode: string) => {
+            const qty = e.qtyPerKomponen?.[kode] ?? (checklistPanel[kode]?.qty || 0)
+            const key = row.panel_id + '|' + row.proses + '|' + kode
+            sudahTerjadwalQtyMap[key] = (sudahTerjadwalQtyMap[key] || 0) + qty
+          })
+        })
+      })
+    })
+
     let count = 0
     const scheduledOk = new Set<string>()
     const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES_LIST.filter((pr) => {
@@ -1585,7 +1605,13 @@ export async function generateAndSaveToRawSchedule(
           while (attempts < 21 && getKapasitas(cur) <= 0) { cur = addDaysStr(cur, 1); attempts++ }
 
           let sisaQty: Record<string, number> = {}
-          kodes.forEach((kode) => { sisaQty[kode] = checklist[kode]?.qty || 0 })
+          kodes.forEach((kode) => {
+            const totalQty = checklist[kode]?.qty || 0
+            const sudahQty = sudahTerjadwalQtyMap[panel.id + '|' + proses + '|' + kode] || 0
+            const sisa = Math.max(0, totalQty - sudahQty)
+            if (sisa > 0) sisaQty[kode] = sisa
+            else scheduledOk.add(panel.id + '|' + kode + '|' + proses)
+          })
 
           let dayAttempts = 0
           while (Object.keys(sisaQty).length > 0 && dayAttempts < 21) {
