@@ -6,7 +6,7 @@ import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PRIORITAS, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR,
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
-import { isKomponenRelevant, getBusbarKomponen } from '../lib/panelHelpers'
+import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode } from '../lib/panelHelpers'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 
@@ -817,11 +817,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     for(const r of toUpdate){ await updateRaw(r.id,{prioritas:val}); }
   };
 
-  const panelOpts=addForm.woId?(woData.find(w=>w.id===Number(addForm.woId))?.panels||[]).filter((p:any)=>{
+  const getMissingRelevantProses=(p:any):string[]=>{
     const existingProsesP=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
-    const syncedProsesP=p.synced_proses||[];
-    return syncedProsesP.some((pr:string)=>!existingProsesP.includes(pr));
-  }):[]; 
+    const activeKodes=Object.entries(p.checklist||{}).filter(([,v]:any)=>(v?.qty||0)>0).map(([k])=>k);
+    const relevantSet=new Set<string>();
+    activeKodes.forEach((kode:string)=>getRelevantProsesForKode(kode,p.tipe).forEach((pr:string)=>relevantSet.add(pr)));
+    return [...relevantSet].filter((pr:string)=>!existingProsesP.includes(pr));
+  };
+  const panelOpts=addForm.woId?(woData.find(w=>w.id===Number(addForm.woId))?.panels||[]).filter((p:any)=>getMissingRelevantProses(p).length>0):[];
   const [addLoading,setAddLoading]=useState(false);
   const submitAdd=async()=>{
     if(addLoading)return;
@@ -833,8 +836,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     for(const panelId of addForm.panelIds){
       const p=wo.panels.find(x=>x.id===panelId);
       if(!p)continue;
-      const existing=rawData.filter(r=>(r.panel_id||r.panelId)===p.id).map(r=>r.proses);
-      const toAdd=ALL_PROSES.filter(pr=>!existing.includes(pr));
+      const toAdd=getMissingRelevantProses(p);
       if(!toAdd.length)continue;
       for(const proses of toAdd){
         await createRaw({
@@ -2160,11 +2162,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             <div><Lbl>Work Order</Lbl>
               <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelId:""})}>
                 <option value="">-- Pilih WO --</option>
-                {woData.filter((w:any)=>(w.panels||[]).some((p:any)=>{
-                  const existingProsesW=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
-                  const syncedProsesW=p.synced_proses||[];
-                  return syncedProsesW.some((pr:string)=>!existingProsesW.includes(pr));
-                })).map((w:any)=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
+                {woData.filter((w:any)=>(w.panels||[]).some((p:any)=>getMissingRelevantProses(p).length>0)).map((w:any)=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
               </Sel>
             </div>
             <div><Lbl>Panel ({addForm.panelIds.length} dipilih)</Lbl>
