@@ -9,7 +9,6 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
-import { generateFCSSchedule, generateFCSWiring, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, generateAndSaveToRawSchedule } from './services/fcsService'
 
 import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PCT_STEPS, PCT_MANUAL, PRIORITAS,
@@ -53,8 +52,6 @@ const ManajemenWO = lazy(() => import('./components/ManajemenWO').then(m => ({ d
 const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
 const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
-const FCSScheduleTab = lazy(() => import('./components/FCSScheduleTab').then(m => ({ default: m.FCSScheduleTab })))
-const ForumWO = lazy(() => import('./components/ForumWO').then(m => ({ default: m.ForumWO })))
 const TrackingKomponenAdmin = lazy(() => import('./components/TrackingKomponenAdmin').then(m => ({ default: m.TrackingKomponenAdmin })))
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
 
@@ -132,25 +129,6 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala, refetch: refetchKendala } = useKendala()
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
-  const [forumUnreadCount,setForumUnreadCount]=useState(0);
-  useEffect(()=>{
-    const fetchForumUnread=async()=>{
-      const lastSeen=localStorage.getItem("vista_forum_last_seen")||"1970-01-01";
-      const{count}=await supabase.from("fcs_forum_post").select("*",{count:"exact",head:true}).gt("created_at",lastSeen);
-      setForumUnreadCount(count??0);
-    };
-    fetchForumUnread();
-    const ch=supabase.channel("realtime-forum-unread")
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_forum_post"},fetchForumUnread)
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-  },[]);
-  useEffect(()=>{
-    if(tab==="forum"){
-      localStorage.setItem("vista_forum_last_seen",new Date().toISOString());
-      setForumUnreadCount(0);
-    }
-  },[tab]);
   useEffect(() => {
     const fetchMaintAlert = async () => {
       const h3 = new Date(); h3.setDate(h3.getDate() + 3)
@@ -339,9 +317,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
-      ...(canWO?[{id:"fcs",label:"FCS Schedule",icon:"ti ti-timeline"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
-      {id:"forum",label:"Forum WO",icon:"ti ti-message-circle",badge:forumUnreadCount>0?forumUnreadCount:null},
       {id:"trackingkomponen",label:"Tracking Komponen",icon:"ti ti-package"},
     ]},
     {group:"SYSTEM",items:[
@@ -698,7 +674,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 </div>
               )}
               {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData}/></Suspense></div>}
-              {visitedTabs.includes("fcs")&&<div style={{display:tab==="fcs"?"block":"none"}}><Suspense fallback={TabFallback}><FCSScheduleTab woData={woData} user={user}/></Suspense></div>}
               {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
@@ -709,7 +684,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanQCView woData={woData}/></Suspense></div>}
-              {visitedTabs.includes("forum")&&<div style={{display:tab==="forum"?"block":"none"}}><Suspense fallback={TabFallback}><ForumWO user={user}/></Suspense></div>}
               {visitedTabs.includes("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingKomponenAdmin/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
