@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_CONFIG, OPERATOR_ROLES, PROSES_COLOR, WP_COLOR } from '../constants/panelTypes'
-import { TODAY, fmtDate } from '../lib/dateHelpers'
+import { fmtDate } from '../lib/dateHelpers'
 import { Modal, Btn } from './ui/Primitives'
 
 export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
@@ -14,12 +14,6 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   const [delId,setDelId]=useState<any>(null);
   const [timerData,setTimerData]=useState<any[]>([]);
   const [checkpointLogData,setCheckpointLogData]=useState<any[]>([]);
-  const [,setLiveTick]=useState(0);
-
-  useEffect(()=>{
-    const iv=setInterval(()=>setLiveTick(t=>t+1),30000);
-    return()=>clearInterval(iv);
-  },[]);
 
   useEffect(()=>{
     supabase.from("progress_checkpoint_log").select("*").then(({data})=>{
@@ -307,70 +301,6 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
           })}
         </div>
       </div>
-
-      {(()=>{
-        const activeTimers=timerData.filter((t:any)=>!t.selesai&&t.tanggal===TODAY);
-        if(activeTimers.length===0)return null;
-        const byPekerja:Record<number,any[]>={};
-        activeTimers.forEach((t:any)=>{
-          if(!byPekerja[t.pekerja_id])byPekerja[t.pekerja_id]=[];
-          byPekerja[t.pekerja_id].push(t);
-        });
-        const groups=Object.entries(byPekerja).map(([pkrId,tasks])=>({pkrId:Number(pkrId),tasks}));
-        return(
-          <div style={{marginBottom:12}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-              <span style={{width:8,height:8,borderRadius:99,background:"#dc2626",display:"inline-block"}}/>
-              <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Sedang Bekerja Sekarang</span>
-              <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,padding:"1px 9px",fontSize:10,fontWeight:700}}>{groups.length} orang</span>
-            </div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(200px,1fr))",gap:6}}>
-              {groups.map((g:any)=>{
-                const pkr=pekerja.find((p:any)=>p.id===g.pkrId);
-                const dc:any=pkr?(DIVISI_CONFIG as any)[pkr.divisi]||{}:{};
-                return(
-                  <div key={g.pkrId} style={{background:"#fff",border:"1px solid #f1f5f9",borderRadius:8,padding:"7px 9px"}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:4,paddingBottom:4,borderBottom:"1px solid #f1f5f9"}}>
-                      <span style={{width:5,height:5,borderRadius:99,background:dc.color||"#64748b",flexShrink:0}}/>
-                      <span style={{fontWeight:700,fontSize:11,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{pkr?.nama||"?"}</span>
-                      <span style={{marginLeft:"auto",fontSize:9,color:"#94a3b8",fontWeight:600}}>{g.tasks.length}x</span>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:5}}>
-                      {g.tasks.map((t:any)=>{
-                        const wo2=woData.find((w:any)=>(w.panels||[]).some((p:any)=>String(p.id)===String(t.panel_id)));
-                        const panel2=wo2?(wo2.panels||[]).find((p:any)=>String(p.id)===String(t.panel_id)):null;
-                        const cfg=panel2?getEffCfg(panel2.tipe):null;
-                        const namaKomp=t.kode_komponen&&t.kode_komponen.indexOf("__wiring_")===0
-                          ?"Wiring"
-                          :(cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===t.kode_komponen)?.nama||t.kode_komponen);
-                        const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(t.mulai).getTime())/60000));
-                        const jam=Math.floor(menitBerjalan/60);
-                        const menit=menitBerjalan%60;
-                        const durasiTxt=jam>0?(jam+"j"+menit+"m"):(menit+"m");
-                        return(
-                          <div key={t.id} style={{fontSize:10,paddingBottom:4,borderBottom:"1px solid #f8fafc"}}>
-                            <div style={{display:"flex",justifyContent:"space-between",gap:6}}>
-                              <span style={{fontWeight:600,color:"#1e293b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                                {panel2?.nama||t.panel_id}
-                              </span>
-                              <span style={{color:"#dc2626",fontWeight:700,whiteSpace:"nowrap",flexShrink:0}}>
-                                {durasiTxt}
-                              </span>
-                            </div>
-                            <div style={{color:"#94a3b8",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
-                              {wo2?.proyek||""} · {namaKomp}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
-      })()}
 
       {/* Tabel pekerja */}
       <div style={{overflowX:"auto" as const,borderRadius:10,border:"1px solid #e2e8f0",marginBottom:12}}>
