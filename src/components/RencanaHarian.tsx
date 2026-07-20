@@ -39,7 +39,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // Timer yang lagi aktif berjalan (belum di-Stop) - buat status "Sedang Dikerjakan" walau qty belum diisi
   useEffect(()=>{
     const fetchTimerAktif=async()=>{
-      const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null);
+      const hariIni=new Date().toISOString().slice(0,10);
+      const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null).eq("tanggal",hariIni);
       console.log("[timer-aktif] fetch selesai, jumlah aktif:",data?.length??0);
       setTimerAktifData(data??[]);
     };
