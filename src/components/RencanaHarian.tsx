@@ -40,12 +40,18 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   useEffect(()=>{
     const fetchTimerAktif=async()=>{
       const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null);
+      console.log("[timer-aktif] fetch selesai, jumlah aktif:",data?.length??0);
       setTimerAktifData(data??[]);
     };
     fetchTimerAktif();
     const ch=supabase.channel("realtime-timer-aktif-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimerAktif)
-      .subscribe();
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},(payload)=>{
+        console.log("[timer-aktif] event realtime diterima:",payload.eventType,payload.new||payload.old);
+        fetchTimerAktif();
+      })
+      .subscribe((status)=>{
+        console.log("[timer-aktif] status subscribe:",status);
+      });
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
