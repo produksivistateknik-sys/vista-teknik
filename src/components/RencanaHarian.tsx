@@ -17,6 +17,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [selPekerja,setSelPekerja]=useState([]);
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
+  const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
 
   useEffect(()=>{
     const fetchCap=async()=>{
@@ -34,6 +35,22 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
+
+  // Timer yang lagi aktif berjalan (belum di-Stop) - buat status "Sedang Dikerjakan" walau qty belum diisi
+  useEffect(()=>{
+    const fetchTimerAktif=async()=>{
+      const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null);
+      setTimerAktifData(data??[]);
+    };
+    fetchTimerAktif();
+    const ch=supabase.channel("realtime-timer-aktif-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimerAktif)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const getTimerAktif=(panelId:any,kode:string,proses:string)=>
+    timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
   const onDragStart=(e,rawId,fromDate,entries)=>{
     e.dataTransfer.effectAllowed="move";
     setDragInfo({rawId,fromDate,entries});
@@ -301,6 +318,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 }
                                 if(pctKerja>0){
                                   return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%)</span>;
+                                }
+                                const timerAktif=getTimerAktif(t.panelId,kode,t.proses);
+                                if(timerAktif){
+                                  const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/60000));
+                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({menitBerjalan} menit)</span>;
                                 }
                                 return <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
                               })()}
