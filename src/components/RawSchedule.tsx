@@ -1528,8 +1528,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         }
                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
                         const isSelMove=selectedForMove.some(x=>x.wp===e.wp&&x.kode===k);
-                        return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title="Klik buat pilih/batal pilih buat dipindah"
-                          style={{background:isSelMove?wc:wc+"18",color:isSelMove?"#fff":wc,border:`1px solid ${wc}33`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":"🔀 "}{item?.nama||k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
+                        const progressKomp=livePanelForCell?.checklist?.[k]?.progress?.[rawRow?.proses||""]||0;
+                        const isKompDone=progressKomp>=100;
+                        return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
+                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama||k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
                       })}
                     </div>
                   </div>
