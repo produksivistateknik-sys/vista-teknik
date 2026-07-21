@@ -322,8 +322,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 }
                                 const timerAktif=getTimerAktif(t.panelId,kode,t.proses);
                                 if(timerAktif){
-                                  const menitBerjalan=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/60000));
-                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({menitBerjalan} menit)</span>;
+                                  const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/1000));
+                                  const menitBerjalan=Math.floor(totalDetikAktif/60);
+                                  const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
+                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({labelDurasiAktif})</span>;
                                 }
                                 return <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
                               })()}

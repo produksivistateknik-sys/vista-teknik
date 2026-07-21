@@ -501,7 +501,7 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
                           const kode=t._komponenSpesifik;
                           const namaKomp=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
                           const durasiMenit=getDurasiKomponenSpesifik(selPekerja.id,t);
-                          const durasiLabel=durasiMenit>0?(Math.floor(durasiMenit/60)>0?`${Math.floor(durasiMenit/60)}j ${Math.round(durasiMenit%60)}m`:`${Math.round(durasiMenit)}m`):"—";
+                          const durasiLabel=durasiMenit>0?(Math.floor(durasiMenit/60)>0?`${Math.floor(durasiMenit/60)}j ${Math.round(durasiMenit%60)}m`:durasiMenit>=1?`${Math.round(durasiMenit)}m`:`${Math.round(durasiMenit*60)}d`):"—";
                           return(
                             <tr key={(t.id||ti)+"-"+kode}>
                               <td style={{...td2,color:"#94a3b8",fontWeight:600,textAlign:"center" as const}}>{ti+1}</td>
