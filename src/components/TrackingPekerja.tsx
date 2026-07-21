@@ -121,21 +121,33 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     return sesi.reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0);
   };
 
+  // Proses yang operatornya bisa di-assign lebih dari 1 orang bersamaan (lewat "Pilih Operator")
+  // dan kontribusinya perlu dibagi rata - pekerja_nama di log bisa berisi beberapa nama digabung
+  // koma (misal "Ari Purwanto, Anggun"). Proses lain (POTONG/STEL/WIRING/dll) tetap exact-match lama.
+  const PROSES_KONTRIBUSI_DIBAGI=["BENDING","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"];
+  const namesInEntry=(nama:string)=>(nama||"").split(',').map((s:string)=>s.trim()).filter(Boolean);
+
   const getKontribusiOperator=(panelId:any,kode:string,proses:string,tanggal:string,operatorNama:string)=>{
+    const bagiRata=PROSES_KONTRIBUSI_DIBAGI.includes(proses);
+    const cocok=(nama:string)=>bagiRata?namesInEntry(nama).includes(operatorNama):nama===operatorNama;
     const semuaLog=[...checkpointLogData]
       .filter((c:any)=>String(c.panel_id)===String(panelId)&&c.kode_komponen===kode&&c.proses===proses)
       .sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
-    const entriesOperatorHariIni=semuaLog.filter((c:any)=>c.pekerja_nama===operatorNama&&c.tanggal===tanggal);
+    const entriesOperatorHariIni=semuaLog.filter((c:any)=>cocok(c.pekerja_nama)&&c.tanggal===tanggal);
     if(entriesOperatorHariIni.length===0)return null;
-    const afterVal=Math.max(...entriesOperatorHariIni.map((c:any)=>Number(c.checkpoint)));
+    const afterEntry=entriesOperatorHariIni.reduce((max:any,c:any)=>Number(c.checkpoint)>Number(max.checkpoint)?c:max);
+    const afterVal=Number(afterEntry.checkpoint);
     const firstTs=entriesOperatorHariIni[0].ts;
     const priorEntries=semuaLog.filter((c:any)=>String(c.ts).localeCompare(String(firstTs))<0);
     const lastPrior=priorEntries.length>0?priorEntries[priorEntries.length-1]:null;
     const beforeVal=lastPrior?Number(lastPrior.checkpoint):0;
     const beforeOperator=lastPrior?lastPrior.pekerja_nama:null;
     const beforeTanggal=lastPrior?lastPrior.tanggal:null;
-    const isHandoff=!!(beforeOperator&&beforeOperator!==operatorNama&&beforeVal>0);
-    return{before:beforeVal,after:afterVal,kontribusi:Math.max(0,afterVal-beforeVal),beforeOperator,beforeTanggal,isHandoff};
+    const isHandoff=!!(beforeOperator&&!cocok(beforeOperator)&&beforeVal>0);
+    const kontribusiPenuh=Math.max(0,afterVal-beforeVal);
+    const jumlahOperatorEntry=bagiRata?(namesInEntry(afterEntry.pekerja_nama).length||1):1;
+    const kontribusi=jumlahOperatorEntry>1?Math.round(kontribusiPenuh/jumlahOperatorEntry):kontribusiPenuh;
+    return{before:beforeVal,after:afterVal,kontribusi,beforeOperator,beforeTanggal,isHandoff};
   };
 
   // Hitung progress per tugas dari checklist panel
