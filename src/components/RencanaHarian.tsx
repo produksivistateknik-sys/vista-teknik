@@ -240,7 +240,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           <div style={{fontSize:12,marginTop:4}}>Tambahkan jadwal di Raw Schedule terlebih dahulu</div>
         </div>
       )}
-      {Object.keys(byProses).map(proses=>{
+      {ALL_PROSES.filter(proses=>byProses[proses]).map(proses=>{
         const tasks=byProses[proses]||[];
         const pc=PROSES_COLOR[proses]||"#64748b";
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
