@@ -259,18 +259,18 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
               <span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>
             </div>
             <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
-                    <th style={{...thS,minWidth:40,textAlign:"center"}}>No</th>
-                    <th style={{...thS,minWidth:130}}>Proyek</th>
-                    <th style={{...thS,minWidth:200}}>Nama Panel</th>
-                    <th style={{...thS,minWidth:60,textAlign:"center"}}>WP</th>
-                    <th style={{...thS,minWidth:80,textAlign:"center"}}>Prioritas</th>
-                    <th style={{...thS,minWidth:250}}>Komponen</th>
-                    <th style={{...thS,minWidth:160}}>Operator</th>
-                    <th style={{...thS,minWidth:110,textAlign:"center"}}>Status</th>
-                    <th style={{...thS,minWidth:120,textAlign:"center"}}>Aksi</th>
+                    <th style={{...thS,width:40,textAlign:"center"}}>No</th>
+                    <th style={{...thS,width:130}}>Proyek</th>
+                    <th style={{...thS,width:200}}>Nama Panel</th>
+                    <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
+                    <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
+                    <th style={{...thS,width:250}}>Komponen</th>
+                    <th style={{...thS,width:160}}>Operator</th>
+                    <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+                    <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
