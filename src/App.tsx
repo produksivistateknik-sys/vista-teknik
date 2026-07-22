@@ -237,11 +237,21 @@ useEffect(() => {
   if (!pekerjaLoading) setPekerja(pekerjaList)
 }, [pekerjaList, pekerjaLoading])
 
+// renharListRef/rawListRef di-update SETIAP render (bukan cuma di dalam effect) - biar pas
+// timer debounce di bawah akhirnya nembak, dia selalu baca renharList/rawList PALING BARU,
+// bukan snapshot lama yang ke-capture closure dari effect run yang menjadwalkan timer itu.
+// Ini nutup race: aksi lokal (misal drag WP di Raw Schedule) yang optimistically update
+// rawData bisa ke-timpa balik ke versi lama kalau timer debounce nembak pakai closure basi.
+const renharListRef = useRef(renharList);
+renharListRef.current = renharList;
+const rawListRef = useRef(rawList);
+rawListRef.current = rawList;
+
 const renharSyncTimerRef = useRef<any>(null);
 useEffect(() => {
   if (!renharLoading) {
     if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
-    renharSyncTimerRef.current = setTimeout(() => { setRenhar(renharList); }, 1200);
+    renharSyncTimerRef.current = setTimeout(() => { setRenhar(renharListRef.current); }, 1200);
   }
   return () => { if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current); };
 }, [renharList, renharLoading])
@@ -250,7 +260,7 @@ const rawSyncTimerRef = useRef<any>(null);
 useEffect(() => {
   if (!rawLoading) {
     if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current);
-    rawSyncTimerRef.current = setTimeout(() => { setRawData(rawList); }, 1200);
+    rawSyncTimerRef.current = setTimeout(() => { setRawData(rawListRef.current); }, 1200);
   }
   return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
