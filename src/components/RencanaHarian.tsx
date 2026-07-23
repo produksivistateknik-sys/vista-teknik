@@ -314,11 +314,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                   return <span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span>;
                                 }
                                 const pctKerja=panelData?.checklist?.[kode]?.progress?.[t.proses]||0;
+                                // BUSBAR: tambahin label tahap aktif (Fabrikasi/Plating/Heat-Shrink/Pasang)
+                                // kalau datanya ada - proses lain gak punya field ini jadi tetap tampil polos.
+                                const busbarTahapAktif=t.proses==="BUSBAR"?panelData?.checklist?.[kode]?.busbarTahap?.tahapAktif:null;
+                                const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
+                                const labelTahap=busbarTahapAktif&&BUSBAR_TAHAP_LABEL[busbarTahapAktif]?` · ${BUSBAR_TAHAP_LABEL[busbarTahapAktif]}`:"";
                                 if(pctKerja>=100){
                                   return <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
                                 }
                                 if(pctKerja>0){
-                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%)</span>;
+                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
                                 }
                                 const timerAktif=getTimerAktif(t.panelId,kode,t.proses);
                                 if(timerAktif){
