@@ -1384,14 +1384,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
                                   const digeserKeBesok=kodeDigeserKeBesok.has(kode);
                                   return(
-                                    <div key={entry.wp+kode}
-                                      onClick={sudahSelesaiKomp?(e:any)=>e.stopPropagation():undefined}
-                                      title={sudahSelesaiKomp?"Sudah selesai - terkunci, gak bisa diklik/diedit dan gak ikut kebawa kalau komponen lain di WP ini digeser":entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""}
-                                      style={{display:"inline-flex",alignItems:"center",gap:3,background:sudahSelesaiKomp?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:sudahSelesaiKomp?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${sudahSelesaiKomp?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",cursor:sudahSelesaiKomp?"not-allowed":undefined}}>
-                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900,color:"#16a34a"}}>✓</span>}
-                                      {!sudahSelesaiKomp&&entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
-                                      {!sudahSelesaiKomp&&digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
-                                      {!sudahSelesaiKomp&&isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
+                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:sudahSelesaiKomp?0.5:1}}>
+                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
+                                      {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
+                                      {digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
+                                      {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                 </div>
@@ -1404,18 +1401,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
-                                const semuaSelesai=status==="finish";
-                                const statusStyle=semuaSelesai?{background:"#f1f5f9",border:"1px solid #e2e8f0"}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
+                                const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
+                                const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
                                 const adaDigeserKeBesok=(e.komponen||[]).some((k:string)=>kodeDigeserKeBesok.has(k));
-                                return(<div key={e.wp}
-                                  onClick={semuaSelesai?(ev:any)=>ev.stopPropagation():undefined}
-                                  title={semuaSelesai?"Semua komponen di WP ini sudah selesai - terkunci, gak bisa diklik/diedit dan gak ikut kebawa kalau ada yang digeser":e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":adaDigeserKeBesok?"Sebagian belum selesai - otomatis digeser ke "+addDays(d,1):""}
-                                  style={{...statusStyle,color:semuaSelesai?"#94a3b8":"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2,cursor:semuaSelesai?"not-allowed":undefined}}>
-                                  {semuaSelesai&&<span style={{fontSize:9,fontWeight:900,color:"#16a34a"}}>✓</span>}
-                                  {!semuaSelesai&&e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
-                                  {!semuaSelesai&&adaDigeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
-                                  {!semuaSelesai&&status==="on_progress"&&<span style={{fontSize:9}}>●</span>}
-                                  {e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} title={e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":adaDigeserKeBesok?"Sebagian belum selesai - otomatis digeser ke "+addDays(d,1):""} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}{adaDigeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                             )
