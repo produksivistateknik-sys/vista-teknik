@@ -29,8 +29,9 @@ import {
   pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang,
 } from './lib/dateHelpers'
 import {
-  GLOBAL_DIRTY_PANEL_IDS,
+  GLOBAL_DIRTY_PANEL_IDS, GLOBAL_DIRTY_RENHAR_IDS, GLOBAL_DIRTY_RAW_IDS,
   setGlobalProsesRelevan, setGlobalLivePanelTypes, setGlobalDirtyPanelIds, uid,
+  markRenharDirty, markRawDirty,
 } from './lib/globalState'
 import { GCss } from './styles/globalCss'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
@@ -251,7 +252,20 @@ const renharSyncTimerRef = useRef<any>(null);
 useEffect(() => {
   if (!renharLoading) {
     if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
-    renharSyncTimerRef.current = setTimeout(() => { setRenhar(renharListRef.current); }, 1200);
+    renharSyncTimerRef.current = setTimeout(() => {
+      if(GLOBAL_DIRTY_RENHAR_IDS.size===0){
+        setRenhar(renharListRef.current);
+        return;
+      }
+      // Row yang lagi dirty (baru aja ditulis lokal, misal abis klik Rilis) dipertahankan versi
+      // lokalnya - JANGAN ketimpa snapshot renharList yang mungkin belum nyusul perubahannya.
+      setRenhar((prev:any[])=>{
+        const prevMap:Record<string,any>={};
+        prev.forEach((r:any)=>{prevMap[String(r.id)]=r;});
+        return renharListRef.current.map((r:any)=>
+          GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&prevMap[String(r.id)]?prevMap[String(r.id)]:r);
+      });
+    }, 1200);
   }
   return () => { if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current); };
 }, [renharList, renharLoading])
@@ -260,7 +274,18 @@ const rawSyncTimerRef = useRef<any>(null);
 useEffect(() => {
   if (!rawLoading) {
     if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current);
-    rawSyncTimerRef.current = setTimeout(() => { setRawData(rawListRef.current); }, 1200);
+    rawSyncTimerRef.current = setTimeout(() => {
+      if(GLOBAL_DIRTY_RAW_IDS.size===0){
+        setRawData(rawListRef.current);
+        return;
+      }
+      setRawData((prev:any[])=>{
+        const prevMap:Record<string,any>={};
+        prev.forEach((r:any)=>{prevMap[String(r.id)]=r;});
+        return rawListRef.current.map((r:any)=>
+          GLOBAL_DIRTY_RAW_IDS.has(String(r.id))&&prevMap[String(r.id)]?prevMap[String(r.id)]:r);
+      });
+    }, 1200);
   }
   return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
@@ -323,6 +348,7 @@ const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number
     const scheduleBaru={...(row.schedule||{})};
     scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
     await updateRaw(row.id,{schedule:scheduleBaru});
+    markRawDirty(row.id);
     setRawData((prev:any)=>prev.map((r:any)=>r.id===row.id?{...r,schedule:scheduleBaru}:r));
     // Sengaja TIDAK menyentuh renhar sama sekali di sini - status rilis di hariTarget harus
     // selalu mulai dari "Belum Dirilis", walau kode ini sudah pernah dirilis di hariSumber.

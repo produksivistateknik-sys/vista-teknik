@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate } from '../lib/panelHelpers'
+import { markRenharDirty } from '../lib/globalState'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
@@ -164,6 +165,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const releasedLama=existing.komponen_released||[];
         const releasedBaru=sedangDirilis?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
         await updateRenhar(existing.id,{komponen_released:releasedBaru});
+        markRenharDirty(existing.id);
         setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
       } else {
         const result=await createRenhar({
@@ -172,7 +174,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
           tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
         });
-        if(result?.success&&result.data){setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
       }
     });
   };
@@ -182,6 +184,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     await withRenharQueue(task,async(existing)=>{
       if(existing){
         await updateRenhar(existing.id,{pekerja:selPekerja});
+        markRenharDirty(existing.id);
         setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r):[...prev,{...existing,pekerja:selPekerja}]);
       } else {
         const result=await createRenhar({
@@ -190,7 +193,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
-        if(result?.success&&result.data){setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
       }
     });
     if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
@@ -206,6 +209,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const releasedBaru=[...new Set([...releasedLama,...allKode])];
           if(releasedBaru.length===releasedLama.length)return;
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
+          markRenharDirty(existing.id);
           setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
         } else {
           const result=await createRenhar({
@@ -214,7 +218,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
           });
-          if(result?.success&&result.data){setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+          if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
         }
       });
     }

@@ -7,6 +7,7 @@ import {
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
 import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 
@@ -64,6 +65,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
     }
     schedule[toDate]=toEntries;
+    markRawDirty(rawId);
     setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule}:r));
     await supabase.from("raw_schedule").update({schedule}).eq("id",rawId);
     setMoveKomponenState(null);
@@ -402,6 +404,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       newSchedule[date]=[{wp:rowM.proses,komponen:["MARKED"]}];
     }
     await updateRaw(rowM.id,{schedule:newSchedule});
+    markRawDirty(rawId);
     setRawData((prev:any)=>prev.map((r:any)=>r.id===rawId?{...r,schedule:newSchedule}:r));
   };
   // PROSES yang cuma penanda tanggal (bukan per-komponen) - klik cell langsung toggle, gak ada modal, gak masuk renhar
@@ -499,6 +502,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     for(const[rowId,data] of Object.entries(batchUpdates)){
       const id=Number(rowId);
+      markRawDirty(id);
       setRawData((prev:any[])=>prev.map(r=>r.id===id?{...r,...data}:r));
       await updateRaw(id,data);
     }
@@ -548,6 +552,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     for(const[rowId,data] of Object.entries(batchUpdates)){
       const id=Number(rowId);
+      markRawDirty(id);
       setRawData((prev:any[])=>prev.map(r=>r.id===id?{...r,...data}:r));
       await updateRaw(id,data);
     }
@@ -613,6 +618,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const newKompBersih=(newKomp||[]).filter((k:string)=>!k.startsWith("__wiring_"));
     const existing=renhar.find(r=>(r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date);
     if(existing){
+      markRenharDirty(existing.id);
       await updateRenhar(existing.id,{komponen:newKompBersih});
       if(refetchRenhar) await refetchRenhar();
     } else {
@@ -660,6 +666,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         schedule[tgl]=[...existing,{wp:modalWp,komponen:newKomp}];
       }
     }
+    markRawDirty(cellModal.rawId);
     setRawData((prev:any[])=>prev.map((r:any)=>r.id===cellModal.rawId?{...r,schedule}:r));
     await supabase.from("raw_schedule").update({schedule}).eq("id",cellModal.rawId);
     setCellModal(null);
@@ -756,6 +763,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     let oldKomp:string[]=[];
     let isEdit=false;
     const isProsesOrangRow=prosesCek&&PROSES_ORANG_RAW.includes(prosesCek);
+    markRawDirty(cellModal.rawId);
     setRawData(prev=>prev.map(r=>{
       if(r.id!==cellModal.rawId)return r;
       const newSch={...r.schedule};
@@ -823,6 +831,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(!updated.length) delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
     const updatedRow={...currentRow,schedule:newSch};
     // Update state dan Supabase
+    markRawDirty(cellModal.rawId);
     setRawData(prev=>prev.map(r=>r.id===cellModal.rawId?updatedRow:r));
     await updateRaw(cellModal.rawId,{schedule:newSch});
     syncRenharDel(cellModal.rawId,cellModal.date,wp);
@@ -834,6 +843,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(!dragMode)return;
     const{rawId,fromDate,entries,toDate}=dragMode;
     let updatedRow=null;
+    markRawDirty(rawId);
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       const newSch={...r.schedule};
@@ -875,12 +885,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         if(komponenPindah.length===0)continue;
         if(komponenTinggal.length===0){
           // Semua komponen di renhar row ini ikut pindah - cukup update tanggalnya, gak perlu row baru.
+          markRenharDirty(r.id);
           await updateRenhar(r.id,{tanggal:toDate,komponen:komponenPindah});
           setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
         } else {
           // Sebagian komponennya (yang gak ikut ter-drag, misal udah selesai) TETAP tinggal
           // di row+tanggal lama; yang ikut pindah dibikinin row baru di tanggal tujuan biar
           // status rilis/operator buat komponen itu ikut kebawa (bukan malah hilang).
+          markRenharDirty(r.id);
           await updateRenhar(r.id,{komponen:komponenTinggal});
           setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,komponen:komponenTinggal}:x));
           const releasedLama=r.komponen_released||[];
@@ -893,7 +905,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             komponen_released:komponenPindah.filter((k:string)=>releasedLama.includes(k)),
             pekerja_per_komponen:Object.fromEntries(komponenPindah.filter((k:string)=>ppkLama[k]).map((k:string)=>[k,ppkLama[k]])),
           });
-          if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
+          if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);}
         }
       }
     }
@@ -918,7 +930,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const updatePrioritasPanel=async(panelId,val)=>{
     const toUpdate=rawData.filter(r=>(r.panel_id||r.panelId)===panelId);
+    toUpdate.forEach(r=>markRawDirty(r.id));
     setRawData(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
+    renhar.filter((r:any)=>(r.panel_id||r.panelId)===panelId).forEach((r:any)=>markRenharDirty(r.id));
     setRenhar(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
     for(const r of toUpdate){ await updateRaw(r.id,{prioritas:val}); }
   };
@@ -994,6 +1008,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(!assignModal)return;
     const{task,divisi,existing}=assignModal;
     if(existing){
+      markRenharDirty(existing.id);
       await updateRenhar(existing.id,{pekerja:selPekerja});
       setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
     } else {
@@ -1003,7 +1018,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:selPekerja,
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
     }
     if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
     setAssignModal(null);setSelPekerja([]);
@@ -1019,7 +1034,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
         tanggal:task.tanggal,divisi,pekerja:[],
       });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
+      if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
     }
   };
 
@@ -1818,6 +1833,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               // Save busbar schedule saat klik Selesai
               if(rawRow?.proses==="BUSBAR"){
                 const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
+                markRawDirty(cellModal.rawId);
                 setRawData(prev=>prev.map(r=>{
                   if(r.id!==cellModal.rawId)return r;
                   return{...r,busbar_schedule:newBusbarSch};
@@ -1846,13 +1862,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     prioritas:rawRow?.prioritas||"Sedang",
                   };
                   if(existRenhar){
+                    markRenharDirty(existRenhar.id);
                     await updateRenhar(existRenhar.id,{...renharPayload});
                     setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
                   } else {
                     console.log('Creating renhar busbar:', renharPayload);
                     const res=await createRenhar(renharPayload);
                     console.log('Renhar result:', res);
-                    if(res?.success&&res?.data) setRenhar((prev:any[])=>[...prev,res.data]);
+                    if(res?.success&&res?.data){markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);}
                   }
                 } else {
                   // Hapus renhar busbar jika kosong
