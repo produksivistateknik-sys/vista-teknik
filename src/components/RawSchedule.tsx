@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance } from '../services/fcsService'
@@ -302,6 +302,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   };
 
   const onDragStart=(e,rawId,fromDate,entries)=>{
+    // entries di sini udah difilter (lewat getEntriesTanpaSelesai) buang komponen yang udah
+    // 100% - kalau abis difilter kosong berarti SEMUA komponen di cell ini udah selesai,
+    // gak ada yang perlu/boleh digeser. Batalkan drag-nya sama sekali.
+    if(entries.length===0){e.preventDefault();return;}
     e.dataTransfer.effectAllowed="move";
     setDragInfo({rawId,fromDate,entries});
   };
@@ -322,7 +326,50 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setDragInfo(null);
   };
 
-  const days=useMemo(()=>Array.from({length:30},(_,i)=>addDays(weekStart,i)),[weekStart]);
+  // dragInfo cuma di-clear di onDrop - kalau drag DIBATALKAN (dilepas di luar cell manapun,
+  // atau kesela interaksi lain kayak buka context menu klik-kanan di tengah proses drag),
+  // onDrop gak pernah kepanggil dan dragInfo jadi nyangkut/basi. Drag/drop native BERIKUTNYA
+  // (bahkan yang gak disengaja) bisa kepicu pakai dragInfo LAMA yang salah - efeknya keliatan
+  // kayak komponen "numpuk"/pindah ke tempat yang gak diminta. onDragEnd jamin dragInfo selalu
+  // ke-reset begitu gesture drag berakhir, sukses ataupun dibatalkan.
+  const onDragEnd=()=>{
+    setDragInfo(null);
+    setDragOverCell(null);
+  };
+
+  // Komponen yang progress-nya udah 100% harus "terkunci di tempatnya" - gak boleh ikut
+  // kebawa drag walau komponen LAIN di WP/cell yang sama lagi digeser. Buang kode yang udah
+  // selesai dari tiap entry (token __wiring_ dibiarin, itu metadata bobot bukan komponen
+  // asli); entry yang abis difilter kosong (semua komponennya udah selesai) dibuang total.
+  const getEntriesTanpaSelesai=(row:any,entries:any[])=>{
+    const panelId=row.panel_id||row.panelId;
+    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>p.id===panelId);
+    if(!panelData)return entries;
+    return entries.map((e:any)=>{
+      const kodeAsli=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
+      const kodeBelumSelesai=kodeAsli.filter((kode:string)=>{
+        const cl=panelData.checklist?.[kode];
+        return(cl?.progress?.[row.proses]||0)<100;
+      });
+      if(kodeBelumSelesai.length===0)return null;
+      const markerTokens=(e.komponen||[]).filter((k:string)=>k.startsWith("__wiring_"));
+      return{...e,komponen:[...markerTokens,...kodeBelumSelesai]};
+    }).filter(Boolean);
+  };
+
+  // Render juga HARI_SEBELUM_WEEKSTART hari SEBELUM weekStart (bukan cuma maju), biar scroll
+  // mouse/trackpad ke kiri langsung nemu riwayat tanpa harus klik "‹ Minggu Lalu" dulu -
+  // tombolnya sendiri sebenernya udah bisa mundur tanpa batas, cuma window render-nya yang
+  // sebelumnya cuma maju bikin serasa "mentok" begitu discroll manual sampai ujung kiri.
+  const HARI_SEBELUM_WEEKSTART=14;
+  const LEBAR_KOLOM_TANGGAL=120;
+  const tableScrollRef=useRef<HTMLDivElement>(null);
+  const days=useMemo(()=>Array.from({length:44},(_,i)=>addDays(weekStart,i-HARI_SEBELUM_WEEKSTART)),[weekStart]);
+  useEffect(()=>{
+    // Posisikan scroll persis di kolom weekStart (bukan di ujung kiri window yang sekarang
+    // mundur 14 hari) - biar tampilan awal/abis klik Minggu Lalu-Depan tetap sama kayak dulu.
+    if(tableScrollRef.current)tableScrollRef.current.scrollLeft=HARI_SEBELUM_WEEKSTART*LEBAR_KOLOM_TANGGAL;
+  },[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
 
@@ -790,7 +837,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       const newSch={...r.schedule};
-      if(mode==="move")delete newSch[fromDate];
+      if(mode==="move"){
+        // Jangan hapus fromDate total - kode yang gak ikut ter-drag (misal udah selesai,
+        // sudah difilter keluar dari `entries` sejak onDragStart) harus TETAP di tempatnya.
+        const sisaDiAsal=(r.schedule?.[fromDate]||[]).map((orig:any)=>{
+          const dragged=entries.find((e:any)=>e.wp===orig.wp);
+          if(!dragged)return orig;
+          const komponenSisa=(orig.komponen||[]).filter((k:string)=>!dragged.komponen.includes(k));
+          return komponenSisa.length>0?{...orig,komponen:komponenSisa}:null;
+        }).filter(Boolean);
+        if(sisaDiAsal.length>0)newSch[fromDate]=sisaDiAsal;else delete newSch[fromDate];
+      }
       const existing=newSch[toDate]||[];
       const merged=[...existing];
       entries.forEach(e=>{
@@ -809,15 +866,35 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
       // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
       const renharUntukDipindah=renhar.filter((r:any)=>(r.raw_id||r.rawId)===rawId&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
-      setRenhar(prev=>prev.map((r:any)=>{
-        const match=renharUntukDipindah.find((x:any)=>x.id===r.id);
-        if(!match)return r;
-        const entry=entries.find((e:any)=>e.wp===r.wp);
-        return{...r,tanggal:toDate,komponen:entry.komponen};
-      }));
       for(const r of renharUntukDipindah){
         const entry=entries.find((e:any)=>e.wp===r.wp);
-        if(entry)await updateRenhar(r.id,{tanggal:toDate,komponen:entry.komponen});
+        if(!entry)continue;
+        const komponenLama=r.komponen||[];
+        const komponenPindah=komponenLama.filter((k:string)=>entry.komponen.includes(k));
+        const komponenTinggal=komponenLama.filter((k:string)=>!entry.komponen.includes(k));
+        if(komponenPindah.length===0)continue;
+        if(komponenTinggal.length===0){
+          // Semua komponen di renhar row ini ikut pindah - cukup update tanggalnya, gak perlu row baru.
+          await updateRenhar(r.id,{tanggal:toDate,komponen:komponenPindah});
+          setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
+        } else {
+          // Sebagian komponennya (yang gak ikut ter-drag, misal udah selesai) TETAP tinggal
+          // di row+tanggal lama; yang ikut pindah dibikinin row baru di tanggal tujuan biar
+          // status rilis/operator buat komponen itu ikut kebawa (bukan malah hilang).
+          await updateRenhar(r.id,{komponen:komponenTinggal});
+          setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,komponen:komponenTinggal}:x));
+          const releasedLama=r.komponen_released||[];
+          const ppkLama=r.pekerja_per_komponen||{};
+          const result=await createRenhar({
+            raw_id:rawId,wo_id:r.wo_id,panel_id:r.panel_id,
+            proyek:r.proyek,panel:r.panel,proses:r.proses,
+            prioritas:r.prioritas||"Sedang",wp:r.wp,komponen:komponenPindah,
+            tanggal:toDate,pekerja:r.pekerja||[],
+            komponen_released:komponenPindah.filter((k:string)=>releasedLama.includes(k)),
+            pekerja_per_komponen:Object.fromEntries(komponenPindah.filter((k:string)=>ppkLama[k]).map((k:string)=>[k,ppkLama[k]])),
+          });
+          if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
+        }
       }
     }
     setDragMode(null);setDragInfo(null);
@@ -1163,7 +1240,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         </div>
       )}
 
-      <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
+      <div ref={tableScrollRef} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
           <thead style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
@@ -1295,7 +1372,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             PROSES_ORANG_RAW.includes(row.proses)?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
                                 onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
-                                draggable={true} onDragStart={e=>onDragStart(e,row.id,d,entries)}
+                                draggable={true} onDragStart={e=>onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries))} onDragEnd={onDragEnd}
                                 style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:"grab"}}>
                                 {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
                                     if(kode.startsWith("__wiring_"))return null;
@@ -1303,13 +1380,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
                                   const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
+                                  const sudahSelesaiKomp=progressUntukTelat>=100;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
                                   const digeserKeBesok=kodeDigeserKeBesok.has(kode);
                                   return(
-                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
-                                      {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
-                                      {digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
-                                      {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
+                                    <div key={entry.wp+kode} title={sudahSelesaiKomp?"Sudah selesai - gak ikut kebawa kalau komponen lain di WP ini digeser":entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:sudahSelesaiKomp?"#f0fdf4":isTelat?"#fef2f2":wc+"22",color:sudahSelesaiKomp?"#16a34a":isTelat?"#dc2626":wc,border:`1px solid ${sudahSelesaiKomp?"#bbf7d0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:sudahSelesaiKomp?0.7:1}}>
+                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
+                                      {!sudahSelesaiKomp&&entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
+                                      {!sudahSelesaiKomp&&digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
+                                      {!sudahSelesaiKomp&&isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                 </div>
@@ -1317,7 +1396,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 }))}
                               </div>
                             ):(
-                            <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,entries);}}
+                            <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
