@@ -1506,6 +1506,11 @@ export async function generateAndSaveToRawSchedule(
 
     const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
     const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
+    // QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - jangan
+    // digantungkan ke mapping bom_proses_relevan per kode komponen (komponen/tipe_panel baru
+    // yang belum di-setup lewat wizard proses-relevan bakal diam-diam gak pernah dapet baris
+    // QC TEST/PACKING kalau digantungkan ke situ - ini akar bug yang kejadian di Magonia Lombok).
+    const PROSES_TANPA_MAPPING_KOMPONEN = ["QC TEST","PACKING"]
 
     const addDaysStr = (date: string, n: number) => {
       const d = new Date(date); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10)
@@ -1567,6 +1572,7 @@ export async function generateAndSaveToRawSchedule(
     let count = 0
     const scheduledOk = new Set<string>()
     const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES_LIST.filter((pr) => {
+      if (PROSES_TANPA_MAPPING_KOMPONEN.includes(pr)) return true
       const mapKey = kode + '|' + tipe
       if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + tipe + '|' + pr)
       return false
@@ -1585,7 +1591,7 @@ export async function generateAndSaveToRawSchedule(
       if (activeKodes.length === 0) continue
 
       for (const prosesSkeleton of ALL_PROSES_LIST) {
-        const adaRelevan = activeKodes.some((kode) => {
+        const adaRelevan = PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) || activeKodes.some((kode) => {
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
           return false
@@ -1596,11 +1602,11 @@ export async function generateAndSaveToRawSchedule(
       for (const proses of ALL_PROSES_LIST) {
         if (WIRING_LIST.includes(proses)) continue
 
-        const relevantKodes = activeKodes.filter((kode) => {
+        const relevantKodes = (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses) ? activeKodes : activeKodes.filter((kode) => {
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + proses)
           return false
-        }).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
+        })).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
         if (relevantKodes.length === 0) continue
 
         const wpGroups: Record<string, string[]> = {}

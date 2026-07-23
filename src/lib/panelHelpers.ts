@@ -5,15 +5,24 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
   return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
 };
 
+// QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - jangan
+// digantungkan ke mapping bom_proses_relevan/KOMPONEN_PROSES_MAP per kode komponen. Kalau
+// digantungkan ke situ, komponen/tipe_panel baru yang belum di-setup lewat wizard proses-relevan
+// bakal diam-diam gak pernah dapet baris QC TEST/PACKING (ini persis bug yang kejadian di
+// proyek Magonia Lombok - gak nongol sama sekali, baik baris kosong maupun terjadwal).
+export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
+
 export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
   if(prosesMaybe===undefined){
     const proses=tipeOrProses;
+    if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) return true;
     const relevanProses=KOMPONEN_PROSES_MAP[kode];
     if(!relevanProses) return true;
     return relevanProses.includes(proses);
   }
   const tipe=tipeOrProses;
   const proses=prosesMaybe;
+  if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) return true;
   const mapKey=kode+"|"+tipe;
   if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
     return GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+proses);
@@ -25,10 +34,10 @@ export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:
 
 export function getRelevantProsesForKode(kode:string,tipe:string):string[]{
   const mapKey=kode+"|"+tipe;
-  if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
-    return ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr));
-  }
-  return KOMPONEN_PROSES_MAP[kode]||[];
+  const base=GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)
+    ? ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr))
+    : (KOMPONEN_PROSES_MAP[kode]||[]);
+  return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
 }
 
 export function getEffCfgGlobal(tipe:string){
