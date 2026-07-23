@@ -5,8 +5,7 @@ import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekaran
 import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
-export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes,geserSatuTanggal}:any){
-  const [geserLoading,setGeserLoading]=useState(false);
+export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -249,20 +248,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           {totalKompFiltered>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{totalKompFiltered} dirilis</span>}
           {!allDist&&totalKompFiltered>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>📤 Rilis Semua</Btn>}
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
-          {geserSatuTanggal&&(
-            <Btn outline color="#c2410c" style={{fontSize:11,padding:"6px 12px"}} disabled={geserLoading}
-              title={"Cek komponen yang belum selesai di "+fmtDateFull(selDate)+" lalu geser ke "+fmtDateFull(addDays(selDate,1))+" (buat testing fitur auto-geser, aman diklik berkali-kali - idempotent)"}
-              onClick={async()=>{
-                setGeserLoading(true);
-                const jumlah=await geserSatuTanggal(selDate,addDays(selDate,1));
-                setGeserLoading(false);
-                alert(jumlah>0
-                  ?`✅ ${jumlah} komponen belum selesai digeser dari ${fmtShort(selDate)} ke ${fmtShort(addDays(selDate,1))}.`
-                  :`Gak ada komponen yang perlu digeser dari ${fmtShort(selDate)} (semua sudah 100%, atau sudah pernah digeser sebelumnya).`);
-              }}>
-              {geserLoading?"⏳ Mengecek...":"🔁 Cek & Geser (test)"}
-            </Btn>
-          )}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
