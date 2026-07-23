@@ -37,7 +37,7 @@ export function STitle({children,style={}}){
 export function Modal({children,onClose,title,width=480}){
   return(
     <div style={{position:"fixed",inset:0,background:"#00000060",
-      zIndex:1000,overflowY:"auto"}}>
+      zIndex:10500,overflowY:"auto"}}>
       <div style={{background:"#fff",borderRadius:16,width:`min(${width}px,96%)`,
         boxShadow:"0 20px 60px #00000030",margin:"80px auto 40px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
