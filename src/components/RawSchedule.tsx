@@ -803,12 +803,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       return updatedRow;
     }));
     if(mode==="move"){
-      setRenhar(prev=>prev.map(r=>{
-        if((r.raw_id||r.rawId)!==rawId||r.tanggal!==fromDate)return r;
-        const entry=entries.find(e=>e.wp===r.wp);
-        if(!entry)return r;
+      // Renhar yang udah pernah didistribusi/dirilis buat kombinasi ini perlu IKUT PINDAH
+      // tanggalnya di database, bukan cuma di state lokal - kalau enggak, Vista Pekerja
+      // (yang baca renhar.tanggal langsung dari DB) masih nampilin di tanggal LAMA walau
+      // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
+      // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
+      const renharUntukDipindah=renhar.filter((r:any)=>(r.raw_id||r.rawId)===rawId&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
+      setRenhar(prev=>prev.map((r:any)=>{
+        const match=renharUntukDipindah.find((x:any)=>x.id===r.id);
+        if(!match)return r;
+        const entry=entries.find((e:any)=>e.wp===r.wp);
         return{...r,tanggal:toDate,komponen:entry.komponen};
       }));
+      for(const r of renharUntukDipindah){
+        const entry=entries.find((e:any)=>e.wp===r.wp);
+        if(entry)await updateRenhar(r.id,{tanggal:toDate,komponen:entry.komponen});
+      }
     }
     setDragMode(null);setDragInfo(null);
     if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
@@ -1781,14 +1791,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
       {swapModal&&(
         <Modal title={"Kapasitas Penuh — "+swapModal.tanggal} onClose={()=>{setSwapModal(null);setSwapSelected([]);}} width={540}>
-          <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#991b1b",display:"flex",gap:8,alignItems:"flex-start"}}>
-            <span>⚠️</span>
-            <span>Kapasitas {swapModal.proses} tanggal {fmtDate(swapModal.tanggal)} sudah penuh ({Math.round(swapModal.terpakaiSaatIni)}/{Math.round(swapModal.kapasitasHari)} menit). Komponen baru butuh {Math.round(swapModal.menitDibutuhkan)} menit. Pilih komponen di bawah untuk dipindah ke hari berikutnya.</span>
+          <div style={{display:"flex",flexDirection:"column" as const,maxHeight:"80vh"}}>
+          <div style={{flexShrink:0}}>
+            <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:14,fontSize:12,color:"#991b1b",display:"flex",gap:8,alignItems:"flex-start"}}>
+              <span>⚠️</span>
+              <span>Kapasitas {swapModal.proses} tanggal {fmtDate(swapModal.tanggal)} sudah penuh ({Math.round(swapModal.terpakaiSaatIni)}/{Math.round(swapModal.kapasitasHari)} menit). Komponen baru butuh {Math.round(swapModal.menitDibutuhkan)} menit. Pilih komponen di bawah untuk dipindah ke hari berikutnya.</span>
+            </div>
+            <Lbl>Komponen Terjadwal di {fmtDate(swapModal.tanggal)} (pilih untuk dipindah)</Lbl>
+            <div style={{fontSize:10,color:"#94a3b8",marginBottom:8}}>Disusun berdasarkan prioritas: deadline paling jauh duluan (paling aman digeser)</div>
           </div>
-
-          <Lbl>Komponen Terjadwal di {fmtDate(swapModal.tanggal)} (pilih untuk dipindah)</Lbl>
-          <div style={{fontSize:10,color:"#94a3b8",marginBottom:8}}>Disusun berdasarkan prioritas: deadline paling jauh duluan (paling aman digeser)</div>
-          <div style={{display:"flex",flexDirection:"column" as const,gap:10,marginBottom:14,maxHeight:320,overflowY:"auto" as const}}>
+          <div style={{flex:1,minHeight:0,display:"flex",flexDirection:"column" as const,gap:10,marginBottom:14,overflowY:"auto" as const}}>
             {(()=>{
               const groups:Record<string,{wo_number:string,wo_target:string,panels:Record<string,{panel_nama:string,items:any[]}>}>={};
               swapModal.opsiSwap.forEach((o:any)=>{
@@ -1853,6 +1865,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             })()}
           </div>
 
+          <div style={{flexShrink:0}}>
           {(()=>{
             const menitDipindah=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).reduce((s:number,o:any)=>s+Number(o.total_menit),0);
             const sisaSetelahSwap=swapModal.sisaKapasitas+menitDipindah;
@@ -1894,6 +1907,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               style={{padding:"8px 18px",borderRadius:8,border:"none",background:(swapLoading||swapSelected.length===0)?"#94a3b8":"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:(swapLoading||swapSelected.length===0)?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {swapLoading?"⏳ Memindahkan...":"Pindahkan & Tambah Komponen"}
             </button>
+          </div>
+          </div>
           </div>
         </Modal>
       )}
