@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
@@ -15,6 +15,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [selProses,setSelProses]=useState("ALL");
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
+  // Antrian per (raw_id+wp+tanggal) - cegah dobel-insert renhar kalau tombol Rilis/Distribusi
+  // diklik dua kali cepat / koneksi lambat (dua panggilan sama-sama baca "belum ada row" dari
+  // state lokal yang belum sempat update, dua-duanya insert baru).
+  const renharOpQueue=useRef<Record<string,Promise<any>>>({});
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
@@ -119,6 +123,20 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return map;
   },[days,rawData]);
   const getRenharEntry=(task)=>renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+  // Serialisasi per (raw_id+wp+tanggal) + fetch fresh dari DB sebelum putuskan create-atau-
+  // update, biar dua panggilan yang nembak nyaris bersamaan (double-klik Rilis/Distribusi,
+  // atau koneksi lambat) gak dua-duanya insert row baru buat kombinasi yang sama.
+  const withRenharQueue=async(task:any,fn:(existingFresh:any)=>Promise<void>)=>{
+    const key=`${task.rawId}_${task.wp}_${task.tanggal}`;
+    const prev=renharOpQueue.current[key]||Promise.resolve();
+    const thisOp=prev.then(async()=>{
+      const{data}=await supabase.from("renhar").select("*")
+        .eq("raw_id",task.rawId).eq("wp",task.wp).eq("tanggal",task.tanggal).limit(1);
+      await fn(data?.[0]||null);
+    });
+    renharOpQueue.current[key]=thisOp;
+    await thisOp;
+  };
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=getRenharEntry(task);
@@ -128,60 +146,64 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
 
   const toggleReleaseKomponen=async(task:any,kode:string,sedangDirilis:boolean)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
-    const existing=getRenharEntry(task);
-    if(existing){
-      const releasedLama=existing.komponen_released||[];
-      const releasedBaru=sedangDirilis?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
-      await updateRenhar(existing.id,{komponen_released:releasedBaru});
-      setRenhar((prev:any)=>prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r));
-    } else {
-      const result=await createRenhar({
-        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
-        proyek:task.proyek,panel:task.panel,proses:task.proses,
-        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
-        tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
-      });
-      if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
-    }
+    await withRenharQueue(task,async(existing)=>{
+      if(existing){
+        const releasedLama=existing.komponen_released||[];
+        const releasedBaru=sedangDirilis?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
+        await updateRenhar(existing.id,{komponen_released:releasedBaru});
+        setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+      } else {
+        const result=await createRenhar({
+          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+          proyek:task.proyek,panel:task.panel,proses:task.proses,
+          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+          tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
+        });
+        if(result?.success&&result.data){setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+      }
+    });
   };
   const confirmDistribute=async()=>{
     if(!assignModal)return;
-    const{task,divisi,existing}=assignModal;
-    if(existing){
-      await updateRenhar(existing.id,{pekerja:selPekerja});
-      setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
-    } else {
-      const result=await createRenhar({
-        raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
-        proyek:task.proyek,panel:task.panel,proses:task.proses,
-        prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
-        tanggal:task.tanggal,divisi,pekerja:selPekerja,
-      });
-      if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
-    }
+    const{task,divisi}=assignModal;
+    await withRenharQueue(task,async(existing)=>{
+      if(existing){
+        await updateRenhar(existing.id,{pekerja:selPekerja});
+        setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r):[...prev,{...existing,pekerja:selPekerja}]);
+      } else {
+        const result=await createRenhar({
+          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+          proyek:task.proyek,panel:task.panel,proses:task.proses,
+          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+          tanggal:task.tanggal,divisi,pekerja:selPekerja,
+        });
+        if(result?.success&&result.data){setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+      }
+    });
     if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
-      const existing=getRenharEntry(task);
       const allKode=task.komponen||[];
-      if(existing){
-        const releasedLama=existing.komponen_released||[];
-        const releasedBaru=[...new Set([...releasedLama,...allKode])];
-        if(releasedBaru.length===releasedLama.length)continue;
-        await updateRenhar(existing.id,{komponen_released:releasedBaru});
-        setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r));
-      } else {
-        const result=await createRenhar({
-          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
-          proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
-          tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
-        });
-        if(result?.success&&result.data){setRenhar(prev=>[...prev,result.data]);}
-      }
+      await withRenharQueue(task,async(existing)=>{
+        if(existing){
+          const releasedLama=existing.komponen_released||[];
+          const releasedBaru=[...new Set([...releasedLama,...allKode])];
+          if(releasedBaru.length===releasedLama.length)return;
+          await updateRenhar(existing.id,{komponen_released:releasedBaru});
+          setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+        } else {
+          const result=await createRenhar({
+            raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+            proyek:task.proyek,panel:task.panel,proses:task.proses,
+            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+            tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
+          });
+          if(result?.success&&result.data){setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+        }
+      });
     }
   };
   const isDist=(task)=>!!getRenharEntry(task);
