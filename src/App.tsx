@@ -324,40 +324,9 @@ const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number
     scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
     await updateRaw(row.id,{schedule:scheduleBaru});
     setRawData((prev:any)=>prev.map((r:any)=>r.id===row.id?{...r,schedule:scheduleBaru}:r));
-
-    // Kalau kode ini di hariSumber udah dirilis (ada di renhar.komponen_released) plus punya
-    // operator ter-assign, bawa status itu ke hariTarget juga - biar pekerja gak perlu nunggu
-    // planner klik Rilis ulang buat kerjaan yang sebenernya cuma nyambung, bukan tugas baru.
-    const renharSumber=renharList.find((r:any)=>(r.raw_id||r.rawId)===row.id&&r.tanggal===hariSumber);
-    if(renharSumber){
-      const releasedLama=renharSumber.komponen_released||[];
-      const ppkLama=renharSumber.pekerja_per_komponen||{};
-      for(const [wp,kodes] of Object.entries(kodeEligiblePerWp)){
-        const kodeReleasedDibawa=kodes.filter(k=>releasedLama.includes(k)&&!kodeSudahDigeser.has(k));
-        if(kodeReleasedDibawa.length===0)continue;
-        const{data:existingTarget}=await supabase.from("renhar").select("*")
-          .eq("raw_id",row.id).eq("wp",wp).eq("tanggal",hariTarget).limit(1);
-        const existing=existingTarget?.[0]||null;
-        const ppkBaru:Record<string,number[]>={};
-        kodeReleasedDibawa.forEach((k:string)=>{ if(ppkLama[k])ppkBaru[k]=ppkLama[k]; });
-        if(existing){
-          const releasedBaru=[...new Set([...(existing.komponen_released||[]),...kodeReleasedDibawa])];
-          await updateRenhar(existing.id,{
-            komponen_released:releasedBaru,
-            pekerja_per_komponen:{...(existing.pekerja_per_komponen||{}),...ppkBaru},
-          });
-        } else {
-          const result=await createRenhar({
-            raw_id:row.id,wo_id:row.wo_id||row.woId,panel_id:row.panel_id||row.panelId,
-            proyek:row.proyek,panel:row.panel,proses:row.proses,
-            prioritas:row.prioritas||"Sedang",wp,komponen:kodeReleasedDibawa,
-            tanggal:hariTarget,pekerja:[],komponen_released:kodeReleasedDibawa,
-            pekerja_per_komponen:ppkBaru,
-          });
-          if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
-        }
-      }
-    }
+    // Sengaja TIDAK menyentuh renhar sama sekali di sini - status rilis di hariTarget harus
+    // selalu mulai dari "Belum Dirilis", walau kode ini sudah pernah dirilis di hariSumber.
+    // Planner WAJIB klik Rilis manual lagi di hari yang baru sebelum operator bisa kerjakan.
   }
   return jumlahDigeser;
 };
