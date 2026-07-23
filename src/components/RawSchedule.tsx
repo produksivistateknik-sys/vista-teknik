@@ -1799,7 +1799,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 groups[woKey].panels[panelKey].items.push(o);
               });
               return Object.values(groups).map((g:any,gi:number)=>(
-                <div key={gi} style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+                <div key={gi} style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",flexShrink:0}}>
                   <div style={{background:"#f8fafc",padding:"8px 12px",display:"flex",justifyContent:"space-between",alignItems:"center",borderBottom:"1px solid #e2e8f0"}}>
                     <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>WO {g.wo_number}</span>
                     <span style={{fontSize:10,color:"#94a3b8"}}>Deadline: {g.wo_target?fmtDate(g.wo_target):"-"}</span>
