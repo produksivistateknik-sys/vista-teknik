@@ -519,6 +519,25 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
+  // Sisa qty yang beneran perlu dijadwalkan: total dikurangi yang lebih besar antara "sudah
+  // dijadwalkan" (cegah dobel-jadwal, dari raw_schedule) dan "sudah dikerjakan beneran"
+  // (progress asli operator, panels.checklist.qtyProses) - dipakai buat validasi kapasitas
+  // DAN badge tampilan di daftar pilih komponen.
+  const hitungSisaQty=(kode:string)=>{
+    const prosesCek=rawRow?.proses;
+    const totalQty=livePanelForCell?.checklist?.[kode]?.qty||0;
+    let sudahTerjadwal=0;
+    const schedule=rawRow?.schedule||{};
+    Object.entries(schedule).forEach(([tgl,entries]:[string,any])=>{
+      (entries as any[]).forEach((e:any)=>{
+        if(cellModal&&tgl===cellModal.date&&e.wp===modalWp)return;
+        if((e.komponen||[]).includes(kode))sudahTerjadwal+=e.qtyPerKomponen?.[kode]??totalQty;
+      });
+    });
+    const qtyProsesSelesai=livePanelForCell?.checklist?.[kode]?.qtyProses?.[prosesCek||""]||0;
+    const sudah=Math.max(sudahTerjadwal,qtyProsesSelesai);
+    return{sisa:Math.max(0,totalQty-sudah),totalQty,qtyProsesSelesai};
+  };
   const panelCfg=livePanelForCell?getEffCfg(livePanelForCell.tipe):null;
   const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
   const komponenSudahAda=cellEntries.find(e=>e.wp===modalWp)?.komponen||[];
@@ -659,7 +678,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       let menitDibutuhkan=0;
       let adaDataProcessTime=false;
       for(const kode of modalKomponen){
-        const qty=livePanelForCell?.checklist?.[kode]?.qty||0;
+        const qty=hitungSisaQty(kode).sisa;
         const menitPcs=getMenitPerPcs(tipePanelCek,prosesCek,kode);
         if(menitPcs>0)adaDataProcessTime=true;
         menitDibutuhkan+=qty*menitPcs;
@@ -1639,7 +1658,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
                     {wpItems.map(it=>{
                       const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
-                      return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>{sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></button>);
+                      const{sisa,totalQty}=hitungSisaQty(it.kode);
+                      const adaProgres=totalQty>0&&sisa<totalQty;
+                      return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>
+                        {sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
+                        {adaProgres&&(
+                          <span style={{fontSize:9,fontWeight:700,marginLeft:6,padding:"1px 6px",borderRadius:20,
+                            background:sisa===0?"#dcfce7":"#fef9c3",color:sisa===0?"#16a34a":"#92400e"}}>
+                            {sisa}/{totalQty} tersisa
+                          </span>
+                        )}
+                      </button>);
                     })}
                   </div>
                 </>)}

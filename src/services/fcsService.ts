@@ -1549,6 +1549,21 @@ export async function generateAndSaveToRawSchedule(
       })
     })
 
+    // Qty yang SUDAH BENAR-BENAR DIKERJAKAN (progress asli operator dari panels.checklist),
+    // beda dari sudahTerjadwalQtyMap yang cuma nandain "sudah masuk jadwal" - dua-duanya dipakai
+    // bareng (ambil yang lebih besar) biar gak minta jadwalin ulang qty yang udah kelar, DAN
+    // tetap gak dobel-jadwal qty yang udah di-assign ke hari lain tapi belum dikerjakan.
+    const qtyProsesSelesaiMap: Record<string, number> = {}
+    ;(panels as any[]).forEach((panelRow: any) => {
+      const checklistPanel = panelRow.checklist || {}
+      Object.entries(checklistPanel).forEach(([kode, cl]: any) => {
+        Object.entries(cl?.qtyProses || {}).forEach(([proses, qty]: any) => {
+          const key = panelRow.id + '|' + proses + '|' + kode
+          qtyProsesSelesaiMap[key] = Number(qty) || 0
+        })
+      })
+    })
+
     let count = 0
     const scheduledOk = new Set<string>()
     const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES_LIST.filter((pr) => {
@@ -1607,7 +1622,8 @@ export async function generateAndSaveToRawSchedule(
           let sisaQty: Record<string, number> = {}
           kodes.forEach((kode) => {
             const totalQty = checklist[kode]?.qty || 0
-            const sudahQty = sudahTerjadwalQtyMap[panel.id + '|' + proses + '|' + kode] || 0
+            const key = panel.id + '|' + proses + '|' + kode
+            const sudahQty = Math.max(sudahTerjadwalQtyMap[key] || 0, qtyProsesSelesaiMap[key] || 0)
             const sisa = Math.max(0, totalQty - sudahQty)
             if (sisa > 0) sisaQty[kode] = sisa
             else scheduledOk.add(panel.id + '|' + kode + '|' + proses)
