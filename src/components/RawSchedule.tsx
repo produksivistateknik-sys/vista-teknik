@@ -1402,28 +1402,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
-                              {(()=>{
-                                const panelDataForChip=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
-                                return entries.map(e=>(e.komponen||[]).map((kode:string)=>{
-                                  if(kode.startsWith("__wiring_"))return null;
-                                  const progressKomp=panelDataForChip?.checklist?.[kode]?.progress?.[row.proses]||0;
-                                  const sudahSelesaiKomp=progressKomp>=100;
-                                  const onProgressKomp=progressKomp>0&&progressKomp<100;
-                                  const digeserKode=kodeDigeserKeBesok.has(kode);
-                                  const statusStyle=sudahSelesaiKomp?{background:"#f1f5f9",border:"1px solid #e2e8f0"}:onProgressKomp?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
-                                  return(<div key={e.wp+kode}
-                                    onClick={sudahSelesaiKomp?(ev:any)=>ev.stopPropagation():undefined}
-                                    title={sudahSelesaiKomp?"Sudah selesai - terkunci, gak bisa diklik/diedit dan gak ikut kebawa kalau komponen lain di WP ini digeser":e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":digeserKode?"Belum selesai - otomatis digeser ke "+addDays(d,1):""}
-                                    style={{...statusStyle,color:sudahSelesaiKomp?"#94a3b8":"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"inline-flex",alignItems:"center",gap:2,cursor:sudahSelesaiKomp?"not-allowed":undefined,maxWidth:95}}>
-                                    {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900,color:"#16a34a"}}>✓</span>}
-                                    {!sudahSelesaiKomp&&e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
-                                    {!sudahSelesaiKomp&&digeserKode&&<span style={{fontSize:9}}>➡️</span>}
-                                    {!sudahSelesaiKomp&&onProgressKomp&&<span style={{fontSize:9}}>●</span>}
-                                    <span style={{opacity:.85}}>{e.wp}</span>
-                                    <span style={{whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
-                                  </div>);
-                                }));
-                              })()}
+                              {entries.map(e=>{
+                                const status=getTaskStatus(row,d,e.wp,e.komponen);
+                                const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
+                                const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
+                                const adaDigeserKeBesok=(e.komponen||[]).some((k:string)=>kodeDigeserKeBesok.has(k));
+                                return(<div key={e.wp} title={e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":adaDigeserKeBesok?"Sebagian belum selesai - otomatis digeser ke "+addDays(d,1):""} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}{adaDigeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                              })}
                             </div>
                             )
                           ):(
