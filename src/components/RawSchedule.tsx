@@ -1384,8 +1384,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
                                   const digeserKeBesok=kodeDigeserKeBesok.has(kode);
                                   return(
-                                    <div key={entry.wp+kode} title={sudahSelesaiKomp?"Sudah selesai - gak ikut kebawa kalau komponen lain di WP ini digeser":entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:sudahSelesaiKomp?"#f0fdf4":isTelat?"#fef2f2":wc+"22",color:sudahSelesaiKomp?"#16a34a":isTelat?"#dc2626":wc,border:`1px solid ${sudahSelesaiKomp?"#bbf7d0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:sudahSelesaiKomp?0.7:1}}>
-                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
+                                    <div key={entry.wp+kode}
+                                      onClick={sudahSelesaiKomp?(e:any)=>e.stopPropagation():undefined}
+                                      title={sudahSelesaiKomp?"Sudah selesai - terkunci, gak bisa diklik/diedit dan gak ikut kebawa kalau komponen lain di WP ini digeser":entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""}
+                                      style={{display:"inline-flex",alignItems:"center",gap:3,background:sudahSelesaiKomp?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:sudahSelesaiKomp?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${sudahSelesaiKomp?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",cursor:sudahSelesaiKomp?"not-allowed":undefined}}>
+                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900,color:"#16a34a"}}>✓</span>}
                                       {!sudahSelesaiKomp&&entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {!sudahSelesaiKomp&&digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
                                       {!sudahSelesaiKomp&&isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
