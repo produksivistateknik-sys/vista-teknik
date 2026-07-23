@@ -122,6 +122,23 @@ export function getProgressFromHistory(cl:any, proses:string):number{
   return -1; // -1 berarti tidak ada data history
 }
 
+// Progress KOMPONEN ini PERSIS di tanggal `tanggal` - snapshot PERMANEN per hari, beda dari
+// getProgressOnDate/getLatestProgress/getBestProgress di atas yang semuanya condong ke nilai
+// TERBARU/keseluruhan. Prioritas: 1) entry persis di progressByDate[proses][tanggal] kalau ada,
+// 2) kalau gak ada - checkpoint history TERAKHIR yang tanggalnya <= tanggal yang diminta (carry-
+// forward nilai terakhir yang diketahui, bukan langsung 0), 3) kalau belum pernah disentuh
+// sampai tanggal itu - 0.
+export function getProgressAsOfDate(cl:any, proses:string, tanggal:string):number{
+  const byDate=cl?.progressByDate?.[proses];
+  if(byDate&&byDate[tanggal]!==undefined) return byDate[tanggal];
+  const hist=(cl?.history?.[proses]||[]).filter((h:any)=>h.tanggal<=tanggal);
+  if(hist.length>0){
+    const terakhir=hist.reduce((a:any,b:any)=>a.tanggal>b.tanggal?a:b);
+    return terakhir.pct;
+  }
+  return 0;
+}
+
 // Ambil progress terbaik: history > progressByDate > progress
 export function getBestProgress(cl:any, proses:string):number{
   // Coba dari history dulu (paling akurat)

@@ -1297,7 +1297,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
                                   return(
-                                    <div key={entry.wp+kode} title={isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%"}}>
+                                      {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
@@ -1313,7 +1314,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
                                 const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} title={e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":""} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                             )

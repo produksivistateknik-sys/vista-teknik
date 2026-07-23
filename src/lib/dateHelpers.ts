@@ -25,6 +25,15 @@ export function pBg(v){
   if(v>0)return"#f3f0ff";    return"#f1f5f9";
 }
 export function addDays(s,n){ const d=new Date(s); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+// "Hari kerja" sisi admin - jam 00:00-06:59 masih dihitung hari yang sama dengan shift
+// sebelumnya (konsisten sama logic hariKerjaAwal di Vista Pekerja utk shift 2 yang lewat
+// tengah malam), tapi disederhanakan jadi aturan universal (gak gantung status shift
+// operator tertentu, karena di sisi admin gak ada konsep "shift operator ini").
+export function getHariKerjaSekarang(){
+  const now=new Date();
+  const tglSekarang=getLocalDateStr(now);
+  return now.getHours()<7?addDays(tglSekarang,-1):tglSekarang;
+}
 export function fmtDate(s){ return new Date(s).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"}); }
 export function fmtShort(s){ return new Date(s).toLocaleDateString("id-ID",{day:"numeric",month:"short"}); }
 export function getDayLabel(s){ return new Date(s).toLocaleDateString("id-ID",{day:"numeric",month:"short"}); }

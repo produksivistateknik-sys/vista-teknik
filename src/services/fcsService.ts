@@ -1545,6 +1545,11 @@ export async function generateAndSaveToRawSchedule(
       const schedule = row.schedule || {}
       Object.values(schedule).forEach((entries: any) => {
         ;(entries as any[]).forEach((e: any) => {
+          // Entry hasil auto-geser (carriedOverFrom) itu representasi ULANG qty yang SAMA
+          // dari tanggal asalnya (belum selesai, cuma dipindah tampil ke hari berikutnya) -
+          // bukan kebutuhan qty tambahan. Kalau ikut dijumlah di sini, qty yang sama kehitung
+          // 2x (sekali di tanggal asal, sekali lagi di entry carry-over-nya).
+          if (e.carriedOverFrom) return
           ;(e.komponen || []).forEach((kode: string) => {
             const qty = e.qtyPerKomponen?.[kode] ?? (checklistPanel[kode]?.qty || 0)
             const key = row.panel_id + '|' + row.proses + '|' + kode

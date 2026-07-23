@@ -21,12 +21,12 @@ import {
 import {
   getBusbarKomponen, isKomponenRelevant, getRelevantProsesForKode, getEffCfgGlobal,
   initChecklist, naturalKodeSortGlobal, buildPanelTypesFromBom,
-  getProgressOnDate, getLatestProgress, getProgressFromHistory, getBestProgress,
+  getProgressOnDate, getLatestProgress, getProgressFromHistory, getBestProgress, getProgressAsOfDate,
   calcPanelProgress, panelOverall, woOverall, wpProgress,
 } from './lib/panelHelpers'
 import {
   getLocalDateStr, TODAY, daysUntil, isDelayed, isUrgent, getStatus,
-  pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull,
+  pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang,
 } from './lib/dateHelpers'
 import {
   GLOBAL_DIRTY_PANEL_IDS,
@@ -264,6 +264,119 @@ useEffect(() => {
   }
   return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
+
+// ── Auto-geser komponen yang belum selesai ke hari berikutnya ────────────────────────────
+// Kalau komponen TIDAK dikerjakan sama sekali ATAU belum 100% di hariSumber, otomatis
+// disalin (BUKAN memindahkan) ke raw_schedule[hariTarget], ditandai carriedOverFrom -
+// planner gak perlu jadwalin ulang manual. Entry di hariSumber TETAP utuh apa adanya
+// (snapshot permanen buat fitur "kunci progress per hari" - lihat getProgressAsOfDate).
+// WIRING CONTROL/WIRING POWER dikecualikan KALAU progress-nya udah >0% (lagi dikerjakan) -
+// itu udah dijadwal multi-hari lewat sistem kuota-orang (fcsService), biarin planner manual.
+// QC TEST/PACKING dikecualikan total - proses whole-panel/marker, bukan per-komponen harian.
+// Idempotent lewat cek data (carriedOverFrom yang udah ada di hariTarget) - aman dipanggil
+// berkali-kali/dari beberapa tab, gak akan nyipta entry dobel. Dipisah jadi function sendiri
+// (bukan langsung inline di useEffect) biar bisa dipanggil manual buat testing lewat tombol
+// "Cek & Geser Sekarang" di Rencana Harian, gak cuma nunggu transisi hari kerja beneran.
+const PROSES_DIKECUALIKAN_AUTO_GESER=["QC TEST","PACKING"];
+const PROSES_WIRING_AUTO_GESER=["WIRING CONTROL","WIRING POWER"];
+const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number>=>{
+  let jumlahDigeser=0;
+  const panelMap:Record<string,any>={};
+  woList.forEach((wo:any)=>(wo.panels||[]).forEach((p:any)=>{panelMap[String(p.id)]=p;}));
+
+  for(const row of rawList){
+    if(PROSES_DIKECUALIKAN_AUTO_GESER.includes(row.proses))continue;
+    const entriesSumber=row.schedule?.[hariSumber]||[];
+    if(entriesSumber.length===0)continue;
+    const panel=panelMap[String(row.panel_id||row.panelId)];
+    if(!panel)continue;
+    const isWiring=PROSES_WIRING_AUTO_GESER.includes(row.proses);
+
+    const kodeEligiblePerWp:Record<string,string[]>={};
+    entriesSumber.forEach((e:any)=>{
+      (e.komponen||[]).forEach((kode:string)=>{
+        if(kode.startsWith("__wiring_"))return;
+        const cl=panel.checklist?.[kode];
+        const pct=getProgressAsOfDate(cl,row.proses,hariSumber);
+        if(pct>=100)return;
+        if(isWiring&&pct>0)return;
+        if(!kodeEligiblePerWp[e.wp])kodeEligiblePerWp[e.wp]=[];
+        kodeEligiblePerWp[e.wp].push(kode);
+      });
+    });
+    if(Object.keys(kodeEligiblePerWp).length===0)continue;
+
+    const entriesTarget=row.schedule?.[hariTarget]||[];
+    const kodeSudahDigeser=new Set<string>();
+    entriesTarget.forEach((e:any)=>{
+      if(e.carriedOverFrom===hariSumber)(e.komponen||[]).forEach((k:string)=>kodeSudahDigeser.add(k));
+    });
+
+    const entryBaru:any[]=[];
+    Object.entries(kodeEligiblePerWp).forEach(([wp,kodes])=>{
+      const sisa=kodes.filter(k=>!kodeSudahDigeser.has(k));
+      if(sisa.length>0)entryBaru.push({wp,komponen:sisa,carriedOverFrom:hariSumber});
+    });
+    if(entryBaru.length===0)continue;
+    jumlahDigeser+=entryBaru.reduce((s,e)=>s+e.komponen.length,0);
+
+    const scheduleBaru={...(row.schedule||{})};
+    scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
+    await updateRaw(row.id,{schedule:scheduleBaru});
+    setRawData((prev:any)=>prev.map((r:any)=>r.id===row.id?{...r,schedule:scheduleBaru}:r));
+
+    // Kalau kode ini di hariSumber udah dirilis (ada di renhar.komponen_released) plus punya
+    // operator ter-assign, bawa status itu ke hariTarget juga - biar pekerja gak perlu nunggu
+    // planner klik Rilis ulang buat kerjaan yang sebenernya cuma nyambung, bukan tugas baru.
+    const renharSumber=renharList.find((r:any)=>(r.raw_id||r.rawId)===row.id&&r.tanggal===hariSumber);
+    if(renharSumber){
+      const releasedLama=renharSumber.komponen_released||[];
+      const ppkLama=renharSumber.pekerja_per_komponen||{};
+      for(const [wp,kodes] of Object.entries(kodeEligiblePerWp)){
+        const kodeReleasedDibawa=kodes.filter(k=>releasedLama.includes(k)&&!kodeSudahDigeser.has(k));
+        if(kodeReleasedDibawa.length===0)continue;
+        const{data:existingTarget}=await supabase.from("renhar").select("*")
+          .eq("raw_id",row.id).eq("wp",wp).eq("tanggal",hariTarget).limit(1);
+        const existing=existingTarget?.[0]||null;
+        const ppkBaru:Record<string,number[]>={};
+        kodeReleasedDibawa.forEach((k:string)=>{ if(ppkLama[k])ppkBaru[k]=ppkLama[k]; });
+        if(existing){
+          const releasedBaru=[...new Set([...(existing.komponen_released||[]),...kodeReleasedDibawa])];
+          await updateRenhar(existing.id,{
+            komponen_released:releasedBaru,
+            pekerja_per_komponen:{...(existing.pekerja_per_komponen||{}),...ppkBaru},
+          });
+        } else {
+          const result=await createRenhar({
+            raw_id:row.id,wo_id:row.wo_id||row.woId,panel_id:row.panel_id||row.panelId,
+            proyek:row.proyek,panel:row.panel,proses:row.proses,
+            prioritas:row.prioritas||"Sedang",wp,komponen:kodeReleasedDibawa,
+            tanggal:hariTarget,pekerja:[],komponen_released:kodeReleasedDibawa,
+            pekerja_per_komponen:ppkBaru,
+          });
+          if(result?.success&&result.data){setRenhar((prev:any)=>[...prev,result.data]);}
+        }
+      }
+    }
+  }
+  return jumlahDigeser;
+};
+
+const autoGeserRanRef=useRef(false);
+useEffect(()=>{
+  if(autoGeserRanRef.current)return;
+  if(rawLoading||woLoading||renharLoading)return;
+  autoGeserRanRef.current=true;
+  (async()=>{
+    const hariKerjaSekarang=getHariKerjaSekarang();
+    const hariSebelumnya=addDays(hariKerjaSekarang,-1);
+    const lsKey="vista_teknik_auto_geser_last_tgl";
+    try{ if(localStorage.getItem(lsKey)===hariSebelumnya)return; }catch{}
+    await geserSatuTanggal(hariSebelumnya,hariKerjaSekarang);
+    try{localStorage.setItem(lsKey,hariSebelumnya);}catch{}
+  })();
+},[rawLoading,woLoading,renharLoading]);
+
 if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login onLogin={u=>{
     setUser(u);
@@ -690,7 +803,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes} geserSatuTanggal={geserSatuTanggal}/></Suspense></div>}
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanQCView woData={woData}/></Suspense></div>}

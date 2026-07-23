@@ -1,10 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
-import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
+import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
+import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
-export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes,geserSatuTanggal}:any){
+  const [geserLoading,setGeserLoading]=useState(false);
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -89,6 +91,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           proyek:row.proyek,panel:row.panel,proses:row.proses,
           prioritas:row.prioritas||"Sedang",
           wp:e.wp,komponen:e.komponen,tanggal:selDate,
+          carriedOverFrom:e.carriedOverFrom||null,
         });
       });
       // Tambah busbar tasks dari busbar_schedule
@@ -246,6 +249,20 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           {totalKompFiltered>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{totalKompFiltered} dirilis</span>}
           {!allDist&&totalKompFiltered>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>📤 Rilis Semua</Btn>}
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
+          {geserSatuTanggal&&(
+            <Btn outline color="#c2410c" style={{fontSize:11,padding:"6px 12px"}} disabled={geserLoading}
+              title={"Cek komponen yang belum selesai di "+fmtDateFull(selDate)+" lalu geser ke "+fmtDateFull(addDays(selDate,1))+" (buat testing fitur auto-geser, aman diklik berkali-kali - idempotent)"}
+              onClick={async()=>{
+                setGeserLoading(true);
+                const jumlah=await geserSatuTanggal(selDate,addDays(selDate,1));
+                setGeserLoading(false);
+                alert(jumlah>0
+                  ?`✅ ${jumlah} komponen belum selesai digeser dari ${fmtShort(selDate)} ke ${fmtShort(addDays(selDate,1))}.`
+                  :`Gak ada komponen yang perlu digeser dari ${fmtShort(selDate)} (semua sudah 100%, atau sudah pernah digeser sebelumnya).`);
+              }}>
+              {geserLoading?"⏳ Mengecek...":"🔁 Cek & Geser (test)"}
+            </Btn>
+          )}
         </div>
       </div>
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
@@ -322,6 +339,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
                             <td style={{...td}}>
                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
+                              {t.carriedOverFrom&&(
+                                <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", otomatis lanjut ke hari ini"}
+                                  style={{marginLeft:5,background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
+                                  🔁 Lanjutan {fmtShort(t.carriedOverFrom)}
+                                </span>
+                              )}
                             </td>
                             <td style={{...td}}>
                               {!sudahRelease?(
@@ -335,7 +358,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 if(!sudahRelease){
                                   return <span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span>;
                                 }
-                                const pctKerja=panelData?.checklist?.[kode]?.progress?.[t.proses]||0;
+                                // Snapshot PERMANEN progress persis di tanggal t.tanggal - bukan progress
+                                // terkini/keseluruhan, biar buka tanggal yang sudah lewat tetap nunjukin
+                                // angka yang benar walau kerjaannya udah lanjut/kelar di hari-hari setelahnya.
+                                const pctKerja=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
                                 // BUSBAR: tambahin label tahap aktif (Fabrikasi/Plating/Heat-Shrink/Pasang)
                                 // kalau datanya ada - proses lain gak punya field ini jadi tetap tampil polos.
                                 const busbarTahapAktif=t.proses==="BUSBAR"?panelData?.checklist?.[kode]?.busbarTahap?.tahapAktif:null;
@@ -347,7 +373,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 if(pctKerja>0){
                                   return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
                                 }
-                                const timerAktif=getTimerAktif(t.panelId,kode,t.proses);
+                                // Timer aktif cuma relevan buat hari kerja SEKARANG - tanggal yang udah
+                                // lewat itu sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.
+                                const timerAktif=t.tanggal===getHariKerjaSekarang()?getTimerAktif(t.panelId,kode,t.proses):null;
                                 if(timerAktif){
                                   const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/1000));
                                   const menitBerjalan=Math.floor(totalDetikAktif/60);
