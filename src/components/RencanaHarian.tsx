@@ -57,6 +57,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
 
   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
     timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+
+  // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
+  // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
+  // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
+  // pas ada timer aktif buat hemat, gak jalan terus-terusan pas nganggur.
+  const [,setTimerTick]=useState(0);
+  useEffect(()=>{
+    if(timerAktifData.length===0)return;
+    const iv=setInterval(()=>setTimerTick(t=>t+1),1000);
+    return ()=>clearInterval(iv);
+  },[timerAktifData]);
   const onDragStart=(e,rawId,fromDate,entries)=>{
     e.dataTransfer.effectAllowed="move";
     setDragInfo({rawId,fromDate,entries});
