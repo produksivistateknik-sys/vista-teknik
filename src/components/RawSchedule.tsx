@@ -1401,41 +1401,42 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             ):(
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
-                              style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
+                              style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"flex-start",justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {(()=>{
                                 const panelDataForChip=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
                                 return entries.map(e=>{
-                                  const status=getTaskStatus(row,d,e.wp,e.komponen);
+                                  const wc=WP_COLOR[e.wp]||"#64748b";
                                   const kodeAsli=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
-                                  const semuaSelesai=status==="finish";
-                                  const wpColor=semuaSelesai?"#94a3b8":status==="on_progress"?"#f59e0b":(PROSES_COLOR[row.proses]||"#64748b");
-                                  const adaDigeserKeBesok=(e.komponen||[]).some((k:string)=>kodeDigeserKeBesok.has(k));
-                                  // Grup visual TETAP satu unit per WP (badge label + kotak kecil per komponen
-                                  // di dalamnya) - bukan pecah jadi chip berserakan - tapi tiap kotak komponen
-                                  // independen bisa di-disable sendiri-sendiri, gak gantung status WP-nya.
+                                  const adaDigeserKeBesok=kodeAsli.some((k:string)=>kodeDigeserKeBesok.has(k));
+                                  // Badge WP SELALU warna aslinya (gak pernah abu-abu) - dia cuma label
+                                  // grup, bukan indikator status. Yang berubah abu-abu+centang cuma chip
+                                  // komponen individual di dalamnya, sesuai progress masing-masing.
                                   return(
-                                    <div key={e.wp} title={e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":adaDigeserKeBesok?"Sebagian belum selesai - otomatis digeser ke "+addDays(d,1):""}
-                                      style={{display:"inline-flex",alignItems:"center",gap:2,background:wpColor+"18",border:`1px solid ${wpColor}44`,borderRadius:4,padding:"1px 3px 1px 1px"}}>
-                                      <span style={{background:wpColor,color:"#fff",borderRadius:2,padding:"0 3px",fontSize:8,fontWeight:700,display:"flex",alignItems:"center",gap:1}}>
-                                        {e.carriedOverFrom&&<span style={{fontSize:8}}>🔁</span>}
-                                        {adaDigeserKeBesok&&<span style={{fontSize:8}}>➡️</span>}
+                                    <div key={e.wp} style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                                      <span title={e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":adaDigeserKeBesok?"Sebagian belum selesai - otomatis digeser ke "+addDays(d,1):""}
+                                        style={{background:wc,color:"#fff",borderRadius:3,padding:"1px 5px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>
+                                        {e.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
+                                        {adaDigeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
                                         {e.wp}
                                       </span>
-                                      <div style={{display:"flex",gap:1,flexWrap:"wrap" as const,maxWidth:70}}>
+                                      <div style={{display:"flex",flexDirection:"column" as const,gap:2}}>
                                         {kodeAsli.map((kode:string)=>{
                                           const progressKomp=panelDataForChip?.checklist?.[kode]?.progress?.[row.proses]||0;
-                                          const doneKomp=progressKomp>=100;
-                                          const onProgressKomp=!doneKomp&&progressKomp>0;
+                                          const sudahSelesaiKomp=progressKomp>=100;
+                                          const onProgressKomp=!sudahSelesaiKomp&&progressKomp>0;
+                                          const digeserKode=kodeDigeserKeBesok.has(kode);
                                           return(
-                                            <span key={kode}
-                                              onClick={doneKomp?(ev:any)=>ev.stopPropagation():undefined}
-                                              title={`${getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}${doneKomp?" - sudah selesai, terkunci":onProgressKomp?" - lagi dikerjakan ("+progressKomp+"%)":" - belum dikerjakan"}`}
-                                              style={{width:11,height:11,borderRadius:2,display:"flex",alignItems:"center",justifyContent:"center",
-                                                background:doneKomp?"#e2e8f0":onProgressKomp?"#fde68a":"#fff",
-                                                border:`1px solid ${doneKomp?"#cbd5e1":onProgressKomp?"#f59e0b":"#cbd5e1"}`,
-                                                cursor:doneKomp?"not-allowed":"default"}}>
-                                              {doneKomp&&<span style={{fontSize:7,fontWeight:900,color:"#16a34a"}}>✓</span>}
-                                            </span>
+                                            <div key={kode}
+                                              onClick={sudahSelesaiKomp?(ev:any)=>ev.stopPropagation():undefined}
+                                              title={sudahSelesaiKomp?"Sudah selesai - terkunci, gak bisa diklik/diedit dan gak ikut kebawa kalau komponen lain di WP ini digeser":e.carriedOverFrom?"Lanjutan dari "+e.carriedOverFrom+" (belum sempat dikerjakan)":digeserKode?"Belum selesai - otomatis digeser ke "+addDays(d,1):""}
+                                              style={{display:"inline-flex",alignItems:"center",gap:2,
+                                                background:sudahSelesaiKomp?"#f1f5f9":onProgressKomp?"#f59e0b":wc+"22",
+                                                color:sudahSelesaiKomp?"#94a3b8":onProgressKomp?"#fff":wc,
+                                                border:`1px solid ${sudahSelesaiKomp?"#e2e8f0":onProgressKomp?"#f59e0b":wc+"44"}`,
+                                                borderRadius:3,padding:"1px 5px",fontSize:9,fontWeight:700,maxWidth:90,cursor:sudahSelesaiKomp?"not-allowed":undefined}}>
+                                              {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900,color:"#16a34a"}}>✓</span>}
+                                              <span style={{whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}</span>
+                                            </div>
                                           );
                                         })}
                                       </div>
