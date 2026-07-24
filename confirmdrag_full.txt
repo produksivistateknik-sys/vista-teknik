@@ -1,0 +1,56 @@
+880       const renharUntukDipindah=renhar.filter((r:any)=>(r.raw_id||r.rawId)===rawId&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
+881       for(const r of renharUntukDipindah){
+882         const entry=entries.find((e:any)=>e.wp===r.wp);
+883         if(!entry)continue;
+884         const komponenLama=r.komponen||[];
+885         const komponenPindah=komponenLama.filter((k:string)=>entry.komponen.includes(k));
+886         const komponenTinggal=komponenLama.filter((k:string)=>!entry.komponen.includes(k));
+887         if(komponenPindah.length===0)continue;
+888         if(komponenTinggal.length===0){
+889           // Semua komponen di renhar row ini ikut pindah - cukup update tanggalnya, gak perlu row baru.
+890           markRenharDirty(r.id);
+891           await updateRenhar(r.id,{tanggal:toDate,komponen:komponenPindah});
+892           setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
+893         } else {
+894           // Sebagian komponennya (yang gak ikut ter-drag, misal udah selesai) TETAP tinggal
+895           // di row+tanggal lama; yang ikut pindah dibikinin/digabung ke row di tanggal tujuan
+896           // biar status rilis/operator buat komponen itu ikut kebawa (bukan malah hilang).
+897           markRenharDirty(r.id);
+898           await updateRenhar(r.id,{komponen:komponenTinggal});
+899           setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,komponen:komponenTinggal}:x));
+900           const releasedLama=r.komponen_released||[];
+901           const ppkLama=r.pekerja_per_komponen||{};
+902           const releasedPindah=komponenPindah.filter((k:string)=>releasedLama.includes(k));
+903           const ppkPindah=Object.fromEntries(komponenPindah.filter((k:string)=>ppkLama[k]).map((k:string)=>[k,ppkLama[k]]));
+904           // Fresh-fetch dulu lewat withRenharQueue - kalau di tanggal tujuan udah ADA row
+905           // renhar (misal dari distribusi manual sebelumnya), GABUNG ke situ, jangan bikin row
+906           // baru yang bakal jadi duplikat kedua buat kombinasi raw_id+wp+tanggal yang sama.
+907           await withRenharQueue({rawId,wp:r.wp,tanggal:toDate},async(existingTarget)=>{
+908             if(existingTarget){
+909               const komponenGabung=[...new Set([...(existingTarget.komponen||[]),...komponenPindah])];
+910               const releasedGabung=[...new Set([...(existingTarget.komponen_released||[]),...releasedPindah])];
+911               const ppkGabung={...(existingTarget.pekerja_per_komponen||{}),...ppkPindah};
+912               markRenharDirty(existingTarget.id);
+913               await updateRenhar(existingTarget.id,{komponen:komponenGabung,komponen_released:releasedGabung,pekerja_per_komponen:ppkGabung});
+914               setRenhar(prev=>prev.map((x:any)=>x.id===existingTarget.id?{...x,komponen:komponenGabung,komponen_released:releasedGabung,pekerja_per_komponen:ppkGabung}:x));
+915             } else {
+916               const result=await createRenhar({
+917                 raw_id:rawId,wo_id:r.wo_id,panel_id:r.panel_id,
+918                 proyek:r.proyek,panel:r.panel,proses:r.proses,
+919                 prioritas:r.prioritas||"Sedang",wp:r.wp,komponen:komponenPindah,
+920                 tanggal:toDate,pekerja:r.pekerja||[],
+921                 komponen_released:releasedPindah,
+922                 pekerja_per_komponen:ppkPindah,
+923               });
+924               if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);}
+925             }
+926           });
+927         }
+928       }
+929     }
+930     setDragMode(null);setDragInfo(null);
+931     if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
+932     // Activity log drag & drop
+933     const row=rawData.find(r=>r.id===rawId);
+934     const wpList=entries.map(e=>e.wp).join(", ");
+935     const kompList=entries.flatMap(e=>e.komponen||[]).join(", ");
