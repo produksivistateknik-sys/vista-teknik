@@ -1,0 +1,59 @@
+1 ﻿import { supabase } from '../lib/supabase'
+2 import { activityLogService } from './activityLogService'
+3 
+4 export const renharService = {
+5   async getAll() {
+6     const { data, error } = await supabase.from('renhar').select('*').order('tanggal', { ascending: true })
+7     if (error) throw new Error(error.message)
+8     return data ?? []
+9   },
+10 
+11   async create(payload: any) {
+12     const { updated_by, ...safe } = payload
+13     const uname = updated_by || 'Admin'
+14     const { data, error } = await supabase.from('renhar').insert(safe).select().single()
+15     if (error) throw new Error(error.message)
+16     await activityLogService.insert({
+17       user_name: uname,
+18       action: 'DISTRIBUSI RENHAR',
+19       description: `Distribusi proses ${safe.proses} - ${safe.panel} (${safe.tanggal})`,
+20       module: 'rencana',
+21       halaman: 'Rencana Harian',
+22       proyek: safe.proyek || '',
+23       panel: safe.panel || '',
+24       wo_number: safe.wo_id?.toString() || '',
+25     })
+26     return data
+27   },
+28 
+29   async update(id: number, payload: any) {
+30     const { updated_by, ...safe } = payload
+31     const uname = updated_by || 'Admin'
+32     const { data, error } = await supabase.from('renhar').update({ ...safe, updated_at: new Date().toISOString() }).eq('id', id).select().single()
+33     if (error) throw new Error(error.message)
+34     await activityLogService.insert({
+35       user_name: uname,
+36       action: 'UPDATE RENHAR',
+37       description: `Update distribusi proses ${data.proses} - ${data.panel}`,
+38       module: 'rencana',
+39       halaman: 'Rencana Harian',
+40       proyek: data.proyek || '',
+41       panel: data.panel || '',
+42       wo_number: data.wo_id?.toString() || '',
+43     })
+44     return data
+45   },
+46 
+47   async remove(id: number): Promise<void> {
+48     const { data: old } = await supabase.from('renhar').select('*').eq('id', id).single()
+49     const { error } = await supabase.from('renhar').delete().eq('id', id)
+50     if (error) throw new Error(error.message)
+51     await activityLogService.insert({
+52       user_name: 'Admin',
+53       action: 'HAPUS RENHAR',
+54       description: `Hapus distribusi proses ${old?.proses} - ${old?.panel}`,
+55       module: 'rencana',
+56       halaman: 'Rencana Harian',
+57     })
+58   },
+59 }
