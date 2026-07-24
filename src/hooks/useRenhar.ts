@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { renharService } from '../services/renharService'
 import { supabase } from '../lib/supabase'
+import { GLOBAL_DIRTY_RENHAR_IDS } from '../lib/globalState'
 
 export function useRenhar() {
   const [data, setData] = useState<any[]>([])
@@ -12,7 +13,18 @@ export function useRenhar() {
       setLoading(true)
       setError(null)
       const result = await renharService.getAll()
-      setData(result)
+      // refetch() nge-select ULANG semua baris - kalau ini nyala berbarengan sama tulisan lokal
+      // yang lagi "dirty" (baru aja diupdate, misal abis klik Rilis), jangan sampai baris itu
+      // ketimpa versi hasil select yang mungkin urutan sampainya di client gak sinkron sama commit
+      // DB-nya. Ini nutup celah yang dulu kelewat: dirty-tracking di App.tsx cuma jaga proses
+      // merge renharList->renhar, tapi gak jaga fetch() ini yang replace total `data` di hook.
+      setData(prev => {
+        if (GLOBAL_DIRTY_RENHAR_IDS.size === 0) return result
+        const prevMap: Record<string, any> = {}
+        prev.forEach(r => { prevMap[String(r.id)] = r })
+        return result.map((r: any) =>
+          GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r)
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
     } finally {

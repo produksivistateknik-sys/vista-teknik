@@ -1,6 +1,7 @@
 ﻿import { useState, useEffect, useCallback } from 'react'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { supabase } from '../lib/supabase'
+import { GLOBAL_DIRTY_RAW_IDS } from '../lib/globalState'
 
 export function useRawSchedule() {
   const [data, setData] = useState<any[]>([])
@@ -12,7 +13,15 @@ export function useRawSchedule() {
       setLoading(true)
       setError(null)
       const result = await rawScheduleService.getAll()
-      setData(result)
+      // Sama kayak useRenhar.fetch() - jangan biarkan refetch total ini nimpa baris yang lagi
+      // dirty (baru aja ditulis lokal), biar konsisten sama proteksi di App.tsx.
+      setData(prev => {
+        if (GLOBAL_DIRTY_RAW_IDS.size === 0) return result
+        const prevMap: Record<string, any> = {}
+        prev.forEach(r => { prevMap[String(r.id)] = r })
+        return result.map((r: any) =>
+          GLOBAL_DIRTY_RAW_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r)
+      })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
     } finally {
