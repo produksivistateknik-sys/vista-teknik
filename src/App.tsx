@@ -394,6 +394,19 @@ const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number
 
     const scheduleBaru={...scheduleTerkini};
     scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
+    // Entry ASLI di hariSumber TETAP DISIMPAN APA ADANYA (data/histori/status rilis yg udah
+    // ada di tanggal itu jangan hilang - dipakai fitur "kunci progress per hari"), tapi
+    // komponen yg baru aja digeser ditandai `digeserKe` per-kode. UI (Rencana Harian & Raw
+    // Schedule) pakai marker ini buat NONAKTIFKAN tombol Rilis/drag utk kode itu di tanggal
+    // asal - biar gak ada 2 entry yg SAMA2 keliatan "aktif" (yg bikin toggle Rilis di satu
+    // tempat kayak "kena" ke tempat lain, padahal itu 2 row/entry historis vs aktif yg beda).
+    scheduleBaru[hariSumber]=(scheduleTerkini[hariSumber]||[]).map((e:any)=>{
+      const kodeDigeserWp=entryBaru.find(nb=>nb.wp===e.wp)?.komponen||[];
+      if(kodeDigeserWp.length===0)return e;
+      const digeserKeBaru={...(e.digeserKe||{})};
+      kodeDigeserWp.forEach((k:string)=>{digeserKeBaru[k]=hariTarget;});
+      return{...e,digeserKe:digeserKeBaru};
+    });
     await updateRaw(row.id,{schedule:scheduleBaru});
     markRawDirty(row.id);
     setRawData((prev:any)=>prev.map((r:any)=>r.id===row.id?{...r,schedule:scheduleBaru}:r));

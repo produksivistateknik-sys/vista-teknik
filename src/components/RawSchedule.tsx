@@ -351,7 +351,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       const kodeAsli=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
       const kodeBelumSelesai=kodeAsli.filter((kode:string)=>{
         const cl=panelData.checklist?.[kode];
-        return(cl?.progress?.[row.proses]||0)<100;
+        const sudahDigeser=e.digeserKe?.[kode];
+        return(cl?.progress?.[row.proses]||0)<100&&!sudahDigeser;
       });
       if(kodeBelumSelesai.length===0)return null;
       const markerTokens=(e.komponen||[]).filter((k:string)=>k.startsWith("__wiring_"));
@@ -1421,12 +1422,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
                                   const sudahSelesaiKomp=progressUntukTelat>=100;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
-                                  const digeserKeBesok=kodeDigeserKeBesok.has(kode);
+                                  // digeserKe: marker resmi dari geserSatuTanggal (kode ini udah dipindah aksinya
+                                  // ke tanggal tsb). Fallback ke heuristik lama (peek jadwal besok) buat entry
+                                  // lama yang dibuat sebelum marker ini ada.
+                                  const digeserKeTgl=entry.digeserKe?.[kode]||(kodeDigeserKeBesok.has(kode)?addDays(d,1):null);
                                   return(
-                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeBesok?"Belum selesai - otomatis digeser ke "+addDays(d,1):isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:sudahSelesaiKomp?0.5:1}}>
+                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
                                       {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
                                       {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
-                                      {digeserKeBesok&&<span style={{fontSize:9}}>➡️</span>}
+                                      {digeserKeTgl&&<span style={{fontSize:9}}>➡️</span>}
                                       {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
                                       <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
