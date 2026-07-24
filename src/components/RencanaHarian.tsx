@@ -179,15 +179,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     try{
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
       await withRenharQueue(task,async(existing)=>{
-        console.log('[DEBUG RILIS] task=',{rawId:task.rawId,wp:task.wp,tanggal:task.tanggal,kode});
-        console.log('[DEBUG RILIS] existing fetched dari DB=',existing);
         if(existing){
           const releasedLama=existing.komponen_released||[];
-          const kiniReleased=releasedLama.includes(kode);
-          const releasedBaru=kiniReleased?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
-          console.log('[DEBUG RILIS] existing.id=',existing.id,'releasedLama=',releasedLama,'releasedBaru=',releasedBaru);
+          // IDEMPOTEN: tentukan hasil akhir dari NIAT klik (kemungkinanSudahRelease -> mau
+          // Tarik; sebaliknya -> mau Rilis), BUKAN dari toggle buta berdasarkan fresh-fetch.
+          // Kalau state lokal sempat basi (gak sinkron sama DB), klik Rilis SELALU berakhir
+          // released, klik Tarik SELALU berakhir tidak-released - gak pernah kebalik lagi.
+          const mauRilis=!kemungkinanSudahRelease;
+          const releasedBaru=mauRilis
+            ?(releasedLama.includes(kode)?releasedLama:[...releasedLama,kode])
+            :releasedLama.filter((k:string)=>k!==kode);
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
-          console.log('[DEBUG RILIS] updateRenhar selesai buat id=',existing.id);
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
           showToast(kiniReleased?`↩️ "${namaTampil}" dibatalkan rilisnya`:`✅ "${namaTampil}" berhasil dirilis`);
