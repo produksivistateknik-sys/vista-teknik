@@ -197,7 +197,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
             proyek:task.proyek,panel:task.panel,proses:task.proses,
-            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
           });
           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
@@ -220,7 +220,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const result=await createRenhar({
           raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
         if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
@@ -245,7 +245,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
             proyek:task.proyek,panel:task.panel,proses:task.proses,
-            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
           });
           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
