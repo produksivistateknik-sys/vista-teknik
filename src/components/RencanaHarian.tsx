@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
@@ -150,20 +150,43 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // 2. Keputusan ADD/REMOVE sekarang selalu dari `existing.komponen_released` yang di-fetch
   //    FRESH di dalam withRenharQueue - bukan dari status `sudahRelease` yang dibekukan pas
   //    render/klik terjadi (itu bisa basi kalau ada request lain yang lebih dulu selesai).
+  // Investigasi lanjutan (cek activity_log) nemuin akar masalah SEBENARNYA: bukan bug data,
+  // tapi klik BERULANG di tombol yang sama (2-3 detik berselang - di luar jangkauan lock di
+  // atas yang cuma nahan klik dalam hitungan milidetik) - user gak yakin klik pertama masuk
+  // (gak ada konfirmasi visual jelas) jadi klik lagi, dan klik ke-2/3 itu kena tombol yang
+  // SUDAH berubah jadi "Tarik" - toggle-nya sendiri sudah benar tiap kali, tapi jumlah klik
+  // ganjil bikin hasil akhir kebalikan dari klik pertama. Fix: toast konfirmasi instan tiap
+  // berhasil (biar gak ada dorongan klik ulang) + konfirmasi wajib sebelum "Tarik" (aksi yang
+  // lebih "mahal" kalau ke-klik gak sengaja) - "Rilis" tetap satu klik langsung, gak diperlambat.
   const [pendingRelease,setPendingRelease]=useState<Set<string>>(new Set());
-  const toggleReleaseKomponen=async(task:any,kode:string)=>{
+  const [toast,setToast]=useState<string|null>(null);
+  const toastTimerRef=useRef<any>(null);
+  const showToast=(msg:string)=>{
+    setToast(msg);
+    if(toastTimerRef.current)clearTimeout(toastTimerRef.current);
+    toastTimerRef.current=setTimeout(()=>setToast(null),2500);
+  };
+  const toggleReleaseKomponen=async(task:any,kode:string,namaTampil:string,kemungkinanSudahRelease:boolean)=>{
     const key=`${task.rawId}_${task.wp}_${task.tanggal}_${kode}`;
     if(pendingRelease.has(key))return;
+    // Konfirmasi cuma buat aksi "Tarik" (batalkan rilis) - dipakai heuristik dari status render
+    // terakhir (bisa sedikit basi, gak masalah karena keputusan ADD/REMOVE final tetap dari data
+    // fresh di bawah - ini cuma buat nentuin perlu nanya "yakin?" atau enggak).
+    if(kemungkinanSudahRelease){
+      if(!window.confirm(`Batalkan rilis "${namaTampil}"? Operator gak akan bisa lihat/kerjakan lagi sampai dirilis ulang.`))return;
+    }
     setPendingRelease(prev=>new Set(prev).add(key));
     try{
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
       await withRenharQueue(task,async(existing)=>{
         if(existing){
           const releasedLama=existing.komponen_released||[];
-          const releasedBaru=releasedLama.includes(kode)?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
+          const kiniReleased=releasedLama.includes(kode);
+          const releasedBaru=kiniReleased?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+          showToast(kiniReleased?`↩️ "${namaTampil}" dibatalkan rilisnya`:`✅ "${namaTampil}" berhasil dirilis`);
         } else {
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
@@ -172,6 +195,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
           });
           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+          showToast(`✅ "${namaTampil}" berhasil dirilis`);
         }
       });
     } finally {
@@ -235,6 +259,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const allDist=totalKompFiltered>0&&distCount===totalKompFiltered;
   return(
     <div className="fi">
+      {toast&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:9999,
+          background:"#1e293b",color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
+          boxShadow:"0 8px 24px #00000040",pointerEvents:"none"}}>
+          {toast}
+        </div>
+      )}
       <Card style={{marginBottom:10,padding:"10px 14px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
@@ -391,7 +422,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 return(
                                   <Btn color={sudahRelease?"#dc2626":"#2563eb"} disabled={isPending}
                                     style={{fontSize:11,padding:"5px 14px",opacity:isPending?0.55:1,cursor:isPending?"default":"pointer"}}
-                                    onClick={()=>toggleReleaseKomponen(t,kode)}>
+                                    onClick={()=>toggleReleaseKomponen(t,kode,item?.nama||kode,sudahRelease)}>
                                     {isPending?"⏳":sudahRelease?"↩️ Tarik":"📤 Rilis"}
                                   </Btn>
                                 );
