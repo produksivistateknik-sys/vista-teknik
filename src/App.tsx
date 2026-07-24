@@ -208,6 +208,26 @@ const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, updat
 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
 
+// Refetch paksa pas tab balik keliatan/aktif - koneksi realtime WebSocket bisa diam2 mati kalau
+// tab lama di-background/idle (perilaku umum browser buat hemat resource), dan gak ada mekanisme
+// otomatis buat nyadarin app-nya connection itu udah putus. Efeknya: renharList/rawList/woList
+// "beku" di snapshot terakhir sebelum putus - user liat status lama terus (misal komponen yang
+// sebenarnya udah dirilis planner lain/tab lain masih kelihatan "Belum Dirilis") sampai tab-nya
+// di-refresh manual. visibilitychange nutup celah ini: begitu tab aktif lagi, paksa fetch ulang
+// data utama biar nyamain balik ke DB terkini, gak nunggu realtime nyambung sendiri (kalaupun
+// nyambung, ada window basi di antaranya).
+useEffect(()=>{
+  const onVisible=()=>{
+    if(document.visibilityState==="visible"){
+      refetchRenhar?.();
+      refetchRaw?.();
+      refetchWO?.();
+    }
+  };
+  document.addEventListener("visibilitychange",onVisible);
+  return ()=>document.removeEventListener("visibilitychange",onVisible);
+},[refetchRenhar,refetchRaw,refetchWO]);
+
 // withRenharQueue - serialisasi SEMUA tulisan renhar per (raw_id+wp+tanggal), DIBAGI antara
 // Rencana Harian & Raw Schedule (bukan masing2 punya queue sendiri) - keduanya bisa mounted
 // BARENGAN (fitur "4 tab tetap mounted"), jadi kalau queue-nya terpisah per-komponen, klik
