@@ -142,25 +142,41 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };
 
-  const toggleReleaseKomponen=async(task:any,kode:string,sedangDirilis:boolean)=>{
-    const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
-    await withRenharQueue(task,async(existing)=>{
-      if(existing){
-        const releasedLama=existing.komponen_released||[];
-        const releasedBaru=sedangDirilis?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
-        await updateRenhar(existing.id,{komponen_released:releasedBaru});
-        markRenharDirty(existing.id);
-        setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
-      } else {
-        const result=await createRenhar({
-          raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
-          proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
-          tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
-        });
-        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
-      }
-    });
+  // Kunci per (raw_id+wp+tanggal+kode) selagi toggle-nya masih diproses - klik susulan yang
+  // masuk SEBELUM request pertama kelar diabaikan, bukan diantre. Ini nutup 2 masalah:
+  // 1. Klik ganda/cepat (dobel-tap) yang kena tombol yang BARU SAJA berubah label (Rilis <->
+  //    Tarik) gara2 optimistic update instan - sebelumnya klik kedua ini kebaca sebagai
+  //    "batalkan rilis yang barusan berhasil", padahal user cuma mau klik sekali.
+  // 2. Keputusan ADD/REMOVE sekarang selalu dari `existing.komponen_released` yang di-fetch
+  //    FRESH di dalam withRenharQueue - bukan dari status `sudahRelease` yang dibekukan pas
+  //    render/klik terjadi (itu bisa basi kalau ada request lain yang lebih dulu selesai).
+  const [pendingRelease,setPendingRelease]=useState<Set<string>>(new Set());
+  const toggleReleaseKomponen=async(task:any,kode:string)=>{
+    const key=`${task.rawId}_${task.wp}_${task.tanggal}_${kode}`;
+    if(pendingRelease.has(key))return;
+    setPendingRelease(prev=>new Set(prev).add(key));
+    try{
+      const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
+      await withRenharQueue(task,async(existing)=>{
+        if(existing){
+          const releasedLama=existing.komponen_released||[];
+          const releasedBaru=releasedLama.includes(kode)?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
+          await updateRenhar(existing.id,{komponen_released:releasedBaru});
+          markRenharDirty(existing.id);
+          setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+        } else {
+          const result=await createRenhar({
+            raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+            proyek:task.proyek,panel:task.panel,proses:task.proses,
+            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+            tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
+          });
+          if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+        }
+      });
+    } finally {
+      setPendingRelease(prev=>{const n=new Set(prev);n.delete(key);return n;});
+    }
   };
   const confirmDistribute=async()=>{
     if(!assignModal)return;
@@ -369,7 +385,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               })()}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
-                              <Btn color={sudahRelease?"#dc2626":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>toggleReleaseKomponen(t,kode,sudahRelease)}>{sudahRelease?"↩️ Tarik":"📤 Rilis"}</Btn>
+                              {(()=>{
+                                const pendingKey=`${t.rawId}_${t.wp}_${t.tanggal}_${kode}`;
+                                const isPending=pendingRelease.has(pendingKey);
+                                return(
+                                  <Btn color={sudahRelease?"#dc2626":"#2563eb"} disabled={isPending}
+                                    style={{fontSize:11,padding:"5px 14px",opacity:isPending?0.55:1,cursor:isPending?"default":"pointer"}}
+                                    onClick={()=>toggleReleaseKomponen(t,kode)}>
+                                    {isPending?"⏳":sudahRelease?"↩️ Tarik":"📤 Rilis"}
+                                  </Btn>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );
