@@ -284,8 +284,18 @@ useEffect(() => {
       setRenhar((prev:any[])=>{
         const prevMap:Record<string,any>={};
         prev.forEach((r:any)=>{prevMap[String(r.id)]=r;});
-        return renharListRef.current.map((r:any)=>
+        const merged=renharListRef.current.map((r:any)=>
           GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&prevMap[String(r.id)]?prevMap[String(r.id)]:r);
+        // Row yang BARU DIBUAT (createRenhar - misal task yang belum pernah punya row renhar
+        // sebelumnya, klik Rilis pertama kali) belum tentu udah nongol di renharListRef.current
+        // kalau echo realtime INSERT-nya belum nyampe - .map() di atas cuma iterasi row yang
+        // ADA di situ, jadi row baru yang dirty bisa ke-skip total (hilang dari tampilan padahal
+        // udah benar tersimpan di DB). Tambahin balik row dirty yang belum muncul di fresh list.
+        const freshIds=new Set(renharListRef.current.map((r:any)=>String(r.id)));
+        prev.forEach((r:any)=>{
+          if(GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
+        });
+        return merged;
       });
     }, 1200);
   }
@@ -304,8 +314,16 @@ useEffect(() => {
       setRawData((prev:any[])=>{
         const prevMap:Record<string,any>={};
         prev.forEach((r:any)=>{prevMap[String(r.id)]=r;});
-        return rawListRef.current.map((r:any)=>
+        const merged=rawListRef.current.map((r:any)=>
           GLOBAL_DIRTY_RAW_IDS.has(String(r.id))&&prevMap[String(r.id)]?prevMap[String(r.id)]:r);
+        // Sama kayak merge renhar di atas - row raw_schedule yang baru dibuat lokal (createRaw)
+        // bisa belum nongol di rawListRef.current kalau echo realtime-nya belum nyampe. Tambahin
+        // balik row dirty yang belum muncul di fresh list biar gak ilang dari tampilan.
+        const freshIds=new Set(rawListRef.current.map((r:any)=>String(r.id)));
+        prev.forEach((r:any)=>{
+          if(GLOBAL_DIRTY_RAW_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
+        });
+        return merged;
       });
     }, 1200);
   }
