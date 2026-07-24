@@ -232,6 +232,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
+    console.log('[DEBUG RILISSEMUA] selProses=',selProses,'selDate=',selDate,'filteredTasks.length=',filteredTasks.length,'allTasks.length=',allTasks.length);
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       const allKode=task.komponen||[];
