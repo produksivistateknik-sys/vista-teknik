@@ -305,11 +305,31 @@ useEffect(() => {
 const PROSES_DIKECUALIKAN_AUTO_GESER=["QC TEST","PACKING"];
 const PROSES_WIRING_AUTO_GESER=["WIRING CONTROL","WIRING POWER"];
 const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number>=>{
-  let jumlahDigeser=0;
-  const panelMap:Record<string,any>={};
-  woList.forEach((wo:any)=>(wo.panels||[]).forEach((p:any)=>{panelMap[String(p.id)]=p;}));
+  // Klaim eksekusi di level DATABASE - localStorage per-browser TIDAK cukup kalau 2 planner
+  // (atau 1 planner 2 tab/device) sama-sama buka dashboard pas transisi hari kerja: masing2
+  // browser py localStorage sendiri2, jadi keduanya lolos cek "belum jalan hari ini" dan
+  // geserSatuTanggal jalan DUA KALI konkuren pakai snapshot rawList/woList yang saling belum
+  // sinkron -> dedup carriedOverFrom gagal mendeteksi entry yg br ditulis proses lain -> entry
+  // dobel utk WP yg sama ("Lanjutan [tgl]" muncul 2x). Insert ke auto_geser_runs bakal kena
+  // unique-violation kalau tab/device lain udah lebih dulu klaim hariSumber ini - itu sinyal
+  // buat langsung skip, cuma SATU eksekusi yg beneran jalan sistem-wide.
+  // Kalau tabelnya belum ada (migrasi belum dijalankan), JANGAN gagal total - tetap lanjut
+  // jalan tanpa proteksi lintas-tab drpd fitur auto-geser mati sama sekali.
+  const{error:claimErr}=await supabase.from("auto_geser_runs").insert({hari_sumber:hariSumber,hari_target:hariTarget});
+  if(claimErr&&(claimErr as any).code==="23505")return 0;
 
-  for(const row of rawList){
+  let jumlahDigeser=0;
+  // Fetch FRESH langsung dari DB - BUKAN pakai rawList/woList (closure React state) yang bisa
+  // stale, terutama progress checklist yg br aja nyentuh 100% tapi snapshot lokal belum nangkep
+  // itu -> sebelumnya bikin komponen yg SUDAH SELESAI ikut kegeser krn dianggap masih eligible.
+  const[{data:freshRaw},{data:freshPanels}]=await Promise.all([
+    supabase.from("raw_schedule").select("*"),
+    supabase.from("panels").select("id,checklist"),
+  ]);
+  const panelMap:Record<string,any>={};
+  (freshPanels||[]).forEach((p:any)=>{panelMap[String(p.id)]=p;});
+
+  for(const row of (freshRaw||[])){
     if(PROSES_DIKECUALIKAN_AUTO_GESER.includes(row.proses))continue;
     const entriesSumber=row.schedule?.[hariSumber]||[];
     if(entriesSumber.length===0)continue;
@@ -331,7 +351,12 @@ const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number
     });
     if(Object.keys(kodeEligiblePerWp).length===0)continue;
 
-    const entriesTarget=row.schedule?.[hariTarget]||[];
+    // Fetch fresh SEKALI LAGI khusus row ini pas mau nulis - jaga2 kalau schedule row ini
+    // sempat berubah (misal planner drag-drop manual) di rentang waktu antara select massal di
+    // atas dan baris ini diproses (loop-nya sequential, bisa makan waktu kalau row banyak).
+    const{data:freshRowNow}=await supabase.from("raw_schedule").select("schedule").eq("id",row.id).single();
+    const scheduleTerkini=freshRowNow?.schedule||row.schedule||{};
+    const entriesTarget=scheduleTerkini[hariTarget]||[];
     const kodeSudahDigeser=new Set<string>();
     entriesTarget.forEach((e:any)=>{
       if(e.carriedOverFrom===hariSumber)(e.komponen||[]).forEach((k:string)=>kodeSudahDigeser.add(k));
@@ -345,7 +370,7 @@ const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number
     if(entryBaru.length===0)continue;
     jumlahDigeser+=entryBaru.reduce((s,e)=>s+e.komponen.length,0);
 
-    const scheduleBaru={...(row.schedule||{})};
+    const scheduleBaru={...scheduleTerkini};
     scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
     await updateRaw(row.id,{schedule:scheduleBaru});
     markRawDirty(row.id);
