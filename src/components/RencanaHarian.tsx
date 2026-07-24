@@ -181,6 +181,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       await withRenharQueue(task,async(existing)=>{
         if(existing){
           const releasedLama=existing.komponen_released||[];
+          console.log('[DEBUG2 RILIS] existing.id=',existing.id,'kode diklik=',kode,'kemungkinanSudahRelease=',kemungkinanSudahRelease,'releasedLama (SEBELUM tulis)=',releasedLama,'existing.komponen=',existing.komponen,'existing.updated_at=',existing.updated_at);
           // IDEMPOTEN: tentukan hasil akhir dari NIAT klik (kemungkinanSudahRelease -> mau
           // Tarik; sebaliknya -> mau Rilis), BUKAN dari toggle buta berdasarkan fresh-fetch.
           // Kalau state lokal sempat basi (gak sinkron sama DB), klik Rilis SELALU berakhir
@@ -189,6 +190,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const releasedBaru=mauRilis
             ?(releasedLama.includes(kode)?releasedLama:[...releasedLama,kode])
             :releasedLama.filter((k:string)=>k!==kode);
+          console.log('[DEBUG2 RILIS] releasedBaru (mau ditulis)=',releasedBaru);
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
