@@ -300,8 +300,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>📅 {fmtDateFull(selDate)}</div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           {totalKompFiltered>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{totalKompFiltered} dirilis</span>}
-          {!allDist&&totalKompFiltered>0&&selProses!=="ALL"&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>📤 Rilis Semua ({selProses})</Btn>}
-          {!allDist&&totalKompFiltered>0&&selProses==="ALL"&&<span style={{fontSize:11,color:"#94a3b8",fontStyle:"italic"}}>Pilih proses tertentu dulu buat pakai Rilis Semua</span>}
+          {!allDist&&totalKompFiltered>0&&<Btn color="#16a34a" style={{fontSize:12,padding:"6px 16px"}} onClick={distributeAll}>📤 Rilis Semua</Btn>}
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
         </div>
       </div>
