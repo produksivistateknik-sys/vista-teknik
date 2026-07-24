@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
@@ -6,7 +6,7 @@ import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { markRenharDirty } from '../lib/globalState'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
-export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -17,10 +17,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [selProses,setSelProses]=useState("ALL");
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
-  // Antrian per (raw_id+wp+tanggal) - cegah dobel-insert renhar kalau tombol Rilis/Distribusi
-  // diklik dua kali cepat / koneksi lambat (dua panggilan sama-sama baca "belum ada row" dari
-  // state lokal yang belum sempat update, dua-duanya insert baru).
-  const renharOpQueue=useRef<Record<string,Promise<any>>>({});
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
@@ -137,20 +133,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return map;
   },[days,rawData]);
   const getRenharEntry=(task)=>renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
-  // Serialisasi per (raw_id+wp+tanggal) + fetch fresh dari DB sebelum putuskan create-atau-
-  // update, biar dua panggilan yang nembak nyaris bersamaan (double-klik Rilis/Distribusi,
-  // atau koneksi lambat) gak dua-duanya insert row baru buat kombinasi yang sama.
-  const withRenharQueue=async(task:any,fn:(existingFresh:any)=>Promise<void>)=>{
-    const key=`${task.rawId}_${task.wp}_${task.tanggal}`;
-    const prev=renharOpQueue.current[key]||Promise.resolve();
-    const thisOp=prev.then(async()=>{
-      const{data}=await supabase.from("renhar").select("*")
-        .eq("raw_id",task.rawId).eq("wp",task.wp).eq("tanggal",task.tanggal).limit(1);
-      await fn(data?.[0]||null);
-    });
-    renharOpQueue.current[key]=thisOp;
-    await thisOp;
-  };
+  // withRenharQueue sekarang dibagi dari App.tsx (lihat komentar di sana) - Rencana Harian &
+  // Raw Schedule pakai queue yang SAMA, bukan masing2 punya sendiri, biar tulisan lintas-tab
+  // yang mounted bareng tetap terserialisasi.
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
     const existing=getRenharEntry(task);
