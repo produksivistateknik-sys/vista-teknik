@@ -1464,13 +1464,23 @@ async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
 export async function generateAndSaveToRawSchedule(
   woId: number,
   tanggalMulai: string,
-  generatedBy: string
+  generatedBy: string,
+  panelIds?: number[]
 ): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
     if (!wo) return { success: false, count: 0, error: 'WO tidak ditemukan' }
-    const { data: panels } = await supabase.from('panels').select('*').eq('wo_id', woId)
-    if (!panels || panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
+    const { data: panelsAll } = await supabase.from('panels').select('*').eq('wo_id', woId)
+    if (!panelsAll || panelsAll.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
+    // panelIds opsional - kalau diisi, HANYA panel-panel itu yang diproses/ditulis (panel lain
+    // di WO yang sama sama sekali gak di-fetch/disentuh dari sini). Hampir semua bagian di bawah
+    // (cek duplikat, sudahTerjadwalQtyMap, qtyProsesSelesaiMap, dua loop penulis utama) udah
+    // otomatis ngikutin isi `panels` - jadi filter di SATU titik ini cukup. terpakaiTracker
+    // (kapasitas harian) SENGAJA TETAP dihitung dari raw_schedule GLOBAL (bukan cuma panel
+    // terpilih) - kapasitas itu resource bersama lintas panel/WO, kalau ikut difilter hasilnya
+    // salah (kapasitas yang udah kepakai panel lain jadi gak kehitung, bisa over-alokasi).
+    const panels = (panelIds && panelIds.length > 0) ? panelsAll.filter((p: any) => panelIds.includes(p.id)) : panelsAll
+    if (panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel yang dipilih' }
 
     const panelIdsForCheck = panels.map((p: any) => p.id)
     const { data: existingCheck } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)

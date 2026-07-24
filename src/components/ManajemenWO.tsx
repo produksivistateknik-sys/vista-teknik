@@ -33,6 +33,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
   const [quickGenTanggal,setQuickGenTanggal]=useState(new Date().toISOString().slice(0,10));
   const [quickGenLoading,setQuickGenLoading]=useState(false);
   const [quickGenResult,setQuickGenResult]=useState<any>(null);
+  const [quickGenSelectedPanelIds,setQuickGenSelectedPanelIds]=useState<number[]>([]);
   const [fcsLoading,setFcsLoading]=useState(false);
   const [fcsResult,setFcsResult]=useState<any>(null);
   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
@@ -385,7 +386,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);}}
+                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
                 <button onClick={()=>setDelId(wo.id)}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
@@ -625,22 +626,46 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
         <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={420}>
           {!quickGenResult?(
             <div>
-              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin SEMUA komponen aktif dari SEMUA panel di WO ini, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin semua komponen aktif dari panel yang dipilih di bawah, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
+              <div style={{marginBottom:14}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                  <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({quickGenSelectedPanelIds.length}/{(quickGenModal.panels||[]).length})</div>
+                  <div style={{display:"flex",gap:6}}>
+                    <button onClick={()=>setQuickGenSelectedPanelIds((quickGenModal.panels||[]).map((p:any)=>p.id))}
+                      style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                    <button onClick={()=>setQuickGenSelectedPanelIds([])}
+                      style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                  </div>
+                </div>
+                <div style={{maxHeight:140,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
+                  {(quickGenModal.panels||[]).map((p:any)=>{
+                    const checked=quickGenSelectedPanelIds.includes(p.id);
+                    return(
+                      <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",cursor:"pointer",borderRadius:6,background:checked?"#eff6ff":"transparent"}}>
+                        <input type="checkbox" checked={checked}
+                          onChange={()=>setQuickGenSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
+                        <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
+                        <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
               <div style={{marginBottom:16}}>
                 <Lbl>Tanggal Mulai</Lbl>
                 <Inp type="date" value={quickGenTanggal} onChange={(e:any)=>setQuickGenTanggal(e.target.value)}/>
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                 <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
-<Btn color="#16a34a" onClick={async()=>{
+<Btn color="#16a34a" disabled={quickGenSelectedPanelIds.length===0} onClick={async()=>{
                   setQuickGenLoading(true);
                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+                  let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname,quickGenSelectedPanelIds);
                   if(!res.success&&res.error==="__ALREADY_EXISTS__"){
-                    const lanjut=confirm("WO ini UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP komponen yang udah lengkap terjadwal, dan cuma nambahin kekurangannya aja (top-up) - jadwal yang udah ada gak bakal dobel.\n\nYakin mau lanjut?");
+                    const lanjut=confirm("Panel yang dipilih UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP komponen yang udah lengkap terjadwal, dan cuma nambahin kekurangannya aja (top-up) - jadwal yang udah ada gak bakal dobel.\n\nYakin mau lanjut?");
                     if(lanjut){
-                      res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname);
+                      res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname,quickGenSelectedPanelIds);
                     } else {
                       setQuickGenLoading(false);
                       return;
@@ -649,7 +674,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                   setQuickGenResult(res);
                   setQuickGenLoading(false);
                   if(res.success&&refetchWO)await refetchWO();
-                }}>{quickGenLoading?"⏳ Generating...":"Generate →"}</Btn>
+                }}>{quickGenLoading?"⏳ Generating...":quickGenSelectedPanelIds.length===0?"Pilih panel dulu":"Generate → ("+quickGenSelectedPanelIds.length+" panel)"}</Btn>
               </div>
             </div>
           ):(
