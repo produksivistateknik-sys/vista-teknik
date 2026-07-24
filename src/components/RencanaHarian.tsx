@@ -315,7 +315,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
                         const sudahRelease=released.includes(kode);
                         const digeserKeTanggal=t.digeserKe?.[kode]||null;
-                        const workersKode=(ppk[kode]||[]).map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+                        // BUSBAR nyimpen pekerja_per_komponen[kode] sebagai OBJEK per-tahap
+                        // ({FABRIKASI:[..],PLATING:[..],...}), bukan array datar kayak proses
+                        // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
+                        const ppkKode=ppk[kode];
+                        const opIdsKode:number[]=Array.isArray(ppkKode)?ppkKode:(ppkKode&&typeof ppkKode==="object"?Object.values(ppkKode).flat() as number[]:[]);
+                        const workersKode=opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return(
                           <tr key={ti+"-"+kode}>
