@@ -40,10 +40,7 @@ export function useRenhar() {
         (payload) => { setData(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) }
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
-        (payload) => {
-          console.log('[DEBUG REALTIME renhar UPDATE]', 'id=', payload.new.id, 'komponen_released=', payload.new.komponen_released, 'jam=', new Date().toISOString());
-          setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r));
-        }
+        (payload) => { setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r)) }
       )
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'renhar' },
         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
