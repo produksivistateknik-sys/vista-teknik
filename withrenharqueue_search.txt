@@ -1,0 +1,42 @@
+src\App.tsx:34   markRenharDirty, markRawDirty,
+src\App.tsx:211 // withRenharQueue - serialisasi SEMUA tulisan renhar per (raw_id+wp+tanggal), DIBAGI antara
+src\App.tsx:219 const withRenharQueue = async (task:any, fn:(existingFresh:any)=>Promise<void>) => {
+src\App.tsx:758               {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+src\App.tsx:759               {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+src\components\RawSchedule.tsx:10 import { markRenharDirty, markRawDirty } from '../lib/globalState'
+src\components\RawSchedule.tsx:14 export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
+src\components\RawSchedule.tsx:619     await withRenharQueue({rawId,wp,tanggal:date},async(existing)=>{
+src\components\RawSchedule.tsx:621         markRenharDirty(existing.id);
+src\components\RawSchedule.tsx:630     await withRenharQueue({rawId,wp,tanggal:date},async(existing)=>{
+src\components\RawSchedule.tsx:890           markRenharDirty(r.id);
+src\components\RawSchedule.tsx:897           markRenharDirty(r.id);
+src\components\RawSchedule.tsx:904           // Fresh-fetch dulu lewat withRenharQueue - kalau di tanggal tujuan udah ADA row
+src\components\RawSchedule.tsx:907           await withRenharQueue({rawId,wp:r.wp,tanggal:toDate},async(existingTarget)=>{
+src\components\RawSchedule.tsx:912               markRenharDirty(existingTarget.id);
+src\components\RawSchedule.tsx:924               if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);}
+src\components\RawSchedule.tsx:953     renhar.filter((r:any)=>(r.panel_id||r.panelId)===panelId).forEach((r:any)=>markRenharDirty(r.id));
+src\components\RawSchedule.tsx:1028     // Cek fresh lewat withRenharQueue - JANGAN percaya assignModal.existing (di-capture stale
+src\components\RawSchedule.tsx:1030     await withRenharQueue(task,async(existing)=>{
+src\components\RawSchedule.tsx:1032         markRenharDirty(existing.id);
+src\components\RawSchedule.tsx:1042         if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
+src\components\RawSchedule.tsx:1052       await withRenharQueue(task,async(existing)=>{
+src\components\RawSchedule.tsx:1060         if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
+src\components\RawSchedule.tsx:1856                 // Sync ke renhar - fresh-fetch lewat withRenharQueue, bukan cari di state renhar
+src\components\RawSchedule.tsx:1873                   await withRenharQueue(busbarTask,async(existRenhar)=>{
+src\components\RawSchedule.tsx:1875                       markRenharDirty(existRenhar.id);
+src\components\RawSchedule.tsx:1880                       if(res?.success&&res?.data){markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);}
+src\components\RawSchedule.tsx:1885                   await withRenharQueue(busbarTask,async(existRenhar)=>{
+src\components\RencanaHarian.tsx:6 import { markRenharDirty } from '../lib/globalState'
+src\components\RencanaHarian.tsx:9 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
+src\components\RencanaHarian.tsx:135   // withRenharQueue sekarang dibagi dari App.tsx (lihat komentar di sana) - Rencana Harian &
+src\components\RencanaHarian.tsx:151   //    FRESH di dalam withRenharQueue - bukan dari status `sudahRelease` yang dibekukan pas
+src\components\RencanaHarian.tsx:181       await withRenharQueue(task,async(existing)=>{
+src\components\RencanaHarian.tsx:187           markRenharDirty(existing.id);
+src\components\RencanaHarian.tsx:197           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+src\components\RencanaHarian.tsx:208     await withRenharQueue(task,async(existing)=>{
+src\components\RencanaHarian.tsx:211         markRenharDirty(existing.id);
+src\components\RencanaHarian.tsx:220         if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+src\components\RencanaHarian.tsx:230       await withRenharQueue(task,async(existing)=>{
+src\components\RencanaHarian.tsx:236           markRenharDirty(existing.id);
+src\components\RencanaHarian.tsx:245           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+src\lib\globalState.ts:28 export function markRenharDirty(id:number|string, ms=2000){

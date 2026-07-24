@@ -1,0 +1,62 @@
+169   const toggleReleaseKomponen=async(task:any,kode:string,namaTampil:string,kemungkinanSudahRelease:boolean)=>{
+170     const key=`${task.rawId}_${task.wp}_${task.tanggal}_${kode}`;
+171     if(pendingRelease.has(key))return;
+172     // Konfirmasi cuma buat aksi "Tarik" (batalkan rilis) - dipakai heuristik dari status render
+173     // terakhir (bisa sedikit basi, gak masalah karena keputusan ADD/REMOVE final tetap dari data
+174     // fresh di bawah - ini cuma buat nentuin perlu nanya "yakin?" atau enggak).
+175     if(kemungkinanSudahRelease){
+176       if(!window.confirm(`Batalkan rilis "${namaTampil}"? Operator gak akan bisa lihat/kerjakan lagi sampai dirilis ulang.`))return;
+177     }
+178     setPendingRelease(prev=>new Set(prev).add(key));
+179     try{
+180       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
+181       await withRenharQueue(task,async(existing)=>{
+182         if(existing){
+183           const releasedLama=existing.komponen_released||[];
+184           const kiniReleased=releasedLama.includes(kode);
+185           const releasedBaru=kiniReleased?releasedLama.filter((k:string)=>k!==kode):[...releasedLama,kode];
+186           await updateRenhar(existing.id,{komponen_released:releasedBaru});
+187           markRenharDirty(existing.id);
+188           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+189           showToast(kiniReleased?`↩️ "${namaTampil}" dibatalkan rilisnya`:`✅ "${namaTampil}" berhasil dirilis`);
+190         } else {
+191           const result=await createRenhar({
+192             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+193             proyek:task.proyek,panel:task.panel,proses:task.proses,
+194             prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+195             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
+196           });
+197           if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+198           showToast(`✅ "${namaTampil}" berhasil dirilis`);
+199         }
+200       });
+201     } finally {
+202       setPendingRelease(prev=>{const n=new Set(prev);n.delete(key);return n;});
+203     }
+204   };
+205   const confirmDistribute=async()=>{
+206     if(!assignModal)return;
+207     const{task,divisi}=assignModal;
+208     await withRenharQueue(task,async(existing)=>{
+209       if(existing){
+210         await updateRenhar(existing.id,{pekerja:selPekerja});
+211         markRenharDirty(existing.id);
+212         setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r):[...prev,{...existing,pekerja:selPekerja}]);
+213       } else {
+214         const result=await createRenhar({
+215           raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+216           proyek:task.proyek,panel:task.panel,proses:task.proses,
+217           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:task.komponen,
+218           tanggal:task.tanggal,divisi,pekerja:selPekerja,
+219         });
+220         if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+221       }
+222     });
+223     if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
+224     setAssignModal(null);setSelPekerja([]);
+225   };
+226   const distributeAll=async()=>{
+227     for(const task of filteredTasks){
+228       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+229       const allKode=task.komponen||[];
+230       await withRenharQueue(task,async(existing)=>{

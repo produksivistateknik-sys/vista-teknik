@@ -1,0 +1,81 @@
+211 // withRenharQueue - serialisasi SEMUA tulisan renhar per (raw_id+wp+tanggal), DIBAGI antara
+212 // Rencana Harian & Raw Schedule (bukan masing2 punya queue sendiri) - keduanya bisa mounted
+213 // BARENGAN (fitur "4 tab tetap mounted"), jadi kalau queue-nya terpisah per-komponen, klik
+214 // Rilis di satu tab tetap bisa race sama Distribusi/Drag di tab lain, dua2nya insert row renhar
+215 // baru buat kombinasi yang sama -> duplikat lagi. Fetch FRESH dari DB tepat sebelum tiap
+216 // operasi (bukan baca dari state renhar yang bisa stale) + ORDER BY updated_at DESC supaya
+217 // kalaupun (jarang) masih ada row dobel yang lolos, yang kepilih konsisten row PALING BARU.
+218 const renharOpQueueRef = useRef<Record<string,Promise<any>>>({});
+219 const withRenharQueue = async (task:any, fn:(existingFresh:any)=>Promise<void>) => {
+220   const key = `${task.rawId}_${task.wp}_${task.tanggal}`;
+221   const prev = renharOpQueueRef.current[key] || Promise.resolve();
+222   const thisOp = prev.then(async () => {
+223     const { data } = await supabase.from("renhar").select("*")
+224       .eq("raw_id", task.rawId).eq("wp", task.wp).eq("tanggal", task.tanggal)
+225       .order("updated_at", { ascending: false, nullsFirst: false }).limit(1);
+226     await fn(data?.[0] || null);
+227   });
+228   renharOpQueueRef.current[key] = thisOp;
+229   await thisOp;
+230 };
+231 
+232 const woSyncTimerRef = useRef<any>(null);
+233 useEffect(() => {
+234   if (!woLoading) {
+235     if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current);
+236     woSyncTimerRef.current = setTimeout(() => {
+237       if(GLOBAL_DIRTY_PANEL_IDS.size===0){
+238         setWoData(woList);
+239         return;
+240       }
+241       setWoData(prev=>{
+242         const prevPanelMap:Record<string,any>={};
+243         prev.forEach((wo:any)=>(wo.panels||[]).forEach((p:any)=>{prevPanelMap[String(p.id)]=p;}));
+244         return woList.map((wo:any)=>({
+245           ...wo,
+246           panels:(wo.panels||[]).map((p:any)=>{
+247             if(GLOBAL_DIRTY_PANEL_IDS.has(String(p.id))&&prevPanelMap[String(p.id)]){
+248               return{...p,checklist:prevPanelMap[String(p.id)].checklist};
+249             }
+250             return p;
+---GLOBALSTATE---
+1 // Mutable module-level state yang dipakai lintas komponen (bukan React state).
+2 // Ditulis lewat setter di bawah supaya live-binding ES module ter-update ke semua importer.
+3 export let GLOBAL_PROSES_RELEVAN_SET:Set<string>=new Set();
+4 export let GLOBAL_PROSES_RELEVAN_HAS_MAPPING:Set<string>=new Set();
+5 export let GLOBAL_LIVE_PANEL_TYPES:any={};
+6 export let GLOBAL_DIRTY_PANEL_IDS:Set<string>=new Set();
+7 
+8 export function setGlobalProsesRelevan(set:Set<string>, hasMapping:Set<string>){
+9   GLOBAL_PROSES_RELEVAN_SET=set;
+10   GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMapping;
+11 }
+12 export function setGlobalLivePanelTypes(v:any){
+13   GLOBAL_LIVE_PANEL_TYPES=v;
+14 }
+15 export function setGlobalDirtyPanelIds(v:Set<string>){
+16   GLOBAL_DIRTY_PANEL_IDS=v;
+17 }
+18 
+19 // Dirty-tracking buat renhar & raw_schedule - pola sama kayak GLOBAL_DIRTY_PANEL_IDS, tapi
+20 // dipakai LANGSUNG (mutasi Set di tempat, bukan lewat React state+effect) karena tulisan ke
+21 // renhar/raw_schedule sifatnya aksi sekali-tembak (klik tombol -> tulis -> selesai), beda
+22 // dari edit qty panel yang bisa berlangsung lama sebelum di-"Simpan". ID ditandai dirty PAS
+23 // mulai nulis, otomatis "bersih" lagi sendiri setelah `ms` (default 2 detik - lebih lama dari
+24 // debounce sync renhar/rawData yang 1200ms, jadi window rawan overwrite selalu ketutup penuh).
+25 export const GLOBAL_DIRTY_RENHAR_IDS:Set<string>=new Set();
+26 export const GLOBAL_DIRTY_RAW_IDS:Set<string>=new Set();
+27 
+28 export function markRenharDirty(id:number|string, ms=2000){
+29   const key=String(id);
+30   GLOBAL_DIRTY_RENHAR_IDS.add(key);
+31   setTimeout(()=>{ GLOBAL_DIRTY_RENHAR_IDS.delete(key); }, ms);
+32 }
+33 export function markRawDirty(id:number|string, ms=2000){
+34   const key=String(id);
+35   GLOBAL_DIRTY_RAW_IDS.add(key);
+36   setTimeout(()=>{ GLOBAL_DIRTY_RAW_IDS.delete(key); }, ms);
+37 }
+38 
+39 let _id=8000;
+40 export function uid(){ return ++_id; }

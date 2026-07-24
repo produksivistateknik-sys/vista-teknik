@@ -1,0 +1,21 @@
+1 import { useState, useMemo, useEffect, useRef } from 'react'
+89   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+91   const allTasks=useMemo(()=>{
+92     const tasks=[];
+123   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
+124   const byProses=useMemo(()=>{
+129   const taskCountByDay=useMemo(()=>{
+134   const getRenharEntry=(task)=>renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+140     const existing=getRenharEntry(task);
+151   //    FRESH di dalam withRenharQueue - bukan dari status `sudahRelease` yang dibekukan pas
+250   const isDist=(task)=>!!getRenharEntry(task);
+253     const rh=getRenharEntry(t);
+314         const tasks=byProses[proses]||[];
+348                     const dist=isDist(t);const rh=getRenharEntry(t);
+361                         const sudahRelease=released.includes(kode);
+368                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle"};
+380                               {!sudahRelease?(
+388                                 if(!sudahRelease){
+423                                   <Btn color={sudahRelease?"#dc2626":"#2563eb"} disabled={isPending}
+425                                     onClick={()=>toggleReleaseKomponen(t,kode,item?.nama||kode,sudahRelease)}>
+426                                     {isPending?"⏳":sudahRelease?"↩️ Tarik":"📤 Rilis"}

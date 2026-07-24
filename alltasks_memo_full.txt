@@ -1,0 +1,34 @@
+91   const allTasks=useMemo(()=>{
+92     const tasks=[];
+93     rawData.forEach(row=>{
+94       const entries=row.schedule?.[selDate]||[];
+95       entries.forEach(e=>{
+96         tasks.push({
+97           rawId:row.id,woId:row.wo_id||row.woId,panelId:row.panel_id||row.panelId,
+98           proyek:row.proyek,panel:row.panel,proses:row.proses,
+99           prioritas:row.prioritas||"Sedang",
+100           wp:e.wp,komponen:e.komponen,tanggal:selDate,
+101         });
+102       });
+103       // Tambah busbar tasks dari busbar_schedule
+104       if(row.proses==="BUSBAR"){
+105         const busbarItems=row.busbar_schedule?.[selDate]||[];
+106         if(busbarItems.length>0){
+107           // Cek apakah sudah ada dari renhar (hindari duplikat)
+108           const alreadyInSchedule=entries.some(e=>e.wp==="BUSBAR");
+109           if(!alreadyInSchedule){
+110             tasks.push({
+111               rawId:row.id,woId:row.wo_id||row.woId,panelId:row.panel_id||row.panelId,
+112               proyek:row.proyek,panel:row.panel,proses:row.proses,
+113               prioritas:row.prioritas||"Sedang",
+114               wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,
+115               isBusbar:true,
+116             });
+117           }
+118         }
+119       }
+120     });
+121     return tasks;
+122   },[rawData,selDate]);
+123   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
+124   const byProses=useMemo(()=>{

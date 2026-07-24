@@ -1,0 +1,91 @@
+340                     <th style={{...thS,width:250}}>Komponen</th>
+341                     <th style={{...thS,width:160}}>Operator</th>
+342                     <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+343                     <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
+344                   </tr>
+345                 </thead>
+346                 <tbody>
+347                   {tasks.flatMap((t,ti)=>{
+348                     const dist=isDist(t);const rh=getRenharEntry(t);
+349                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
+350                     const cfg2=panelData?getEffCfg(panelData.tipe):null;
+351                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+352                     const isWiringTask=true; // semua proses pakai flow Rilis/Tarik per-komponen (operator pilih sendiri di Vista Pekerja)
+353 
+354                     if(isWiringTask){
+355                       const ppk=rh?.pekerja_per_komponen||{};
+356                       const released=rh?.komponen_released||[];
+357                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).map((kode,ki)=>{
+358                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
+359                         const idxGlobal=ti*100+ki;
+360                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
+361                         const sudahRelease=released.includes(kode);
+362                         // BUSBAR nyimpen pekerja_per_komponen[kode] sebagai OBJEK per-tahap
+363                         // ({FABRIKASI:[..],PLATING:[..],...}), bukan array datar kayak proses
+364                         // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
+365                         const ppkKode=ppk[kode];
+366                         const opIdsKode:number[]=Array.isArray(ppkKode)?ppkKode:(ppkKode&&typeof ppkKode==="object"?Object.values(ppkKode).flat() as number[]:[]);
+367                         const workersKode=opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+368                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle"};
+369                         return(
+370                           <tr key={ti+"-"+kode}>
+371                             <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
+372                             <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
+373                             <td style={{...td,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
+374                             <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span></td>
+375                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
+376                             <td style={{...td}}>
+377                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
+378                             </td>
+379                             <td style={{...td}}>
+380                               {!sudahRelease?(
+381                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
+382                               ):workersKode.length>0?(
+383                                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{workersKode.map((n:string)=>(<span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}</div>
+384                               ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
+385                             </td>
+386                             <td style={{...td,textAlign:"center"}}>
+387                               {(()=>{
+388                                 if(!sudahRelease){
+389                                   return <span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span>;
+390                                 }
+391                                 // Snapshot PERMANEN progress persis di tanggal t.tanggal - bukan progress
+392                                 // terkini/keseluruhan, biar buka tanggal yang sudah lewat tetap nunjukin
+393                                 // angka yang benar walau kerjaannya udah lanjut/kelar di hari-hari setelahnya.
+394                                 const pctKerja=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
+395                                 // BUSBAR: tambahin label tahap aktif (Fabrikasi/Plating/Heat-Shrink/Pasang)
+396                                 // kalau datanya ada - proses lain gak punya field ini jadi tetap tampil polos.
+397                                 const busbarTahapAktif=t.proses==="BUSBAR"?panelData?.checklist?.[kode]?.busbarTahap?.tahapAktif:null;
+398                                 const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
+399                                 const labelTahap=busbarTahapAktif&&BUSBAR_TAHAP_LABEL[busbarTahapAktif]?` · ${BUSBAR_TAHAP_LABEL[busbarTahapAktif]}`:"";
+400                                 if(pctKerja>=100){
+401                                   return <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
+402                                 }
+403                                 if(pctKerja>0){
+404                                   return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
+405                                 }
+406                                 // Timer aktif cuma relevan buat hari kerja SEKARANG - tanggal yang udah
+407                                 // lewat itu sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.
+408                                 const timerAktif=t.tanggal===getHariKerjaSekarang()?getTimerAktif(t.panelId,kode,t.proses):null;
+409                                 if(timerAktif){
+410                                   const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/1000));
+411                                   const menitBerjalan=Math.floor(totalDetikAktif/60);
+412                                   const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
+413                                   return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({labelDurasiAktif})</span>;
+414                                 }
+415                                 return <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
+416                               })()}
+417                             </td>
+418                             <td style={{...td,textAlign:"center"}}>
+419                               {(()=>{
+420                                 const pendingKey=`${t.rawId}_${t.wp}_${t.tanggal}_${kode}`;
+421                                 const isPending=pendingRelease.has(pendingKey);
+422                                 return(
+423                                   <Btn color={sudahRelease?"#dc2626":"#2563eb"} disabled={isPending}
+424                                     style={{fontSize:11,padding:"5px 14px",opacity:isPending?0.55:1,cursor:isPending?"default":"pointer"}}
+425                                     onClick={()=>toggleReleaseKomponen(t,kode,item?.nama||kode,sudahRelease)}>
+426                                     {isPending?"⏳":sudahRelease?"↩️ Tarik":"📤 Rilis"}
+427                                   </Btn>
+428                                 );
+429                               })()}
+430                             </td>

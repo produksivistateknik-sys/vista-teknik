@@ -1,0 +1,67 @@
+24   useEffect(()=>{
+25     const fetchCap=async()=>{
+26       const [{data:s},{data:k}]=await Promise.all([
+27         supabase.from("fcs_schedule").select("tanggal,jenis_pekerjaan,total_menit").neq("status","cancelled"),
+28         supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
+29       ]);
+30       setFcsCapData(s??[]);
+31       setFcsKapasitas(k??[]);
+32     };
+33     fetchCap();
+34     const ch=supabase.channel("realtime-fcs-cap-raw-rencana")
+35       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
+36       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+37       .subscribe();
+38     return()=>{supabase.removeChannel(ch);};
+39   },[]);
+40 
+41   // Timer yang lagi aktif berjalan (belum di-Stop) - buat status "Sedang Dikerjakan" walau qty belum diisi
+42   useEffect(()=>{
+43     const fetchTimerAktif=async()=>{
+44       const hariIni=new Date().toISOString().slice(0,10);
+45       const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null).eq("tanggal",hariIni);
+46       setTimerAktifData(data??[]);
+47     };
+48     fetchTimerAktif();
+49     const ch=supabase.channel("realtime-timer-aktif-rencana")
+50       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimerAktif)
+51       .subscribe();
+52     return()=>{supabase.removeChannel(ch);};
+53   },[]);
+54 
+55   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
+56     timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+57 
+58   // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
+59   // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
+60   // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
+61   // pas ada timer aktif buat hemat, gak jalan terus-terusan pas nganggur.
+62   const [,setTimerTick]=useState(0);
+63   useEffect(()=>{
+64     if(timerAktifData.length===0)return;
+65     const iv=setInterval(()=>setTimerTick(t=>t+1),1000);
+66     return ()=>clearInterval(iv);
+67   },[timerAktifData]);
+68   const onDragStart=(e,rawId,fromDate,entries)=>{
+69     e.dataTransfer.effectAllowed="move";
+70     setDragInfo({rawId,fromDate,entries});
+71   };
+72 
+73   const onDragOver=(e,rawId,date)=>{
+74     e.preventDefault();
+75     e.dataTransfer.dropEffect="move";
+76     setDragOverCell({rawId,date});
+77   };
+78 
+79   const onDrop=(e,rawId,toDate)=>{
+80     e.preventDefault();
+81     setDragOverCell(null);
+82     if(!dragInfo)return;
+83     if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
+84     if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
+85     setDragMode({...dragInfo,toDate});
+86     setDragInfo(null);
+87   };
+88 
+89   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
+90   const isSunday=(d:string)=>new Date(d).getDay()===0;
