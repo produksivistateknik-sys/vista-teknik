@@ -1,0 +1,13 @@
+4 import { useRenhar } from './hooks/useRenhar'
+129 const [renhar, setRenhar] = useState<any[]>([]);
+208 const { data: renharList, loading: renharLoading, create: createRenhar, update: updateRenhar, remove: removeRenhar, refetch: refetchRenhar } = useRenhar()
+263 // renharListRef/rawListRef di-update SETIAP render (bukan cuma di dalam effect) - biar pas
+264 // timer debounce di bawah akhirnya nembak, dia selalu baca renharList/rawList PALING BARU,
+268 const renharListRef = useRef(renharList);
+269 renharListRef.current = renharList;
+279         setRenhar(renharListRef.current);
+283       // lokalnya - JANGAN ketimpa snapshot renharList yang mungkin belum nyusul perubahannya.
+287         const merged=renharListRef.current.map((r:any)=>
+290         // sebelumnya, klik Rilis pertama kali) belum tentu udah nongol di renharListRef.current
+294         const freshIds=new Set(renharListRef.current.map((r:any)=>String(r.id)));
+303 }, [renharList, renharLoading])

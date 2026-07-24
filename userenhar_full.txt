@@ -1,0 +1,88 @@
+1 ﻿import { useState, useEffect, useCallback } from 'react'
+2 import { renharService } from '../services/renharService'
+3 import { supabase } from '../lib/supabase'
+4 import { GLOBAL_DIRTY_RENHAR_IDS } from '../lib/globalState'
+5 
+6 export function useRenhar() {
+7   const [data, setData] = useState<any[]>([])
+8   const [loading, setLoading] = useState(true)
+9   const [error, setError] = useState<string | null>(null)
+10 
+11   const fetch = useCallback(async () => {
+12     try {
+13       setLoading(true)
+14       setError(null)
+15       const result = await renharService.getAll()
+16       // refetch() nge-select ULANG semua baris - kalau ini nyala berbarengan sama tulisan lokal
+17       // yang lagi "dirty" (baru aja diupdate, misal abis klik Rilis), jangan sampai baris itu
+18       // ketimpa versi hasil select yang mungkin urutan sampainya di client gak sinkron sama commit
+19       // DB-nya. Ini nutup celah yang dulu kelewat: dirty-tracking di App.tsx cuma jaga proses
+20       // merge renharList->renhar, tapi gak jaga fetch() ini yang replace total `data` di hook.
+21       setData(prev => {
+22         if (GLOBAL_DIRTY_RENHAR_IDS.size === 0) return result
+23         const prevMap: Record<string, any> = {}
+24         prev.forEach(r => { prevMap[String(r.id)] = r })
+25         return result.map((r: any) =>
+26           GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r)
+27       })
+28     } catch (err) {
+29       setError(err instanceof Error ? err.message : 'Error')
+30     } finally {
+31       setLoading(false)
+32     }
+33   }, [])
+34 
+35   useEffect(() => {
+36     fetch()
+37     const channel = supabase
+38       .channel('realtime-renhar')
+39       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'renhar' },
+40         (payload) => { setData(prev => prev.some(r => r.id === payload.new.id) ? prev : [...prev, payload.new]) }
+41       )
+42       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
+43         (payload) => { setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r)) }
+44       )
+45       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'renhar' },
+46         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
+47       )
+48       .subscribe()
+49     return () => { supabase.removeChannel(channel) }
+50   }, [fetch])
+51 
+52   const create = async (payload: any) => {
+53     try {
+54       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+55       const uname = sess?.nama || sess?.name || 'Admin'
+56       const result = await renharService.create({ ...payload, updated_by: uname })
+57       setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
+58       return { success: true, data: result }
+59     } catch (err) {
+60       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+61     }
+62   }
+63 
+64   const update = async (id: number, payload: any) => {
+65     try {
+66       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
+67       const uname = sess?.nama || sess?.name || 'Admin'
+68       const result = await renharService.update(id, { ...payload, updated_by: uname })
+69       setData(prev => prev.map(r => r.id === id ? result : r))
+70       return { success: true, data: result }
+71     } catch (err) {
+72       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+73     }
+74   }
+75 
+76   const remove = async (id: number) => {
+77     try {
+78       const { error } = await supabase.from('renhar').delete().eq('id', id)
+79       if (error) throw new Error(error.message)
+80       setData(prev => prev.filter(r => r.id !== id))
+81       return { success: true }
+82     } catch (err) {
+83       return { success: false, error: err instanceof Error ? err.message : 'Error' }
+84     }
+85   }
+86 
+87   return { data, loading, error, refetch: fetch, create, update, remove }
+88 }

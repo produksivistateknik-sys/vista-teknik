@@ -1,0 +1,46 @@
+260   if (!pekerjaLoading) setPekerja(pekerjaList)
+261 }, [pekerjaList, pekerjaLoading])
+262 
+263 // renharListRef/rawListRef di-update SETIAP render (bukan cuma di dalam effect) - biar pas
+264 // timer debounce di bawah akhirnya nembak, dia selalu baca renharList/rawList PALING BARU,
+265 // bukan snapshot lama yang ke-capture closure dari effect run yang menjadwalkan timer itu.
+266 // Ini nutup race: aksi lokal (misal drag WP di Raw Schedule) yang optimistically update
+267 // rawData bisa ke-timpa balik ke versi lama kalau timer debounce nembak pakai closure basi.
+268 const renharListRef = useRef(renharList);
+269 renharListRef.current = renharList;
+270 const rawListRef = useRef(rawList);
+271 rawListRef.current = rawList;
+272 
+273 const renharSyncTimerRef = useRef<any>(null);
+274 useEffect(() => {
+275   if (!renharLoading) {
+276     if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
+277     renharSyncTimerRef.current = setTimeout(() => {
+278       if(GLOBAL_DIRTY_RENHAR_IDS.size===0){
+279         setRenhar(renharListRef.current);
+280         return;
+281       }
+282       // Row yang lagi dirty (baru aja ditulis lokal, misal abis klik Rilis) dipertahankan versi
+283       // lokalnya - JANGAN ketimpa snapshot renharList yang mungkin belum nyusul perubahannya.
+284       setRenhar((prev:any[])=>{
+285         const prevMap:Record<string,any>={};
+286         prev.forEach((r:any)=>{prevMap[String(r.id)]=r;});
+287         const merged=renharListRef.current.map((r:any)=>
+288           GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&prevMap[String(r.id)]?prevMap[String(r.id)]:r);
+289         // Row yang BARU DIBUAT (createRenhar - misal task yang belum pernah punya row renhar
+290         // sebelumnya, klik Rilis pertama kali) belum tentu udah nongol di renharListRef.current
+291         // kalau echo realtime INSERT-nya belum nyampe - .map() di atas cuma iterasi row yang
+292         // ADA di situ, jadi row baru yang dirty bisa ke-skip total (hilang dari tampilan padahal
+293         // udah benar tersimpan di DB). Tambahin balik row dirty yang belum muncul di fresh list.
+294         const freshIds=new Set(renharListRef.current.map((r:any)=>String(r.id)));
+295         prev.forEach((r:any)=>{
+296           if(GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
+297         });
+298         return merged;
+299       });
+300     }, 1200);
+301   }
+302   return () => { if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current); };
+303 }, [renharList, renharLoading])
+304 
+305 const rawSyncTimerRef = useRef<any>(null);

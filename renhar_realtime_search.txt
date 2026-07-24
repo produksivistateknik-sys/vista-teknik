@@ -1,0 +1,3 @@
+src\hooks\useRenhar.ts:39       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'renhar' },
+src\hooks\useRenhar.ts:42       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
+src\hooks\useRenhar.ts:45       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'renhar' },

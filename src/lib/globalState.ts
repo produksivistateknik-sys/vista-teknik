@@ -25,7 +25,7 @@ export function setGlobalDirtyPanelIds(v:Set<string>){
 export const GLOBAL_DIRTY_RENHAR_IDS:Set<string>=new Set();
 export const GLOBAL_DIRTY_RAW_IDS:Set<string>=new Set();
 
-export function markRenharDirty(id:number|string, ms=2000){
+export function markRenharDirty(id:number|string, ms=15000){
   const key=String(id);
   GLOBAL_DIRTY_RENHAR_IDS.add(key);
   setTimeout(()=>{ GLOBAL_DIRTY_RENHAR_IDS.delete(key); }, ms);
