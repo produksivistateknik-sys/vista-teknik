@@ -21,12 +21,12 @@ import {
 import {
   getBusbarKomponen, isKomponenRelevant, getRelevantProsesForKode, getEffCfgGlobal,
   initChecklist, naturalKodeSortGlobal, buildPanelTypesFromBom,
-  getProgressOnDate, getLatestProgress, getProgressFromHistory, getBestProgress, getProgressAsOfDate,
+  getProgressOnDate, getLatestProgress, getProgressFromHistory, getBestProgress,
   calcPanelProgress, panelOverall, woOverall, wpProgress,
 } from './lib/panelHelpers'
 import {
   getLocalDateStr, TODAY, daysUntil, isDelayed, isUrgent, getStatus,
-  pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang,
+  pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull,
 } from './lib/dateHelpers'
 import {
   GLOBAL_DIRTY_PANEL_IDS, GLOBAL_DIRTY_RENHAR_IDS, GLOBAL_DIRTY_RAW_IDS,
@@ -311,126 +311,6 @@ useEffect(() => {
   }
   return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
-
-// ── Auto-geser komponen yang belum selesai ke hari berikutnya ────────────────────────────
-// Kalau komponen TIDAK dikerjakan sama sekali ATAU belum 100% di hariSumber, otomatis
-// disalin (BUKAN memindahkan) ke raw_schedule[hariTarget], ditandai carriedOverFrom -
-// planner gak perlu jadwalin ulang manual. Entry di hariSumber TETAP utuh apa adanya
-// (snapshot permanen buat fitur "kunci progress per hari" - lihat getProgressAsOfDate).
-// WIRING CONTROL/WIRING POWER dikecualikan KALAU progress-nya udah >0% (lagi dikerjakan) -
-// itu udah dijadwal multi-hari lewat sistem kuota-orang (fcsService), biarin planner manual.
-// QC TEST/PACKING dikecualikan total - proses whole-panel/marker, bukan per-komponen harian.
-// Idempotent lewat cek data (carriedOverFrom yang udah ada di hariTarget) - aman dipanggil
-// berkali-kali/dari beberapa tab, gak akan nyipta entry dobel. Dipisah jadi function sendiri
-// (bukan langsung inline di useEffect) biar bisa dipanggil manual buat testing lewat tombol
-// "Cek & Geser Sekarang" di Rencana Harian, gak cuma nunggu transisi hari kerja beneran.
-const PROSES_DIKECUALIKAN_AUTO_GESER=["QC TEST","PACKING"];
-const PROSES_WIRING_AUTO_GESER=["WIRING CONTROL","WIRING POWER"];
-const geserSatuTanggal=async(hariSumber:string,hariTarget:string):Promise<number>=>{
-  // Klaim eksekusi di level DATABASE - localStorage per-browser TIDAK cukup kalau 2 planner
-  // (atau 1 planner 2 tab/device) sama-sama buka dashboard pas transisi hari kerja: masing2
-  // browser py localStorage sendiri2, jadi keduanya lolos cek "belum jalan hari ini" dan
-  // geserSatuTanggal jalan DUA KALI konkuren pakai snapshot rawList/woList yang saling belum
-  // sinkron -> dedup carriedOverFrom gagal mendeteksi entry yg br ditulis proses lain -> entry
-  // dobel utk WP yg sama ("Lanjutan [tgl]" muncul 2x). Insert ke auto_geser_runs bakal kena
-  // unique-violation kalau tab/device lain udah lebih dulu klaim hariSumber ini - itu sinyal
-  // buat langsung skip, cuma SATU eksekusi yg beneran jalan sistem-wide.
-  // Kalau tabelnya belum ada (migrasi belum dijalankan), JANGAN gagal total - tetap lanjut
-  // jalan tanpa proteksi lintas-tab drpd fitur auto-geser mati sama sekali.
-  const{error:claimErr}=await supabase.from("auto_geser_runs").insert({hari_sumber:hariSumber,hari_target:hariTarget});
-  if(claimErr&&(claimErr as any).code==="23505")return 0;
-
-  let jumlahDigeser=0;
-  // Fetch FRESH langsung dari DB - BUKAN pakai rawList/woList (closure React state) yang bisa
-  // stale, terutama progress checklist yg br aja nyentuh 100% tapi snapshot lokal belum nangkep
-  // itu -> sebelumnya bikin komponen yg SUDAH SELESAI ikut kegeser krn dianggap masih eligible.
-  const[{data:freshRaw},{data:freshPanels}]=await Promise.all([
-    supabase.from("raw_schedule").select("*"),
-    supabase.from("panels").select("id,checklist"),
-  ]);
-  const panelMap:Record<string,any>={};
-  (freshPanels||[]).forEach((p:any)=>{panelMap[String(p.id)]=p;});
-
-  for(const row of (freshRaw||[])){
-    if(PROSES_DIKECUALIKAN_AUTO_GESER.includes(row.proses))continue;
-    const entriesSumber=row.schedule?.[hariSumber]||[];
-    if(entriesSumber.length===0)continue;
-    const panel=panelMap[String(row.panel_id||row.panelId)];
-    if(!panel)continue;
-    const isWiring=PROSES_WIRING_AUTO_GESER.includes(row.proses);
-
-    const kodeEligiblePerWp:Record<string,string[]>={};
-    entriesSumber.forEach((e:any)=>{
-      (e.komponen||[]).forEach((kode:string)=>{
-        if(kode.startsWith("__wiring_"))return;
-        const cl=panel.checklist?.[kode];
-        const pct=getProgressAsOfDate(cl,row.proses,hariSumber);
-        if(pct>=100)return;
-        if(isWiring&&pct>0)return;
-        if(!kodeEligiblePerWp[e.wp])kodeEligiblePerWp[e.wp]=[];
-        kodeEligiblePerWp[e.wp].push(kode);
-      });
-    });
-    if(Object.keys(kodeEligiblePerWp).length===0)continue;
-
-    // Fetch fresh SEKALI LAGI khusus row ini pas mau nulis - jaga2 kalau schedule row ini
-    // sempat berubah (misal planner drag-drop manual) di rentang waktu antara select massal di
-    // atas dan baris ini diproses (loop-nya sequential, bisa makan waktu kalau row banyak).
-    const{data:freshRowNow}=await supabase.from("raw_schedule").select("schedule").eq("id",row.id).single();
-    const scheduleTerkini=freshRowNow?.schedule||row.schedule||{};
-    const entriesTarget=scheduleTerkini[hariTarget]||[];
-    const kodeSudahDigeser=new Set<string>();
-    entriesTarget.forEach((e:any)=>{
-      if(e.carriedOverFrom===hariSumber)(e.komponen||[]).forEach((k:string)=>kodeSudahDigeser.add(k));
-    });
-
-    const entryBaru:any[]=[];
-    Object.entries(kodeEligiblePerWp).forEach(([wp,kodes])=>{
-      const sisa=kodes.filter(k=>!kodeSudahDigeser.has(k));
-      if(sisa.length>0)entryBaru.push({wp,komponen:sisa,carriedOverFrom:hariSumber});
-    });
-    if(entryBaru.length===0)continue;
-    jumlahDigeser+=entryBaru.reduce((s,e)=>s+e.komponen.length,0);
-
-    const scheduleBaru={...scheduleTerkini};
-    scheduleBaru[hariTarget]=[...entriesTarget,...entryBaru];
-    // Entry ASLI di hariSumber TETAP DISIMPAN APA ADANYA (data/histori/status rilis yg udah
-    // ada di tanggal itu jangan hilang - dipakai fitur "kunci progress per hari"), tapi
-    // komponen yg baru aja digeser ditandai `digeserKe` per-kode. UI (Rencana Harian & Raw
-    // Schedule) pakai marker ini buat NONAKTIFKAN tombol Rilis/drag utk kode itu di tanggal
-    // asal - biar gak ada 2 entry yg SAMA2 keliatan "aktif" (yg bikin toggle Rilis di satu
-    // tempat kayak "kena" ke tempat lain, padahal itu 2 row/entry historis vs aktif yg beda).
-    scheduleBaru[hariSumber]=(scheduleTerkini[hariSumber]||[]).map((e:any)=>{
-      const kodeDigeserWp=entryBaru.find(nb=>nb.wp===e.wp)?.komponen||[];
-      if(kodeDigeserWp.length===0)return e;
-      const digeserKeBaru={...(e.digeserKe||{})};
-      kodeDigeserWp.forEach((k:string)=>{digeserKeBaru[k]=hariTarget;});
-      return{...e,digeserKe:digeserKeBaru};
-    });
-    await updateRaw(row.id,{schedule:scheduleBaru});
-    markRawDirty(row.id);
-    setRawData((prev:any)=>prev.map((r:any)=>r.id===row.id?{...r,schedule:scheduleBaru}:r));
-    // Sengaja TIDAK menyentuh renhar sama sekali di sini - status rilis di hariTarget harus
-    // selalu mulai dari "Belum Dirilis", walau kode ini sudah pernah dirilis di hariSumber.
-    // Planner WAJIB klik Rilis manual lagi di hari yang baru sebelum operator bisa kerjakan.
-  }
-  return jumlahDigeser;
-};
-
-const autoGeserRanRef=useRef(false);
-useEffect(()=>{
-  if(autoGeserRanRef.current)return;
-  if(rawLoading||woLoading||renharLoading)return;
-  autoGeserRanRef.current=true;
-  (async()=>{
-    const hariKerjaSekarang=getHariKerjaSekarang();
-    const hariSebelumnya=addDays(hariKerjaSekarang,-1);
-    const lsKey="vista_teknik_auto_geser_last_tgl";
-    try{ if(localStorage.getItem(lsKey)===hariSebelumnya)return; }catch{}
-    await geserSatuTanggal(hariSebelumnya,hariKerjaSekarang);
-    try{localStorage.setItem(lsKey,hariSebelumnya);}catch{}
-  })();
-},[rawLoading,woLoading,renharLoading]);
 
 if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login onLogin={u=>{

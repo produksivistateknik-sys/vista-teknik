@@ -98,8 +98,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           proyek:row.proyek,panel:row.panel,proses:row.proses,
           prioritas:row.prioritas||"Sedang",
           wp:e.wp,komponen:e.komponen,tanggal:selDate,
-          carriedOverFrom:e.carriedOverFrom||null,
-          digeserKe:e.digeserKe||null,
         });
       });
       // Tambah busbar tasks dari busbar_schedule
@@ -314,14 +312,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
                         const sudahRelease=released.includes(kode);
-                        const digeserKeTanggal=t.digeserKe?.[kode]||null;
                         // BUSBAR nyimpen pekerja_per_komponen[kode] sebagai OBJEK per-tahap
                         // ({FABRIKASI:[..],PLATING:[..],...}), bukan array datar kayak proses
                         // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
                         const ppkKode=ppk[kode];
                         const opIdsKode:number[]=Array.isArray(ppkKode)?ppkKode:(ppkKode&&typeof ppkKode==="object"?Object.values(ppkKode).flat() as number[]:[]);
                         const workersKode=opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
-                        const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
+                        const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle"};
                         return(
                           <tr key={ti+"-"+kode}>
                             <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
@@ -331,18 +328,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
                             <td style={{...td}}>
                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
-                              {t.carriedOverFrom&&(
-                                <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", otomatis lanjut ke hari ini"}
-                                  style={{marginLeft:5,background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
-                                  🔁 Lanjutan {fmtShort(t.carriedOverFrom)}
-                                </span>
-                              )}
-                              {digeserKeTanggal&&(
-                                <span title={"Belum selesai di "+t.tanggal+", otomatis lanjut ke "+fmtShort(digeserKeTanggal)+" - data di sini disimpan sbg histori, gak bisa diaksi lagi"}
-                                  style={{marginLeft:5,background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
-                                  ➡️ Digeser ke {fmtShort(digeserKeTanggal)}
-                                </span>
-                              )}
                             </td>
                             <td style={{...td}}>
                               {!sudahRelease?(
@@ -384,11 +369,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               })()}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
-                              {digeserKeTanggal?(
-                                <span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>Sudah digeser, aksi di {fmtShort(digeserKeTanggal)}</span>
-                              ):(
-                                <Btn color={sudahRelease?"#dc2626":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>toggleReleaseKomponen(t,kode,sudahRelease)}>{sudahRelease?"↩️ Tarik":"📤 Rilis"}</Btn>
-                              )}
+                              <Btn color={sudahRelease?"#dc2626":"#2563eb"} style={{fontSize:11,padding:"5px 14px"}} onClick={()=>toggleReleaseKomponen(t,kode,sudahRelease)}>{sudahRelease?"↩️ Tarik":"📤 Rilis"}</Btn>
                             </td>
                           </tr>
                         );
