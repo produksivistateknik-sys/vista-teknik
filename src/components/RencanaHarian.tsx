@@ -192,7 +192,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
-          showToast(kiniReleased?`↩️ "${namaTampil}" dibatalkan rilisnya`:`✅ "${namaTampil}" berhasil dirilis`);
+          showToast(mauRilis?`✅ "${namaTampil}" berhasil dirilis`:`↩️ "${namaTampil}" dibatalkan rilisnya`);
         } else {
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
