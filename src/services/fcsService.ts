@@ -1413,18 +1413,52 @@ async function upsertRawScheduleEntry(
     .eq('panel_id', panel.id)
     .eq('proses', proses)
     .maybeSingle()
+
+  // Anti-duplikat (proses qty-based): kalau qty kode ini utk wp yg sama udah TERCATAT PENUH
+  // di tanggal LAIN (bukan tanggal yg lagi ditulis), jangan tulis lagi - cegah kode yg sama
+  // nempel di 2+ tanggal buat qty yg sama (root cause 128 kelompok duplikat yg pernah
+  // ditemukan). Split multi-hari yg SAH (qty beda tiap hari, dari sisaQtyBerikutnya di
+  // generateAndSaveToRawSchedule) TETAP aman krn totalnya gak pernah melebihi qty asli di
+  // checklist panel - jadi gak pernah ke-skip di sini.
+  const checklist = panel.checklist || {}
+  const scheduleUtkCek = existing?.schedule || {}
+  let komponenFinal = [...komponenList]
+  let qtyFinal: Record<string, number> | undefined = qtyPerKomponen ? { ...qtyPerKomponen } : undefined
+  if (qtyFinal) {
+    for (const kode of komponenList) {
+      const totalQtyKode = checklist[kode]?.qty || 0
+      if (totalQtyKode <= 0) continue
+      let sudahAda = 0
+      Object.entries(scheduleUtkCek).forEach(([tgl, entries]: any) => {
+        if (tgl === tanggal) return
+        ;(entries as any[]).forEach((e: any) => {
+          if (e.wp !== wp || !(e.komponen || []).includes(kode)) return
+          sudahAda += e.qtyPerKomponen?.[kode] ?? totalQtyKode
+        })
+      })
+      const sisaBoleh = totalQtyKode - sudahAda
+      if (sisaBoleh <= 0) {
+        komponenFinal = komponenFinal.filter((k) => k !== kode)
+        delete qtyFinal[kode]
+      } else if (qtyFinal[kode] > sisaBoleh) {
+        qtyFinal[kode] = sisaBoleh
+      }
+    }
+    if (komponenFinal.length === 0) return // semua kode di panggilan ini udah full terjadwal di tanggal lain
+  }
+
   if (existing) {
     const schedule = existing.schedule || {}
     if (!schedule[tanggal]) schedule[tanggal] = []
     const existingEntry = schedule[tanggal].find((e: any) => e.wp === wp)
     if (existingEntry) {
-      const setKomp = new Set([...existingEntry.komponen, ...komponenList])
+      const setKomp = new Set([...existingEntry.komponen, ...komponenFinal])
       existingEntry.komponen = Array.from(setKomp)
-      if (qtyPerKomponen) {
-        existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyPerKomponen }
+      if (qtyFinal) {
+        existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyFinal }
       }
     } else {
-      schedule[tanggal].push({ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })
+      schedule[tanggal].push({ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })
     }
     await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
   } else {
@@ -1435,7 +1469,7 @@ async function upsertRawScheduleEntry(
       panel: panel.nama,
       proses,
       prioritas: 'Sedang',
-      schedule: { [tanggal]: [{ wp, komponen: komponenList, ...(qtyPerKomponen ? { qtyPerKomponen } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) }] },
+      schedule: { [tanggal]: [{ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) }] },
     })
   }
 }
@@ -1757,6 +1791,25 @@ export async function generateAndSaveToRawSchedule(
           const bobotHariDefault = 2
           const totalHari = Math.ceil(bobotHariDefault / jumlahOrang)
 
+          // Anti-duplikat WIRING: hitung berapa hari yg SUDAH ada entry wp+kodes IDENTIK ini
+          // di raw_schedule existing (row panel+proses ini) - WIRING gak punya pelacak qty
+          // kayak proses lain, jadi generate ulang sebelumnya SELALU nambah hari baru lagi di
+          // atas yg udah ada (duplikat multi-hari). Sekarang cuma isi kekurangannya.
+          const rowWiringExisting = (existingRaw || []).find((r: any) => r.panel_id === panel.id && r.proses === proses)
+          let hariSudahAda = 0
+          if (rowWiringExisting) {
+            Object.values(rowWiringExisting.schedule || {}).forEach((entries: any) => {
+              ;(entries as any[]).forEach((e: any) => {
+                if (e.wp !== wp) return
+                const kodeNonToken = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
+                const sameKodes = kodes.length === kodeNonToken.length && kodes.every((k) => kodeNonToken.includes(k))
+                if (sameKodes) hariSudahAda++
+              })
+            })
+          }
+          const sisaHariPerlu = totalHari - hariSudahAda
+          if (sisaHariPerlu <= 0) continue
+
           let cur = tanggalMulai
           let attempts = 0
           while (attempts < 21) {
@@ -1768,7 +1821,7 @@ export async function generateAndSaveToRawSchedule(
 
           let hariTerisi = 0
           let dayAttempts = 0
-          while (hariTerisi < totalHari && dayAttempts < 21) {
+          while (hariTerisi < sisaHariPerlu && dayAttempts < 21) {
             const sisa = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
             if (sisa >= jumlahOrang) {
               const token = `__wiring_${jumlahOrang}org_MEDIUM`
