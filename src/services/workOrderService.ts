@@ -13,9 +13,20 @@ const logActivity = async (user_name: string, action: string, description: strin
 
 export const workOrderService = {
   async getAll() {
-    const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false })
-    if (error) throw new Error(error.message)
-    return (data ?? []).map(wo => ({
+    // Paginasi eksplisit - Supabase/PostgREST default-nya mentok 1000 baris per request tanpa
+    // .range(). Sama kelas bug yang ketemu di renharService/rawScheduleService: kalau work_orders
+    // suatu saat tembus 1000 baris, WO di luar 1000 pertama bakal hilang diam2 dari tampilan.
+    let all: any[] = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false }).range(from, from + pageSize - 1)
+      if (error) throw new Error(error.message)
+      all = all.concat(data ?? [])
+      if (!data || data.length < pageSize) break
+      from += pageSize
+    }
+    return all.map(wo => ({
       ...wo,
       panels: Array.isArray(wo.panels) ? wo.panels.map((p: any) => ({
         ...p,

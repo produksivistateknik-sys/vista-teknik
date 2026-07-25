@@ -13,9 +13,22 @@ const logActivity = async (user_name: string, action: string, description: strin
 
 export const rawScheduleService = {
   async getAll() {
-    const { data, error } = await supabase.from('raw_schedule').select('*').order('created_at', { ascending: true })
-    if (error) throw new Error(error.message)
-    return data ?? []
+    // Sama kayak renharService.getAll() - Supabase/PostgREST default-nya mentok 1000 baris
+    // tanpa .range() eksplisit. raw_schedule juga udah lama tembus 1000+ baris (raw_id udah
+    // sampai 4000-an), jadi tanpa paginasi ini row2 di luar 1000 pertama gak pernah masuk ke
+    // rawList sama sekali - bisa bikin gejala yang sama kayak bug renhar (data hilang dari
+    // tampilan meski benar di database) buat panel/WP yang row-nya kepotong.
+    let all: any[] = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data, error } = await supabase.from('raw_schedule').select('*').order('created_at', { ascending: true }).range(from, from + pageSize - 1)
+      if (error) throw new Error(error.message)
+      all = all.concat(data ?? [])
+      if (!data || data.length < pageSize) break
+      from += pageSize
+    }
+    return all
   },
 
   async create(payload: any, user_name = 'Admin') {

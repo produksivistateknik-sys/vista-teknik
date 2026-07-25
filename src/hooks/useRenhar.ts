@@ -41,10 +41,6 @@ export function useRenhar() {
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'renhar' },
         (payload) => {
-          console.log('[DEBUG-RT renhar UPDATE]', 'id=', payload.new.id, typeof payload.new.id,
-            'raw_id=', payload.new.raw_id, typeof payload.new.raw_id,
-            'wp=', payload.new.wp, 'tanggal=', payload.new.tanggal,
-            'komponen_released=', payload.new.komponen_released)
           setData(prev => prev.map(r => r.id === payload.new.id ? { ...r, ...payload.new } : r))
         }
       )

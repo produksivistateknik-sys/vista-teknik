@@ -325,16 +325,8 @@ useEffect(() => {
   if (!renharLoading) {
     if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
     renharSyncTimerRef.current = setTimeout(() => {
-      console.log('[DEBUG-MERGE renhar] jalan, dirty set=', Array.from(GLOBAL_DIRTY_RENHAR_IDS), 'renharListRef.current.length=', renharListRef.current.length);
       if(GLOBAL_DIRTY_RENHAR_IDS.size===0){
-        setRenhar((prevBefore:any[])=>{
-          const diffs=renharListRef.current.filter((r:any)=>{
-            const before=prevBefore.find((p:any)=>p.id===r.id);
-            return before && JSON.stringify(before.komponen_released)!==JSON.stringify(r.komponen_released);
-          });
-          if(diffs.length>0)console.log('[DEBUG-MERGE renhar] JALUR-KOSONG - row yang komponen_released-nya BERUBAH lewat merge ini:', diffs.map((d:any)=>({id:d.id,raw_id:d.raw_id,wp:d.wp,komponen_released:d.komponen_released})));
-          return renharListRef.current;
-        });
+        setRenhar(renharListRef.current);
         return;
       }
       // Row yang lagi dirty (baru aja ditulis lokal, misal abis klik Rilis) dipertahankan versi
@@ -353,11 +345,6 @@ useEffect(() => {
         prev.forEach((r:any)=>{
           if(GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
         });
-        const diffs=merged.filter((r:any)=>{
-          const before=prev.find((p:any)=>p.id===r.id);
-          return before && JSON.stringify(before.komponen_released)!==JSON.stringify(r.komponen_released);
-        });
-        if(diffs.length>0)console.log('[DEBUG-MERGE renhar] JALUR-DIRTY - row yang komponen_released-nya BERUBAH lewat merge ini:', diffs.map((d:any)=>({id:d.id,raw_id:d.raw_id,wp:d.wp,komponen_released:d.komponen_released})));
         return merged;
       });
     }, 1200);

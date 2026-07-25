@@ -3,9 +3,24 @@ import { activityLogService } from './activityLogService'
 
 export const renharService = {
   async getAll() {
-    const { data, error } = await supabase.from('renhar').select('*').order('tanggal', { ascending: true })
-    if (error) throw new Error(error.message)
-    return data ?? []
+    // Supabase/PostgREST default-nya CUMA balikin maks 1000 baris per request tanpa .range()
+    // eksplisit - renhar sekarang udah >1000 baris, jadi tanpa paginasi ini row2 di luar 1000
+    // pertama (terpotong pas di-sort by tanggal ascending) GAK PERNAH masuk ke renharList sama
+    // sekali. Akibatnya: row itu gak pernah bisa "ditambahkan balik" lewat update/realtime-echo
+    // (keduanya cuma bisa update row yg UDAH ADA di array), jadi begitu proteksi dirty-nya abis,
+    // row itu hilang total dari state lokal - persis akar bug "Rilis balik" yang dikonfirmasi
+    // lewat log (renharListRef.current.length selalu mentok di 1000).
+    let all: any[] = []
+    let from = 0
+    const pageSize = 1000
+    while (true) {
+      const { data, error } = await supabase.from('renhar').select('*').order('tanggal', { ascending: true }).range(from, from + pageSize - 1)
+      if (error) throw new Error(error.message)
+      all = all.concat(data ?? [])
+      if (!data || data.length < pageSize) break
+      from += pageSize
+    }
+    return all
   },
 
   async create(payload: any) {
