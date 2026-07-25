@@ -40,6 +40,7 @@ import { Login } from './components/Login'
 import { GlobalSearch } from './components/GlobalSearch'
 
 const LaporanQCView = lazy(() => import('./components/LaporanQCView').then(m => ({ default: m.LaporanQCView })))
+const LaporanNameplateView = lazy(() => import('./components/LaporanNameplateView').then(m => ({ default: m.LaporanNameplateView })))
 const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
 const RencanaHarian = lazy(() => import('./components/RencanaHarian').then(m => ({ default: m.RencanaHarian })))
 const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
@@ -438,6 +439,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
       {id:"stok",label:"Stok Komponen",icon:"ti ti-package"},
       {id:"laporan_qc",label:"Laporan QC",icon:"ti ti-clipboard-check"},
+      {id:"laporan_nameplate",label:"QA Nameplate",icon:"ti ti-tag"},
     ]},
     {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
@@ -810,6 +812,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} removeWO={removeWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("laporan_qc")&&<div style={{display:tab==="laporan_qc"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanQCView woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("laporan_nameplate")&&<div style={{display:tab==="laporan_nameplate"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanNameplateView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("trackingkomponen")&&<div style={{display:tab==="trackingkomponen"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingKomponenAdmin/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
