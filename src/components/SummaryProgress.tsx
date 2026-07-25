@@ -40,8 +40,8 @@ export function SummaryProgress({woData}:{woData:any[]}){
   const mendesak=woData.filter(w=>woOverall(w)<100&&isUrgent(w.target)&&!isDelayed(w.target)).length;
   const terlambat=woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length;
   const allPanelsForNp=woData.flatMap((w:any)=>w.panels||[]);
-  const belumNameplate=allPanelsForNp.filter((p:any)=>(p.nameplate_progress||0)<100).length;
-  const belumYellowmark=allPanelsForNp.filter((p:any)=>(p.yellowmark_progress||0)<100).length;
+  const belumNameplate=allPanelsForNp.filter((p:any)=>!((p.nameplate_progress||0)>=100&&(p.nameplate_photos||[]).length>=1)).length;
+  const belumYellowmark=allPanelsForNp.filter((p:any)=>!((p.yellowmark_progress||0)>=100&&(p.yellowmark_photos||[]).length>=1)).length;
 
   const ProsesPctCell=({pct,proses}:{pct:number|undefined,proses:string})=>{
     if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
