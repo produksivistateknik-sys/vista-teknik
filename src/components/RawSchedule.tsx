@@ -995,6 +995,28 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
   };
 
+  // Backfill sekali-klik: bikin baris NAMEPLATE/YELLOWMARK buat SEMUA panel existing yang belum
+  // punya (baris raw_schedule buat proses baru gak otomatis dibuat retroaktif - biasanya butuh
+  // buka "Tambah Panel" manual per WO, tapi itu gak praktis buat proyek yang udah banyak).
+  const [backfillNpLoading,setBackfillNpLoading]=useState(false);
+  const backfillNpYm=async()=>{
+    if(!confirm("Tambahkan proses Nameplate & Yellowmark ke semua panel (di semua WO aktif) yang belum punya?"))return;
+    setBackfillNpLoading(true);
+    let count=0;
+    for(const w of woData){
+      for(const p of (w.panels||[])){
+        const toAdd=getMissingRelevantProses(p).filter((pr:string)=>pr==="NAMEPLATE"||pr==="YELLOWMARK");
+        for(const proses of toAdd){
+          await createRaw({wo_id:w.id,panel_id:p.id,proyek:w.proyek,panel:p.nama,proses,prioritas:"Sedang",schedule:{}});
+          count++;
+        }
+      }
+    }
+    await refetchRaw();
+    setBackfillNpLoading(false);
+    alert(count>0?`${count} baris Nameplate/Yellowmark berhasil ditambahkan.`:"Semua panel sudah punya baris Nameplate & Yellowmark.");
+  };
+
   const dateTasks=useMemo(()=>{
     if(!selDate)return[];
     const tasks:any[]=[];
@@ -1080,6 +1102,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={()=>setAddModal(true)} style={{height:28,padding:"0 14px",borderRadius:5,border:"none",background:"#3b5bdb",color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Panel</button>
+            <button onClick={backfillNpYm} disabled={backfillNpLoading} title="Tambahkan baris Nameplate/Yellowmark ke semua panel yang belum punya"
+              style={{height:28,padding:"0 14px",borderRadius:5,border:"1px solid #0891b2",background:"#fff",color:"#0891b2",fontSize:11,fontWeight:600,cursor:backfillNpLoading?"not-allowed":"pointer",fontFamily:"inherit"}}>
+              {backfillNpLoading?"⏳ Menambahkan...":"🏷️ Backfill Nameplate/Yellowmark"}
+            </button>
             <button onClick={openRiwayat} style={{height:28,padding:"0 12px",borderRadius:5,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit",display:"flex",alignItems:"center",gap:6}}>
               🔔 Riwayat Perubahan
               {qtyChangeUnread>0&&(
