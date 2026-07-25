@@ -22,7 +22,10 @@
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-const PROSES_DIKECUALIKAN = ['QC TEST', 'PACKING']
+// NAMEPLATE/YELLOWMARK: proses penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) -
+// kalau gak dikecualikan, tiap malam bakal dianggap "belum 100%" terus (checklist["MARKED"]
+// gak pernah ada) dan digeser terus-menerus ke hari berikutnya tanpa henti.
+const PROSES_DIKECUALIKAN = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
 const PROSES_WIRING = ['WIRING CONTROL', 'WIRING POWER']
 
 const addDaysStr = (date: string, n: number) => {

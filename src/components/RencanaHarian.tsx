@@ -91,6 +91,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const allTasks=useMemo(()=>{
     const tasks=[];
     rawData.forEach(row=>{
+      // NAMEPLATE/YELLOWMARK murni penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) -
+      // jangan pernah masuk allTasks, supaya gak ikut kena distributeAll/Rilis Semua (yang bakal
+      // bikin baris renhar palsu). Progress & tampilannya ditangani section terpisah di bawah,
+      // baca raw_schedule langsung, gak lewat renhar sama sekali.
+      if(row.proses==="NAMEPLATE"||row.proses==="YELLOWMARK")return;
       const entries=row.schedule?.[selDate]||[];
       entries.forEach(e=>{
         tasks.push({
@@ -122,6 +127,39 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     });
     return tasks;
   },[rawData,selDate]);
+
+  // Section terpisah, gak lewat renhar/allTasks sama sekali: baca raw_schedule langsung buat
+  // NAMEPLATE/YELLOWMARK (penanda "dijadwalkan hari ini"), digabung sama progress LIVE dari
+  // panels.nameplate_progress/yellowmark_progress (sistem yang sudah ada, lihat NameplateView
+  // di Vista Pekerja) - biar planner tahu siapa lagi kerjakan apa tanpa perlu alur Rilis/Tarik.
+  const allPanelsFlat=useMemo(()=>woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>({...p,_wo:w}))),[woData]);
+  const npYmMarked=useMemo(()=>{
+    const items:any[]=[];
+    rawData.forEach((row:any)=>{
+      if(row.proses!=="NAMEPLATE"&&row.proses!=="YELLOWMARK")return;
+      const entries=row.schedule?.[selDate]||[];
+      if(entries.length===0)return;
+      const panel=allPanelsFlat.find((p:any)=>p.id===(row.panel_id||row.panelId));
+      if(!panel)return;
+      items.push({rawId:row.id,proses:row.proses,panel});
+    });
+    return items;
+  },[rawData,selDate,allPanelsFlat]);
+  const fmtRelatif=(iso:string)=>{
+    if(!iso)return"";
+    const menit=Math.floor((Date.now()-new Date(iso).getTime())/60000);
+    if(menit<1)return"baru saja";
+    if(menit<60)return`${menit} menit lalu`;
+    const jam=Math.floor(menit/60);
+    if(jam<24)return`${jam} jam lalu`;
+    return`${Math.floor(jam/24)} hari lalu`;
+  };
+  const hitungStatusNp=(pct:number,jumlahFoto:number)=>{
+    if(pct>=100&&jumlahFoto>=1)return{label:"Selesai",bg:"#f0fdf4",color:"#16a34a"};
+    if(pct>0||jumlahFoto>0)return{label:"Sedang Dikerjakan",bg:"#fff7ed",color:"#ea580c"};
+    return{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"};
+  };
+
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
   const byProses=useMemo(()=>{
     const map={};
@@ -315,6 +353,38 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
         </div>
       </div>
+      {npYmMarked.length>0&&(
+        <div style={{marginBottom:14}}>
+          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>
+            🏷️ Nameplate & Yellowmark Dijadwalkan
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
+            {npYmMarked.map((item:any)=>{
+              const isNameplate=item.proses==="NAMEPLATE";
+              const pct=(isNameplate?item.panel.nameplate_progress:item.panel.yellowmark_progress)||0;
+              const foto=(isNameplate?item.panel.nameplate_photos:item.panel.yellowmark_photos)||[];
+              const updatedBy=isNameplate?item.panel.nameplate_updated_by:item.panel.yellowmark_updated_by;
+              const updatedAt=isNameplate?item.panel.nameplate_updated_at:item.panel.yellowmark_updated_at;
+              const st=hitungStatusNp(pct,foto.length);
+              const pc=isNameplate?"#0891b2":"#ca8a04";
+              return(
+                <div key={`${item.rawId}_${item.proses}`} style={{background:"#fff",border:`1px solid ${pc}33`,borderLeft:`3px solid ${pc}`,borderRadius:10,padding:"10px 12px"}}>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+                    <span style={{fontSize:12,fontWeight:700,color:pc}}>{isNameplate?"🏷️ Nameplate":"🟡 Yellowmark"}</span>
+                    <span style={{fontSize:9.5,fontWeight:700,background:st.bg,color:st.color,borderRadius:6,padding:"2px 8px",whiteSpace:"nowrap" as const}}>{st.label}</span>
+                  </div>
+                  <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{item.panel.nama}</div>
+                  <div style={{fontSize:10.5,color:"#94a3b8",marginBottom:6}}>{item.panel._wo?.proyek} · WO {item.panel._wo?.wo}</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                    <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>{pct}% · {foto.length} foto</span>
+                    {updatedBy&&<span style={{fontSize:9.5,color:"#94a3b8"}}>{updatedBy} · {fmtRelatif(updatedAt)}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length})</button>
         {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{

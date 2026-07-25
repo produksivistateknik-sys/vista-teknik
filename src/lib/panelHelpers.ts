@@ -10,7 +10,11 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
 // digantungkan ke situ, komponen/tipe_panel baru yang belum di-setup lewat wizard proses-relevan
 // bakal diam-diam gak pernah dapet baris QC TEST/PACKING (ini persis bug yang kejadian di
 // proyek Magonia Lombok - gak nongol sama sekali, baik baris kosong maupun terjadwal).
-export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
+// NAMEPLATE/YELLOWMARK gabung ke daftar ini juga - sama-sama penanda whole-panel, BUKAN
+// per-komponen. Progress aktualnya tetap di panels.nameplate_progress/yellowmark_progress
+// (lihat NameplateView di Vista Pekerja) - baris raw_schedule ini murni buat jadwal/visibility
+// di Rencana Harian, jangan digantungkan ke panels.checklist sama sekali.
+export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
 
 export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
   if(prosesMaybe===undefined){

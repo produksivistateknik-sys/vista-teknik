@@ -83,6 +83,7 @@ export const PROSES_COLOR = {
   "POTONG":"#f59e0b","BENDING":"#10b981","STEL":"#3b82f6","FINISHING":"#0891b2","RENDAM":"#0ea5e9","PAINTING":"#8b5cf6",
   "RAKIT":"#ec4899","PASANG KOMPONEN":"#f97316","BUSBAR":"#06b6d4",
   "WIRING CONTROL":"#6366f1","WIRING POWER":"#ef4444","QC TEST":"#14b8a6","PACKING":"#84cc16",
+  "NAMEPLATE":"#0891b2","YELLOWMARK":"#ca8a04",
 };
 export const WP_COLOR = {"WP1":"#f59e0b","WP2":"#22c55e","WP3":"#06b6d4","WP4":"#f97316","WP5":"#a78bfa","WP6":"#f472b6"};
 export const PRIORITAS_COLOR = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e"};
@@ -94,6 +95,7 @@ export const DIVISI_PROSES = {
   wiring_ctrl:["WIRING CONTROL"],
   wiring_pwr: ["WIRING POWER"],
   qc:         ["QC TEST","PACKING"],
+  nameplate:  ["NAMEPLATE","YELLOWMARK"],
 };
 // reverse map: proses → array of proses in same divisi
 export const DIVISI_PROSES_MAP=Object.fromEntries(

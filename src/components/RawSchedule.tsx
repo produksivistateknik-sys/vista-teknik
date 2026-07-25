@@ -408,8 +408,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     markRawDirty(rawId);
     setRawData((prev:any)=>prev.map((r:any)=>r.id===rawId?{...r,schedule:newSchedule}:r));
   };
-  // PROSES yang cuma penanda tanggal (bukan per-komponen) - klik cell langsung toggle, gak ada modal, gak masuk renhar
-  const PROSES_MARKER_ONLY=["QC TEST","PACKING"];
+  // PROSES yang cuma penanda tanggal (bukan per-komponen) - klik cell langsung toggle, gak ada modal, gak masuk renhar.
+  // NAMEPLATE/YELLOWMARK gabung sini juga - progress aktualnya tetap di panels.nameplate_progress
+  // (Vista Pekerja NameplateView), baris ini murni penanda jadwal buat muncul di Rencana Harian.
+  const PROSES_MARKER_ONLY=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
 
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
@@ -997,7 +999,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(!selDate)return[];
     const tasks:any[]=[];
     rawData.forEach(r=>{
-      if(PROSES_MARKER_ONLY.includes(r.proses))return; // QC TEST/PACKING cuma penanda, gak masuk Rencana Harian
+      if(PROSES_MARKER_ONLY.includes(r.proses))return; // penanda gak lewat renhar/Rilis-Tarik; NAMEPLATE/YELLOWMARK tetap tampil di Rencana Harian lewat baca raw_schedule langsung (lihat RencanaHarian.tsx)
       // WP biasa dari schedule
       (r.schedule?.[selDate]||[]).forEach((e:any)=>{
         tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
@@ -1123,6 +1125,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
         <button onClick={()=>setFilterProses([])} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses.length===0?"#1d4ed8":"#e2e8f0"}`,background:filterProses.length===0?"#1d4ed8":"#fff",color:filterProses.length===0?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
+        {["NAMEPLATE","YELLOWMARK"].map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
       {pilihKomponenModal&&(
@@ -1314,7 +1317,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 if(pa!==pb)return pa-pb;
                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
                 if(aId!==bId)return aId-bId;
-                const ai=ALL_PROSES.indexOf(a.proses);const bi=ALL_PROSES.indexOf(b.proses);
+                const idx=(pr:string)=>{const i=ALL_PROSES.indexOf(pr);return i<0?999:i;}; // proses penanda (NAMEPLATE/YELLOWMARK) gak ada di ALL_PROSES - taruh di akhir grup panel, bukan di depan
+                const ai=idx(a.proses);const bi=idx(b.proses);
                 return ai-bi;
               });
               const panelRowCount:Record<string,number>={};
