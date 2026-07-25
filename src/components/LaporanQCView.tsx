@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react'
+import { downloadFotoTunggal, downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 
 const QC_ITEMS_LAPORAN=[
   {key:"fisik",label:"Pemeriksaan Fisik"},
@@ -20,6 +21,42 @@ export function LaporanQCView({woData}:{woData:any[]}){
   const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding");
   const[statusFilter,setStatusFilter]=useState("ALL");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null);
+
+  const fotoQcPanel=(panel:any):FotoZipItem[]=>{
+    const cl=panel.qc_checklist||{};
+    const items:FotoZipItem[]=[];
+    QC_ITEMS_LAPORAN.forEach(item=>{
+      const fotoList=cl[item.key]?.foto||[];
+      fotoList.forEach((f:any,fi:number)=>{
+        items.push({url:f.url,path:`${sanitizeNamaFile(item.label)}/${fi+1}_${sanitizeNamaFile(f.name||"foto.jpg")}`});
+      });
+    });
+    return items;
+  };
+
+  const downloadZipPanel=async(panel:any)=>{
+    const items=fotoQcPanel(panel);
+    if(items.length===0){alert("Belum ada foto untuk panel ini");return;}
+    const key=`panel_${panel.id}`;
+    setZipBusy({key,done:0,total:items.length});
+    const{gagal}=await downloadFotoSebagaiZip(items,`QC_${sanitizeNamaFile(panel.nama)}.zip`,(done,total)=>setZipBusy({key,done,total}));
+    setZipBusy(null);
+    if(gagal>0)alert(`${gagal} foto gagal diunduh, sisanya berhasil masuk ZIP`);
+  };
+
+  const downloadZipProyek=async(folder:{woId:number,wo:any,panels:any[]})=>{
+    const items:FotoZipItem[]=[];
+    folder.panels.forEach((p:any)=>{
+      fotoQcPanel(p).forEach(it=>items.push({...it,path:`${sanitizeNamaFile(p.nama)}/${it.path}`}));
+    });
+    if(items.length===0){alert("Belum ada foto untuk proyek ini");return;}
+    const key=`wo_${folder.woId}`;
+    setZipBusy({key,done:0,total:items.length});
+    const{gagal}=await downloadFotoSebagaiZip(items,`QC_${sanitizeNamaFile(folder.wo?.proyek||folder.wo?.wo||"proyek")}.zip`,(done,total)=>setZipBusy({key,done,total}));
+    setZipBusy(null);
+    if(gagal>0)alert(`${gagal} foto gagal diunduh, sisanya berhasil masuk ZIP`);
+  };
 
   const allPanels=useMemo(()=>{
     const list:any[]=[];
@@ -88,6 +125,11 @@ export function LaporanQCView({woData}:{woData:any[]}){
             style={{height:32,padding:"0 14px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>
             Print Laporan
           </button>
+          <button onClick={()=>downloadZipPanel(selectedPanel)} disabled={zipBusy?.key===`panel_${selectedPanel.id}`}
+            style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #16a34a",background:"#fff",color:"#16a34a",fontSize:12,fontWeight:600,
+              cursor:zipBusy?.key===`panel_${selectedPanel.id}`?"not-allowed":"pointer"}}>
+            {zipBusy?.key===`panel_${selectedPanel.id}`?`⏳ ${zipBusy.done}/${zipBusy.total}...`:"⬇️ Download Semua Foto (ZIP)"}
+          </button>
         </div>
 
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:20,marginBottom:16}}>
@@ -139,8 +181,12 @@ export function LaporanQCView({woData}:{woData:any[]}){
 
         {lightbox&&(
           <div onClick={()=>setLightbox(null)} className="no-print"
-            style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:20}}>
-            <img src={lightbox.url} style={{maxWidth:"90%",maxHeight:"90%",objectFit:"contain" as const,borderRadius:8}}/>
+            style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,gap:14}}>
+            <img onClick={(e:any)=>e.stopPropagation()} src={lightbox.url} style={{maxWidth:"90%",maxHeight:"78vh",objectFit:"contain" as const,borderRadius:8}}/>
+            <button onClick={(e:any)=>{e.stopPropagation();downloadFotoTunggal(lightbox.url,sanitizeNamaFile(lightbox.name||"foto.jpg"));}}
+              style={{display:"flex",alignItems:"center",gap:6,background:"#fff",color:"#1e293b",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              <i className="ti ti-download" style={{fontSize:15}}/> Download
+            </button>
           </div>
         )}
 
@@ -211,14 +257,19 @@ export function LaporanQCView({woData}:{woData:any[]}){
             style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#2563eb",fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
             <i className="ti ti-chevron-left" style={{fontSize:15}}/> Semua Folder
           </button>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:10,borderBottom:"2px solid #e2e8f0"}}>
+          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:10,borderBottom:"2px solid #e2e8f0",flexWrap:"wrap" as const}}>
             <div style={{width:40,height:40,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center"}}>
               <i className="ti ti-folder-open" style={{fontSize:20,color:"#2563eb"}}/>
             </div>
-            <div>
+            <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{selectedFolder.wo?.proyek}</div>
               <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {selectedFolder.wo?.wo} - {selectedFolder.panels.length} panel</div>
             </div>
+            <button onClick={()=>downloadZipProyek(selectedFolder)} disabled={zipBusy?.key===`wo_${selectedFolder.woId}`}
+              style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #16a34a",background:"#fff",color:"#16a34a",fontSize:12,fontWeight:600,
+                cursor:zipBusy?.key===`wo_${selectedFolder.woId}`?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
+              {zipBusy?.key===`wo_${selectedFolder.woId}`?`⏳ ${zipBusy.done}/${zipBusy.total}...`:"⬇️ Download Semua Foto Proyek (ZIP)"}
+            </button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
             {selectedFolder.panels.map((p:any)=>{

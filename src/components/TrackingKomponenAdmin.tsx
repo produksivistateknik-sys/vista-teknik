@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Btn, Card, Lbl, Inp, Sel } from './ui/Primitives'
+import { downloadFotoTunggal, downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 
 export function TrackingKomponenAdmin(){
   const[pwList,setPwList]=useState<any[]>([]);
@@ -21,6 +22,54 @@ export function TrackingKomponenAdmin(){
 
   const[panelList,setPanelList]=useState<any[]>([]);
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+  const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null);
+
+  const downloadZipPanelKomponen=async()=>{
+    if(!selectedPanelId||riwayat.length===0){alert("Belum ada riwayat untuk panel ini");return;}
+    const items:FotoZipItem[]=[];
+    riwayat.forEach((r:any)=>{
+      (fotoMap[r.id]||[]).forEach((f:any,fi:number)=>{
+        items.push({url:f.file_url,path:`${sanitizeNamaFile(r.sub_bagian)}/${fi+1}_riwayat${r.id}.jpg`});
+      });
+    });
+    if(items.length===0){alert("Belum ada foto untuk panel ini");return;}
+    const panel=panelList.find((p:any)=>p.id===selectedPanelId);
+    const key=`panel_${selectedPanelId}`;
+    setZipBusy({key,done:0,total:items.length});
+    const{gagal}=await downloadFotoSebagaiZip(items,`Komponen_${sanitizeNamaFile(panel?.nama||"panel")}.zip`,(done,total)=>setZipBusy({key,done,total}));
+    setZipBusy(null);
+    if(gagal>0)alert(`${gagal} foto gagal diunduh, sisanya berhasil masuk ZIP`);
+  };
+
+  const downloadZipProyekKomponen=async()=>{
+    if(!selectedWoId||panelList.length===0){alert("Pilih WO dengan panel dulu");return;}
+    const key=`wo_${selectedWoId}`;
+    setZipBusy({key,done:0,total:0});
+    try{
+      const panelIds=panelList.map((p:any)=>p.id);
+      const{data:trAll}=await supabase.from("fcs_tracking_komponen").select("id,panel_id,sub_bagian").in("panel_id",panelIds);
+      const trIds=(trAll||[]).map((t:any)=>t.id);
+      const{data:fotoAll}=trIds.length>0?await supabase.from("fcs_tracking_komponen_foto").select("*").in("tracking_id",trIds):{data:[]};
+      const trMap:Record<number,any>={};
+      (trAll||[]).forEach((t:any)=>{trMap[t.id]=t;});
+      const items:FotoZipItem[]=[];
+      (fotoAll||[]).forEach((f:any,fi:number)=>{
+        const tr=trMap[f.tracking_id];
+        if(!tr)return;
+        const panel=panelList.find((p:any)=>p.id===tr.panel_id);
+        const panelNama=panel?panel.nama:`panel_${tr.panel_id}`;
+        items.push({url:f.file_url,path:`${sanitizeNamaFile(panelNama)}/${sanitizeNamaFile(tr.sub_bagian)}/foto_${fi+1}.jpg`});
+      });
+      if(items.length===0){alert("Belum ada foto untuk proyek ini");setZipBusy(null);return;}
+      const wo=woList.find((w:any)=>w.id===selectedWoId);
+      setZipBusy({key,done:0,total:items.length});
+      const{gagal}=await downloadFotoSebagaiZip(items,`Komponen_${sanitizeNamaFile(wo?.proyek||wo?.wo||"proyek")}.zip`,(done,total)=>setZipBusy({key,done,total}));
+      if(gagal>0)alert(`${gagal} foto gagal diunduh, sisanya berhasil masuk ZIP`);
+    }catch(err:any){
+      alert("Gagal membuat ZIP: "+err.message);
+    }
+    setZipBusy(null);
+  };
 
   const fetchWoList=async()=>{
     const{data}=await supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false});
@@ -143,6 +192,12 @@ export function TrackingKomponenAdmin(){
             <option key={w.id} value={w.id}>{w.wo} — {w.proyek}</option>
           ))}
         </Sel>
+        {selectedWoId&&panelList.length>0&&(
+          <Btn outline color="#16a34a" onClick={downloadZipProyekKomponen} disabled={zipBusy?.key===`wo_${selectedWoId}`}
+            style={{marginTop:10}}>
+            {zipBusy?.key===`wo_${selectedWoId}`?`⏳ Menyiapkan ZIP... ${zipBusy.done}/${zipBusy.total||"?"}`:"⬇️ Download Semua Foto Proyek (ZIP)"}
+          </Btn>
+        )}
       </Card>
 
       {selectedWoId&&(
@@ -188,7 +243,14 @@ export function TrackingKomponenAdmin(){
 
       {selectedWoId&&selectedPanelId&&(
         <>
-          <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>Riwayat Lengkap</div>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap" as const,gap:8,marginBottom:10}}>
+            <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4}}>Riwayat Lengkap</div>
+            {riwayat.length>0&&(
+              <Btn outline color="#16a34a" onClick={downloadZipPanelKomponen} disabled={zipBusy?.key===`panel_${selectedPanelId}`} style={{padding:"6px 12px",fontSize:11.5}}>
+                {zipBusy?.key===`panel_${selectedPanelId}`?`⏳ ${zipBusy.done}/${zipBusy.total}...`:"⬇️ Download Semua Foto Panel (ZIP)"}
+              </Btn>
+            )}
+          </div>
           {loadingRiwayat?(
             <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8"}}>Memuat...</div>
           ):riwayat.length===0?(
@@ -214,10 +276,17 @@ export function TrackingKomponenAdmin(){
                   {r.catatan&&<div style={{fontSize:14,fontWeight:500,color:"#1e293b",marginTop:8,lineHeight:1.6}}>{r.catatan}</div>}
                   {(fotoMap[r.id]||[]).length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginTop:10}}>
-                      {(fotoMap[r.id]||[]).map((foto:any)=>(
-                        <a key={foto.id} href={foto.file_url} target="_blank" rel="noopener noreferrer">
-                          <img src={foto.file_url} style={{width:72,height:72,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
-                        </a>
+                      {(fotoMap[r.id]||[]).map((foto:any,fi:number)=>(
+                        <div key={foto.id} style={{position:"relative" as const}}>
+                          <a href={foto.file_url} target="_blank" rel="noopener noreferrer">
+                            <img src={foto.file_url} style={{width:72,height:72,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
+                          </a>
+                          <button onClick={()=>downloadFotoTunggal(foto.file_url,sanitizeNamaFile(`${r.sub_bagian}_${fi+1}.jpg`))}
+                            title="Download foto"
+                            style={{position:"absolute" as const,bottom:3,right:3,width:20,height:20,borderRadius:99,background:"rgba(15,23,42,0.7)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <i className="ti ti-download" style={{fontSize:11}}/>
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}
@@ -253,10 +322,17 @@ export function TrackingKomponenAdmin(){
                     {r.catatan&&<div style={{fontSize:14,fontWeight:500,color:"#1e293b",marginBottom:10,lineHeight:1.6}}>{r.catatan}</div>}
                     {(fotoMap[r.id]||[]).length>0&&(
                       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:8}}>
-                        {(fotoMap[r.id]||[]).map((foto:any)=>(
-                          <a key={foto.id} href={foto.file_url} target="_blank" rel="noopener noreferrer">
-                            <img src={foto.file_url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
-                          </a>
+                        {(fotoMap[r.id]||[]).map((foto:any,fi:number)=>(
+                          <div key={foto.id} style={{position:"relative" as const}}>
+                            <a href={foto.file_url} target="_blank" rel="noopener noreferrer">
+                              <img src={foto.file_url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0"}}/>
+                            </a>
+                            <button onClick={()=>downloadFotoTunggal(foto.file_url,sanitizeNamaFile(`${modalSubBagian}_${fi+1}.jpg`))}
+                              title="Download foto"
+                              style={{position:"absolute" as const,bottom:3,right:3,width:20,height:20,borderRadius:99,background:"rgba(15,23,42,0.7)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <i className="ti ti-download" style={{fontSize:11}}/>
+                            </button>
+                          </div>
                         ))}
                       </div>
                     )}

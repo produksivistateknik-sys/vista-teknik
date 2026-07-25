@@ -436,7 +436,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       {id:"taskmonitoring",label:"Task Monitoring",icon:"ti ti-list-check"},
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
       {id:"stok",label:"Stok Komponen",icon:"ti ti-package"},
-      {id:"tracking_report",label:"Tracking",icon:"ti ti-list-search"},
+      {id:"tracking_report",label:"Quality Center",icon:"ti ti-list-search"},
     ]},
     {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
