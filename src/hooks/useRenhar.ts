@@ -57,7 +57,9 @@ export function useRenhar() {
       setData(prev => prev.some(r => r.id === result.id) ? prev : [...prev, result])
       return { success: true, data: result }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : 'Error' }
+      // code dipertahankan biar withRenharQueue bisa bedain "row-nya udah keburu dibuat sesi
+      // lain barusan" (23505, unique-violation raw_id+wp+tanggal) dari error lain.
+      return { success: false, error: err instanceof Error ? err.message : 'Error', code: (err as any)?.code }
     }
   }
 

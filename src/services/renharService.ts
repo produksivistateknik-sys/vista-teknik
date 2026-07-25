@@ -12,7 +12,10 @@ export const renharService = {
     const { updated_by, ...safe } = payload
     const uname = updated_by || 'Admin'
     const { data, error } = await supabase.from('renhar').insert(safe).select().single()
-    if (error) throw new Error(error.message)
+    // Kode error Postgres (mis. 23505 unique-violation) dipertahankan di object error yang
+    // dilempar - dipakai withRenharQueue buat deteksi "row ini udah keburu dibuat sesi/tab
+    // lain barusan" dan retry fetch+update, bukan sekadar gagal diam-diam.
+    if (error) throw Object.assign(new Error(error.message), { code: (error as any).code })
     await activityLogService.insert({
       user_name: uname,
       action: 'DISTRIBUSI RENHAR',

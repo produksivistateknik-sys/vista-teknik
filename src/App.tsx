@@ -235,15 +235,30 @@ useEffect(()=>{
 // baru buat kombinasi yang sama -> duplikat lagi. Fetch FRESH dari DB tepat sebelum tiap
 // operasi (bukan baca dari state renhar yang bisa stale) + ORDER BY updated_at DESC supaya
 // kalaupun (jarang) masih ada row dobel yang lolos, yang kepilih konsisten row PALING BARU.
+// PENTING: queue ini cuma serialisasi DALAM SATU TAB/browser (renharOpQueueRef itu useRef,
+// hidup di satu instance React) - gak bisa nyegah race ANTAR TAB/DEVICE/BROWSER yang beda,
+// yang masing2 punya queue-nya sendiri. Buat itu ada UNIQUE constraint di level database
+// (renhar_raw_wp_tanggal_unique) - kalau 2 sesi beda tetap kebetulan bareng2 insert row baru
+// buat kombinasi yang sama, salah satu bakal ditolak DB (23505). fn() HARUS throw kalau
+// createRenhar-nya gagal (bukan diem2 aja) biar retry di bawah ini kepicu - re-fetch bakal
+// nemuin row yang barusan dibuat sesi lain itu, lanjut ke jalur update alih2 insert lagi.
 const renharOpQueueRef = useRef<Record<string,Promise<any>>>({});
 const withRenharQueue = async (task:any, fn:(existingFresh:any)=>Promise<void>) => {
   const key = `${task.rawId}_${task.wp}_${task.tanggal}`;
   const prev = renharOpQueueRef.current[key] || Promise.resolve();
   const thisOp = prev.then(async () => {
-    const { data } = await supabase.from("renhar").select("*")
-      .eq("raw_id", task.rawId).eq("wp", task.wp).eq("tanggal", task.tanggal)
-      .order("updated_at", { ascending: false, nullsFirst: false }).limit(1);
-    await fn(data?.[0] || null);
+    for(let attempt=0; attempt<4; attempt++){
+      const { data } = await supabase.from("renhar").select("*")
+        .eq("raw_id", task.rawId).eq("wp", task.wp).eq("tanggal", task.tanggal)
+        .order("updated_at", { ascending: false, nullsFirst: false }).limit(1);
+      try{
+        await fn(data?.[0] || null);
+        return;
+      }catch(err:any){
+        if(err?.code==="23505"&&attempt<3)continue;
+        throw err;
+      }
+    }
   });
   renharOpQueueRef.current[key] = thisOp;
   await thisOp;

@@ -181,7 +181,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       await withRenharQueue(task,async(existing)=>{
         if(existing){
           const releasedLama=existing.komponen_released||[];
-          console.log('[DEBUG2 RILIS] existing.id=',existing.id,'kode diklik=',kode,'kemungkinanSudahRelease=',kemungkinanSudahRelease,'releasedLama (SEBELUM tulis)=',releasedLama,'existing.komponen=',existing.komponen,'existing.updated_at=',existing.updated_at);
           // IDEMPOTEN: tentukan hasil akhir dari NIAT klik (kemungkinanSudahRelease -> mau
           // Tarik; sebaliknya -> mau Rilis), BUKAN dari toggle buta berdasarkan fresh-fetch.
           // Kalau state lokal sempat basi (gak sinkron sama DB), klik Rilis SELALU berakhir
@@ -190,7 +189,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const releasedBaru=mauRilis
             ?(releasedLama.includes(kode)?releasedLama:[...releasedLama,kode])
             :releasedLama.filter((k:string)=>k!==kode);
-          console.log('[DEBUG2 RILIS] releasedBaru (mau ditulis)=',releasedBaru);
           await updateRenhar(existing.id,{komponen_released:releasedBaru});
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
@@ -202,7 +200,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
           });
-          if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);}
+          if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+          markRenharDirty(result.data.id);
+          setRenhar((prev:any)=>prev.some((r:any)=>r.id===result.data.id)?prev:[...prev,result.data]);
           showToast(`✅ "${namaTampil}" berhasil dirilis`);
         }
       });
@@ -225,14 +225,15 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
-        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+        if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+        markRenharDirty(result.data.id);
+        setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);
       }
     });
     if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
   const distributeAll=async()=>{
-    console.log('[DEBUG RILISSEMUA] selProses=',selProses,'selDate=',selDate,'filteredTasks.length=',filteredTasks.length,'allTasks.length=',allTasks.length);
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       const allKode=task.komponen||[];
@@ -251,7 +252,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
             tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
           });
-          if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);}
+          if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+          markRenharDirty(result.data.id);
+          setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);
         }
       });
     }

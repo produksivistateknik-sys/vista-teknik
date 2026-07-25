@@ -921,7 +921,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 komponen_released:releasedPindah,
                 pekerja_per_komponen:ppkPindah,
               });
-              if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);}
+              if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+              markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);
             }
           });
         }
@@ -1039,7 +1040,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
-        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
+        if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+        markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);
       }
     });
     if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
@@ -1057,7 +1059,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
           tanggal:task.tanggal,divisi,pekerja:[],
         });
-        if(result?.success&&result.data){markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);}
+        if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+        markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);
       });
     }
   };
@@ -1877,7 +1880,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
                     } else {
                       const res=await createRenhar(renharPayload);
-                      if(res?.success&&res?.data){markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);}
+                      if(!(res?.success&&res?.data))throw Object.assign(new Error(res?.error||"Gagal membuat renhar"),{code:(res as any)?.code});
+                      markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);
                     }
                   });
                 } else {
