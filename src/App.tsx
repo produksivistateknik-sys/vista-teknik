@@ -228,6 +228,21 @@ useEffect(()=>{
   return ()=>document.removeEventListener("visibilitychange",onVisible);
 },[refetchRenhar,refetchRaw,refetchWO]);
 
+// Heartbeat: refetch paksa tiap 60 detik TERLEPAS dari visibilitychange - koneksi realtime bisa
+// diam2 putus (hiccup jaringan dll) walau tab TETAP aktif terus-menerus/gak pernah di-background,
+// jadi visibilitychange di atas gak selalu kepicu buat nutup celah itu. Ini jaring pengaman
+// terakhir: walau realtime beneran mati tanpa app-nya sadar, data gak akan pernah basi lebih
+// dari ~1 menit - dirty-tracking (window 15 detik) tetap ngelindungin tulisan lokal yang baru
+// aja terjadi, heartbeat ini cuma nutup celah SETELAH window itu abis kalau realtime gak nyusul.
+useEffect(()=>{
+  const iv=setInterval(()=>{
+    refetchRenhar?.();
+    refetchRaw?.();
+    refetchWO?.();
+  },60000);
+  return ()=>clearInterval(iv);
+},[refetchRenhar,refetchRaw,refetchWO]);
+
 // withRenharQueue - serialisasi SEMUA tulisan renhar per (raw_id+wp+tanggal), DIBAGI antara
 // Rencana Harian & Raw Schedule (bukan masing2 punya queue sendiri) - keduanya bisa mounted
 // BARENGAN (fitur "4 tab tetap mounted"), jadi kalau queue-nya terpisah per-komponen, klik
