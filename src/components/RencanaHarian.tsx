@@ -131,7 +131,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     days.forEach(d=>{let count=0;rawData.forEach(row=>{const e=row.schedule?.[d]||[];count+=e.length;});map[d]=count;});
     return map;
   },[days,rawData]);
-  const getRenharEntry=(task)=>renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+  // String(...) di raw_id - Supabase Realtime kadang ngirim kolom integer/bigint sebagai STRING
+  // di payload event (beda dari fetch normal yang balikin number) - kalau row ini kena update
+  // via realtime, r.raw_id bisa jadi "123" padahal task.rawId tetap number 123, bikin === gagal
+  // diam2 dan getRenharEntry balik undefined - PERSIS gejala "udah rilis di DB tapi kelihatan
+  // Belum Dirilis di layar" tanpa data-nya beneran berubah.
+  const getRenharEntry=(task)=>renhar.find(r=>String(r.raw_id||r.rawId)===String(task.rawId)&&r.wp===task.wp&&r.tanggal===task.tanggal);
   // withRenharQueue sekarang dibagi dari App.tsx (lihat komentar di sana) - Rencana Harian &
   // Raw Schedule pakai queue yang SAMA, bukan masing2 punya sendiri, biar tulisan lintas-tab
   // yang mounted bareng tetap terserialisasi.

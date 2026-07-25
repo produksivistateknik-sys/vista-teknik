@@ -622,7 +622,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         await updateRenhar(existing.id,{komponen:newKompBersih});
         setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,komponen:newKompBersih}:r));
       } else {
-        setRenhar(prev=>prev.map(r=>((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKompBersih}:r));
+        setRenhar(prev=>prev.map(r=>(String(r.raw_id||r.rawId)===String(rawId)&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKompBersih}:r));
       }
     });
   };
@@ -632,7 +632,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         await removeRenhar(existing.id);
         setRenhar(prev=>prev.filter(r=>r.id!==existing.id));
       } else {
-        setRenhar(prev=>prev.filter(r=>!((r.raw_id||r.rawId)===rawId&&r.wp===wp&&r.tanggal===date)));
+        setRenhar(prev=>prev.filter(r=>!(String(r.raw_id||r.rawId)===String(rawId)&&r.wp===wp&&r.tanggal===date)));
       }
     });
   };
@@ -877,7 +877,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       // (yang baca renhar.tanggal langsung dari DB) masih nampilin di tanggal LAMA walau
       // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
       // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
-      const renharUntukDipindah=renhar.filter((r:any)=>(r.raw_id||r.rawId)===rawId&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
+      const renharUntukDipindah=renhar.filter((r:any)=>String(r.raw_id||r.rawId)===String(rawId)&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
       for(const r of renharUntukDipindah){
         const entry=entries.find((e:any)=>e.wp===r.wp);
         if(!entry)continue;
@@ -1018,7 +1018,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
-    const existing=renhar.find(r=>(r.raw_id||r.rawId)===task.rawId&&r.wp===task.wp&&r.tanggal===task.tanggal);
+    const existing=renhar.find(r=>String(r.raw_id||r.rawId)===String(task.rawId)&&r.wp===task.wp&&r.tanggal===task.tanggal);
     setSelPekerja(existing?.pekerja||[]);
     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };
