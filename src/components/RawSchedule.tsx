@@ -1006,8 +1006,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     for(const w of woData){
       for(const p of (w.panels||[])){
         const toAdd=getMissingRelevantProses(p).filter((pr:string)=>pr==="NAMEPLATE"||pr==="YELLOWMARK");
+        if(toAdd.length===0)continue;
+        // Prioritas HARUS sama dengan baris proses lain yang udah ada di panel ini - semua baris
+        // 1 panel wajib satu prioritas yang sama (lihat updatePrioritasPanel), soalnya tabel
+        // di-sort berdasarkan prioritas dulu baru panel. Kalau beda, baris kepisah dari grup
+        // panelnya pas di-sort dan bikin rowSpan garis tabel jadi kacau/miring.
+        const rowLainPanelIni=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id);
+        const prioritasIkut=rowLainPanelIni[0]?.prioritas||"Sedang";
         for(const proses of toAdd){
-          await createRaw({wo_id:w.id,panel_id:p.id,proyek:w.proyek,panel:p.nama,proses,prioritas:"Sedang",schedule:{}});
+          await createRaw({wo_id:w.id,panel_id:p.id,proyek:w.proyek,panel:p.nama,proses,prioritas:prioritasIkut,schedule:{}});
           count++;
         }
       }
