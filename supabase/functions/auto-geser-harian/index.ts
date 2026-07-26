@@ -1,30 +1,30 @@
-// Auto-geser komponen belum selesai ke hari kerja berikutnya - SERVER-SIDE (Edge Function),
-// dipicu pg_cron sekali sehari (lihat SQL cron.schedule terpisah). Sengaja BUKAN client-side
-// (beda dari implementasi lama yang di-revert) - biar cuma ada SATU eksekusi per hari, gak
-// peduli berapa tab/device/planner yang buka aplikasi, menghilangkan seluruh kelas race
-// condition lintas-tab yang jadi sumber bug berbulan-bulan sebelumnya.
-//
-// PRINSIP ANTI-TABRAKAN (lihat diskusi sebelum implementasi ini):
-// 1. TIDAK PERNAH menyentuh panels.checklist[kode].progressByDate/history - itu punya fitur
-//    "kunci progress per hari" (snapshot), ditulis EKSKLUSIF oleh Vista Pekerja. Fungsi ini
-//    cuma BACA progress[proses] (live) buat nentuin "udah selesai apa belum", gak pernah nulis
-//    balik ke situ - dua fitur beda lapisan data total, gak mungkin nabrak.
-// 2. TIDAK PERNAH menyentuh tabel renhar - status Rilis di hari baru SELALU mulai "Belum
-//    Dirilis", planner rilis manual (keputusan final dari histori sebelumnya).
-// 3. Cek existing WP di tanggal tujuan SEBELUM nulis - gabung, jangan bikin entry baru
-//    terpisah (cegah duplikat kalau planner udah nambah jadwal manual duluan buat hari itu).
-// 4. Fresh-fetch PER ROW tepat sebelum nulis row itu - jaga2 kalau planner drag/edit manual
-//    row yang sama di rentang waktu antara select massal di awal dan baris itu diproses.
-// 5. Paginasi PENUH pas fetch raw_schedule/panels - JANGAN ulangi bug limit 1000 baris
-//    default Supabase yang baru ditemukan (akar masalah besar di fitur lain).
-// 6. Jadwal cron di jam 03:00 WIB (dini hari) - JAUH dari jam kerja planner, minimalkan
-//    kemungkinan tabrakan waktu dengan aktivitas manual (drag, tambah jadwal, dst).
+/*
+Auto-geser komponen belum selesai ke hari kerja berikutnya - SERVER-SIDE (Edge Function), dipicu
+pg_cron sekali sehari (lihat SQL cron.schedule terpisah). Sengaja BUKAN client-side (beda dari
+implementasi lama yang di-revert) - biar cuma ada SATU eksekusi per hari, gak peduli berapa
+tab/device/planner yang buka aplikasi, menghilangkan seluruh kelas race condition lintas-tab yang
+jadi sumber bug berbulan-bulan sebelumnya.
+
+PRINSIP ANTI-TABRAKAN (lihat diskusi sebelum implementasi ini):
+1. TIDAK PERNAH menyentuh panels.checklist[kode].progressByDate/history - itu punya fitur "kunci
+   progress per hari" (snapshot), ditulis EKSKLUSIF oleh Vista Pekerja. Fungsi ini cuma BACA
+   progress[proses] (live) buat nentuin sudah selesai apa belum, gak pernah menulis balik ke situ -
+   dua fitur beda lapisan data total, gak mungkin nabrak.
+2. TIDAK PERNAH menyentuh tabel renhar - status Rilis di hari baru SELALU mulai "Belum Dirilis",
+   planner rilis manual (keputusan final dari histori sebelumnya).
+3. Cek existing WP di tanggal tujuan SEBELUM menulis - gabung, jangan bikin entry baru terpisah
+   (cegah duplikat kalau planner udah nambah jadwal manual duluan buat hari itu).
+4. Fresh-fetch PER ROW tepat sebelum menulis row itu - jaga-jaga kalau planner drag/edit manual
+   row yang sama di rentang waktu antara select massal di awal dan baris itu diproses.
+5. Paginasi PENUH pas fetch raw_schedule/panels - jangan ulangi bug limit 1000 baris default
+   Supabase yang pernah jadi akar masalah besar di fitur lain.
+6. Jadwal cron di jam 06:00 WIB (dini hari) - jauh dari jam kerja planner, minimalkan kemungkinan
+   tabrakan waktu dengan aktivitas manual (drag, tambah jadwal, dst).
+*/
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
-// NAMEPLATE/YELLOWMARK: proses penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) -
-// kalau gak dikecualikan, tiap malam bakal dianggap "belum 100%" terus (checklist["MARKED"]
-// gak pernah ada) dan digeser terus-menerus ke hari berikutnya tanpa henti.
+// NAMEPLATE/YELLOWMARK: proses penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) - kalau gak dikecualikan, tiap malam bakal dianggap "belum 100%" terus dan digeser tanpa henti.
 const PROSES_DIKECUALIKAN = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
 const PROSES_WIRING = ['WIRING CONTROL', 'WIRING POWER']
 
@@ -41,9 +41,7 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     )
 
-    // Tanggal kalender WIB langsung (BUKAN getHariKerjaSekarang() yang dipakai live di app -
-    // itu boundary jam 07:00 buat keperluan UI real-time; cron ini jalan jam 03:00 WIB, jadi
-    // "kemarin" di sini murni tanggal kalender - 1).
+    // Tanggal kalender WIB langsung - cron jalan jam 06:00 WIB, jadi "kemarin" di sini murni tanggal kalender minus 1.
     const wibNow = new Date(Date.now() + 7 * 60 * 60 * 1000)
     const hariTarget = wibNow.toISOString().slice(0, 10)
     const hariSumber = addDaysStr(hariTarget, -1)
@@ -105,8 +103,7 @@ Deno.serve(async (req) => {
       })
       if (Object.keys(kodeEligiblePerWp).length === 0) continue
 
-      // Fresh-fetch PER ROW tepat sebelum nulis - lindungi dari perubahan manual (drag/edit
-      // cell) yang mungkin terjadi di rentang waktu sejak select massal di atas.
+      // Fresh-fetch PER ROW tepat sebelum menulis - lindungi dari perubahan manual (drag/edit cell) yang mungkin terjadi sejak select massal di atas.
       const { data: freshRowNow } = await supabase.from('raw_schedule').select('schedule').eq('id', row.id).single()
       const scheduleTerkini = freshRowNow?.schedule || row.schedule || {}
       const entriesTarget = scheduleTerkini[hariTarget] || []
@@ -123,8 +120,7 @@ Deno.serve(async (req) => {
       if (entryBaru.length === 0) continue
       jumlahDigeser += entryBaru.reduce((s, e) => s + e.komponen.length, 0)
 
-      // Anti-duplikat: gabung ke entry WP yang SUDAH ADA di tanggal tujuan (misal planner
-      // udah nambah jadwal manual buat hari itu duluan) - jangan bikin entry baru terpisah.
+      // Anti-duplikat: gabung ke entry WP yang SUDAH ADA di tanggal tujuan, jangan bikin entry baru terpisah (misal planner udah nambah jadwal manual duluan buat hari itu).
       const entriesTargetBaru = [...entriesTarget]
       entryBaru.forEach((eb) => {
         const idx = entriesTargetBaru.findIndex((e: any) => e.wp === eb.wp)
@@ -138,9 +134,7 @@ Deno.serve(async (req) => {
 
       const scheduleBaru = { ...scheduleTerkini }
       scheduleBaru[hariTarget] = entriesTargetBaru
-      // Entry ASLI di hariSumber TETAP DISIMPAN APA ADANYA (histori/status rilis di tanggal
-      // itu jangan hilang), cuma ditandai digeserKe per-kode - UI nonaktifkan tombol Rilis di
-      // tanggal asal buat kode itu, tapi datanya tetap utuh.
+      // Entry ASLI di hariSumber TETAP DISIMPAN APA ADANYA (histori/status rilis di tanggal itu jangan hilang), cuma ditandai digeserKe per-kode.
       scheduleBaru[hariSumber] = (scheduleTerkini[hariSumber] || []).map((e: any) => {
         const kodeDigeserWp = entryBaru.find((nb) => nb.wp === e.wp)?.komponen || []
         if (kodeDigeserWp.length === 0) return e
@@ -151,8 +145,7 @@ Deno.serve(async (req) => {
 
       await supabase.from('raw_schedule').update({ schedule: scheduleBaru }).eq('id', row.id)
       rowDiproses++
-      // Sengaja TIDAK menyentuh renhar sama sekali - status rilis di hariTarget harus selalu
-      // mulai "Belum Dirilis", planner wajib rilis manual lagi.
+      // Sengaja TIDAK menyentuh renhar sama sekali - status rilis di hariTarget harus selalu mulai "Belum Dirilis", planner wajib rilis manual lagi.
     }
 
     return new Response(JSON.stringify({ success: true, hariSumber, hariTarget, rowDiproses, jumlahDigeser }), {
