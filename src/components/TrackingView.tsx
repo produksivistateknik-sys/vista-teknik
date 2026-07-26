@@ -1,11 +1,13 @@
 import { useState } from 'react'
 import { LaporanQCView } from './LaporanQCView'
 import { LaporanNameplateView } from './LaporanNameplateView'
+import { LaporanPasangKomponenView } from './LaporanPasangKomponenView'
 import { TrackingKomponenAdmin } from './TrackingKomponenAdmin'
 
 const SUBTAB_TRACKING=[
   {key:"qc",label:"QC",icon:"ti ti-clipboard-check"},
   {key:"nameplate",label:"Nameplate",icon:"ti ti-tag"},
+  {key:"pasangkomponen",label:"Pasang Komponen",icon:"ti ti-plug"},
   {key:"komponen",label:"Komponen",icon:"ti ti-package"},
 ] as const
 
@@ -26,6 +28,7 @@ export function TrackingView({woData}:{woData:any[]}){
       </div>
       <div style={{display:subTab==="qc"?"block":"none"}}><LaporanQCView woData={woData}/></div>
       <div style={{display:subTab==="nameplate"?"block":"none"}}><LaporanNameplateView woData={woData}/></div>
+      <div style={{display:subTab==="pasangkomponen"?"block":"none"}}><LaporanPasangKomponenView woData={woData}/></div>
       <div style={{display:subTab==="komponen"?"block":"none"}}><TrackingKomponenAdmin/></div>
     </div>
   )
