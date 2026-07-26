@@ -141,7 +141,9 @@ export function TrackingKomponenAdmin(){
 
   const subBagianIcon:Record<string,string>={Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍",Potong:"✂️",Bending:"📐",Stel:"🔩",Finishing:"✨",Rendam:"💧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌"};
 
-  const countPerSubBagian=["Warehouse","Assembling","QS"].map(sb=>({
+  // "Assembling" sengaja dihilangkan dari daftar tab - data lama sub_bagian=Assembling TETAP
+  // ada di database (gak dihapus), cuma gak ditampilkan sebagai kartu/tab baru lagi.
+  const countPerSubBagian=["Warehouse","QS"].map(sb=>({
     sb,
     count:riwayat.filter((r:any)=>r.sub_bagian===sb).length,
   }));
@@ -215,7 +217,7 @@ export function TrackingKomponenAdmin(){
         </Card>
       )}
 
-      <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginBottom:16}}>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,marginBottom:16}}>
         {countPerSubBagian.map(({sb,count})=>{
           const isActive=!!(selectedWoId&&selectedPanelId);
           const selectedPanelObj=panelList.find((p:any)=>p.id===selectedPanelId);
