@@ -154,11 +154,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     if(jam<24)return`${jam} jam lalu`;
     return`${Math.floor(jam/24)} hari lalu`;
   };
-  const hitungStatusNp=(pct:number,jumlahFoto:number)=>{
-    if(pct>=100&&jumlahFoto>=1)return{label:"Selesai",bg:"#f0fdf4",color:"#16a34a"};
-    if(pct>0||jumlahFoto>0)return{label:"Sedang Dikerjakan",bg:"#fff7ed",color:"#ea580c"};
-    return{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"};
-  };
 
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
   const byProses=useMemo(()=>{
@@ -353,46 +348,18 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
         </div>
       </div>
-      {npYmMarked.length>0&&(
-        <div style={{marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>
-            🏷️ Nameplate & Yellowmark Dijadwalkan
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:8}}>
-            {npYmMarked.map((item:any)=>{
-              const isNameplate=item.proses==="NAMEPLATE";
-              const pct=(isNameplate?item.panel.nameplate_progress:item.panel.yellowmark_progress)||0;
-              const foto=(isNameplate?item.panel.nameplate_photos:item.panel.yellowmark_photos)||[];
-              const updatedBy=isNameplate?item.panel.nameplate_updated_by:item.panel.yellowmark_updated_by;
-              const updatedAt=isNameplate?item.panel.nameplate_updated_at:item.panel.yellowmark_updated_at;
-              const st=hitungStatusNp(pct,foto.length);
-              const pc=isNameplate?"#0891b2":"#ca8a04";
-              return(
-                <div key={`${item.rawId}_${item.proses}`} style={{background:"#fff",border:`1px solid ${pc}33`,borderLeft:`3px solid ${pc}`,borderRadius:10,padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
-                    <span style={{fontSize:12,fontWeight:700,color:pc}}>{isNameplate?"🏷️ Nameplate":"🟡 Yellowmark"}</span>
-                    <span style={{fontSize:9.5,fontWeight:700,background:st.bg,color:st.color,borderRadius:6,padding:"2px 8px",whiteSpace:"nowrap" as const}}>{st.label}</span>
-                  </div>
-                  <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{item.panel.nama}</div>
-                  <div style={{fontSize:10.5,color:"#94a3b8",marginBottom:6}}>{item.panel._wo?.proyek} · WO {item.panel._wo?.wo}</div>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                    <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>{pct}% · {foto.length} foto</span>
-                    {updatedBy&&<span style={{fontSize:9.5,color:"#94a3b8"}}>{updatedBy} · {fmtRelatif(updatedAt)}</span>}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
-        <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length})</button>
+        <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length+npYmMarked.length})</button>
         {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{
           const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const isSel=selProses===pr;
           return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt})</button>);
         })}
+        {["NAMEPLATE","YELLOWMARK"].filter(pr=>npYmMarked.some((t:any)=>t.proses===pr)).map(pr=>{
+          const pc=PROSES_COLOR[pr]||"#64748b";const cnt=npYmMarked.filter((t:any)=>t.proses===pr).length;const isSel=selProses===pr;
+          return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt})</button>);
+        })}
       </div>
-      {filteredTasks.length===0&&(
+      {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
           <div style={{fontSize:40,marginBottom:12}}>📭</div>
           <div style={{fontSize:14,fontWeight:600}}>Tidak ada pekerjaan pada tanggal ini</div>
@@ -566,6 +533,81 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         </td>
                       </tr>
                     )];
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        );
+      })}
+      {["NAMEPLATE","YELLOWMARK"].filter(proses=>(selProses==="ALL"||selProses===proses)&&npYmMarked.some((t:any)=>t.proses===proses)).map(proses=>{
+        const tasks=npYmMarked.filter((t:any)=>t.proses===proses);
+        const isNameplate=proses==="NAMEPLATE";
+        const pc=PROSES_COLOR[proses]||"#64748b";
+        const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
+        const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
+        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
+        return(
+          <div key={proses} style={{marginBottom:20}}>
+            <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10}}>
+                <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
+                {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
+                <span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>
+              </div>
+            </div>
+            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+                <thead>
+                  <tr>
+                    <th style={{...thS,width:40,textAlign:"center"}}>No</th>
+                    <th style={{...thS,width:130}}>Proyek</th>
+                    <th style={{...thS,width:200}}>Nama Panel</th>
+                    <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
+                    <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
+                    <th style={{...thS,width:250}}>Komponen</th>
+                    <th style={{...thS,width:160}}>Operator</th>
+                    <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+                    <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {tasks.map((t:any,ti:number)=>{
+                    const panel=t.panel;
+                    const pct=(isNameplate?panel.nameplate_progress:panel.yellowmark_progress)||0;
+                    const foto=(isNameplate?panel.nameplate_photos:panel.yellowmark_photos)||[];
+                    const updatedBy=isNameplate?panel.nameplate_updated_by:panel.yellowmark_updated_by;
+                    const updatedAt=isNameplate?panel.nameplate_updated_at:panel.yellowmark_updated_at;
+                    const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+                    const rBg=ti%2===0?"#fff":"#f8fafc";
+                    const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle" as const};
+                    return(
+                      <tr key={t.rawId}>
+                        <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}</td>
+                        <td style={{...td,fontWeight:600,color:"#475569"}}>{panel._wo?.proyek}</td>
+                        <td style={{...td,fontWeight:600,color:"#1e293b"}}>{panel.nama}</td>
+                        <td style={{...td,textAlign:"center",color:"#cbd5e1"}}>–</td>
+                        <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
+                        <td style={{...td}}>
+                          <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>Fabrikasi {pct}% · {foto.length} foto</span>
+                        </td>
+                        <td style={{...td}}>
+                          {updatedBy?(
+                            <span style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {updatedBy}</span>
+                          ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada progress</span>)}
+                        </td>
+                        <td style={{...td,textAlign:"center"}}>
+                          {pct>=100&&foto.length>=1?(
+                            <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>
+                          ):pct>0||foto.length>0?(
+                            <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pct}%)</span>
+                          ):(
+                            <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>
+                          )}
+                        </td>
+                        <td style={{...td,textAlign:"center",fontSize:10,color:"#94a3b8"}}>{updatedAt?fmtRelatif(updatedAt):"–"}</td>
+                      </tr>
+                    );
                   })}
                 </tbody>
               </table>
