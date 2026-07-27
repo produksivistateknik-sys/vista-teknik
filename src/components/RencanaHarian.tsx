@@ -431,7 +431,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span></td>
                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
                             <td style={{...td}}>
-                              <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama||kode}</span>
+                              <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${kode} - ${item.nama}`:kode}</span>
                               {t.carriedOverFrom&&(
                                 <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", otomatis lanjut ke hari ini"}
                                   style={{marginLeft:5,background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>

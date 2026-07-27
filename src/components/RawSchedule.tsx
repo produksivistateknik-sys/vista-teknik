@@ -778,11 +778,20 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       if(wpEntry){
         oldKomp=wpEntry.komponen;isEdit=true;
         if(isProsesOrangRow){
+          // Token __wiring_ (badge bobot) dipisah dari komponen asli - direkonstruksi belakangan,
+          // JANGAN ikut kesaring "progress<100" (dia gak punya progress, defaultnya 0<100=true,
+          // jadi selalu ke-anggap "belum selesai" dan bisa nyangkut sendirian tanpa komponen asli
+          // begitu semua komponen aslinya udah 100% - itu akar bug "rilis tapi gak nongol di operator").
+          const tokenLama=(wpEntry.komponen||[]).filter((kode:string)=>kode.startsWith("__wiring_"));
           const komponenLamaBelumSelesai=(wpEntry.komponen||[]).filter((kode:string)=>{
+            if(kode.startsWith("__wiring_"))return false;
             const progress=livePanelForCell?.checklist?.[kode]?.progress?.[prosesCek||""]||0;
             return progress<100;
           });
-          finalKomp=[...new Set([...komponenLamaBelumSelesai,...modalKomponen])];
+          const realBaru=[...new Set([...komponenLamaBelumSelesai,...modalKomponen.filter((k:string)=>!k.startsWith("__wiring_"))])];
+          // Token cuma ada gunanya kalau masih nempel di komponen asli - kalau semua komponen
+          // aslinya udah beres/dihapus, buang tokennya juga (jangan biarin entri jadi token-doang).
+          finalKomp=realBaru.length>0?[...new Set([...tokenLama,...realBaru])]:realBaru;
         } else {
           finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
         }
@@ -1183,6 +1192,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const existingEntry=(rowTarget?.schedule?.[TODAY]||[]).find((e:any)=>e.wp===k.wp);
                       const panelDataTarget=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(k.panelId));
                       const komponenLamaBelumSelesai=(existingEntry?.komponen||[]).filter((kd:string)=>{
+                        if(kd.startsWith("__wiring_"))return false; // token bobot, bukan komponen asli
                         const progress=panelDataTarget?.checklist?.[kd]?.progress?.[pilihKomponenModal.proses]||0;
                         return progress<100;
                       });
@@ -1706,7 +1716,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                           setModalWp(e.wp);
                           const isWiringProses=PROSES_ORANG_RAW.includes(rawRow?.proses||"");
                           if(isWiringProses){
+                            // Token __wiring_ (badge bobot) BUKAN komponen asli, gak punya progress -
+                            // dulu ke-anggap "belum selesai" (progress default 0<100) dan ikut nyangkut
+                            // di checkbox, bikin entri berakhir cuma-token-doang kalau semua komponen
+                            // asli udah selesai. Dikecualikan eksplisit di sini.
                             const belumSelesai=(e.komponen||[]).filter((kode:string)=>{
+                              if(kode.startsWith("__wiring_"))return false;
                               const progress=livePanelForCell?.checklist?.[kode]?.progress?.[rawRow?.proses||""]||0;
                               return progress<100;
                             });
@@ -1733,7 +1748,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         const progressKomp=livePanelForCell?.checklist?.[k]?.progress?.[rawRow?.proses||""]||0;
                         const isKompDone=progressKomp>=100;
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
-                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama||k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
+                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama?`${k} - ${item.nama}`:k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
                       })}
                     </div>
                   </div>
