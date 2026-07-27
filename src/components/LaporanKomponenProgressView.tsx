@@ -107,7 +107,6 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
   }
 
   if(selectedPanel){
-    const pct=selectedPanel[tugas.progressField]||0
     const foto=selectedPanel[tugas.fotoField]||[]
     const sb=STATUS_LABEL_KP[selectedPanel._kpStatus]
     return(
@@ -137,10 +136,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
         <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:16,marginBottom:12}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap" as const,gap:8}}>
             <span style={{fontWeight:700,fontSize:14,color:tugas.color}}>{tugas.icon} {tugas.label}</span>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>Fabrikasi {pct}%</span>
-              <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{sb.label}</span>
-            </div>
+            <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{sb.label}</span>
           </div>
           {foto.length>0?(
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
@@ -236,10 +232,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
                   onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)";e.currentTarget.style.transform="translateY(0)"}}>
                   <div style={{fontSize:14,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",marginBottom:2}}>{p.nama}</div>
                   <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{p.tipe}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:11,fontWeight:700,color:(p[tugas.progressField]||0)>=100?"#16a34a":"#64748b"}}>{p[tugas.progressField]||0}%</span>
-                    <span style={{fontSize:9.5,fontWeight:700,background:sb.bg,color:sb.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{sb.label}</span>
-                  </div>
+                  <span style={{fontSize:9.5,fontWeight:700,background:sb.bg,color:sb.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{sb.label}</span>
                 </div>
               )
             })}
