@@ -3,18 +3,19 @@ import { LaporanQCView } from './LaporanQCView'
 import { LaporanNameplateView } from './LaporanNameplateView'
 import { LaporanPasangKomponenView } from './LaporanPasangKomponenView'
 import { LaporanKomponenProgressView } from './LaporanKomponenProgressView'
-import { TrackingKomponenAdmin } from './TrackingKomponenAdmin'
 
 const TUGAS_WAREHOUSE_LAPORAN={field:"warehouse",label:"Warehouse",icon:"📦",color:"#0d9488",progressField:"warehouse_progress",fotoField:"warehouse_photos"}
 const TUGAS_QS_LAPORAN={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:"qs_progress",fotoField:"qs_photos"}
 
+// Tab "Komponen" (TrackingKomponenAdmin, arsip alur lama Assembling) sengaja dihilangkan dari
+// sini - datanya sudah gak dipakai lagi (Warehouse/QS pindah ke sub-tab sendiri di atas).
+// File komponennya TIDAK dihapus (masih ada di repo), cuma gak di-render lagi dari sini.
 const SUBTAB_TRACKING=[
   {key:"qc",label:"QC",icon:"ti ti-clipboard-check"},
   {key:"nameplate",label:"Nameplate",icon:"ti ti-tag"},
   {key:"pasangkomponen",label:"Pasang Komponen",icon:"ti ti-plug"},
   {key:"warehouse",label:"Warehouse",icon:"ti ti-building-warehouse"},
   {key:"qs",label:"QS",icon:"ti ti-clipboard-list"},
-  {key:"komponen",label:"Komponen",icon:"ti ti-package"},
 ] as const
 
 export function TrackingView({woData}:{woData:any[]}){
@@ -37,7 +38,6 @@ export function TrackingView({woData}:{woData:any[]}){
       <div style={{display:subTab==="pasangkomponen"?"block":"none"}}><LaporanPasangKomponenView woData={woData}/></div>
       <div style={{display:subTab==="warehouse"?"block":"none"}}><LaporanKomponenProgressView woData={woData} tugas={TUGAS_WAREHOUSE_LAPORAN}/></div>
       <div style={{display:subTab==="qs"?"block":"none"}}><LaporanKomponenProgressView woData={woData} tugas={TUGAS_QS_LAPORAN}/></div>
-      <div style={{display:subTab==="komponen"?"block":"none"}}><TrackingKomponenAdmin/></div>
     </div>
   )
 }
