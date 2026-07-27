@@ -70,7 +70,7 @@ export function KalenderTab({woData}:{woData:any[]}){
               <div style={{display:"flex",flexDirection:"column" as const,gap:2}}>
                 {events.slice(0,3).map((e:any,ei:number)=>(
                   <div key={ei} style={{fontSize:8.5,background:STATUS_COLOR_CAL[e.status]+"18",color:STATUS_COLOR_CAL[e.status],borderRadius:3,padding:"1px 4px",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>
-                    WO {e.wo} - {e.proyek}
+                    WO {e.wo} - {e.proyek} ({e.panelCount} panel)
                   </div>
                 ))}
                 {events.length>3&&(
