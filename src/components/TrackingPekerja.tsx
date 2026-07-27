@@ -77,7 +77,9 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
       const punyaPpk=Object.keys(ppk).length>0;
       if(punyaPpk){
         (t.komponen||[]).forEach((kode:string)=>{
-          const idsKomp=ppk[kode]||[];
+          const raw=ppk[kode];
+          // BUSBAR nested per-tahap ({tahap:[ids]}) vs proses lain (array [ids] langsung).
+          const idsKomp:number[]=Array.isArray(raw)?raw:(raw&&typeof raw==="object"?Object.values(raw).flat() as number[]:[]);
           if(idsKomp.includes(pkrId)){
             hasil.push({...t,_komponenSpesifik:kode});
           }
