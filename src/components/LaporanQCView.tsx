@@ -167,7 +167,7 @@ export function LaporanQCView({woData}:{woData:any[]}){
               {fotoList.length>0?(
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
                   {fotoList.map((f:any,fi:number)=>(
-                    <div key={fi} onClick={()=>setLightbox(f)} style={{cursor:"pointer"}} className="qc-foto-print">
+                    <div key={fi} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})} style={{cursor:"pointer"}} className="qc-foto-print">
                       <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
                       <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}</div>
                     </div>
@@ -180,7 +180,7 @@ export function LaporanQCView({woData}:{woData:any[]}){
           );
         })}
 
-        {lightbox&&<FotoZoomViewer foto={lightbox} onClose={()=>setLightbox(null)}/>}
+        {lightbox&&<FotoZoomViewer fotos={lightbox.fotos} startIndex={lightbox.index} label={lightbox.label} onClose={()=>setLightbox(null)}/>}
 
         <style>{`
           @media print {

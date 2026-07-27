@@ -149,7 +149,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
               {t.foto.length>0?(
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
                   {t.foto.map((f:any,fi:number)=>(
-                    <div key={fi} onClick={()=>setLightbox({...f,_label:`${t.label}_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="np-foto-print">
+                    <div key={fi} onClick={()=>setLightbox({fotos:t.foto,index:fi,label:`${t.label}_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="np-foto-print">
                       <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
                       <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                     </div>
@@ -162,7 +162,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
           )
         })}
 
-        {lightbox&&<FotoZoomViewer foto={lightbox} onClose={()=>setLightbox(null)}/>}
+        {lightbox&&<FotoZoomViewer fotos={lightbox.fotos} startIndex={lightbox.index} label={lightbox.label} onClose={()=>setLightbox(null)}/>}
 
         <style>{`
           @media print {
