@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
-import { downloadFotoTunggal, downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
+import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal } from '../lib/panelHelpers'
+import { FotoZoomViewer } from './FotoZoomViewer'
 
 const STATUS_LABEL_PK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
@@ -177,16 +178,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
           )}
         </div>
 
-        {lightbox&&(
-          <div onClick={()=>setLightbox(null)} className="no-print"
-            style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",zIndex:9999,padding:20,gap:14}}>
-            <img onClick={(e:any)=>e.stopPropagation()} src={lightbox.url} style={{maxWidth:"90%",maxHeight:"78vh",objectFit:"contain" as const,borderRadius:8}}/>
-            <button onClick={(e:any)=>{e.stopPropagation();downloadFotoTunggal(lightbox.url,sanitizeNamaFile(`${lightbox._label||"foto"}.jpg`))}}
-              style={{display:"flex",alignItems:"center",gap:6,background:"#fff",color:"#1e293b",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-              <i className="ti ti-download" style={{fontSize:15}}/> Download
-            </button>
-          </div>
-        )}
+        {lightbox&&<FotoZoomViewer foto={lightbox} onClose={()=>setLightbox(null)}/>}
 
         <style>{`
           @media print {
