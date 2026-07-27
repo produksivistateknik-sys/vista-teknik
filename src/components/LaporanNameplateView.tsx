@@ -20,6 +20,7 @@ const statusTugasNp=(pct:number,jumlahFoto:number)=>{
   if(pct>0||jumlahFoto>0)return"proses"
   return"belum"
 }
+const fmtDeadlineNp=(target?:string)=>target?new Date(target).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):""
 
 export function LaporanNameplateView({woData}:{woData:any[]}){
   const[search,setSearch]=useState("")
@@ -223,7 +224,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
             </div>
             <div style={{flex:1,minWidth:0}}>
               <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{selectedFolder.wo?.proyek}</div>
-              <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {selectedFolder.wo?.wo} - {selectedFolder.panels.length} panel</div>
+              <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {selectedFolder.wo?.wo}{selectedFolder.wo?.target?` - Deadline ${fmtDeadlineNp(selectedFolder.wo.target)}`:""} - {selectedFolder.panels.length} panel</div>
             </div>
             <button onClick={()=>downloadZipProyekNp(selectedFolder)} disabled={zipBusy?.key===`wo_${selectedFolder.woId}`}
               style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #16a34a",background:"#fff",color:"#16a34a",fontSize:12,fontWeight:600,
@@ -276,7 +277,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{f.wo?.proyek}</div>
-                  <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {f.wo?.wo} - {f.panels.length} panel</div>
+                  <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {f.wo?.wo}{f.wo?.target?` - Deadline ${fmtDeadlineNp(f.wo.target)}`:""} - {f.panels.length} panel</div>
                 </div>
                 <span style={{fontSize:10.5,fontWeight:700,color:allDone?"#16a34a":"#64748b",background:allDone?"#f0fdf4":"#f1f5f9",borderRadius:20,padding:"4px 12px",flexShrink:0}}>
                   {doneInFolder}/{f.panels.length} selesai
