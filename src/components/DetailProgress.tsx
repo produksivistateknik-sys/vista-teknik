@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { calcPanelProgress, panelOverall, getBestProgress } from '../lib/panelHelpers'
+import { calcPanelProgress, panelOverall, getBestProgress, isKomponenRelevant } from '../lib/panelHelpers'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
@@ -284,7 +284,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                           <td style={{...tdS,background:rowBg,color:"#94a3b8",fontFamily:"ui-monospace,monospace",fontSize:9}}>{it.kode}</td>
                           <td style={{...tdS,background:rowBg,color:"#475569",fontWeight:600}}>{qty}</td>
                           {prosesPanel.map(pr=>{
-                            const pct=cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0;
+                            const relevant=isKomponenRelevant(it.kode,p.tipe,pr);
+                            const pct=relevant?(cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0):undefined;
                             return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name}/>;
                           })}
                           {wp===firstRenderedWp&&ii===0&&(
