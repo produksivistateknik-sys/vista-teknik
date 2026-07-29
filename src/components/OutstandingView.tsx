@@ -78,9 +78,9 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
             if (kode.startsWith('__wiring_')) return
             const cl = panel.checklist?.[kode]
             // Kode terjadwal di raw_schedule tapi checklist-nya belum ada di panel (data BOM
-            // belum lengkap) - exclude dari Outstanding, bukan tanggung jawab fitur ini buat
-            // nampilin data yang gak lengkap.
-            if (!cl) return
+            // belum lengkap), atau qty-nya 0 (komponen ini emang gak dipakai/gak dibutuhkan di
+            // panel ini) - exclude dari Outstanding, gak ada kerjaan yang beneran perlu dikerjakan.
+            if (!cl || !cl.qty) return
             const pct = cl.progress?.[subProses] || 0
             if (pct >= 100) return
             const key = `${panelId}|${kode}`

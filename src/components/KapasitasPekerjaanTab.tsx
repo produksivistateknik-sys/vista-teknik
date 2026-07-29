@@ -374,31 +374,37 @@ export function KapasitasPekerjaanTab(){
     setBomList(sorted);
   };
 
+  // kode_komponen dulu ke-hitung ulang tiap insert/delete (geser semua kode lebih besar/kecil) -
+  // itu akar bug lama: panels.checklist/raw_schedule/renhar nyimpen kode_komponen sebagai KEY
+  // STABIL, jadi begitu kode digeser, data histori panel lama nyambung ke komponen yang SALAH
+  // secara diam-diam. Sekarang kode_komponen PERMANEN: sekali dibuat gak pernah berubah/digeser/
+  // dipakai ulang, biar selamanya jadi identifier yang bisa dipercaya.
+  const nextKodeUntukTipe=(tipe:string)=>{
+    let maxNum=0;
+    bomList.filter((b:any)=>b.tipe_panel===tipe).forEach((b:any)=>{
+      const m=String(b.kode_komponen).match(/(\d+)$/);
+      if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
+    });
+    return`${tipe}.${maxNum+1}`;
+  };
+
   const saveBom=async()=>{
-    if(!bomForm.kode_komponen||!bomForm.nama_komponen)return;
+    if(!bomForm.nama_komponen)return;
     if(editBom){
-      const{error}=await supabase.from("bom_master").update({...bomForm,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+      // kode_komponen sengaja TIDAK ikut di-update - begitu dibuat, kode itu identitas permanen.
+      const{error}=await supabase.from("bom_master").update({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,updated_at:new Date().toISOString()}).eq("id",editBom.id);
       if(error){alert("Gagal: "+error.message);return;}
     } else {
-      const m=String(bomForm.kode_komponen).match(/^(.*?)(\d+)$/);
-      if(m){
-        const prefix=m[1],startNum=parseInt(m[2],10);
-        const{data:existingSameTipe}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
-        const toShift=(existingSameTipe||[]).map((r:any)=>{
-          const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
-          if(!mm||mm[1]!==prefix)return null;
-          const num=parseInt(mm[2],10);
-          if(num<startNum)return null;
-          return{id:r.id,num};
-        }).filter(Boolean).sort((a:any,b:any)=>b.num-a.num);
-        for(const item of toShift as any[]){
-          const oldKode=prefix+item.num;
-          const newKode=prefix+(item.num+1);
-          await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
-          await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",bomForm.tipe_panel);
-        }
-      }
-      const{error}=await supabase.from("bom_master").insert(bomForm);
+      // Fresh-fetch (bukan dari bomList lokal) buat mastiin gak collide walau ada admin lain yang
+      // barusan nambah komponen tipe yang sama.
+      const{data:existingSameTipe}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
+      let maxNum=0;
+      (existingSameTipe||[]).forEach((r:any)=>{
+        const m=String(r.kode_komponen).match(/(\d+)$/);
+        if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
+      });
+      const kodeBaru=`${bomForm.tipe_panel}.${maxNum+1}`;
+      const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:0,kode_komponen:kodeBaru});
       if(error){alert("Gagal: "+error.message);return;}
     }
     await fetchBom();
@@ -408,30 +414,9 @@ export function KapasitasPekerjaanTab(){
   };
 
   const deleteBom=async(id:number)=>{
-    if(!confirm("Yakin hapus komponen ini dari Master Data BOM? Kode yang lebih besar bakal otomatis turun ngisi kekosongan."))return;
-    const target=bomList.find((b:any)=>b.id===id);
+    if(!confirm("Yakin hapus komponen ini dari Master Data BOM?\n\nKodenya TIDAK akan dipakai ulang buat komponen lain (biar checklist panel yang sudah ada gak pernah nyambung ke komponen yang salah) - bakal ninggalin celah nomor, itu wajar & aman."))return;
     const{error}=await supabase.from("bom_master").delete().eq("id",id);
     if(error){alert("Gagal: "+error.message);return;}
-    if(target){
-      const m=String(target.kode_komponen).match(/^(.*?)(\d+)$/);
-      if(m){
-        const prefix=m[1],delNum=parseInt(m[2],10);
-        const{data:remaining}=await supabase.from("bom_master").select("id,kode_komponen").eq("tipe_panel",target.tipe_panel);
-        const toShift=(remaining||[]).map((r:any)=>{
-          const mm=String(r.kode_komponen).match(/^(.*?)(\d+)$/);
-          if(!mm||mm[1]!==prefix)return null;
-          const num=parseInt(mm[2],10);
-          if(num<=delNum)return null;
-          return{id:r.id,num};
-        }).filter(Boolean).sort((a:any,b:any)=>a.num-b.num);
-        for(const item of toShift as any[]){
-          const oldKode=prefix+item.num;
-          const newKode=prefix+(item.num-1);
-          await supabase.from("bom_master").update({kode_komponen:newKode}).eq("id",item.id);
-          await supabase.from("fcs_process_time").update({kode_komponen:newKode}).eq("kode_komponen",oldKode).eq("tipe_panel",target.tipe_panel);
-        }
-      }
-    }
     await fetchBom();
   };
 
@@ -814,7 +799,12 @@ export function KapasitasPekerjaanTab(){
                 <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
                   <div>
                     <Lbl>Kode Komponen</Lbl>
-                    <Inp value={bomForm.kode_komponen} onChange={(e:any)=>setBomForm({...bomForm,kode_komponen:e.target.value})} placeholder="misal FS.1"/>
+                    <div style={{padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f1f5f9",color:"#475569",fontSize:13,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+                      {editBom?bomForm.kode_komponen:nextKodeUntukTipe(bomForm.tipe_panel)}
+                    </div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>
+                      {editBom?"Kode gak bisa diubah - sudah jadi identitas permanen di data panel yang sudah ada.":"Otomatis, nomor berikutnya buat tipe panel ini."}
+                    </div>
                   </div>
                   <div>
                     <Lbl>Nama Komponen</Lbl>
