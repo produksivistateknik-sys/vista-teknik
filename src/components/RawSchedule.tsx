@@ -235,6 +235,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const ch=supabase.channel("realtime-fcs-cap-raw-rawschedule")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_process_time"},fetchCap)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_notifikasi"},fetchNotifAvailable)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};

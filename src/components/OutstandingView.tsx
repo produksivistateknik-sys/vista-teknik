@@ -44,6 +44,10 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
       setProcessTimeList(pt ?? [])
     }
     fetchPT()
+    const ch = supabase.channel('realtime-fcs-process-time-outstanding')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fcs_process_time' }, fetchPT)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
   }, [])
 
   const getEffCfg = (tipe: string) => (livePanelTypes?.[tipe]?.wps?.length > 0) ? livePanelTypes[tipe] : (PANEL_TYPES as any)[tipe]

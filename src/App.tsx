@@ -180,19 +180,30 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 const { data: woList, loading: woLoading, create: createWO, update: updateWO, remove: removeWO, refetch: refetchWO } = useWorkOrders()
 const [livePanelTypes,setLivePanelTypes]=useState<any>({});
 useEffect(()=>{
-  Promise.all([
-    supabase.from("bom_master").select("*"),
-    supabase.from("panel_type_meta").select("*"),
-    supabase.from("panel_wp_meta").select("*"),
-  ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
+  const fetchBomCfg=async()=>{
+    const [bomRes,typeMetaRes,wpMetaRes]:any=await Promise.all([
+      supabase.from("bom_master").select("*"),
+      supabase.from("panel_type_meta").select("*"),
+      supabase.from("panel_wp_meta").select("*"),
+    ]);
     if(bomRes.data&&bomRes.data.length>0){
       setLivePanelTypes(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
     }
-  });
+  };
+  fetchBomCfg();
+  // Ditulis lewat wizard BOM (KapasitasPekerjaanTab) - kalau ada tab admin lain kebuka
+  // bareng, edit BOM/WP di situ harus langsung ke-refresh di sini juga, gak nunggu reload.
+  const ch=supabase.channel("realtime-bom-cfg-app")
+    .on("postgres_changes",{event:"*",schema:"public",table:"bom_master"},fetchBomCfg)
+    .on("postgres_changes",{event:"*",schema:"public",table:"panel_type_meta"},fetchBomCfg)
+    .on("postgres_changes",{event:"*",schema:"public",table:"panel_wp_meta"},fetchBomCfg)
+    .subscribe();
+  return()=>{supabase.removeChannel(ch);};
 },[]);
 useEffect(()=>{setGlobalLivePanelTypes(livePanelTypes);},[livePanelTypes]);
 useEffect(()=>{
-  supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+  const fetchProsesRelevan=async()=>{
+    const{data}=await supabase.from("bom_proses_relevan").select("*");
     const relevanSet=new Set<string>();
     const hasMappingSet=new Set<string>();
     (data||[]).forEach((r:any)=>{
@@ -200,7 +211,12 @@ useEffect(()=>{
       hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
     });
     setGlobalProsesRelevan(relevanSet,hasMappingSet);
-  });
+  };
+  fetchProsesRelevan();
+  const ch=supabase.channel("realtime-bom-proses-relevan-app")
+    .on("postgres_changes",{event:"*",schema:"public",table:"bom_proses_relevan"},fetchProsesRelevan)
+    .subscribe();
+  return()=>{supabase.removeChannel(ch);};
 },[]);
 const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
 const { data: pekerjaList, loading: pekerjaLoading, create: createPekerja, update: updatePekerja, remove: removePekerja, refetch: refetchPekerja } = usePekerja()
