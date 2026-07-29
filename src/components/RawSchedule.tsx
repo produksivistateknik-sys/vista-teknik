@@ -27,7 +27,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setQtyChangeLog(data||[]);
     setQtyChangeUnread((data||[]).filter((d:any)=>!d.is_read).length);
   };
-  useEffect(()=>{fetchQtyChangeLog();},[]);
+  useEffect(()=>{
+    fetchQtyChangeLog();
+    const ch=supabase.channel("realtime-qty-change-log-rawschedule")
+      .on("postgres_changes",{event:"*",schema:"public",table:"qty_change_log"},fetchQtyChangeLog)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
   const openRiwayat=()=>{
     setRiwayatOpen(true);
   };
