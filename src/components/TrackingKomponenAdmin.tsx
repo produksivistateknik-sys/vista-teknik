@@ -107,8 +107,15 @@ export function TrackingKomponenAdmin(){
     if(selectedWoId)fetchPanelList(selectedWoId);
   },[selectedWoId]);
   useEffect(()=>{
-    if(selectedPanelId)fetchRiwayat(selectedPanelId);
-    else setRiwayat([]);
+    if(!selectedPanelId){setRiwayat([]);return;}
+    fetchRiwayat(selectedPanelId);
+    // Operator bisa nambah tracking komponen (dari Vista Pekerja) buat panel yang lagi dibuka
+    // admin di sini juga - tanpa ini riwayat/fotonya gak nongol live sampai ganti panel/refresh.
+    const ch=supabase.channel("realtime-tracking-komponen-admin-"+selectedPanelId)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_tracking_komponen",filter:"panel_id=eq."+selectedPanelId},()=>fetchRiwayat(selectedPanelId))
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_tracking_komponen_foto"},()=>fetchRiwayat(selectedPanelId))
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
   },[selectedPanelId]);
 
   const savePassword=async(subBagian:string)=>{

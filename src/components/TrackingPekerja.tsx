@@ -16,9 +16,16 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   const [checkpointLogData,setCheckpointLogData]=useState<any[]>([]);
 
   useEffect(()=>{
-    supabase.from("progress_checkpoint_log").select("*").then(({data})=>{
-      setCheckpointLogData(data??[]);
-    });
+    const fetchCheckpointLog=()=>{
+      supabase.from("progress_checkpoint_log").select("*").then(({data})=>{
+        setCheckpointLogData(data??[]);
+      });
+    };
+    fetchCheckpointLog();
+    const ch=supabase.channel("realtime-checkpoint-log-tracking")
+      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},fetchCheckpointLog)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
   },[]);
 
   useEffect(()=>{

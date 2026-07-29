@@ -28,6 +28,10 @@ export function MasterPekerjaInline({pekerja}:any){
       setLoading(false);
     };
     load();
+    const ch = supabase.channel("realtime-operator-users-masterpekerja")
+      .on("postgres_changes", { event: "*", schema: "public", table: "operator_users" }, load)
+      .subscribe();
+    return () => { supabase.removeChannel(ch) };
   }, []);
 
   const opDiv = Object.entries(DIVISI_CONFIG)

@@ -38,8 +38,15 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
       const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode",{ascending:true});
       setMesinList(data??[]);
     };
+    // Sama alasannya kayak mesin di atas - akun admin (Master User) diedit dari sini juga, tab
+    // lain yang kebetulan kebuka bareng gak pernah tau ada perubahan tanpa ini.
+    const fetchAdmins=async()=>{
+      const{data}=await supabase.from("admins").select("*").order("created_at",{ascending:true});
+      setAdmins(data??[]);
+    };
     const ch=supabase.channel("realtime-maintenance-log")
       .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
+      .on("postgres_changes",{event:"*",schema:"public",table:"admins"},fetchAdmins)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"maintenance_log"},
         async(payload)=>{
           const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
