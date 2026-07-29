@@ -800,7 +800,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 </div>
               )}
               {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData}/></Suspense></div>}
-              {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user}/></Suspense></div>}
+              {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}

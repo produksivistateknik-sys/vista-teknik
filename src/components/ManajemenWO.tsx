@@ -58,6 +58,49 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
   const [expandedPanel,setExpandedPanel]=useState({});
   const [arsipModal,setArsipModal]=useState<any>(null);
   const [arsipLoading,setArsipLoading]=useState(false);
+  const [arsipPanelModal,setArsipPanelModal]=useState<any>(null);
+  const [selArsipPanelIds,setSelArsipPanelIds]=useState<Set<number>>(new Set());
+  const [arsipPanelLoading,setArsipPanelLoading]=useState(false);
+
+  const toggleArsipPanelId=(id:number)=>{
+    setSelArsipPanelIds(prev=>{
+      const next=new Set(prev);
+      next.has(id)?next.delete(id):next.add(id);
+      return next;
+    });
+  };
+
+  const prosesArsipPanel=async()=>{
+    if(selArsipPanelIds.size===0)return;
+    setArsipPanelLoading(true);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    const panelsToArsip=(arsipPanelModal.panels||[]).filter((p:any)=>selArsipPanelIds.has(p.id));
+    const gagal:string[]=[];
+    let sukses=0;
+    for(const p of panelsToArsip){
+      const progress=panelOverall(p);
+      const{error}=await supabase.rpc("arsip_panel",{p_panel_id:p.id,p_user:uname,p_progress:progress});
+      if(error){gagal.push(p.nama+": "+error.message);}
+      else{
+        sukses++;
+        await activityLogService.insert({
+          user_name:uname,action:"ARSIP PANEL",
+          description:"Arsip panel "+p.nama+" ("+progress+"%) dari WO "+arsipPanelModal.wo+" - "+arsipPanelModal.proyek,
+          module:"wo",halaman:"Manajemen WO",proyek:arsipPanelModal.proyek||"",panel:p.nama,wo_number:arsipPanelModal.wo,
+        });
+      }
+    }
+    setArsipPanelLoading(false);
+    if(refetchWO)await refetchWO();
+    if(gagal.length>0){
+      alert(sukses+" panel berhasil diarsipkan.\n\nGagal ("+gagal.length+"):\n"+gagal.join("\n"));
+    } else {
+      alert(sukses+" panel berhasil diarsipkan dan disembunyikan dari Raw Schedule/Rencana Harian/Outstanding.");
+    }
+    setArsipPanelModal(null);
+    setSelArsipPanelIds(new Set());
+  };
 
   const arsipkanWO=async(wo:any)=>{
     setArsipLoading(true);
@@ -388,6 +431,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
+                <button onClick={()=>{setArsipPanelModal(wo);setSelArsipPanelIds(new Set());}}
+                  style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>📦 Arsip</button>
                 <button onClick={()=>setDelId(wo.id)}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
               </div>
@@ -516,6 +561,42 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
             <Btn outline color="#64748b" onClick={()=>setArsipModal(null)} disabled={arsipLoading}>Batal</Btn>
             <Btn color="#16a34a" onClick={()=>arsipkanWO(arsipModal)} disabled={arsipLoading}>
               {arsipLoading?"⏳ Mengarsipkan...":"📦 Arsipkan Sekarang"}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+      {arsipPanelModal&&(
+        <Modal title={"Arsip Panel — WO "+arsipPanelModal.wo+" ("+arsipPanelModal.proyek+")"}
+          onClose={()=>{if(!arsipPanelLoading){setArsipPanelModal(null);setSelArsipPanelIds(new Set());}}} width={480}>
+          <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>
+            Pilih panel yang mau diarsipkan. Semua data terkait (Raw Schedule, Rencana Harian, checklist/progress, riwayat timer, QC, Nameplate/Yellowmark) dipindah ke arsip dan hilang dari tampilan aktif - bisa dikembalikan kapan saja lewat tab Arsip.
+          </div>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:340,overflowY:"auto" as const,marginBottom:14}}>
+            {(arsipPanelModal.panels||[]).length===0?(
+              <div style={{textAlign:"center" as const,padding:20,color:"#94a3b8",fontSize:12}}>WO ini tidak punya panel.</div>
+            ):(arsipPanelModal.panels||[]).map((p:any)=>{
+              const pp=panelOverall(p);
+              const checked=selArsipPanelIds.has(p.id);
+              return(
+                <label key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
+                  borderRadius:8,border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,background:checked?"#eff6ff":"#fff",cursor:"pointer"}}>
+                  <input type="checkbox" checked={checked} onChange={()=>toggleArsipPanelId(p.id)}/>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>#{p.no_pnl??p.noPnl} {p.nama}</div>
+                    <div style={{fontSize:10,color:"#94a3b8"}}>{p.tipe} · Qty {p.qty}</div>
+                  </div>
+                  <div style={{minWidth:90,display:"flex",alignItems:"center",gap:6}}>
+                    <PBar pct={pp} h={6}/>
+                    <span style={{fontWeight:700,fontSize:11,color:pColor(pp)}}>{pp}%</span>
+                  </div>
+                </label>
+              );
+            })}
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>{setArsipPanelModal(null);setSelArsipPanelIds(new Set());}} disabled={arsipPanelLoading}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={prosesArsipPanel} disabled={arsipPanelLoading||selArsipPanelIds.size===0}>
+              {arsipPanelLoading?"⏳ Mengarsipkan...":`📦 Arsipkan ${selArsipPanelIds.size} Panel`}
             </Btn>
           </div>
         </Modal>
