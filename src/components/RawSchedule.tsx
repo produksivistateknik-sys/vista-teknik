@@ -1510,9 +1510,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
-                                const statusStyle=status==="finish"?{background:"#16a34a",opacity:.9}:status==="on_progress"?{background:"#f59e0b"}:{background:PROSES_COLOR[row.proses]||"#64748b"};
+                                // Warna badge SELALU ikut warna proses (gak berubah karena status) - status
+                                // ditandai ikon terpisah aja (✓ selesai, ● berprogres, kosong kalau belum).
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{...statusStyle,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} style={{background:PROSES_COLOR[row.proses]||"#64748b",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                             )
@@ -1772,13 +1773,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         const qtyTotalKomp=Number(clForCell?.qty)||0;
                         const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(${qtyDoneKomp}/${qtyTotalKomp})`;
                         const isKompDone=progressKomp>=100;
+                        // Warna chip SELALU ikut warna proses (gak berubah karena status) - status
+                        // ditandai ikon terpisah aja (✓ selesai, • berprogres, kosong kalau belum).
+                        const pc=PROSES_COLOR[rawRow?.proses||""]||"#64748b";
+                        const statusIconKomp=isKompDone?"✓ ":progressKomp>0?"• ":"";
                         const digeserKeTgl=e.digeserKe?.[k]||null;
                         if(digeserKeTgl){
                           return <span key={k} title={"Jejak/histori (read-only) - "+labelQtyPct+" saat digeser ke "+digeserKeTgl+", gak bisa dikerjakan/dipindah lagi dari sini"}
                             style={{background:"#f1f5f9",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"default"}}>🕓 {item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct} ➡️ {digeserKeTgl}</span>;
                         }
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
-                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct}</span>;
+                          style={{background:isSelMove?pc:pc+"18",color:isSelMove?"#fff":pc,border:`1px solid ${isSelMove?pc:pc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{statusIconKomp}{item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct}</span>;
                       })}
                     </div>
                   </div>
