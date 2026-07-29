@@ -269,7 +269,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                     if(!activeItems.length) return null;
                     return activeItems.map((it:any,ii:number)=>{
                       const cl=p.checklist?.[it.kode];
-                      const qty=cl?.qty||it.qty||1;
+                      const qty=cl?.qty??0;
                       const rowBg=wp.wp==="WP1"?"var(--wp1-bg,#fffbeb)":wp.wp==="WP2"?"var(--wp2-bg,#f0fdf4)":wp.wp==="WP3"?"var(--wp3-bg,#eff6ff)":wp.wp==="WP4"?"#fff7ed":"#fafbfc";
                       return(
                         <tr key={it.kode}>
