@@ -75,7 +75,7 @@ export function buildPanelTypesFromBom(bomList,panelTypeMetaList,panelWpMetaList
   (bomList||[]).forEach(b=>{
     if(!byTipe[b.tipe_panel])byTipe[b.tipe_panel]={};
     if(!byTipe[b.tipe_panel][b.wp])byTipe[b.tipe_panel][b.wp]=[];
-    byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen});
+    byTipe[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen,urutan:b.urutan});
   });
   const result={};
   Object.entries(byTipe).forEach(([tipe,wpMap])=>{
@@ -84,7 +84,11 @@ export function buildPanelTypesFromBom(bomList,panelTypeMetaList,panelWpMetaList
     const wpMetas=(panelWpMetaList||[]).filter((m:any)=>m.tipe_panel===tipe).slice().sort((a:any,b:any)=>String(a.wp).localeCompare(String(b.wp)));
     if(wpMetas.length===0)return;
     const wps=wpMetas.map((wpMeta:any)=>{
-      const items=(wpMap[wpMeta.wp]||[]).slice().sort((a,b)=>naturalKodeSortGlobal(a.kode,b.kode)).map(it=>({kode:it.kode,nama:it.nama}));
+      const items=(wpMap[wpMeta.wp]||[]).slice().sort((a,b)=>{
+        const ua=Number(a.urutan)||0,ub=Number(b.urutan)||0;
+        if(ua!==ub)return ua-ub;
+        return naturalKodeSortGlobal(a.kode,b.kode);
+      }).map(it=>({kode:it.kode,nama:it.nama}));
       return{wp:wpMeta.wp,color:wpMeta.color,range:wpMeta.range_label,items};
     });
     result[tipe]={label,wps};

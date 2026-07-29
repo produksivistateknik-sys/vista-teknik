@@ -16,8 +16,6 @@ export function KapasitasPekerjaanTab(){
   const [bomSearch,setBomSearch]=useState("");
   const [migrating,setMigrating]=useState(false);
   const [migrateResult,setMigrateResult]=useState<string>("");
-  const [migratingChecklist,setMigratingChecklist]=useState(false);
-  const [migrateChecklistResult,setMigrateChecklistResult]=useState<string>("");
   const [wizardTipe,setWizardTipe]=useState<string>("");
   const [wizardStep,setWizardStep]=useState(0);
   const [wizardWp,setWizardWp]=useState("WP1");
@@ -172,82 +170,6 @@ export function KapasitasPekerjaanTab(){
     await fetchPanelTypeMeta();
   };
 
-  const migrateChecklistKode=async()=>{
-    if(!confirm("Ini bakal SESUAIKAN ulang kode di checklist SEMUA panel yang udah ada, biar nyambung sama Master Data BOM terkini. Progress/qty/tanggal yang udah ada TETAP DIPINDAH (gak hilang), cuma kode-nya yang disesuaikan. Lanjut?"))return;
-    setMigratingChecklist(true);
-    setMigrateChecklistResult("");
-    try{
-      const mappingPerTipe:Record<string,Record<string,string>>={};
-      Object.entries(PANEL_TYPES).forEach(([tipe,cfg]:any)=>{
-        const oldKodeToNama:Record<string,string>={};
-        cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{oldKodeToNama[it.kode]=it.nama;}));
-        const namaToNewKode:Record<string,string>={};
-        bomList.filter((b:any)=>b.tipe_panel===tipe).forEach((b:any)=>{namaToNewKode[b.nama_komponen]=b.kode_komponen;});
-        const map:Record<string,string>={};
-        Object.entries(oldKodeToNama).forEach(([oldKode,nama])=>{
-          const newKode=namaToNewKode[nama as string];
-          if(newKode&&newKode!==oldKode)map[oldKode]=newKode;
-        });
-        mappingPerTipe[tipe]=map;
-      });
-      console.log("=== MAPPING PER TIPE (buat debug) ===",JSON.stringify(mappingPerTipe,null,2));
-
-      const hasProgress=(val:any)=>Object.values(val?.progress||{}).some((v:any)=>Number(v)>0);
-
-      const{data:allPanels}=await supabase.from("panels").select("id,tipe,nama,checklist");
-      let updatedCount=0,skippedCount=0,duplikatDibersihkan=0,dipindahDariLama=0;
-      let totalAmbigu=0;
-      const ambiguDetails:string[]=[];
-      for(const p of (allPanels||[]) as any[]){
-        const map=mappingPerTipe[p.tipe];
-        if(!map||Object.keys(map).length===0){skippedCount++;continue;}
-        const cl=p.checklist||{};
-        const existingKodes=new Set(Object.keys(cl));
-        const newCl:any={...cl};
-        let changed=false;
-        const ambiguPanel:string[]=[];
-        Object.entries(cl).forEach(([kode,val]:any)=>{
-          const target=map[kode];
-          if(!target||target===kode)return;
-          if(existingKodes.has(target)){
-            const oldPunyaProgress=hasProgress(val);
-            const targetPunyaProgress=hasProgress(cl[target]);
-            if(!oldPunyaProgress){
-              delete newCl[kode];
-              changed=true;
-              duplikatDibersihkan++;
-            } else if(oldPunyaProgress&&!targetPunyaProgress){
-              newCl[target]=val;
-              delete newCl[kode];
-              changed=true;
-              dipindahDariLama++;
-            } else {
-              ambiguPanel.push(`${kode}(progress)<->${target}(progress)`);
-              totalAmbigu++;
-            }
-            return;
-          }
-          newCl[target]=val;
-          delete newCl[kode];
-          changed=true;
-        });
-        if(ambiguPanel.length>0&&ambiguDetails.length<5){
-          ambiguDetails.push(`${p.nama}(${p.tipe}): ${ambiguPanel.join(", ")}`);
-        }
-        if(changed){
-          await supabase.from("panels").update({checklist:newCl}).eq("id",p.id);
-          updatedCount++;
-        } else {
-          skippedCount++;
-        }
-      }
-      setMigrateChecklistResult(`Selesai! ${updatedCount} panel di-update (${duplikatDibersihkan} duplikat basi dihapus, ${dipindahDariLama} data lama dipindah ke posisi baru), ${skippedCount} gak perlu diubah${totalAmbigu>0?`. ${totalAmbigu} kode BENERAN ambigu (dua2nya ada progress) - PERLU DICEK MANUAL. Contoh: ${ambiguDetails.join(" | ")}`:""}.`);
-    }catch(err:any){
-      setMigrateChecklistResult("Gagal: "+err.message);
-    }
-    setMigratingChecklist(false);
-  };
-
   const migrateFromPanelTypes=async()=>{
     if(!confirm("Ini bakal nambahin SEMUA komponen dari PANEL_TYPES (config lama) ke Master Data BOM. Komponen yang kode+tipe-nya sama bakal di-skip (gak dobel). Lanjut?"))return;
     setMigrating(true);
@@ -369,9 +291,46 @@ export function KapasitasPekerjaanTab(){
     const{data}=await supabase.from("bom_master").select("*");
     const sorted=(data??[]).slice().sort((a:any,b:any)=>{
       if(a.tipe_panel!==b.tipe_panel)return a.tipe_panel.localeCompare(b.tipe_panel);
+      if(a.wp!==b.wp)return String(a.wp).localeCompare(String(b.wp));
+      const ua=Number(a.urutan)||0,ub=Number(b.urutan)||0;
+      if(ua!==ub)return ua-ub;
       return naturalKodeSort(a.kode_komponen,b.kode_komponen);
     });
     setBomList(sorted);
+  };
+
+  const nextUrutanUntukTipeWp=(tipe:string,wp:string)=>{
+    let maxUrutan=0;
+    bomList.filter((b:any)=>b.tipe_panel===tipe&&b.wp===wp).forEach((b:any)=>{
+      maxUrutan=Math.max(maxUrutan,Number(b.urutan)||0);
+    });
+    return maxUrutan+1;
+  };
+
+  const blankChecklistEntry=()=>({
+    qty:0,qtyProses:{},
+    progress:ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string,number>),
+    progressByDate:ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{} as Record<string,any>),
+    stepDates:ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{} as Record<string,any>),
+  });
+
+  // Komponen BOM baru langsung otomatis muncul di SEMUA panel existing yang tipe-nya cocok -
+  // qty:0, gak nyentuh entry checklist komponen lain sama sekali. Gak perlu tombol generate/
+  // regenerate manual apapun lagi (dulu ini kerjaan "Sinkronkan Checklist Panel").
+  const propagateKodeBaruKePanel=async(tipe:string,kodeBaru:string)=>{
+    let from=0;
+    const pageSize=1000;
+    while(true){
+      const{data:panels,error}=await supabase.from("panels").select("id,checklist").eq("tipe",tipe).range(from,from+pageSize-1);
+      if(error||!panels)break;
+      for(const p of panels as any[]){
+        if(p.checklist&&Object.prototype.hasOwnProperty.call(p.checklist,kodeBaru))continue;
+        const newChecklist={...(p.checklist||{}),[kodeBaru]:blankChecklistEntry()};
+        await supabase.from("panels").update({checklist:newChecklist}).eq("id",p.id);
+      }
+      if(panels.length<pageSize)break;
+      from+=pageSize;
+    }
   };
 
   // kode_komponen dulu ke-hitung ulang tiap insert/delete (geser semua kode lebih besar/kecil) -
@@ -392,7 +351,9 @@ export function KapasitasPekerjaanTab(){
     if(!bomForm.nama_komponen)return;
     if(editBom){
       // kode_komponen sengaja TIDAK ikut di-update - begitu dibuat, kode itu identitas permanen.
-      const{error}=await supabase.from("bom_master").update({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+      // urutan boleh diubah bebas kapan aja - itu cuma urutan tampil, gak ada data lain yang
+      // nyandar ke situ (beda dari kode_komponen).
+      const{error}=await supabase.from("bom_master").update({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:Number(bomForm.urutan)||0,updated_at:new Date().toISOString()}).eq("id",editBom.id);
       if(error){alert("Gagal: "+error.message);return;}
     } else {
       // Fresh-fetch (bukan dari bomList lokal) buat mastiin gak collide walau ada admin lain yang
@@ -404,8 +365,9 @@ export function KapasitasPekerjaanTab(){
         if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
       });
       const kodeBaru=`${bomForm.tipe_panel}.${maxNum+1}`;
-      const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:0,kode_komponen:kodeBaru});
+      const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:Number(bomForm.urutan)||0,kode_komponen:kodeBaru});
       if(error){alert("Gagal: "+error.message);return;}
+      await propagateKodeBaruKePanel(bomForm.tipe_panel,kodeBaru);
     }
     await fetchBom();
     setShowAddBom(false);
@@ -731,24 +693,11 @@ export function KapasitasPekerjaanTab(){
               style={{marginLeft:"auto",padding:"7px 16px",borderRadius:8,border:"1.5px solid #9333ea",background:"#faf5ff",color:"#9333ea",fontSize:12,fontWeight:700,cursor:migrating?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {migrating?"⏳ Migrasi...":"⬇ Migrasi dari PANEL_TYPES"}
             </button>
-            <button onClick={()=>{setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipeBom==="ALL"?"FS":filterTipeBom,wp:"WP1",urutan:0});}}
+            <button onClick={()=>{const t=filterTipeBom==="ALL"?"FS":filterTipeBom;setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:t,wp:"WP1",urutan:nextUrutanUntukTipeWp(t,"WP1")});}}
               style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
           </div>
           {migrateResult&&(
             <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#16a34a",fontWeight:600}}>{migrateResult}</div>
-          )}
-          <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const}}>
-            <div style={{flex:1,minWidth:200}}>
-              <div style={{fontSize:12,fontWeight:700,color:"#92400e"}}>Checklist Panel Existing Belum Sinkron?</div>
-              <div style={{fontSize:11,color:"#92400e",marginTop:2}}>Kalau kode di BOM pernah digeser, checklist panel LAMA bisa jadi gak nyambung lagi. Klik ini buat nyesuain ulang (progress/qty gak hilang).</div>
-            </div>
-            <button disabled={migratingChecklist} onClick={migrateChecklistKode}
-              style={{padding:"7px 14px",borderRadius:8,border:"1.5px solid #d97706",background:"#fff",color:"#d97706",fontSize:11,fontWeight:700,cursor:migratingChecklist?"not-allowed":"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
-              {migratingChecklist?"Memproses...":"Sinkronkan Checklist Panel"}
-            </button>
-          </div>
-          {migrateChecklistResult&&(
-            <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"8px 12px",marginBottom:12,fontSize:12,color:"#16a34a",fontWeight:600}}>{migrateChecklistResult}</div>
           )}
           <div style={{overflowX:"auto" as const,borderRadius:8,border:"1px solid #e2e8f0"}}>
             <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
@@ -758,6 +707,7 @@ export function KapasitasPekerjaanTab(){
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>NAMA KOMPONEN</th>
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>TIPE PANEL</th>
                   <th style={{padding:"8px 12px",textAlign:"left" as const,fontSize:10,color:"#64748b",fontWeight:700}}>WP</th>
+                  <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>URUTAN</th>
                   <th style={{padding:"8px 12px",textAlign:"center" as const,fontSize:10,color:"#64748b",fontWeight:700}}>AKSI</th>
                 </tr>
               </thead>
@@ -771,6 +721,7 @@ export function KapasitasPekerjaanTab(){
                     <td style={{padding:"7px 12px",color:"#374151"}}>{b.nama_komponen}</td>
                     <td style={{padding:"7px 12px"}}><span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.tipe_panel}</span></td>
                     <td style={{padding:"7px 12px"}}><span style={{background:"#f1f5f9",color:"#64748b",borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700}}>{b.wp}</span></td>
+                    <td style={{padding:"7px 12px",textAlign:"center" as const,color:"#94a3b8",fontWeight:700}}>{b.urutan||0}</td>
                     <td style={{padding:"7px 12px",textAlign:"center" as const}}>
                       <button onClick={()=>openProsesModal(b)} title="Atur proses relevan"
                         style={{background:"none",border:"none",cursor:"pointer",color:"#7c3aed",fontSize:12,marginRight:8}}>🔧</button>
@@ -785,7 +736,7 @@ export function KapasitasPekerjaanTab(){
                   (filterTipeBom==="ALL"||b.tipe_panel===filterTipeBom) &&
                   (!bomSearch||b.kode_komponen.toLowerCase().includes(bomSearch.toLowerCase())||b.nama_komponen.toLowerCase().includes(bomSearch.toLowerCase()))
                 ).length===0&&(
-                  <tr><td colSpan={5} style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada komponen. Klik "+ Tambah Komponen" buat mulai.</td></tr>
+                  <tr><td colSpan={6} style={{padding:24,textAlign:"center" as const,color:"#94a3b8",fontSize:12}}>Belum ada komponen. Klik "+ Tambah Komponen" buat mulai.</td></tr>
                 )}
               </tbody>
             </table>
@@ -813,16 +764,27 @@ export function KapasitasPekerjaanTab(){
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div>
                       <Lbl>Tipe Panel</Lbl>
-                      <Sel value={bomForm.tipe_panel} onChange={(e:any)=>setBomForm({...bomForm,tipe_panel:e.target.value})}>
+                      <Sel value={bomForm.tipe_panel} onChange={(e:any)=>{
+                        const newTipe=e.target.value;
+                        setBomForm({...bomForm,tipe_panel:newTipe,urutan:editBom?bomForm.urutan:nextUrutanUntukTipeWp(newTipe,bomForm.wp)});
+                      }}>
                         {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
                       </Sel>
                     </div>
                     <div>
                       <Lbl>WP</Lbl>
-                      <Sel value={bomForm.wp} onChange={(e:any)=>setBomForm({...bomForm,wp:e.target.value})}>
+                      <Sel value={bomForm.wp} onChange={(e:any)=>{
+                        const newWp=e.target.value;
+                        setBomForm({...bomForm,wp:newWp,urutan:editBom?bomForm.urutan:nextUrutanUntukTipeWp(bomForm.tipe_panel,newWp)});
+                      }}>
                         {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
                       </Sel>
                     </div>
+                  </div>
+                  <div>
+                    <Lbl>Urutan Tampil</Lbl>
+                    <Inp type="number" value={bomForm.urutan} onChange={(e:any)=>setBomForm({...bomForm,urutan:e.target.value})}/>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>Cuma ngatur urutan tampil di dalam WP yang sama - bebas diubah kapan aja, gak mempengaruhi kode atau data checklist panel manapun.</div>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
