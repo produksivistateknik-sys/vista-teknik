@@ -52,6 +52,7 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
       const qty=selectedPanel.checklist?.[it.kode]?.qty||0;
       if(qty<=0)return;
       ALL_PROSES.forEach((proses:string)=>{
+        if(!isKomponenRelevant(it.kode,selectedPanel.tipe,proses))return;
         const progress=selectedPanel.checklist?.[it.kode]?.progress?.[proses]||0;
         sum+=progress;count++;
       });

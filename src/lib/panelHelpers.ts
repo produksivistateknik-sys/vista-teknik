@@ -180,7 +180,14 @@ export function calcPanelProgress(panel): Record<string, number> {
   if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const prog: Record<string, number> = {};
   ALL_PROSES.forEach(pr=>{
-    const vals=active.map(it=>getBestProgress(panel.checklist[it.kode],pr));
+    // Cuma komponen yang beneran relevan ke proses ini yang ikut dirata-rata - komponen yang
+    // gak relevan (mis. gak pernah lewat RENDAM) sebelumnya ikut kehitung "0%" palsu di rata-rata,
+    // bikin persentase gak pernah bisa nyampe 100% walau semua proses yang beneran relevan udah
+    // selesai. Fallback ke `active` penuh kalau ternyata gak ada satupun komponen aktif yang
+    // relevan ke proses ini (kasus langka) - biar gak divide-by-zero/NaN.
+    const relevantActive=active.filter(it=>isKomponenRelevant(it.kode,panel.tipe,pr));
+    const itemsForCalc=relevantActive.length>0?relevantActive:active;
+    const vals=itemsForCalc.map(it=>getBestProgress(panel.checklist[it.kode],pr));
     // Tambahkan busbar_progress ke kalkulasi BUSBAR
     if(pr==="BUSBAR"&&panel.busbar_progress){
       const busbarVals=Object.values(panel.busbar_progress) as number[];
