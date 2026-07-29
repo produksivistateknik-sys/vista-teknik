@@ -20,7 +20,11 @@ export const workOrderService = {
     let from = 0
     const pageSize = 1000
     while (true) {
-      const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false }).range(from, from + pageSize - 1)
+      // Embedded panels(*) sengaja dikasih .order() eksplisit juga (bukan cuma work_orders-nya) -
+      // tanpa ini urutan array panels per WO gak dijamin konsisten antar-fetch (PostgREST gak
+      // ngasih jaminan order default), yang jadi sumber ketidakstabilan tambahan kalau kebetulan
+      // ada no_pnl yang duplikat.
+      const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false }).order('no_pnl', { foreignTable: 'panels', ascending: true }).range(from, from + pageSize - 1)
       if (error) throw new Error(error.message)
       all = all.concat(data ?? [])
       if (!data || data.length < pageSize) break

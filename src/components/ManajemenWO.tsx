@@ -142,14 +142,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
         finalChecklist=scaledChecklist;
       }
       return{
-        id:(p as any).id,noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:newQty,
+        id:(p as any).id,noPnl:Number((p as any).no_pnl??p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:newQty,
         checklist:finalChecklist,
         catatan:(p as any).catatan||"",
         tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
       };
     }
     return{
-      noPnl:Number(p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+      noPnl:Number((p as any).no_pnl??p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
       checklist:initChecklist(p.tipe,Number(p.qty)||1,bomPanelTypesCache),catatan:"",
       tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
     };
@@ -178,7 +178,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
       if(result.success){
         await workOrderService.savePanels(result.data.id, np);
         const{data:freshPanels}=await supabase.from("panels").select("*").eq("wo_id",result.data.id).order("no_pnl",{ascending:true});
-        const newWo={...result.data,panels:freshPanels??np};
+        const newWo={...result.data,panels:(freshPanels??np).map((p:any)=>({...p,noPnl:p.no_pnl??p.noPnl}))};
         setWoData(prev=>{
           if(prev.some(w=>w.id===result.data.id)){
             return prev.map(w=>w.id===result.data.id?newWo:w);
@@ -384,7 +384,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
@@ -402,7 +402,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                     <span style={{fontSize:11,color:"#94a3b8"}}>{isPExp?"▼":"▶"}</span>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                        <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.noPnl}</span>
+                        <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.no_pnl??p.noPnl}</span>
                         <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:13}}>{p.nama}</span>
                       </div>
                       <div style={{display:"flex",gap:6,marginTop:4,flexWrap:"wrap",alignItems:"center"}}>

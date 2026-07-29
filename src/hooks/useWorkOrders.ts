@@ -35,10 +35,14 @@ export function useWorkOrders() {
       )
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
         (payload) => {
+          // Ikut nge-stamp alias noPnl (camelCase) dari no_pnl (DB) - kalau enggak, field ini basi
+          // habis event realtime apapun ke panel itu (misal generate FCS nulis synced_proses),
+          // padahal no_pnl di DB tetap benar - itu bikin badge nomor panel salah/kosong walau
+          // urutan sort-nya (yang emang pakai no_pnl) tetap benar. Akar bug "nomor panel geser-geser".
           setData(prev => prev.map(wo => ({
             ...wo,
             panels: (wo.panels || []).map((p: any) =>
-              p.id === payload.new.id ? { ...p, ...payload.new } : p
+              p.id === payload.new.id ? { ...p, ...payload.new, noPnl: payload.new.no_pnl } : p
             )
           })))
         }
@@ -48,7 +52,7 @@ export function useWorkOrders() {
           setData(prev => prev.map(wo => {
             if (wo.id !== payload.new.wo_id) return wo
             if ((wo.panels || []).some((p: any) => p.id === payload.new.id)) return wo
-            return { ...wo, panels: [...(wo.panels || []), payload.new] }
+            return { ...wo, panels: [...(wo.panels || []), { ...payload.new, noPnl: payload.new.no_pnl }] }
           }))
         }
       )
