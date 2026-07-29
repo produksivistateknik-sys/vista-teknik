@@ -13,6 +13,7 @@ export function TimerAktifTab({user}:any){
   const [loading,setLoading]=useState(true);
   const [search,setSearch]=useState("");
   const [stopLoadingId,setStopLoadingId]=useState<number|null>(null);
+  const [stopAllLoading,setStopAllLoading]=useState(false);
 
   const fetchTimers=async()=>{
     setLoading(true);
@@ -73,6 +74,42 @@ export function TimerAktifTab({user}:any){
     setTimers(prev=>prev.filter((x:any)=>x.id!==t.id));
   };
 
+  const forceStopAll=async()=>{
+    if(filtered.length===0)return;
+    const ok=confirm(
+      `Force-stop SEMUA ${filtered.length} timer yang tampil${search?` (sesuai pencarian "${search}")`:""}?\n\n`+
+      `Semua durasi kerja bakal diset 0 menit (bukan durasi ghost aslinya), sama seperti force-stop satu-satu. `+
+      `Tindakan ini gak bisa dibatalkan per-item setelah jalan.`
+    );
+    if(!ok)return;
+    setStopAllLoading(true);
+    const targets=[...filtered];
+    const doneIds=new Set<number>();
+    const gagal:string[]=[];
+    for(const t of targets){
+      const{error}=await supabase.from("fcs_timer_kerja").update({selesai:t.mulai}).eq("id",t.id);
+      if(error)gagal.push(`${t._panelNama} (${t.kode_komponen}): ${error.message}`);
+      else doneIds.add(t.id);
+    }
+    setStopAllLoading(false);
+    const sukses=doneIds.size;
+    if(sukses>0){
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      const uname=user?.name||user?.nama||sess?.nama||"Admin";
+      await activityLogService.insert({
+        user_name:uname,action:"FORCE STOP TIMER (BULK)",
+        description:`Force-stop massal ${sukses} timer aktif${search?` (filter pencarian: "${search}")`:""} - durasi di-set 0 menit`,
+        module:"wo",halaman:"System - Timer Aktif",proyek:"",panel:"",
+      });
+    }
+    setTimers(prev=>prev.filter((x:any)=>!doneIds.has(x.id)));
+    if(gagal.length>0){
+      alert(`${sukses} timer berhasil di-force-stop.\n\nGagal (${gagal.length}):\n`+gagal.join("\n"));
+    } else {
+      alert(`${sukses} timer berhasil di-force-stop.`);
+    }
+  };
+
   const thS:any={padding:"8px 12px",textAlign:"left",fontSize:10,color:"#64748b",fontWeight:700,background:"#f8fafc"};
   const td:any={padding:"9px 12px",borderTop:"1px solid #f1f5f9",fontSize:12,verticalAlign:"middle"};
 
@@ -98,8 +135,15 @@ export function TimerAktifTab({user}:any){
 
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12,flexWrap:"wrap" as const,gap:8}}>
         <p style={{fontSize:12,color:"#64748b",margin:0}}>Timer kerja yang belum di-"Selesai"-in - urut dari yang paling lama nyangkut. Force-stop cuma nutup timer-nya (durasi diset 0), gak ngubah progress/checklist.</p>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari panel/proyek/WO/operator..."
-          style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:240,outline:"none",fontFamily:"inherit"}}/>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari panel/proyek/WO/operator..."
+            style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:220,outline:"none",fontFamily:"inherit"}}/>
+          <button onClick={forceStopAll} disabled={stopAllLoading||filtered.length===0}
+            style={{height:32,padding:"0 14px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",
+              cursor:(stopAllLoading||filtered.length===0)?"not-allowed":"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
+            {stopAllLoading?"⏳ Memproses...":`⏹ Force Stop Semua (${filtered.length})`}
+          </button>
+        </div>
       </div>
 
       {loading?(
