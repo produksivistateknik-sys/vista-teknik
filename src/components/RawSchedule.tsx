@@ -6,7 +6,7 @@ import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PRIORITAS, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR,
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
-import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate } from '../lib/panelHelpers'
 import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -1761,15 +1761,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         }
                         const item=panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k);
                         const isSelMove=selectedForMove.some(x=>x.wp===e.wp&&x.kode===k);
-                        const progressKomp=livePanelForCell?.checklist?.[k]?.progress?.[rawRow?.proses||""]||0;
+                        const clForCell=livePanelForCell?.checklist?.[k];
+                        // Snapshot PERMANEN per-tanggal (reuse fungsi yang sama dgn RencanaHarian &
+                        // fitur jejak) - dipanggil dgn cellModal.date, biar kartu di tanggal jejak
+                        // (lama) beku selamanya, sementara kartu di tanggal live ikut update begitu
+                        // ada checkpoint baru dari Vista Pekerja.
+                        const progressKomp=getProgressAsOfDate(clForCell,rawRow?.proses||"",cellModal.date);
+                        const isWiringProsesLabel=PROSES_ORANG_RAW.includes(rawRow?.proses||"");
+                        const qtyDoneKomp=getQtyProsesAsOfDate(clForCell,rawRow?.proses||"",cellModal.date);
+                        const qtyTotalKomp=Number(clForCell?.qty)||0;
+                        const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(${qtyDoneKomp}/${qtyTotalKomp})`;
                         const isKompDone=progressKomp>=100;
                         const digeserKeTgl=e.digeserKe?.[k]||null;
                         if(digeserKeTgl){
-                          return <span key={k} title={"Jejak/histori (read-only) - progress "+progressKomp+"% saat digeser ke "+digeserKeTgl+", gak bisa dikerjakan/dipindah lagi dari sini"}
-                            style={{background:"#f1f5f9",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"default"}}>🕓 {item?.nama?`${k} - ${item.nama}`:k} ({progressKomp}%) ➡️ {digeserKeTgl}</span>;
+                          return <span key={k} title={"Jejak/histori (read-only) - "+labelQtyPct+" saat digeser ke "+digeserKeTgl+", gak bisa dikerjakan/dipindah lagi dari sini"}
+                            style={{background:"#f1f5f9",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"default"}}>🕓 {item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct} ➡️ {digeserKeTgl}</span>;
                         }
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
-                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama?`${k} - ${item.nama}`:k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
+                          style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct}</span>;
                       })}
                     </div>
                   </div>

@@ -136,6 +136,20 @@ export function getProgressFromHistory(cl:any, proses:string):number{
 // 2) kalau gak ada - checkpoint history TERAKHIR yang tanggalnya <= tanggal yang diminta (carry-
 // forward nilai terakhir yang diketahui, bukan langsung 0), 3) kalau belum pernah disentuh
 // sampai tanggal itu - 0.
+// Qty yang SUDAH DIKERJAKAN persis di tanggal `tanggal` - pasangan qty dari getProgressAsOfDate
+// (progress% dan qty jalan bareng, sumbernya sama-sama snapshot per-hari). Gak ada "history" qty
+// terpisah kayak progress punya, jadi fallback-nya carry-forward dari tanggal qtyProsesByDate
+// TERAKHIR yang <= tanggal yang diminta (bukan langsung 0) - biar kartu di tanggal jejak (lama)
+// beku selamanya di angka waktu itu, sementara kartu di tanggal live ikut update begitu ada
+// checkpoint baru.
+export function getQtyProsesAsOfDate(cl:any, proses:string, tanggal:string):number{
+  const byDate=cl?.qtyProsesByDate?.[proses];
+  if(byDate&&byDate[tanggal]!==undefined) return byDate[tanggal];
+  const datesSebelum=Object.keys(byDate||{}).filter((d:string)=>d<=tanggal).sort();
+  if(datesSebelum.length>0)return byDate[datesSebelum[datesSebelum.length-1]];
+  return 0;
+}
+
 export function getProgressAsOfDate(cl:any, proses:string, tanggal:string):number{
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&byDate[tanggal]!==undefined) return byDate[tanggal];
