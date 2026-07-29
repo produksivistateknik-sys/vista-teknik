@@ -1,11 +1,25 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
+import { Modal } from './ui/Primitives'
+import { FotoZoomViewer } from './FotoZoomViewer'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
   in_progress:{label:"In Progress",color:"#ea580c",bg:"#fff7ed"},
   complete:{label:"Complete",color:"#16a34a",bg:"#f0fdf4"},
+};
+
+const QC_ITEMS_ARSIP=[
+  {key:"fisik",label:"Pemeriksaan Fisik"},
+  {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen"},
+  {key:"baut",label:"Pengecekan Kekencangan Baut"},
+  {key:"test",label:"QC Test"},
+];
+
+const totalFotoQc=(p:any):number=>{
+  const cl=p.qc_checklist||{};
+  return QC_ITEMS_ARSIP.reduce((s,item)=>s+((cl[item.key]?.foto||[]).length),0);
 };
 
 export function ArsipTab({user,refetchWO}:any){
@@ -15,6 +29,8 @@ export function ArsipTab({user,refetchWO}:any){
   const[unarsipLoadingId,setUnarsipLoadingId]=useState<number|null>(null);
   const[expandedWo,setExpandedWo]=useState<Record<number,boolean>>({});
   const[woArchivedMap,setWoArchivedMap]=useState<Record<number,boolean>>({});
+  const[qcDetailPanel,setQcDetailPanel]=useState<any>(null);
+  const[lightbox,setLightbox]=useState<{fotos:any[],index:number,label:string}|null>(null);
 
   const fetchPanelArsip=async()=>{
     setLoading(true);
@@ -124,12 +140,17 @@ export function ArsipTab({user,refetchWO}:any){
                         {g.panels.map((p:any,i:number)=>{
                           const qc=p.qc_checklist?._global?.status||"to_do";
                           const qcInfo=QC_STATUS_LABEL[qc]||QC_STATUS_LABEL.to_do;
+                          const fotoCount=totalFotoQc(p);
                           return(
                             <tr key={p.id} style={{background:i%2===0?"#fff":"#f8fafc"}}>
                               <td style={{...td,fontWeight:700,color:"#1e293b"}}>{p.nama}</td>
                               <td style={{...td,textAlign:"center",fontWeight:800,color:"#1d4ed8"}}>{p.progress_snapshot??0}%</td>
                               <td style={{...td,textAlign:"center"}}>
-                                <span style={{background:qcInfo.bg,color:qcInfo.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{qcInfo.label}</span>
+                                <button onClick={()=>setQcDetailPanel(p)}
+                                  style={{background:"none",border:"none",cursor:"pointer",display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
+                                  <span style={{background:qcInfo.bg,color:qcInfo.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{qcInfo.label}</span>
+                                  <span style={{fontSize:9,color:"#94a3b8",textDecoration:"underline"}}>📷 {fotoCount} foto</span>
+                                </button>
                               </td>
                               <td style={{...td,color:"#94a3b8",fontSize:11}}>{p.diarsipkan_oleh} · {p.diarsipkan_pada?new Date(p.diarsipkan_pada).toLocaleDateString("id-ID"):"—"}</td>
                               <td style={{...td,textAlign:"center"}}>
@@ -150,6 +171,57 @@ export function ArsipTab({user,refetchWO}:any){
           })}
         </div>
       )}
+
+      {qcDetailPanel&&(()=>{
+        const cl=qcDetailPanel.qc_checklist||{};
+        const globalData=cl._global||{};
+        const status=globalData.status||"to_do";
+        const sb=QC_STATUS_LABEL[status]||QC_STATUS_LABEL.to_do;
+        const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"";
+        return(
+          <Modal title={"Detail QC — "+qcDetailPanel.nama} onClose={()=>setQcDetailPanel(null)} width={600}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
+              <div style={{fontSize:11,color:"#94a3b8"}}>
+                WO {qcDetailPanel.wo_number_snapshot} — {qcDetailPanel.proyek_snapshot}
+              </div>
+              <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{sb.label}</span>
+            </div>
+            {(globalData.todo_at||globalData.complete_at||globalData.updated_by)&&(
+              <div style={{display:"flex",gap:14,fontSize:11,color:"#64748b",marginBottom:14,flexWrap:"wrap" as const}}>
+                {globalData.todo_at&&<span>To Do: {fmtTgl(globalData.todo_at)}</span>}
+                {globalData.complete_at&&<span>Selesai: {fmtTgl(globalData.complete_at)}</span>}
+                {globalData.updated_by&&<span>oleh {globalData.updated_by}</span>}
+              </div>
+            )}
+            <div style={{maxHeight:420,overflowY:"auto" as const,display:"flex",flexDirection:"column" as const,gap:10}}>
+              {QC_ITEMS_ARSIP.map(item=>{
+                const data=cl[item.key]||{};
+                const fotoList=data.foto||[];
+                return(
+                  <div key={item.key} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:12}}>
+                    <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:6}}>{item.label}</div>
+                    {data.catatan&&(
+                      <div style={{fontSize:11,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"6px 9px",marginBottom:8}}>{data.catatan}</div>
+                    )}
+                    {fotoList.length>0?(
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
+                        {fotoList.map((f:any,fi:number)=>(
+                          <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})}
+                            style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                        ))}
+                      </div>
+                    ):(
+                      <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Modal>
+        );
+      })()}
+
+      {lightbox&&<FotoZoomViewer fotos={lightbox.fotos} startIndex={lightbox.index} label={lightbox.label} onClose={()=>setLightbox(null)}/>}
     </div>
   );
 }
