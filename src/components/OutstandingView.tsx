@@ -17,6 +17,17 @@ const PROSES_ORANG_OUT = ['WIRING CONTROL', 'WIRING POWER']
 export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar, updateRaw, createRenhar, updateRenhar, withRenharQueue, refetchRaw, user, livePanelTypes }: any) {
   const [subProses, setSubProses] = useState<string>(SUBTAB_OUTSTANDING[0])
   const [search, setSearch] = useState('')
+  const [filterProyek, setFilterProyek] = useState<string[]>([])
+  const [proyekDropdownOpen, setProyekDropdownOpen] = useState(false)
+  const toggleFilterProyek = (p: string) => {
+    setFilterProyek((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])
+    setFilterPanel([])
+  }
+  const [filterPanel, setFilterPanel] = useState<string[]>([])
+  const [panelDropdownOpen, setPanelDropdownOpen] = useState(false)
+  const toggleFilterPanel = (p: string) => {
+    setFilterPanel((prev) => prev.includes(p) ? prev.filter((x) => x !== p) : [...prev, p])
+  }
   const [processTimeList, setProcessTimeList] = useState<any[]>([])
   const [editingKey, setEditingKey] = useState<string | null>(null)
   const [tglInput, setTglInput] = useState('')
@@ -53,7 +64,10 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
   const { todo, inProgress } = useMemo(() => {
     const isOrang = PROSES_ORANG_OUT.includes(subProses)
     const byKey = new Map<string, any>()
-    rawData.filter((r: any) => r.proses === subProses).forEach((row: any) => {
+    rawData.filter((r: any) => r.proses === subProses
+      && (filterProyek.length === 0 || filterProyek.includes(r.proyek))
+      && (filterPanel.length === 0 || filterPanel.includes(r.panel))
+    ).forEach((row: any) => {
       const panelId = row.panel_id || row.panelId
       const panel = panelMap[panelId]
       if (!panel) return
@@ -63,7 +77,11 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
           ;(e.komponen || []).forEach((kode: string) => {
             if (kode.startsWith('__wiring_')) return
             const cl = panel.checklist?.[kode]
-            const pct = cl?.progress?.[subProses] || 0
+            // Kode terjadwal di raw_schedule tapi checklist-nya belum ada di panel (data BOM
+            // belum lengkap) - exclude dari Outstanding, bukan tanggung jawab fitur ini buat
+            // nampilin data yang gak lengkap.
+            if (!cl) return
+            const pct = cl.progress?.[subProses] || 0
             if (pct >= 100) return
             const key = `${panelId}|${kode}`
             const existing = byKey.get(key)
@@ -71,7 +89,7 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
               const item = getEffCfg(panel.tipe)?.wps.flatMap((w: any) => w.items).find((it: any) => it.kode === kode)
               byKey.set(key, {
                 key, rawId: row.id, panelId, proyek: row.proyek, panel: row.panel, tipe: panel.tipe,
-                wp: e.wp, kode, nama: item?.nama || kode, qty: cl?.qty || 0, pct, tanggal: tgl, token,
+                wp: e.wp, kode, nama: item?.nama || kode, qty: cl.qty || 0, pct, tanggal: tgl, token,
               })
             }
           })
@@ -86,7 +104,7 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
       inProgress: all.filter((r) => r.pct > 0 && r.pct < 100).sort((a, b) => a.tanggal.localeCompare(b.tanggal)),
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawData, panelMap, subProses, search])
+  }, [rawData, panelMap, subProses, search, filterProyek, filterPanel])
 
   const isOrang = PROSES_ORANG_OUT.includes(subProses)
 
@@ -319,6 +337,58 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
             </button>
           )
         })}
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' as const, alignItems: 'center' }}>
+        <div style={{ position: 'relative' as const }}>
+          <button onClick={() => setProyekDropdownOpen(!proyekDropdownOpen)} style={{ padding: '4px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6 }}>
+            {filterProyek.length === 0 ? 'Semua Proyek' : `${filterProyek.length} Proyek dipilih`}
+            <span style={{ fontSize: 9 }}>▾</span>
+          </button>
+          {proyekDropdownOpen && (
+            <>
+              <div onClick={() => setProyekDropdownOpen(false)} style={{ position: 'fixed' as const, inset: 0, zIndex: 998 }} />
+              <div style={{ position: 'absolute' as const, top: '110%', left: 0, zIndex: 999, background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 8, minWidth: 200, maxHeight: 280, overflowY: 'auto' as const }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, borderBottom: '1px solid #f1f5f9', marginBottom: 4 }}>
+                  <input type="checkbox" checked={filterProyek.length === 0} onChange={() => { setFilterProyek([]); setFilterPanel([]) }} />
+                  Semua Proyek
+                </label>
+                {[...new Set(rawData.filter((r: any) => r.proses === subProses).map((r: any) => r.proyek))].map((p: any) => (
+                  <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
+                    <input type="checkbox" checked={filterProyek.includes(p)} onChange={() => toggleFilterProyek(p)} />
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        <div style={{ position: 'relative' as const }}>
+          <button onClick={() => setPanelDropdownOpen(!panelDropdownOpen)} style={{ padding: '4px 10px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#f8fafc', fontSize: 11, fontWeight: 600, color: '#475569', cursor: 'pointer', fontFamily: 'inherit', display: 'flex', alignItems: 'center', gap: 6, maxWidth: 260 }}>
+            {filterPanel.length === 0 ? 'Semua Panel' : `${filterPanel.length} Panel dipilih`}
+            <span style={{ fontSize: 9 }}>▾</span>
+          </button>
+          {panelDropdownOpen && (
+            <>
+              <div onClick={() => setPanelDropdownOpen(false)} style={{ position: 'fixed' as const, inset: 0, zIndex: 998 }} />
+              <div style={{ position: 'absolute' as const, top: '110%', left: 0, zIndex: 999, background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 8, minWidth: 220, maxHeight: 280, overflowY: 'auto' as const }}>
+                <label style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12, fontWeight: 700, borderBottom: '1px solid #f1f5f9', marginBottom: 4 }}>
+                  <input type="checkbox" checked={filterPanel.length === 0} onChange={() => setFilterPanel([])} />
+                  Semua Panel
+                </label>
+                {[...new Set(rawData.filter((r: any) => r.proses === subProses && (filterProyek.length === 0 || filterProyek.includes(r.proyek))).map((r: any) => r.panel))].map((p: any) => (
+                  <label key={p} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 12 }}>
+                    <input type="checkbox" checked={filterPanel.includes(p)} onChange={() => toggleFilterPanel(p)} />
+                    {p}
+                  </label>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+        {(filterProyek.length > 0 || filterPanel.length > 0) && (
+          <button onClick={() => { setFilterProyek([]); setFilterPanel([]) }} style={{ padding: '4px 10px', borderRadius: 8, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}>✕ Reset</button>
+        )}
       </div>
 
       <input value={search} onChange={(e: any) => setSearch(e.target.value)} placeholder="🔍 Cari proyek, panel, atau nama komponen..."
