@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
+import { calcPanelProgress, getEffCfgGlobal } from '../lib/panelHelpers'
 import { Modal } from './ui/Primitives'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
@@ -17,9 +18,43 @@ const QC_ITEMS_ARSIP=[
   {key:"test",label:"QC Test"},
 ];
 
-const totalFotoQc=(p:any):number=>{
+// Section "progress+foto flat" - Nameplate/Yellowmark/Assembling/Warehouse/QS semuanya punya
+// bentuk sama persis (1 angka progress + 1 array foto langsung di kolom panels), beda dari QC
+// (checklist per-item) dan Wiring Control (per-komponen). Sama persis kolom yang dipakai
+// LaporanNameplateView/LaporanKomponenProgressView/LaporanPasangKomponenView.
+const QC_CENTER_SECTIONS_FLAT=[
+  {key:"nameplate",label:"Nameplate",icon:"🏷️",progressField:"nameplate_progress",fotoField:"nameplate_photos"},
+  {key:"yellowmark",label:"Yellowmark",icon:"🟡",progressField:"yellowmark_progress",fotoField:"yellowmark_photos"},
+  {key:"warehouse",label:"Warehouse",icon:"📦",progressField:"warehouse_progress",fotoField:"warehouse_photos"},
+  {key:"qs",label:"QS",icon:"📋",progressField:"qs_progress",fotoField:"qs_photos"},
+];
+
+const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"];
+
+// Daftar kode Box Control/Pintu yang relevan buat 1 panel (nama, bukan kode - kode beda-beda
+// per tipe panel) - persis sama logic komponenWiringPanel di LaporanWiringKomponenView.
+const komponenWiringPanel=(panel:any)=>{
+  const cfg=getEffCfgGlobal(panel.tipe);
+  if(!cfg)return[];
+  const items=cfg.wps.flatMap((w:any)=>w.items);
+  return items
+    .filter((it:any)=>WIRING_KOMPONEN_NAMA.includes(it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
+    .map((it:any)=>{
+      const cl=panel.checklist?.[it.kode];
+      return{kode:it.kode,nama:it.nama,pct:cl?.progress?.["WIRING CONTROL"]||0,foto:cl?.fotoPemasangan||[]};
+    });
+};
+
+const totalFotoQualityCenter=(p:any):number=>{
   const cl=p.qc_checklist||{};
-  return QC_ITEMS_ARSIP.reduce((s,item)=>s+((cl[item.key]?.foto||[]).length),0);
+  let total=QC_ITEMS_ARSIP.reduce((s,item)=>s+((cl[item.key]?.foto||[]).length),0);
+  QC_CENTER_SECTIONS_FLAT.forEach(s=>{total+=(p[s.fotoField]||[]).length;});
+  total+=(p.pasang_komponen_photos||[]).length;
+  const checklist=p.checklist||{};
+  Object.entries(checklist).forEach(([,val]:any)=>{
+    if(val?.fotoPemasangan?.length)total+=val.fotoPemasangan.length;
+  });
+  return total;
 };
 
 export function ArsipTab({user,refetchWO}:any){
@@ -132,7 +167,7 @@ export function ArsipTab({user,refetchWO}:any){
                       <thead><tr>
                         <th style={thS}>Nama Panel</th>
                         <th style={{...thS,textAlign:"center"}}>Progress</th>
-                        <th style={{...thS,textAlign:"center"}}>QC</th>
+                        <th style={{...thS,textAlign:"center"}}>Quality Center</th>
                         <th style={thS}>Diarsipkan</th>
                         <th style={{...thS,textAlign:"center"}}>Aksi</th>
                       </tr></thead>
@@ -140,7 +175,7 @@ export function ArsipTab({user,refetchWO}:any){
                         {g.panels.map((p:any,i:number)=>{
                           const qc=p.qc_checklist?._global?.status||"to_do";
                           const qcInfo=QC_STATUS_LABEL[qc]||QC_STATUS_LABEL.to_do;
-                          const fotoCount=totalFotoQc(p);
+                          const fotoCount=totalFotoQualityCenter(p);
                           return(
                             <tr key={p.id} style={{background:i%2===0?"#fff":"#f8fafc"}}>
                               <td style={{...td,fontWeight:700,color:"#1e293b"}}>{p.nama}</td>
@@ -178,44 +213,95 @@ export function ArsipTab({user,refetchWO}:any){
         const status=globalData.status||"to_do";
         const sb=QC_STATUS_LABEL[status]||QC_STATUS_LABEL.to_do;
         const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"";
-        return(
-          <Modal title={"Detail QC — "+qcDetailPanel.nama} onClose={()=>setQcDetailPanel(null)} width={600}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:12}}>
-              <div style={{fontSize:11,color:"#94a3b8"}}>
-                WO {qcDetailPanel.wo_number_snapshot} — {qcDetailPanel.proyek_snapshot}
-              </div>
-              <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"3px 12px",fontSize:11,fontWeight:700}}>{sb.label}</span>
+        const wiringItems=komponenWiringPanel(qcDetailPanel);
+        const pasangKomponenFoto=qcDetailPanel.pasang_komponen_photos||[];
+        const pasangKomponenPct=(()=>{try{return calcPanelProgress(qcDetailPanel)["PASANG KOMPONEN"]||0;}catch{return 0;}})();
+
+        const sectionCard=(label:string,icon:string,pct:number|null,fotoList:any[])=>(
+          <div key={label} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:12}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+              <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>{icon} {label}</span>
+              {pct!==null&&<span style={{fontWeight:800,fontSize:12,color:"#1d4ed8"}}>{pct}%</span>}
             </div>
-            {(globalData.todo_at||globalData.complete_at||globalData.updated_by)&&(
-              <div style={{display:"flex",gap:14,fontSize:11,color:"#64748b",marginBottom:14,flexWrap:"wrap" as const}}>
-                {globalData.todo_at&&<span>To Do: {fmtTgl(globalData.todo_at)}</span>}
-                {globalData.complete_at&&<span>Selesai: {fmtTgl(globalData.complete_at)}</span>}
-                {globalData.updated_by&&<span>oleh {globalData.updated_by}</span>}
+            {fotoList.length>0?(
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
+                {fotoList.map((f:any,fi:number)=>(
+                  <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label})}
+                    style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                ))}
               </div>
+            ):(
+              <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
             )}
-            <div style={{maxHeight:420,overflowY:"auto" as const,display:"flex",flexDirection:"column" as const,gap:10}}>
-              {QC_ITEMS_ARSIP.map(item=>{
-                const data=cl[item.key]||{};
-                const fotoList=data.foto||[];
-                return(
-                  <div key={item.key} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:12}}>
-                    <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:6}}>{item.label}</div>
-                    {data.catatan&&(
-                      <div style={{fontSize:11,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"6px 9px",marginBottom:8}}>{data.catatan}</div>
-                    )}
-                    {fotoList.length>0?(
-                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
-                        {fotoList.map((f:any,fi:number)=>(
-                          <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})}
-                            style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                        ))}
-                      </div>
-                    ):(
-                      <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
-                    )}
+          </div>
+        );
+
+        return(
+          <Modal title={"Detail Quality Center — "+qcDetailPanel.nama} onClose={()=>setQcDetailPanel(null)} width={620}>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>
+              WO {qcDetailPanel.wo_number_snapshot} — {qcDetailPanel.proyek_snapshot}
+            </div>
+            <div style={{maxHeight:460,overflowY:"auto" as const,display:"flex",flexDirection:"column" as const,gap:14}}>
+
+              {/* QC */}
+              <div>
+                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
+                  <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>🔍 QC</span>
+                  <span style={{background:sb.bg,color:sb.color,borderRadius:20,padding:"2px 10px",fontSize:10,fontWeight:700}}>{sb.label}</span>
+                </div>
+                {(globalData.todo_at||globalData.complete_at||globalData.updated_by)&&(
+                  <div style={{display:"flex",gap:14,fontSize:10,color:"#64748b",marginBottom:8,flexWrap:"wrap" as const}}>
+                    {globalData.todo_at&&<span>To Do: {fmtTgl(globalData.todo_at)}</span>}
+                    {globalData.complete_at&&<span>Selesai: {fmtTgl(globalData.complete_at)}</span>}
+                    {globalData.updated_by&&<span>oleh {globalData.updated_by}</span>}
                   </div>
-                );
-              })}
+                )}
+                <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                  {QC_ITEMS_ARSIP.map(item=>{
+                    const data=cl[item.key]||{};
+                    const fotoList=data.foto||[];
+                    return(
+                      <div key={item.key} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:10}}>
+                        <div style={{fontWeight:700,fontSize:11,color:"#1e293b",marginBottom:6}}>{item.label}</div>
+                        {data.catatan&&(
+                          <div style={{fontSize:11,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"6px 9px",marginBottom:8}}>{data.catatan}</div>
+                        )}
+                        {fotoList.length>0?(
+                          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
+                            {fotoList.map((f:any,fi:number)=>(
+                              <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})}
+                                style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                            ))}
+                          </div>
+                        ):(
+                          <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Nameplate / Yellowmark / Warehouse / QS - bentuk sama (progress + foto flat) */}
+              {QC_CENTER_SECTIONS_FLAT.map(s=>
+                sectionCard(s.label,s.icon,qcDetailPanel[s.progressField]??0,qcDetailPanel[s.fotoField]||[])
+              )}
+
+              {/* Assembling (Pasang Komponen) */}
+              {sectionCard("Assembling (Pasang Komponen)","🔧",pasangKomponenPct,pasangKomponenFoto)}
+
+              {/* Wiring Control - per komponen (Box Control/Pintu) */}
+              <div>
+                <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:8}}>🔌 Wiring Control</div>
+                {wiringItems.length===0?(
+                  <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Tidak ada komponen Box Control/Pintu di panel ini</div>
+                ):(
+                  <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                    {wiringItems.map((it:any)=>sectionCard(it.nama+" ("+it.kode+")","",it.pct,it.foto))}
+                  </div>
+                )}
+              </div>
+
             </div>
           </Modal>
         );
