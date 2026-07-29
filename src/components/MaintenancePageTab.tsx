@@ -20,6 +20,16 @@ export function MaintenancePageTab({user}:any){
       ]);
       setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setLoading(false);
     };load();
+    // mesin bisa diedit dari SystemTab (Master Mesin) sementara tab ini kebuka bareng - refetch
+    // silent (gak toggle `loading` yang nutup seluruh tab) biar list mesin di sini gak basi.
+    const fetchMesin=async()=>{
+      const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode");
+      setMesinList(data??[]);
+    };
+    const ch=supabase.channel("realtime-mesin-maintenance-page")
+      .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
   },[]);
   const today=getLocalDateStr();
   const terlambat=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<today);

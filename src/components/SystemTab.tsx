@@ -31,7 +31,15 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
       setLoading(false);
     };
     fetchAll();
+    // mesin diedit lewat MasterMesinTab (subtab lain di SystemTab ini, atau bahkan dari
+    // MaintenancePageTab) - refetch silent (gak toggle `loading` full-tab) biar admin yang lagi
+    // buka subtab LAIN (mis. Kapasitas) gak kesenggol spinner cuma gara-gara mesin diedit.
+    const fetchMesin=async()=>{
+      const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode",{ascending:true});
+      setMesinList(data??[]);
+    };
     const ch=supabase.channel("realtime-maintenance-log")
+      .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"maintenance_log"},
         async(payload)=>{
           const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
