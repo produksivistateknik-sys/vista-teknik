@@ -41,7 +41,7 @@ import { GlobalSearch } from './components/GlobalSearch'
 
 const TrackingView = lazy(() => import('./components/TrackingView').then(m => ({ default: m.TrackingView })))
 const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
-const RencanaHarian = lazy(() => import('./components/RencanaHarian').then(m => ({ default: m.RencanaHarian })))
+const RencanaHarian = lazy(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
 const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
 const KendalaInbox = lazy(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
