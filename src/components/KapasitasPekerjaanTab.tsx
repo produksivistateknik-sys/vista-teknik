@@ -349,11 +349,22 @@ export function KapasitasPekerjaanTab(){
 
   const saveBom=async()=>{
     if(!bomForm.nama_komponen)return;
+    // urutan ditulis ke DB SELALU dihitung ulang fresh tepat sebelum submit (bukan pakai nilai
+    // yang sempat kehitung di form sebelumnya) - biar gak ada race condition kalau ada 2 orang
+    // nambah/pindah komponen ke WP yang sama nyaris bersamaan.
+    const nextUrutanFresh=async(tipe:string,wp:string)=>{
+      const{data:existingTargetWp}=await supabase.from("bom_master").select("urutan").eq("tipe_panel",tipe).eq("wp",wp);
+      let maxUrutan=0;
+      (existingTargetWp||[]).forEach((r:any)=>{maxUrutan=Math.max(maxUrutan,Number(r.urutan)||0);});
+      return maxUrutan+1;
+    };
     if(editBom){
       // kode_komponen sengaja TIDAK ikut di-update - begitu dibuat, kode itu identitas permanen.
-      // urutan boleh diubah bebas kapan aja - itu cuma urutan tampil, gak ada data lain yang
-      // nyandar ke situ (beda dari kode_komponen).
-      const{error}=await supabase.from("bom_master").update({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:Number(bomForm.urutan)||0,updated_at:new Date().toISOString()}).eq("id",editBom.id);
+      // urutan cuma di-hitung-ulang kalau tipe_panel/WP-nya beneran diubah (pindah ke akhir grup
+      // baru) - kalau WP-nya sama persis, posisi aslinya dipertahankan apa adanya.
+      const wpBerubah=bomForm.tipe_panel!==editBom.tipe_panel||bomForm.wp!==editBom.wp;
+      const urutanFinal=wpBerubah?await nextUrutanFresh(bomForm.tipe_panel,bomForm.wp):(editBom.urutan||0);
+      const{error}=await supabase.from("bom_master").update({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:urutanFinal,updated_at:new Date().toISOString()}).eq("id",editBom.id);
       if(error){alert("Gagal: "+error.message);return;}
     } else {
       // Fresh-fetch (bukan dari bomList lokal) buat mastiin gak collide walau ada admin lain yang
@@ -365,7 +376,8 @@ export function KapasitasPekerjaanTab(){
         if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
       });
       const kodeBaru=`${bomForm.tipe_panel}.${maxNum+1}`;
-      const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:Number(bomForm.urutan)||0,kode_komponen:kodeBaru});
+      const urutanFinal=await nextUrutanFresh(bomForm.tipe_panel,bomForm.wp);
+      const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:urutanFinal,kode_komponen:kodeBaru});
       if(error){alert("Gagal: "+error.message);return;}
       await propagateKodeBaruKePanel(bomForm.tipe_panel,kodeBaru);
     }
@@ -693,7 +705,7 @@ export function KapasitasPekerjaanTab(){
               style={{marginLeft:"auto",padding:"7px 16px",borderRadius:8,border:"1.5px solid #9333ea",background:"#faf5ff",color:"#9333ea",fontSize:12,fontWeight:700,cursor:migrating?"not-allowed":"pointer",fontFamily:"inherit"}}>
               {migrating?"⏳ Migrasi...":"⬇ Migrasi dari PANEL_TYPES"}
             </button>
-            <button onClick={()=>{const t=filterTipeBom==="ALL"?"FS":filterTipeBom;setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:t,wp:"WP1",urutan:nextUrutanUntukTipeWp(t,"WP1")});}}
+            <button onClick={()=>{const t=filterTipeBom==="ALL"?"FS":filterTipeBom;setShowAddBom(true);setEditBom(null);setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:t,wp:"WP1",urutan:0});}}
               style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Komponen</button>
           </div>
           {migrateResult&&(
@@ -764,27 +776,23 @@ export function KapasitasPekerjaanTab(){
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10}}>
                     <div>
                       <Lbl>Tipe Panel</Lbl>
-                      <Sel value={bomForm.tipe_panel} onChange={(e:any)=>{
-                        const newTipe=e.target.value;
-                        setBomForm({...bomForm,tipe_panel:newTipe,urutan:editBom?bomForm.urutan:nextUrutanUntukTipeWp(newTipe,bomForm.wp)});
-                      }}>
+                      <Sel value={bomForm.tipe_panel} onChange={(e:any)=>setBomForm({...bomForm,tipe_panel:e.target.value})}>
                         {ALL_TIPE.map(t=><option key={t} value={t}>{t}</option>)}
                       </Sel>
                     </div>
                     <div>
                       <Lbl>WP</Lbl>
-                      <Sel value={bomForm.wp} onChange={(e:any)=>{
-                        const newWp=e.target.value;
-                        setBomForm({...bomForm,wp:newWp,urutan:editBom?bomForm.urutan:nextUrutanUntukTipeWp(bomForm.tipe_panel,newWp)});
-                      }}>
+                      <Sel value={bomForm.wp} onChange={(e:any)=>setBomForm({...bomForm,wp:e.target.value})}>
                         {ALL_WP.map(w=><option key={w} value={w}>{w}</option>)}
                       </Sel>
                     </div>
                   </div>
                   <div>
                     <Lbl>Urutan Tampil</Lbl>
-                    <Inp type="number" value={bomForm.urutan} onChange={(e:any)=>setBomForm({...bomForm,urutan:e.target.value})}/>
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>Cuma ngatur urutan tampil di dalam WP yang sama - bebas diubah kapan aja, gak mempengaruhi kode atau data checklist panel manapun.</div>
+                    <div style={{padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f1f5f9",color:"#475569",fontSize:13,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
+                      {editBom&&bomForm.tipe_panel===editBom.tipe_panel&&bomForm.wp===editBom.wp?(editBom.urutan||0):nextUrutanUntukTipeWp(bomForm.tipe_panel,bomForm.wp)}
+                    </div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>Otomatis, urutan terakhir di WP ini - ikut nyesuaiin kalau Tipe Panel/WP diganti.</div>
                   </div>
                 </div>
                 <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
