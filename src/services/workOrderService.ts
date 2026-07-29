@@ -142,15 +142,31 @@ export const workOrderService = {
       await supabase.from('panels').delete().in('id', idsToDelete)
     }
 
+    // Cache no_pnl max per WO tujuan - panel baru (belum punya id) bisa ke-route ke WO lain
+    // (findOrCreateSiblingWO, saat tanggal panel match wo+proyek+target WO yang sudah ada).
+    // noPnl yang dihitung di client (buildNp) itu berdasarkan state WO yang lagi diedit, BUKAN
+    // WO tujuan sebenarnya - kalau dipercaya mentah-mentah, panel baru bisa nabrak no_pnl yang
+    // sudah dipakai WO tujuan (root cause bug nomor panel dobel di WO 042/CIMORY CITEUREUP).
+    const maxNoPnlCache: Record<number, number> = {}
+    const nextNoPnl = async (targetWoId: number) => {
+      if (maxNoPnlCache[targetWoId] === undefined) {
+        const { data: rows } = await supabase.from('panels').select('no_pnl').eq('wo_id', targetWoId)
+        maxNoPnlCache[targetWoId] = (rows || []).reduce((max, r: any) => Math.max(max, Number(r.no_pnl) || 0), 0)
+      }
+      maxNoPnlCache[targetWoId] += 1
+      return maxNoPnlCache[targetWoId]
+    }
+
     for (const g of groupedPanels) {
       let targetWoId = editWoId
       if (g.tanggal && g.tanggal !== mainTarget) {
         targetWoId = await this.findOrCreateSiblingWO(wo, proyek, g.tanggal, uname)
       }
       for (const p of g.panels) {
+        const noPnl = p.id ? (p.noPnl || p.no_pnl || 1) : await nextNoPnl(targetWoId)
         const row = {
           wo_id: targetWoId,
-          no_pnl: p.noPnl || p.no_pnl || 1,
+          no_pnl: noPnl,
           nama: p.nama,
           tipe: p.tipe,
           qty: p.qty || 1,
