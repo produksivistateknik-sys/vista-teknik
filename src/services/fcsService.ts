@@ -776,6 +776,10 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
         if (totalMenit <= 0) continue
 
         terpakaiSaatIni += totalMenit
+        // Kode berstatus jejak (entry.digeserKe[kode] sudah keisi) itu histori read-only - tetap
+        // dihitung kapasitasnya (baris di atas), tapi JANGAN ditawarkan sebagai kandidat swap
+        // (gak boleh ikut proses geser/cascading lagi).
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
 
         opsiSwap.push({
@@ -853,7 +857,7 @@ async function hitungTerpakaiRawSchedule(tanggal: string, jenisPekerjaan: string
 }
 
 export async function executeSwapKomponenV2(params: {
-  items: Array<{ raw_id: number; wp: string; kode_komponen: string; total_menit: number }>
+  items: Array<{ raw_id: number; wp: string; kode_komponen: string; total_menit: number; progress?: number }>
   jenisPekerjaan: string
   tanggalAsal: string
 }): Promise<{ success: boolean; error?: string }> {
@@ -888,10 +892,10 @@ export async function executeSwapKomponenV2(params: {
       return { success: false, error: 'Tidak ada tanggal dengan kapasitas cukup dalam 60 hari ke depan untuk semua komponen yang dipindah' }
     }
 
-    const byRawId: Record<number, Array<{ wp: string; kode_komponen: string }>> = {}
+    const byRawId: Record<number, Array<{ wp: string; kode_komponen: string; progress: number }>> = {}
     items.forEach(it => {
       if (!byRawId[it.raw_id]) byRawId[it.raw_id] = []
-      byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen })
+      byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen, progress: it.progress || 0 })
     })
 
     for (const [rawIdStr, komponenList] of Object.entries(byRawId)) {
@@ -907,10 +911,15 @@ export async function executeSwapKomponenV2(params: {
       const schedule = { ...row.schedule }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
-      for (const { wp, kode_komponen } of komponenList) {
-        const entryAsal = entriesAsal.find((e: any) => e.wp === wp)
-        if (entryAsal) {
-          entryAsal.komponen = entryAsal.komponen.filter((k: string) => k !== kode_komponen)
+      // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
+      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
+      for (const { wp, kode_komponen, progress } of komponenList) {
+        const idxAsal = entriesAsal.findIndex((e: any) => e.wp === wp)
+        if (idxAsal === -1) continue
+        if (progress > 0) {
+          entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], digeserKe: { ...(entriesAsal[idxAsal].digeserKe || {}), [kode_komponen]: tanggalTujuan } }
+        } else {
+          entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], komponen: entriesAsal[idxAsal].komponen.filter((k: string) => k !== kode_komponen) }
         }
       }
       schedule[tanggalAsal] = entriesAsal.filter((e: any) => e.komponen.length > 0)
@@ -1031,6 +1040,9 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
         // Komponen yang sudah 100% selesai TIDAK lagi memakai kuota orang
         if (progress >= 100) continue
         terpakaiSaatIni += orang
+        // Jejak (entry.digeserKe[kode] keisi) tetap dihitung kuotanya (baris di atas) tapi gak
+        // ditawarkan buat kandidat swap - histori read-only, gak boleh digeser lagi.
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
 
         opsiSwap.push({
           raw_id: row.id,
@@ -1084,7 +1096,7 @@ async function hitungTerpakaiOrangRawSchedule(tanggal: string, jenisPekerjaan: s
 }
 
 export async function executeSwapKomponenOrang(params: {
-  items: Array<{ raw_id: number; wp: string; kode_komponen: string; jumlah_orang: number }>
+  items: Array<{ raw_id: number; wp: string; kode_komponen: string; jumlah_orang: number; progress?: number }>
   jenisPekerjaan: string
   tanggalAsal: string
 }): Promise<{ success: boolean; error?: string }> {
@@ -1119,10 +1131,10 @@ export async function executeSwapKomponenOrang(params: {
       return { success: false, error: 'Tidak ada tanggal dengan kuota orang cukup dalam 60 hari ke depan' }
     }
 
-    const byRawId: Record<number, Array<{ wp: string; kode_komponen: string; jumlah_orang: number }>> = {}
+    const byRawId: Record<number, Array<{ wp: string; kode_komponen: string; jumlah_orang: number; progress: number }>> = {}
     items.forEach(it => {
       if (!byRawId[it.raw_id]) byRawId[it.raw_id] = []
-      byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen, jumlah_orang: it.jumlah_orang })
+      byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen, jumlah_orang: it.jumlah_orang, progress: it.progress || 0 })
     })
 
     for (const [rawIdStr, komponenList] of Object.entries(byRawId)) {
@@ -1138,11 +1150,18 @@ export async function executeSwapKomponenOrang(params: {
       const schedule = { ...row.schedule }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
-      for (const { wp, kode_komponen } of komponenList) {
-        const entryAsal = entriesAsal.find((e: any) => e.wp === wp)
-        if (entryAsal) {
-          entryAsal.komponen = entryAsal.komponen.filter((k: string) => k !== kode_komponen)
-          if (entryAsal.orangPerKomponen) delete entryAsal.orangPerKomponen[kode_komponen]
+      // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
+      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
+      for (const { wp, kode_komponen, progress } of komponenList) {
+        const idxAsal = entriesAsal.findIndex((e: any) => e.wp === wp)
+        if (idxAsal === -1) continue
+        if (progress > 0) {
+          entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], digeserKe: { ...(entriesAsal[idxAsal].digeserKe || {}), [kode_komponen]: tanggalTujuan } }
+        } else {
+          const komponenBaru = entriesAsal[idxAsal].komponen.filter((k: string) => k !== kode_komponen)
+          const orangPerKomponenBaru = entriesAsal[idxAsal].orangPerKomponen ? { ...entriesAsal[idxAsal].orangPerKomponen } : undefined
+          if (orangPerKomponenBaru) delete orangPerKomponenBaru[kode_komponen]
+          entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], komponen: komponenBaru, ...(orangPerKomponenBaru ? { orangPerKomponen: orangPerKomponenBaru } : {}) }
         }
       }
       schedule[tanggalAsal] = entriesAsal.filter((e: any) => e.komponen.length > 0)

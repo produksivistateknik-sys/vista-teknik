@@ -121,6 +121,13 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
         .map((e: any) => e.wp !== row.wp ? e : { ...e, komponen: (e.komponen || []).filter((k: string) => k !== row.kode) })
         .filter((e: any) => (e.komponen || []).some((k: string) => !k.startsWith('__wiring_')))
       schedule[fromDate] = fromEntries
+    } else {
+      // Progress partial -> TINGGALKAN JEJAK di tanggal asal (kode tetap ada, ditandai
+      // digeserKe read-only), bukan cuma "dibiarkan" tak berlabel seperti sebelumnya - reuse
+      // field digeserKe yang sama dengan RawSchedule.tsx & auto-geser-harian.
+      const fromEntries = (schedule[fromDate] || [])
+        .map((e: any) => e.wp !== row.wp ? e : { ...e, digeserKe: { ...(e.digeserKe || {}), [row.kode]: newDate } })
+      schedule[fromDate] = fromEntries
     }
 
     const toEntries = [...(schedule[newDate] || [])]
@@ -248,10 +255,10 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
       const selected = (swapModal.opsiSwap || []).filter((o: any) => swapSelected.includes(`${o.raw_id}_${o.wp}_${o.kode_komponen}`))
       if (selected.length === 0) { setBusy(false); return }
       if (swapModal.tipe === 'orang') {
-        const items = selected.map((o: any) => ({ raw_id: o.raw_id, wp: o.wp, kode_komponen: o.kode_komponen, jumlah_orang: o.jumlah_orang }))
+        const items = selected.map((o: any) => ({ raw_id: o.raw_id, wp: o.wp, kode_komponen: o.kode_komponen, jumlah_orang: o.jumlah_orang, progress: o.progress }))
         await executeSwapKomponenOrang({ items, jenisPekerjaan: subProses, tanggalAsal: swapModal.tanggal })
       } else {
-        const items = selected.map((o: any) => ({ raw_id: o.raw_id, wp: o.wp, kode_komponen: o.kode_komponen, total_menit: o.total_menit }))
+        const items = selected.map((o: any) => ({ raw_id: o.raw_id, wp: o.wp, kode_komponen: o.kode_komponen, total_menit: o.total_menit, progress: o.progress }))
         await executeSwapKomponenV2({ items, jenisPekerjaan: subProses, tanggalAsal: swapModal.tanggal })
       }
       if (refetchRaw) await refetchRaw()

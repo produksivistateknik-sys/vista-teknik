@@ -47,12 +47,26 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,items:{wp:string;kode:string}[])=>{
     const row=rawData.find((r:any)=>r.id===rawId);
     if(!row)return;
+    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId));
+    const checklist=panelData?.checklist||{};
     const schedule={...(row.schedule||{})};
-    let fromEntries=schedule[fromDate]||[];
+    // Progress partial (>0) -> TINGGALKAN JEJAK di tanggal asal (read-only, kode tetap ada tapi
+    // ditandai entry.digeserKe[kode]=toDate), bukan full-remove seperti kode 0% - reuse field
+    // digeserKe yang sudah ada (dipakai UI RawSchedule/RencanaHarian), skema sama dengan
+    // auto-geser-harian & reschedule dari Outstanding.
+    let fromEntries=(schedule[fromDate]||[]).map((e:any)=>({...e,komponen:[...(e.komponen||[])],digeserKe:{...(e.digeserKe||{})}}));
     for(const{wp,kode}of items){
-      fromEntries=fromEntries.map((e:any)=>e.wp===wp?{...e,komponen:e.komponen.filter((k:string)=>k!==kode)}:e);
+      const pct=checklist[kode]?.progress?.[row.proses]||0;
+      fromEntries=fromEntries.map((e:any)=>{
+        if(e.wp!==wp)return e;
+        if(pct>0){
+          return{...e,digeserKe:{...e.digeserKe,[kode]:toDate}};
+        }
+        return{...e,komponen:e.komponen.filter((k:string)=>k!==kode)};
+      });
     }
-    fromEntries=fromEntries.filter((e:any)=>e.komponen.length>0);
+    fromEntries=fromEntries.filter((e:any)=>e.komponen.length>0)
+      .map((e:any)=>Object.keys(e.digeserKe).length===0?(({digeserKe,...rest}:any)=>rest)(e):e);
     schedule[fromDate]=fromEntries;
     let toEntries=schedule[toDate]||[];
     for(const{wp,kode}of items){
@@ -862,17 +876,29 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const{rawId,fromDate,entries,toDate}=dragMode;
     let updatedRow=null;
     markRawDirty(rawId);
+    const rowForDrag=rawData.find((r:any)=>r.id===rawId);
+    const panelDataForDrag=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(rowForDrag?.panel_id||rowForDrag?.panelId));
+    const checklistForDrag=panelDataForDrag?.checklist||{};
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       const newSch={...r.schedule};
       if(mode==="move"){
         // Jangan hapus fromDate total - kode yang gak ikut ter-drag (misal udah selesai,
         // sudah difilter keluar dari `entries` sejak onDragStart) harus TETAP di tempatnya.
+        // Kode yang progress-nya PARTIAL (>0) TETAP ada di asal, ditandai digeserKe (jejak
+        // read-only) bukan dihapus - sama skema dgn executeMoveKomponen/auto-geser-harian.
         const sisaDiAsal=(r.schedule?.[fromDate]||[]).map((orig:any)=>{
           const dragged=entries.find((e:any)=>e.wp===orig.wp);
           if(!dragged)return orig;
-          const komponenSisa=(orig.komponen||[]).filter((k:string)=>!dragged.komponen.includes(k));
-          return komponenSisa.length>0?{...orig,komponen:komponenSisa}:null;
+          let digeserKe={...(orig.digeserKe||{})};
+          const komponenSisa=(orig.komponen||[]).filter((k:string)=>{
+            if(!dragged.komponen.includes(k))return true;
+            const pct=checklistForDrag[k]?.progress?.[r.proses]||0;
+            if(pct>0){digeserKe[k]=toDate;return true;}
+            return false;
+          });
+          if(komponenSisa.length===0)return null;
+          return Object.keys(digeserKe).length>0?{...orig,komponen:komponenSisa,digeserKe}:{...orig,komponen:komponenSisa};
         }).filter(Boolean);
         if(sisaDiAsal.length>0)newSch[fromDate]=sisaDiAsal;else delete newSch[fromDate];
       }
@@ -1737,6 +1763,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         const isSelMove=selectedForMove.some(x=>x.wp===e.wp&&x.kode===k);
                         const progressKomp=livePanelForCell?.checklist?.[k]?.progress?.[rawRow?.proses||""]||0;
                         const isKompDone=progressKomp>=100;
+                        const digeserKeTgl=e.digeserKe?.[k]||null;
+                        if(digeserKeTgl){
+                          return <span key={k} title={"Jejak/histori (read-only) - progress "+progressKomp+"% saat digeser ke "+digeserKeTgl+", gak bisa dikerjakan/dipindah lagi dari sini"}
+                            style={{background:"#f1f5f9",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"default"}}>🕓 {item?.nama?`${k} - ${item.nama}`:k} ({progressKomp}%) ➡️ {digeserKeTgl}</span>;
+                        }
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
                           style={{background:isSelMove?wc:isKompDone?"#dcfce7":wc+"18",color:isSelMove?"#fff":isKompDone?"#16a34a":wc,border:`1px solid ${isSelMove?wc:isKompDone?"#86efac":wc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{isSelMove?"✓ ":isKompDone?"✅ ":"🔀 "}{item?.nama?`${k} - ${item.nama}`:k}{e.qtyPerKomponen?.[k]!==undefined?` (${e.qtyPerKomponen[k]})`:""}</span>;
                       })}
@@ -2057,7 +2088,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             <button onClick={()=>{setSwapModal(null);setSwapSelected([]);}}
               style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
             <button disabled={swapLoading||swapSelected.length===0} onClick={async()=>{
-              const itemsToMove=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,total_menit:o.total_menit}));
+              const itemsToMove=swapModal.opsiSwap.filter((o:any)=>swapSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,total_menit:o.total_menit,progress:o.progress}));
               const menitDipindah=itemsToMove.reduce((s:number,it:any)=>s+Number(it.total_menit),0);
               const sisaSetelahSwap=swapModal.sisaKapasitas+menitDipindah;
               if(sisaSetelahSwap<swapModal.menitDibutuhkan){alert("Kapasitas masih belum cukup, pilih komponen tambahan");return;}
@@ -2176,7 +2207,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 <button onClick={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}}
                   style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
                 <button disabled={swapOrangLoading||swapOrangSelected.length===0} onClick={async()=>{
-                  const itemsToMove=swapOrangModal.opsiSwap.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,jumlah_orang:o.jumlah_orang}));
+                  const itemsToMove=swapOrangModal.opsiSwap.filter((o:any)=>swapOrangSelected.includes(o.raw_id+"|"+o.wp+"|"+o.kode_komponen)).map((o:any)=>({raw_id:o.raw_id,wp:o.wp,kode_komponen:o.kode_komponen,jumlah_orang:o.jumlah_orang,progress:o.progress}));
                   const orangDipindah=itemsToMove.reduce((s:number,it:any)=>s+Number(it.jumlah_orang),0);
                   const sisaSetelahSwap=swapOrangModal.sisaKuota+orangDipindah;
                   if(sisaSetelahSwap<swapOrangModal.orangDibutuhkan){alert("Kuota masih belum cukup, pilih komponen tambahan");return;}
