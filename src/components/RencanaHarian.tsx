@@ -55,6 +55,31 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
     timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
 
+  // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
+  // cuma nyatet assignment planner - satu komponen bisa dikerjain operator BEDA di hari beda kalau
+  // ganti shift/orang). Sumbernya fcs_timer_kerja (sama kayak fitur Review Potong/Tracking Pekerja),
+  // di-scope ke selDate doang (bukan semua tanggal) biar query-nya ringan. Ambil SEMUA record (bukan
+  // cuma yang lagi aktif kayak timerAktifData di atas) - histori tanggal lama juga butuh ini.
+  const [operatorHistoryData,setOperatorHistoryData]=useState<any[]>([]);
+  useEffect(()=>{
+    let cancelled=false;
+    supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate).then(({data}:any)=>{
+      if(!cancelled)setOperatorHistoryData(data??[]);
+    });
+    const ch=supabase.channel("realtime-operator-history-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},()=>{
+        supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate).then(({data}:any)=>{
+          if(!cancelled)setOperatorHistoryData(data??[]);
+        });
+      })
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+  },[selDate]);
+  const getOperatorNamesForKode=(panelId:any,kode:string,proses:string):string[]=>{
+    const ids=[...new Set(operatorHistoryData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses).map((t:any)=>t.pekerja_id))];
+    return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
+  };
+
   // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
   // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
   // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
@@ -421,7 +446,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
                         const ppkKode=ppk[kode];
                         const opIdsKode:number[]=Array.isArray(ppkKode)?ppkKode:(ppkKode&&typeof ppkKode==="object"?Object.values(ppkKode).flat() as number[]:[]);
-                        const workersKode=opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+                        // Prioritas: nama dari timer beneran di tanggal INI (ground truth siapa
+                        // yang ngerjain) - fallback ke assignment planner (pekerja_per_komponen)
+                        // kalau belum ada yang mulai timer sama sekali di tanggal ini.
+                        const operatorTimerKode=getOperatorNamesForKode(t.panelId,kode,t.proses);
+                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return(
                           <tr key={ti+"-"+kode}>
@@ -438,23 +467,38 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                   🔁 Lanjutan {fmtShort(t.carriedOverFrom)}
                                 </span>
                               )}
-                              {digeserKeTanggal&&(
-                                <span title={"Belum selesai di "+t.tanggal+", otomatis lanjut ke "+fmtShort(digeserKeTanggal)+" - data di sini disimpan sbg histori, gak bisa diaksi lagi"}
-                                  style={{marginLeft:5,background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
-                                  ➡️ Digeser ke {fmtShort(digeserKeTanggal)}
-                                </span>
-                              )}
+                              {digeserKeTanggal&&(()=>{
+                                // Kasus1 (0% - gak sempat disentuh sama sekali di tanggal ini) dapat
+                                // label beda dari kasus2 (partial - udah ada progress) biar user bisa
+                                // bedain "gak sempat dikerjakan" vs "udah dikerjain tapi belum tuntas".
+                                const pctDiTanggalIni=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
+                                const tidakDikerjakan=pctDiTanggalIni<=0;
+                                return(
+                                  <span title={(tidakDikerjakan?"Gak sempat dikerjakan sama sekali di ":"Belum selesai di ")+t.tanggal+", otomatis lanjut ke "+fmtShort(digeserKeTanggal)+" - data di sini disimpan sbg histori, gak bisa diaksi lagi"}
+                                    style={{marginLeft:5,background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
+                                    {tidakDikerjakan?"🚫 Digeser - Tidak Dikerjakan":"➡️ Digeser ke "+fmtShort(digeserKeTanggal)}
+                                  </span>
+                                );
+                              })()}
                             </td>
                             <td style={{...td}}>
-                              {!sudahRelease?(
+                              {!sudahRelease&&!digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
                               ):workersKode.length>0?(
                                 <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{workersKode.map((n:string)=>(<span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}</div>
+                              ):digeserKeTanggal?(
+                                <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>-</span>
                               ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
                               {(()=>{
-                                if(!sudahRelease){
+                                // Row jejak (digeserKeTanggal) HARUS tetap tampilin status asli walau
+                                // kebetulan gak ada row renhar di tanggal hop ini (renhar cuma ada di
+                                // tanggal yang beneran dirilis manual - tanggal "numpang lewat" pas
+                                // cascading kapasitas gak pernah dapet rilis manual apapun). Dulu bug:
+                                // !sudahRelease dicek duluan tanpa peduli jejak, jadi histori di tanggal
+                                // hop kelihatan "Belum Dirilis" padahal itu data historis biasa.
+                                if(!sudahRelease&&!digeserKeTanggal){
                                   return <span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span>;
                                 }
                                 // Snapshot PERMANEN progress persis di tanggal t.tanggal - bukan progress
@@ -471,6 +515,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 }
                                 if(pctKerja>0){
                                   return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
+                                }
+                                // Jejak 0% (gak sempat disentuh sama sekali di tanggal ini) - status beda
+                                // dari "Belum Dikerjakan" hidup (yang masih actionable hari ini), karena
+                                // ini histori beku, gak akan pernah dikerjakan lagi di tanggal ini.
+                                if(digeserKeTanggal){
+                                  return <span style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⚪ Tidak Dikerjakan (0%)</span>;
                                 }
                                 // Timer aktif cuma relevan buat hari kerja SEKARANG - tanggal yang udah
                                 // lewat itu sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.

@@ -6,14 +6,20 @@ tab/device/planner yang buka aplikasi, menghilangkan seluruh kelas race conditio
 jadi sumber bug berbulan-bulan sebelumnya.
 
 FASE 1 - LOGIC PER-KOMPONEN (progress, evaluasi tiap kode individual dalam satu WP):
-1. Progress = 0% -> GESER MURNI: kode dihapus total dari tanggal asal, jadi kandidat mendarat di
-   tanggal tujuan.
-2. Progress sebagian (0-100%) -> JEJAK/digeserKe (REVISI - lihat bawah): kode TETAP di tanggal asal
-   tapi ditandai `entry.digeserKe[kode] = tanggalTujuan` (read-only, histori permanen) - bukan lagi
-   "duplikasi tak berlabel" seperti sebelumnya. Entry AKTIF (live) mendarat di tanggal tujuan.
+1. Progress = 0% -> JEJAK/digeserKe juga (REVISI KE-2 - lihat bawah): kode TETAP di tanggal asal,
+   ditandai `entry.digeserKe[kode] = tanggalTujuan`, cuma dilabelin beda di frontend ("Digeser -
+   Tidak Dikerjakan") dari kasus partial. Dulu di sini kode dihapus total tanpa jejak sama sekali -
+   sekarang SEMUA kode yang digeser (0% maupun partial) ninggalin jejak, biar user bisa lihat
+   histori "apa yang dijadwalkan tapi gak sempat dikerjakan sama sekali".
+2. Progress sebagian (0-100%) -> JEJAK/digeserKe: kode TETAP di tanggal asal tapi ditandai
+   `entry.digeserKe[kode] = tanggalTujuan` (read-only, histori permanen) - bukan lagi "duplikasi
+   tak berlabel" seperti sebelumnya. Entry AKTIF (live) mendarat di tanggal tujuan.
 3. Progress >= 100% -> tidak disentuh.
+Kasus 1 & 2 sekarang diperlakukan IDENTIK di backend (sama-sama jejakOp, gak pernah removeOp) -
+satu-satunya beda tinggal label yang ditampilkan frontend, dibaca dari progress asli di tanggal itu
+(0% vs >0%), bukan dari field terpisah manapun di data.
 WIRING CONTROL/WIRING POWER pakai rule sama persis (token __wiring_* di-skip dari evaluasi progress
-karena bukan kode BOM asli, kode asli di dalamnya dievaluasi 1-3 seperti biasa).
+karena bukan kode BOM asli, kode asli di dalamnya dievaluasi 1-2 seperti biasa).
 
 REVISI JEJAK/digeserKe (ganti pendekatan "split qty jadi 2 entry" lama):
 - `entry.digeserKe` (Record<kode,tanggalTujuan>) SUDAH ADA di skema data (dipakai RawSchedule.tsx &
@@ -26,10 +32,10 @@ REVISI JEJAK/digeserKe (ganti pendekatan "split qty jadi 2 entry" lama):
 - CASCADING MULTI-HOP: kalau kode kena geser berantai karena kapasitas penuh berturut-turut
   (mis. 22->23->24 karena 23 penuh), maka BUKAN CUMA tanggal asal (22) yang dapat jejak - tanggal
   23 (yang cuma "kelewat" pas cascading, gak pernah jadi tujuan akhir) JUGA dapat entry jejak
-  (digeserKe[kode]=24). Cuma tanggal AKHIR (24) yang jadi entry live. Berlaku baik buat kandidat
-  baru dari fase 1 maupun buat kode yang SUDAH ADA di tanggal tujuan tapi kalah kompetisi kapasitas
-  hari ini dan ke-geser lagi (progress kode itu dicek juga - kalau masih 0, tetap geser polos tanpa
-  jejak, sama seperti kasus1).
+  (digeserKe[kode]=24). Cuma tanggal AKHIR (24) yang jadi entry live. Berlaku sama persis buat
+  kandidat baru dari fase 1 (kasus1 maupun 2) maupun buat kode yang SUDAH ADA di tanggal tujuan
+  tapi kalah kompetisi kapasitas hari ini dan ke-geser lagi - REVISI KE-2: progress kode itu gak
+  lagi nentuin jejak-vs-remove (dulu 0% = geser polos tanpa jejak), sekarang selalu jejakOp.
 - Field `komponen` (array kode) TIDAK berubah bentuk - kode yang jadi jejak TETAP ada di situ, cuma
   ditandai lewat digeserKe. Semua fungsi lain yang baca `entry.komponen` sebagai daftar kode gak
   perlu berubah, dan perhitungan kapasitas otomatis tetap menghitung kode berstatus jejak (sesuai
@@ -179,9 +185,9 @@ Deno.serve(async (req) => {
     const addOp = (rowId: number, tanggal: string, wp: string, kode: string, asalTanggal: string) => {
       ensureBucket(rowId, tanggal).add.push({ wp, kode, asalTanggal })
     }
-    const removeOp = (rowId: number, tanggal: string, wp: string, kode: string) => {
-      ensureBucket(rowId, tanggal).remove.push({ wp, kode })
-    }
+    // removeOp (hapus kode tanpa jejak) sengaja udah gak dipakai lagi sejak revisi kasus1 (0%)
+    // ikut ninggalin jejak juga - bucket `remove` di rowOps dibiarin ada (Fase 3 masih baca-nya,
+    // selalu kosong sekarang, harmless no-op) biar gampang dipulihin kalau suatu saat perlu lagi.
     // Tandai kode SEBAGAI JEJAK di tanggal itu - kode TETAP ada di komponen (gak di-remove), cuma
     // ditandai read-only lewat digeserKe[kode]=tujuan (dipakai UI RawSchedule/RencanaHarian yang
     // sudah ada). Dipakai baik buat tanggal asal (kasus2) maupun tanggal "numpang lewat" pas
@@ -222,11 +228,14 @@ Deno.serve(async (req) => {
           const pct = cl?.progress?.[row.proses] || 0
           if (pct >= 100) return
           const kasus = pct === 0 ? 1 : 2
-          if (kasus === 1) removeOp(row.id, hariSumber, e.wp, kode)
-          // kasus 2: TIDAK di-remove, jejakOp-nya ditentukan di Fase 2 sekalian sama hop-hop
-          // cascading-nya (satu titik keputusan, biar konsisten & tau tujuan akhirnya kemana).
+          // REVISI: kasus1 (progress 0%) SEKARANG juga ninggalin jejak, sama kayak kasus2 -
+          // gak lagi di-remove langsung di sini. Kedua kasus TIDAK di-remove, jejakOp-nya
+          // ditentukan di Fase 2 sekalian sama hop-hop cascading-nya (satu titik keputusan,
+          // biar konsisten & tau tujuan akhirnya kemana). Beda kasus1/2 cuma soal LABEL di
+          // frontend (dibaca dari progress asli di tanggal itu), bukan soal ninggalin jejak
+          // atau enggak.
           kodeIkutGeser.push(kode)
-          if (kasus === 2) kodeKasus2.push(kode)
+          kodeKasus2.push(kode)
           if (tanpaCascade) {
             addOp(row.id, hariTarget, e.wp, kode, hariSumber)
             return
@@ -294,7 +303,6 @@ Deno.serve(async (req) => {
     // -- proses jam-based (semua kecuali WIRING & BUSBAR) --
     for (const [proses, kandidatList] of Object.entries(kandidatJam)) {
       const existingUnits: Unit[] = []
-      const existingPct: Record<string, number> = {} // unitId -> pct saat ini
       rawRows.forEach((row: any) => {
         if (row.proses !== proses) return
         const panel = panelMap[String(row.panel_id)]
@@ -310,22 +318,22 @@ Deno.serve(async (req) => {
             const menit = qtyTotal * getMenitPcs(panel.tipe, kode, proses)
             const id = `ex_${row.id}_${e.wp}_${kode}`
             existingUnits.push({ id, rowId: row.id, wp: e.wp, kode, demand: menit, woTarget: woTargetOfPanel(panel), sortKode: kode, isExisting: true })
-            existingPct[id] = cl?.progress?.[proses] || 0
           })
         })
       })
       const existingKeySet = new Set(existingUnits.map((u) => `${u.rowId}|${u.wp}|${u.kode}`))
       // Kalau planner udah manual jadwalin kode yang sama di tanggal asal & tujuan sekaligus, jangan
-      // dihitung dobel (existing + kandidat) buat kapasitas - TAPI kalau kandidat yang di-dedupe ini
-      // kasus2 (progress partial), tetap harus dapat jejak di hariSumber (dicatat di dedupedKasus2,
-      // ditandai SETELAH placement existing unit yang sama diketahui - unit existing itu sendiri
-      // bisa aja ikut kegeser lagi hari ini, jadi gak boleh asumsi tujuannya selalu hariTarget).
+      // dihitung dobel (existing + kandidat) buat kapasitas - TAPI kandidat yang di-dedupe ini tetap
+      // harus dapat jejak di hariSumber (dicatat di dedupedKasus2, ditandai SETELAH placement
+      // existing unit yang sama diketahui - unit existing itu sendiri bisa aja ikut kegeser lagi
+      // hari ini, jadi gak boleh asumsi tujuannya selalu hariTarget). REVISI: dulu cuma kasus2
+      // (progress partial) yang di-dedupe-jejak, sekarang SEMUA (kasus1 0% ikut juga).
       const dedupedKasus2: { rowId: number; wp: string; kode: string; existingId: string }[] = []
       const candUnits: Unit[] = []
       kandidatList.forEach((k) => {
         const key = `${k.rowId}|${k.wp}|${k.kode}`
         if (existingKeySet.has(key)) {
-          if (k.kasus === 2) dedupedKasus2.push({ rowId: k.rowId, wp: k.wp, kode: k.kode, existingId: `ex_${k.rowId}_${k.wp}_${k.kode}` })
+          dedupedKasus2.push({ rowId: k.rowId, wp: k.wp, kode: k.kode, existingId: `ex_${k.rowId}_${k.wp}_${k.kode}` })
           return
         }
         candUnits.push({ id: `cd_${k.rowId}_${k.wp}_${k.kode}`, rowId: k.rowId, wp: k.wp, kode: k.kode, demand: k.menit, woTarget: k.woTarget, sortKode: k.kode, isExisting: false, kasus: k.kasus })
@@ -352,23 +360,18 @@ Deno.serve(async (req) => {
         const hops = hopsMap.get(u.id) || []
         if (u.isExisting) {
           if (p.finalDate !== hariTarget) {
-            const pct = existingPct[u.id] || 0
-            if (pct > 0) {
-              jejakOp(u.rowId, hariTarget, u.wp, u.kode!, p.finalDate)
-              hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
-            } else {
-              // Hop dates (selain hariTarget) TIDAK pernah ditulisi apa pun oleh unit ini (cuma
-              // "dilewatin" pas simulasi cascading) - jangan removeOp ke sana, beresiko nghapus
-              // data kode yang sama tapi gak terkait kalau kebetulan ada jadwal manual di situ.
-              removeOp(u.rowId, hariTarget, u.wp, u.kode!)
-            }
+            // REVISI: dulu cuma jejak kalau progress>0, 0% di-removeOp (dihapus tanpa jejak).
+            // Sekarang selalu jejakOp, gak pernah removeOp di sini lagi - konsisten sama kasus1
+            // (0%) yang di Fase 1 juga udah gak di-remove upfront.
+            jejakOp(u.rowId, hariTarget, u.wp, u.kode!, p.finalDate)
+            hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
             addOp(u.rowId, p.finalDate, u.wp, u.kode!, hariTarget)
           }
         } else {
-          if (u.kasus === 2) {
-            jejakOp(u.rowId, hariSumber, u.wp, u.kode!, p.finalDate)
-            hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
-          }
+          // REVISI: dulu cuma kasus2 (progress partial) yang jejakOp, kasus1 (0%) cuma addOp
+          // tanpa jejak. Sekarang keduanya jejakOp - beda kasus1/2 cuma soal label di frontend.
+          jejakOp(u.rowId, hariSumber, u.wp, u.kode!, p.finalDate)
+          hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
           addOp(u.rowId, p.finalDate, u.wp, u.kode!, hariSumber)
         }
       })
@@ -388,7 +391,6 @@ Deno.serve(async (req) => {
       rawRows.forEach((row: any) => {
         if (row.proses !== proses) return
         const panel = panelMap[String(row.panel_id)]
-        const checklist = panel?.checklist || {}
         const entries = row.schedule?.[hariTarget] || []
         entries.forEach((e: any) => {
           const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_')) || null
@@ -397,8 +399,10 @@ Deno.serve(async (req) => {
           const m = token?.match(/^__wiring_(\d+)org_/)
           const orang = m ? parseInt(m[1], 10) : 1
           const sortKode = realKode.slice().sort(naturalKodeSort)[0]
-          const kodeKasus2 = realKode.filter((kode: string) => (checklist[kode]?.progress?.[proses] || 0) > 0)
-          existingUnits.push({ id: `ex_${row.id}_${e.wp}`, rowId: row.id, wp: e.wp, kodeList: realKode, kodeKasus2, tokenValue: token, demand: orang, woTarget: woTargetOfPanel(panel), sortKode, isExisting: true })
+          // REVISI: dulu cuma kode progress>0 yang ditandai butuh jejak kalau ke-bump lagi -
+          // sekarang semua kode di realKode (termasuk 0%) butuh jejak, checklist gak perlu
+          // dibaca lagi di sini.
+          existingUnits.push({ id: `ex_${row.id}_${e.wp}`, rowId: row.id, wp: e.wp, kodeList: realKode, kodeKasus2: realKode, tokenValue: token, demand: orang, woTarget: woTargetOfPanel(panel), sortKode, isExisting: true })
         })
       })
       const existingWpKeySet = new Set(existingUnits.map((u) => `${u.rowId}|${u.wp}`))
@@ -425,26 +429,22 @@ Deno.serve(async (req) => {
         const p = placement.get(u.id)
         if (!p) return
         const hops = hopsMap.get(u.id) || []
-        const kasus2Set = new Set(u.kodeKasus2 || [])
         if (u.isExisting) {
           if (p.finalDate !== hariTarget) {
+            // REVISI: dulu cuma kode kasus2 (progress>0) yang jejakOp, sisanya removeOp.
+            // Sekarang semua kode di kodeList jejakOp - gak pernah removeOp lagi di sini.
             u.kodeList!.forEach((kode) => {
-              if (kasus2Set.has(kode)) {
-                jejakOp(u.rowId, hariTarget, u.wp, kode, p.finalDate)
-                hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
-              } else {
-                removeOp(u.rowId, hariTarget, u.wp, kode)
-              }
+              jejakOp(u.rowId, hariTarget, u.wp, kode, p.finalDate)
+              hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
             })
             u.kodeList!.forEach((kode) => addOp(u.rowId, p.finalDate, u.wp, kode, hariTarget))
             if (u.tokenValue) tokenCarry[`${u.rowId}|${p.finalDate}|${u.wp}`] = u.tokenValue
           }
         } else {
+          // REVISI: sama, semua kode di kodeList jejakOp sekarang (dulu cuma kasus2).
           u.kodeList!.forEach((kode) => {
-            if (kasus2Set.has(kode)) {
-              jejakOp(u.rowId, hariSumber, u.wp, kode, p.finalDate)
-              hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
-            }
+            jejakOp(u.rowId, hariSumber, u.wp, kode, p.finalDate)
+            hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
             addOp(u.rowId, p.finalDate, u.wp, kode, hariSumber)
           })
           if (u.tokenValue) tokenCarry[`${u.rowId}|${p.finalDate}|${u.wp}`] = u.tokenValue
