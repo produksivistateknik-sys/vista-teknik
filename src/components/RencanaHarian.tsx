@@ -232,11 +232,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     toastTimerRef.current=setTimeout(()=>setToast(null),2500);
   };
 
-  // Auto-geser sekarang trigger MANUAL (cron dinonaktifkan) - banner ini nge-cek lewat dry-run
-  // preview apa ada hari yang ketinggalan belum "ditarik", biar user tau harus klik tombolnya.
-  // Realtime listen ke auto_geser_runs juga - kalau admin lain di tab lain udah klik duluan,
-  // banner ini ikut ilang tanpa perlu refresh manual.
-  const [catchupInfo,setCatchupInfo]=useState<{hariMulai:string,jumlahRowDiprosesTotal:number,jumlahHariDiproses:number}|null>(null);
+  // Auto-geser sekarang trigger MANUAL (cron dinonaktifkan) - tombol kecil di baris navigasi
+  // tanggal (bukan banner) yang nge-cek lewat dry-run preview apa ada hari ketinggalan belum
+  // "ditarik". Realtime listen ke auto_geser_runs juga - kalau admin lain di tab lain udah klik
+  // duluan, tombol ini ikut ilang tanpa perlu refresh manual.
+  const [catchupInfo,setCatchupInfo]=useState<{hariMulai:string,jumlahKomponenTotal:number}|null>(null);
   const [catchupLoading,setCatchupLoading]=useState(false);
   const cekCatchup=async()=>{
     try{
@@ -244,12 +244,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         method:"POST",headers:{"Authorization":"Bearer "+supabaseAnonKey,"Content-Type":"application/json"},body:JSON.stringify({dryRun:true}),
       });
       const d=await res.json();
-      if(d?.success&&d.jumlahRowDiprosesTotal>0){
-        setCatchupInfo({hariMulai:d.hariMulai,jumlahRowDiprosesTotal:d.jumlahRowDiprosesTotal,jumlahHariDiproses:d.jumlahHariDiproses});
+      if(d?.success&&d.jumlahKomponenTotal>0){
+        setCatchupInfo({hariMulai:d.hariMulai,jumlahKomponenTotal:d.jumlahKomponenTotal});
       } else {
         setCatchupInfo(null);
       }
-    }catch{ /* gagal cek diam-diam - banner cuma gak muncul, gak ganggu tampilan lain */ }
+    }catch{ /* gagal cek diam-diam - tombol cuma gak muncul, gak ganggu tampilan lain */ }
   };
   useEffect(()=>{
     cekCatchup();
@@ -268,7 +268,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       });
       const d=await res.json();
       if(d?.success){
-        showToast(d.jumlahRowDiprosesTotal>0?`✅ Sudah ditarik (${d.jumlahHariDiproses} hari, ${d.jumlahRowDiprosesTotal} komponen)`:"✅ Sudah ditarik, gak ada yang perlu digeser");
+        if(d.jumlahKomponenTotal>0){
+          const bagianDidorong=d.komponenDidorongTotal>0?`, ↪️ ${d.komponenDidorongTotal} didorong ke tanggal lain (kapasitas penuh)`:"";
+          showToast(`✅ ${d.komponenLangsungTotal} komponen berhasil ditarik${bagianDidorong}`);
+        } else {
+          showToast("✅ Sudah ditarik, gak ada yang perlu digeser");
+        }
         setCatchupInfo(null);
         await refetchRaw?.();
       } else {
@@ -391,29 +396,19 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           {toast}
         </div>
       )}
-      {catchupInfo&&(
-        <div style={{marginBottom:10,borderRadius:10,border:"1.5px solid #fde68a",background:"#fffbeb",
-          padding:"9px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const}}>
-          <span style={{fontSize:14,flexShrink:0}}>⚠️</span>
-          <div style={{flex:1,minWidth:200}}>
-            <div style={{fontSize:11.5,fontWeight:700,color:"#d97706"}}>
-              Ada {catchupInfo.jumlahRowDiprosesTotal} komponen belum selesai dari {fmtShort(catchupInfo.hariMulai)}
-            </div>
-            <div style={{fontSize:10.5,color:"#78350f"}}>
-              Belum ditarik ke hari ini ({catchupInfo.jumlahHariDiproses} hari ketinggalan) - auto-geser sekarang manual, gak jalan otomatis lagi.
-            </div>
-          </div>
-          <Btn color="#d97706" disabled={catchupLoading} onClick={tarikKeHariIni} style={{fontSize:12,padding:"7px 16px",flexShrink:0}}>
-            {catchupLoading?"⏳ Memproses...":"📥 Tarik ke Hari Ini"}
-          </Btn>
-        </div>
-      )}
       <Card style={{marginBottom:10,padding:"10px 14px"}}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
           <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>{"▶"}</Btn>
           <span style={{fontSize:13,fontWeight:700,color:"#1e293b",marginLeft:4}}>{fmtShort(weekStart)} — {fmtShort(addDays(weekStart,6))}</span>
+          {catchupInfo&&(
+            <Btn color="#d97706" disabled={catchupLoading} onClick={tarikKeHariIni}
+              title={"Ada "+catchupInfo.jumlahKomponenTotal+" komponen belum selesai dari "+fmtShort(catchupInfo.hariMulai)+", belum ditarik ke hari ini - auto-geser sekarang manual, gak jalan otomatis lagi."}
+              style={{fontSize:11,padding:"5px 12px",marginLeft:"auto"}}>
+              {catchupLoading?"⏳ Memproses...":`↪️ Tarik dari ${fmtShort(catchupInfo.hariMulai)} (${catchupInfo.jumlahKomponenTotal})`}
+            </Btn>
+          )}
         </div>
         <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
           {days.map(d=>{

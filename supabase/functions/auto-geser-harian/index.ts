@@ -281,6 +281,11 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   }
 
   const overbookWarnings: string[] = []
+  // Buat ringkasan hasil ke user (bukan cuma jumlah baris raw_schedule yang kesentuh) - berapa
+  // KODE KOMPONEN yang beneran mendarat persis di hariTarget (tujuan langsung) vs yang kedorong
+  // ke tanggal lain gara-gara kapasitas hariTarget udah penuh (cascading, bukan overbook).
+  let komponenLangsung = 0
+  let komponenDidorong = 0
 
   // Balikin finalDate PER unit, plus `hops`: tanggal-tanggal (selain finalDate) yang unit itu
   // "numpang lewat" pas cascading (dicoba tapi kapasitasnya udah penuh) - dipakai buat nulis
@@ -375,6 +380,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       const p = placement.get(u.id)
       if (!p) return
       const hops = hopsMap.get(u.id) || []
+      if (p.finalDate === hariTarget) komponenLangsung++; else komponenDidorong++
       if (u.isExisting) {
         if (p.finalDate !== hariTarget) {
           // Selalu jejakOp, gak pernah removeOp di sini - konsisten sama kasus1 (0%) yang di
@@ -440,6 +446,8 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       const p = placement.get(u.id)
       if (!p) return
       const hops = hopsMap.get(u.id) || []
+      const jumlahKode = (u.kodeList || []).length
+      if (p.finalDate === hariTarget) komponenLangsung += jumlahKode; else komponenDidorong += jumlahKode
       if (u.isExisting) {
         if (p.finalDate !== hariTarget) {
           u.kodeList!.forEach((kode) => {
@@ -537,7 +545,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
 
   if (overbookWarnings.length > 0) console.warn(overbookWarnings.join('\n'))
 
-  return { jumlahRowDiproses, overbookWarnings, detail: detailDryRun }
+  return { jumlahRowDiproses, komponenLangsung, komponenDidorong, overbookWarnings, detail: detailDryRun }
 }
 
 Deno.serve(async (req) => {
@@ -579,6 +587,8 @@ Deno.serve(async (req) => {
     const ctx = await buildCtx(supabase)
     let jumlahHariDiproses = 0
     let jumlahRowDiprosesTotal = 0
+    let komponenLangsungTotal = 0
+    let komponenDidorongTotal = 0
     const perHari: { hariSumber: string; hariTarget: string; jumlahRowDiproses: number }[] = []
     const overbookWarningsTotal: string[] = []
 
@@ -592,16 +602,19 @@ Deno.serve(async (req) => {
       const hasil = await prosesSatuHari(supabase, hSumber, hTarget, dryRun, ctx)
       perHari.push({ hariSumber: hSumber, hariTarget: hTarget, jumlahRowDiproses: hasil.jumlahRowDiproses })
       jumlahRowDiprosesTotal += hasil.jumlahRowDiproses
+      komponenLangsungTotal += hasil.komponenLangsung
+      komponenDidorongTotal += hasil.komponenDidorong
       overbookWarningsTotal.push(...hasil.overbookWarnings)
       jumlahHariDiproses++
       cursor = hTarget
     }
+    const jumlahKomponenTotal = komponenLangsungTotal + komponenDidorongTotal
 
     if (!dryRun && triggeredBy && jumlahHariDiproses > 0) {
       await supabase.from('activity_log').insert({
         user_name: triggeredBy,
         action: 'TARIK MANUAL AUTO-GESER',
-        description: `Tarik manual ${jumlahHariDiproses} hari (${hariMulai} s/d ${hariIniWib}), total ${jumlahRowDiprosesTotal} baris komponen`,
+        description: `Tarik manual ${jumlahHariDiproses} hari (${hariMulai} s/d ${hariIniWib}), total ${jumlahKomponenTotal} komponen (${komponenLangsungTotal} langsung, ${komponenDidorongTotal} didorong kapasitas)`,
         module: 'rencana', halaman: 'Rencana Harian',
       })
     }
@@ -610,6 +623,7 @@ Deno.serve(async (req) => {
       success: true, dryRun, mode: 'catchup',
       hariMulai, hariTargetAkhir: hariIniWib,
       jumlahHariDiproses, jumlahRowDiprosesTotal,
+      jumlahKomponenTotal, komponenLangsungTotal, komponenDidorongTotal,
       perHari, overbookWarnings: overbookWarningsTotal,
     })
   } catch (err: any) {
