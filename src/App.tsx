@@ -45,6 +45,7 @@ const RencanaHarian = lazy(() => import('./components/RencanaHarianHome').then(m
 const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
 const KendalaInbox = lazy(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
 const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
+const AiAssistantChat = lazy(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
 const TaskMonitoring = lazy(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
 const SummaryProgress = lazy(() => import('./components/SummaryProgress').then(m => ({ default: m.SummaryProgress })))
 const DetailProgress = lazy(() => import('./components/DetailProgress').then(m => ({ default: m.DetailProgress })))
@@ -449,6 +450,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const SIDEBAR_MENUS=[
     {group:"MONITORING",items:[
       {id:"dashboard",label:"Dashboard",icon:"ti ti-layout-dashboard"},
+      {id:"ai_assistant",label:"AI Assistant",icon:"ti ti-sparkles"},
       {id:"summary",label:"Summary Progress",icon:"ti ti-chart-bar"},
       {id:"taskmonitoring",label:"Task Monitoring",icon:"ti ti-list-check"},
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
@@ -816,6 +818,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 </div>
               )}
               {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("ai_assistant")&&<div style={{display:tab==="ai_assistant"?"block":"none"}}><Suspense fallback={TabFallback}><AiAssistantChat/></Suspense></div>}
               {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
