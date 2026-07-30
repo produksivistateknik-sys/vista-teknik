@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { markRenharDirty } from '../lib/globalState'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
-export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
+export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,refetchRaw,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -231,6 +231,54 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     if(toastTimerRef.current)clearTimeout(toastTimerRef.current);
     toastTimerRef.current=setTimeout(()=>setToast(null),2500);
   };
+
+  // Auto-geser sekarang trigger MANUAL (cron dinonaktifkan) - banner ini nge-cek lewat dry-run
+  // preview apa ada hari yang ketinggalan belum "ditarik", biar user tau harus klik tombolnya.
+  // Realtime listen ke auto_geser_runs juga - kalau admin lain di tab lain udah klik duluan,
+  // banner ini ikut ilang tanpa perlu refresh manual.
+  const [catchupInfo,setCatchupInfo]=useState<{hariMulai:string,jumlahRowDiprosesTotal:number,jumlahHariDiproses:number}|null>(null);
+  const [catchupLoading,setCatchupLoading]=useState(false);
+  const cekCatchup=async()=>{
+    try{
+      const res=await fetch(supabaseUrl+"/functions/v1/auto-geser-harian?dryRun=1",{
+        method:"POST",headers:{"Authorization":"Bearer "+supabaseAnonKey,"Content-Type":"application/json"},body:JSON.stringify({dryRun:true}),
+      });
+      const d=await res.json();
+      if(d?.success&&d.jumlahRowDiprosesTotal>0){
+        setCatchupInfo({hariMulai:d.hariMulai,jumlahRowDiprosesTotal:d.jumlahRowDiprosesTotal,jumlahHariDiproses:d.jumlahHariDiproses});
+      } else {
+        setCatchupInfo(null);
+      }
+    }catch{ /* gagal cek diam-diam - banner cuma gak muncul, gak ganggu tampilan lain */ }
+  };
+  useEffect(()=>{
+    cekCatchup();
+    const ch=supabase.channel("realtime-auto-geser-runs-rencana")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"auto_geser_runs"},()=>cekCatchup())
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+  const tarikKeHariIni=async()=>{
+    if(catchupLoading)return;
+    setCatchupLoading(true);
+    try{
+      const uname=user?.name||user?.nama||"Admin";
+      const res=await fetch(supabaseUrl+"/functions/v1/auto-geser-harian",{
+        method:"POST",headers:{"Authorization":"Bearer "+supabaseAnonKey,"Content-Type":"application/json"},body:JSON.stringify({triggeredBy:uname}),
+      });
+      const d=await res.json();
+      if(d?.success){
+        showToast(d.jumlahRowDiprosesTotal>0?`✅ Sudah ditarik (${d.jumlahHariDiproses} hari, ${d.jumlahRowDiprosesTotal} komponen)`:"✅ Sudah ditarik, gak ada yang perlu digeser");
+        setCatchupInfo(null);
+        await refetchRaw?.();
+      } else {
+        alert("Gagal tarik: "+(d?.error||"unknown error"));
+      }
+    }catch(err:any){
+      alert("Gagal tarik: "+(err?.message||String(err)));
+    }
+    setCatchupLoading(false);
+  };
   const toggleReleaseKomponen=async(task:any,kode:string,namaTampil:string,kemungkinanSudahRelease:boolean)=>{
     const key=`${task.rawId}_${task.wp}_${task.tanggal}_${kode}`;
     if(pendingRelease.has(key))return;
@@ -341,6 +389,23 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           background:"#1e293b",color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
           boxShadow:"0 8px 24px #00000040",pointerEvents:"none"}}>
           {toast}
+        </div>
+      )}
+      {catchupInfo&&(
+        <div style={{marginBottom:10,borderRadius:10,border:"1.5px solid #fde68a",background:"#fffbeb",
+          padding:"9px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap" as const}}>
+          <span style={{fontSize:14,flexShrink:0}}>⚠️</span>
+          <div style={{flex:1,minWidth:200}}>
+            <div style={{fontSize:11.5,fontWeight:700,color:"#d97706"}}>
+              Ada {catchupInfo.jumlahRowDiprosesTotal} komponen belum selesai dari {fmtShort(catchupInfo.hariMulai)}
+            </div>
+            <div style={{fontSize:10.5,color:"#78350f"}}>
+              Belum ditarik ke hari ini ({catchupInfo.jumlahHariDiproses} hari ketinggalan) - auto-geser sekarang manual, gak jalan otomatis lagi.
+            </div>
+          </div>
+          <Btn color="#d97706" disabled={catchupLoading} onClick={tarikKeHariIni} style={{fontSize:12,padding:"7px 16px",flexShrink:0}}>
+            {catchupLoading?"⏳ Memproses...":"📥 Tarik ke Hari Ini"}
+          </Btn>
         </div>
       )}
       <Card style={{marginBottom:10,padding:"10px 14px"}}>
