@@ -250,7 +250,10 @@ async function panelLookupError(supabase: any, matches: any[], namaPanel: string
 // digeserKe gak ikut dihitung). Dipakai bareng oleh query_capacity_harian (buat jumlahin
 // total demand = "kapasitas terpakai") dan simulate_estimasi_selesai (buat jadi pool
 // kompetitor yang mesti dikalahkan candidate baru).
-async function computeExistingUnitsForProses(supabase: any, tanggal: string, proses: string) {
+// Dipecah jadi 2 fungsi (fetch sekali + compute per-tanggal) biar analyze_trend bisa iterasi
+// banyak tanggal TANPA fetch ulang raw_schedule/panels/process_time tiap hari - data-data itu
+// gak berubah dalam SATU invocation tool, cuma tanggal yang divariasikan.
+async function fetchProsesContext(supabase: any, proses: string) {
   const isOrang = PROSES_ORANG.includes(proses)
   const rawRows = (await fetchAll(supabase, 'raw_schedule', 'id,panel_id,proses,schedule')).filter((r: any) => r.proses === proses)
   const panelIds = [...new Set(rawRows.map((r: any) => r.panel_id).filter(Boolean))]
@@ -261,11 +264,14 @@ async function computeExistingUnitsForProses(supabase: any, tanggal: string, pro
   const wos = woIds.length ? (await fetchAll(supabase, 'work_orders', 'id,target')).filter((w: any) => woIds.includes(w.id)) : []
   const woTargetMap: Record<string, string> = {}
   wos.forEach((w: any) => (woTargetMap[String(w.id)] = w.target || '9999-99-99'))
-
   const ptRows = (await fetchAll(supabase, 'fcs_process_time', 'tipe_panel,kode_komponen,jenis_pekerjaan,menit_per_pcs,is_active')).filter((r: any) => r.is_active)
   const ptMap: Record<string, number> = {}
   ptRows.forEach((r: any) => (ptMap[`${r.tipe_panel}|${r.kode_komponen}|${r.jenis_pekerjaan}`] = Number(r.menit_per_pcs) || 0))
+  return { isOrang, rawRows, panelMap, woTargetMap, ptMap }
+}
 
+function computeUnitsForDateFromCtx(ctx: any, tanggal: string, proses: string) {
+  const { isOrang, rawRows, panelMap, woTargetMap, ptMap } = ctx
   const isJejakKode = (entry: any, kode: string) => !!(entry?.digeserKe && entry.digeserKe[kode])
   const units: { id: string; demand: number; woTarget: string; sortKode: string }[] = []
 
@@ -301,6 +307,11 @@ async function computeExistingUnitsForProses(supabase: any, tanggal: string, pro
     })
   })
   return units
+}
+
+async function computeExistingUnitsForProses(supabase: any, tanggal: string, proses: string) {
+  const ctx = await fetchProsesContext(supabase, proses)
+  return computeUnitsForDateFromCtx(ctx, tanggal, proses)
 }
 
 // Versi ringkas cascadePlace dari auto-geser-harian/index.ts - ALGORITMA SAMA PERSIS (sort
@@ -1032,6 +1043,233 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     }
   },
 
+  // ============ TOOLS ANALISIS - SEMUA agregasi deterministik (JS murni), Gemini gak pernah
+  // disuruh ngitung angka analitis sendiri dari data mentah, cuma nyaji-in hasil tool ini. ============
+
+  async analyze_bottleneck(supabase, input) {
+    const tanggalMulai = input?.tanggal_mulai
+    const tanggalSelesai = input?.tanggal_selesai
+    if (!tanggalMulai || !tanggalSelesai) return { error: 'Wajib isi tanggal_mulai dan tanggal_selesai.' }
+
+    const rows = await fetchAll(supabase, 'raw_schedule', 'proses,schedule')
+    const byProses: Record<string, { jumlah: number; totalHari: number }> = {}
+
+    rows.forEach((row: any) => {
+      Object.entries(row.schedule || {}).forEach(([tanggal, entries]: [string, any]) => {
+        if (tanggal < tanggalMulai || tanggal > tanggalSelesai) return
+        ;(entries || []).forEach((e: any) => {
+          Object.entries(e.digeserKe || {}).forEach(([, tujuan]: [string, any]) => {
+            if (!byProses[row.proses]) byProses[row.proses] = { jumlah: 0, totalHari: 0 }
+            byProses[row.proses].jumlah++
+            const hariGeser = Math.round((new Date(tujuan).getTime() - new Date(tanggal).getTime()) / 86400000)
+            byProses[row.proses].totalHari += hariGeser
+          })
+        })
+      })
+    })
+
+    const ranking = Object.entries(byProses)
+      .map(([proses, v]) => ({
+        proses,
+        jumlah_kali_digeser: v.jumlah,
+        rata_rata_hari_tergeser: v.jumlah > 0 ? Math.round((v.totalHari / v.jumlah) * 10) / 10 : 0,
+      }))
+      .sort((a, b) => b.jumlah_kali_digeser - a.jumlah_kali_digeser)
+
+    return {
+      tanggal_mulai: tanggalMulai,
+      tanggal_selesai: tanggalSelesai,
+      ranking_bottleneck: ranking,
+      catatan:
+        ranking.length === 0
+          ? 'Gak ada data pergeseran jadwal (digeserKe) di rentang tanggal ini - berarti gak ada indikasi bottleneck kapasitas pada periode ini.'
+          : 'Diurutkan dari proses yang PALING SERING nyebabin komponen tergeser/kena cascading kapasitas (jumlah_kali_digeser) - itu kandidat bottleneck utama. rata_rata_hari_tergeser nunjukin rata-rata berapa hari komponen di proses itu mundur dari jadwal asal.',
+    }
+  },
+
+  async compare_operator_productivity(supabase, input) {
+    const proses = input?.proses
+    const tanggalMulai = input?.tanggal_mulai
+    const tanggalSelesai = input?.tanggal_selesai
+    if (!proses || !tanggalMulai || !tanggalSelesai) return { error: 'Wajib isi proses, tanggal_mulai, dan tanggal_selesai.' }
+
+    const rows = (await fetchAll(supabase, 'fcs_timer_kerja', 'pekerja_id,proses,tanggal,durasi_menit,kode_komponen')).filter(
+      (r: any) => r.proses.toUpperCase() === String(proses).toUpperCase() && r.tanggal >= tanggalMulai && r.tanggal <= tanggalSelesai
+    )
+    if (rows.length === 0) {
+      const saran = await noMatchHint(supabase, proses)
+      return { error: `Gak ada data timer buat proses '${proses}' di rentang tanggal ini.`, ...(saran.length > 0 ? { saran } : {}) }
+    }
+
+    const pekerjaIds = [...new Set(rows.map((r: any) => r.pekerja_id).filter(Boolean))]
+    const pekerjaRows = pekerjaIds.length ? (await fetchAll(supabase, 'pekerja', 'id,nama')).filter((p: any) => pekerjaIds.includes(p.id)) : []
+    const pekerjaMap: Record<string, string> = {}
+    pekerjaRows.forEach((p: any) => (pekerjaMap[String(p.id)] = p.nama))
+
+    const byPekerja: Record<string, { totalMenit: number; jumlahSesi: number; komponenUnik: Set<string> }> = {}
+    rows.forEach((r: any) => {
+      const nama = pekerjaMap[String(r.pekerja_id)] || 'Tidak diketahui'
+      if (!byPekerja[nama]) byPekerja[nama] = { totalMenit: 0, jumlahSesi: 0, komponenUnik: new Set() }
+      byPekerja[nama].totalMenit += Number(r.durasi_menit) || 0
+      byPekerja[nama].jumlahSesi++
+      if (r.kode_komponen) byPekerja[nama].komponenUnik.add(r.kode_komponen)
+    })
+
+    const data = Object.entries(byPekerja)
+      .map(([pekerja, v]) => ({
+        pekerja,
+        total_durasi_menit: Math.round(v.totalMenit),
+        jumlah_sesi: v.jumlahSesi,
+        jumlah_komponen_unik: v.komponenUnik.size,
+        rata_rata_menit_per_komponen: v.komponenUnik.size > 0 ? Math.round((v.totalMenit / v.komponenUnik.size) * 10) / 10 : null,
+      }))
+      .sort((a, b) => b.total_durasi_menit - a.total_durasi_menit)
+
+    return {
+      proses,
+      tanggal_mulai: tanggalMulai,
+      tanggal_selesai: tanggalSelesai,
+      catatan_akurasi:
+        'Data AKTIVITAS TERCATAT dari timer kerja (durasi, jumlah sesi, jumlah komponen disentuh) - BUKAN penilaian kualitas/kinerja/karakter personal. Bisa gak akurat kalau ada timer yang lupa ditutup atau di-force-stop. JANGAN pernah dipakai buat menyimpulkan hal personal soal operator (rajin/malas/kompeten dst) - cuma perbandingan angka aktivitas objektif.',
+      data,
+    }
+  },
+
+  async compare_panel_types(supabase, input) {
+    const proses = input?.proses
+    const tanggalMulai = input?.tanggal_mulai
+    const tanggalSelesai = input?.tanggal_selesai
+    if (!tanggalMulai || !tanggalSelesai) return { error: 'Wajib isi tanggal_mulai dan tanggal_selesai.' }
+
+    let rows = (await fetchAll(supabase, 'fcs_timer_kerja', 'panel_id,proses,tanggal,durasi_menit')).filter(
+      (r: any) => r.tanggal >= tanggalMulai && r.tanggal <= tanggalSelesai
+    )
+    if (proses) rows = rows.filter((r: any) => r.proses.toUpperCase() === String(proses).toUpperCase())
+    if (rows.length === 0) return { error: 'Gak ada data timer di rentang tanggal/filter proses ini.' }
+
+    const panelIds = [...new Set(rows.map((r: any) => r.panel_id).filter(Boolean))]
+    const panels = panelIds.length ? (await fetchAll(supabase, 'panels', 'id,tipe')).filter((p: any) => panelIds.includes(p.id)) : []
+    const tipeMap: Record<string, string> = {}
+    panels.forEach((p: any) => (tipeMap[String(p.id)] = p.tipe))
+
+    const byTipe: Record<string, { totalMenit: number; jumlahSesi: number }> = {}
+    rows.forEach((r: any) => {
+      const tipe = tipeMap[String(r.panel_id)] || 'Tidak diketahui'
+      if (!byTipe[tipe]) byTipe[tipe] = { totalMenit: 0, jumlahSesi: 0 }
+      byTipe[tipe].totalMenit += Number(r.durasi_menit) || 0
+      byTipe[tipe].jumlahSesi++
+    })
+
+    const data = Object.entries(byTipe)
+      .map(([tipe_panel, v]) => ({
+        tipe_panel,
+        total_durasi_menit: Math.round(v.totalMenit),
+        jumlah_sesi: v.jumlahSesi,
+        rata_rata_menit_per_sesi: v.jumlahSesi > 0 ? Math.round((v.totalMenit / v.jumlahSesi) * 10) / 10 : 0,
+      }))
+      .sort((a, b) => b.rata_rata_menit_per_sesi - a.rata_rata_menit_per_sesi)
+
+    return { proses: proses || 'semua proses', tanggal_mulai: tanggalMulai, tanggal_selesai: tanggalSelesai, data }
+  },
+
+  async analyze_delay_correlation(supabase, input) {
+    let wos = (await fetchAll(supabase, 'work_orders', '*, panels(*)')).filter((w: any) => !w.deleted_at && !w.is_archived)
+    const bomProsesRelevan = await fetchAll(supabase, 'bom_proses_relevan', 'kode_komponen,tipe_panel,jenis_pekerjaan')
+    const relevanSet = new Set(bomProsesRelevan.map((r: any) => `${r.kode_komponen}|${r.tipe_panel}|${r.jenis_pekerjaan}`))
+    const hasMappingSet = new Set(bomProsesRelevan.map((r: any) => `${r.kode_komponen}|${r.tipe_panel}`))
+
+    const delayedWos = wos.filter((w: any) => {
+      const panels = w.panels || []
+      const vals = panels.flatMap((p: any) => Object.values(calcPanelProgress(p, relevanSet, hasMappingSet)))
+      const pct = vals.length ? Math.round((vals as number[]).reduce((a, b) => a + b, 0) / vals.length) : 0
+      return pct < 100 && isDelayed(w.target)
+    })
+
+    if (delayedWos.length === 0) return { total_wo_terlambat: 0, catatan: 'Gak ada WO yang terlambat saat ini - gak ada yang perlu dianalisis.' }
+
+    const kendalaRows = (await fetchAll(supabase, 'kendala', 'proyek,deleted_at')).filter((k: any) => !k.deleted_at)
+    const rawRows = await fetchAll(supabase, 'raw_schedule', 'wo_id,schedule')
+
+    const detail = delayedWos.map((w: any) => {
+      const adaKendala = kendalaRows.some((k: any) => (k.proyek || '').toLowerCase() === (w.proyek || '').toLowerCase())
+      const rowsWo = rawRows.filter((r: any) => r.wo_id === w.id)
+      let adaCascade = false
+      rowsWo.forEach((r: any) => {
+        Object.values(r.schedule || {}).forEach((entries: any) => {
+          ;(entries || []).forEach((e: any) => {
+            if (e.digeserKe && Object.keys(e.digeserKe).length > 0) adaCascade = true
+          })
+        })
+      })
+      return { wo: w.wo, proyek: w.proyek, ada_kendala_tercatat: adaKendala, ada_indikasi_kapasitas_penuh: adaCascade, sebab_terdeteksi: adaKendala || adaCascade }
+    })
+
+    const total = detail.length
+    const jumlahKendala = detail.filter((h: any) => h.ada_kendala_tercatat).length
+    const jumlahCascade = detail.filter((h: any) => h.ada_indikasi_kapasitas_penuh).length
+    const jumlahKeduanya = detail.filter((h: any) => h.ada_kendala_tercatat && h.ada_indikasi_kapasitas_penuh).length
+    const jumlahTakTerdeteksi = detail.filter((h: any) => !h.sebab_terdeteksi).length
+
+    return {
+      total_wo_terlambat: total,
+      breakdown_persentase: {
+        ada_kendala_tercatat_pct: Math.round((jumlahKendala / total) * 100),
+        ada_indikasi_kapasitas_penuh_pct: Math.round((jumlahCascade / total) * 100),
+        keduanya_pct: Math.round((jumlahKeduanya / total) * 100),
+        sebab_tidak_terdeteksi_dari_data_pct: Math.round((jumlahTakTerdeteksi / total) * 100),
+      },
+      detail_per_wo: detail,
+      catatan:
+        'Ini KORELASI dari sinyal yang SAMA-SAMA ADA di data (kendala tercatat & indikasi pergeseran jadwal karena kapasitas penuh) - BUKAN pembuktian sebab-akibat pasti. Jangan klaim "X menyebabkan keterlambatan" - bilang "X terdeteksi berbarengan dengan sekian persen WO yang terlambat". WO yang sebab_terdeteksi=false berarti gak ada sinyal yang kedeteksi dari data yang ada, bukan berarti gak ada sebab sama sekali.',
+    }
+  },
+
+  async analyze_trend(supabase, input) {
+    const proses = input?.proses
+    const tanggalMulai = input?.tanggal_mulai
+    const tanggalSelesai = input?.tanggal_selesai
+    if (!proses || !tanggalMulai || !tanggalSelesai) return { error: 'Wajib isi proses, tanggal_mulai, dan tanggal_selesai.' }
+
+    const capRows = (await fetchAll(supabase, 'fcs_kapasitas_override', 'tanggal,jenis_pekerjaan,kapasitas_unit')).filter(
+      (c: any) => c.jenis_pekerjaan.toUpperCase() === String(proses).toUpperCase() && c.tanggal >= tanggalMulai && c.tanggal <= tanggalSelesai
+    )
+    if (capRows.length === 0) {
+      const saran = await noMatchHint(supabase, proses)
+      return { error: `Gak ada data kapasitas buat proses '${proses}' di rentang tanggal ini.`, ...(saran.length > 0 ? { saran } : {}) }
+    }
+
+    const ctx = await fetchProsesContext(supabase, proses)
+    const capMap: Record<string, number> = {}
+    capRows.forEach((c: any) => (capMap[c.tanggal] = Number(c.kapasitas_unit) || 0))
+
+    const series = Object.keys(capMap)
+      .sort()
+      .map((tanggal) => {
+        const units = computeUnitsForDateFromCtx(ctx, tanggal, proses)
+        const terpakai = Math.round(units.reduce((a: number, u: any) => a + u.demand, 0))
+        const total = capMap[tanggal]
+        return { tanggal, kapasitas_total: total, kapasitas_terpakai: terpakai, persentase_terpakai: total > 0 ? Math.round((terpakai / total) * 100) : 0 }
+      })
+
+    // Trend deterministik: bandingin rata-rata separuh pertama vs separuh kedua rentang -
+    // bukan regresi statistik canggih, tapi cukup buat nentuin arah "makin padat/longgar/stabil"
+    // tanpa nyerahin perhitungan ke Gemini.
+    const mid = Math.floor(series.length / 2) || 1
+    const avgAwal = series.slice(0, mid).reduce((a, s) => a + s.persentase_terpakai, 0) / Math.max(1, mid)
+    const avgAkhir = series.slice(mid).reduce((a, s) => a + s.persentase_terpakai, 0) / Math.max(1, series.length - mid)
+    const selisih = Math.round(avgAkhir - avgAwal)
+    const arah = selisih > 5 ? 'makin padat' : selisih < -5 ? 'makin longgar' : 'relatif stabil'
+
+    return {
+      proses,
+      tanggal_mulai: tanggalMulai,
+      tanggal_selesai: tanggalSelesai,
+      arah_trend: arah,
+      perubahan_rata_rata_persentase_terpakai: selisih,
+      data_harian: series,
+    }
+  },
+
   // Satu-satunya tool yang nulis - TAPI cuma ke bucket storage 'ai-exports' (bukan tabel
   // produksi apapun), pakai service-role client TERPISAH dari `supabase` (anon key) yang
   // dipakai parameter pertama - lihat komentar di atas TOOL_IMPL soal alasan privilege split.
@@ -1292,6 +1530,67 @@ const TOOL_DECLARATIONS = [
     },
   },
   {
+    name: 'analyze_bottleneck',
+    description:
+      "Hitung proses apa yang PALING SERING nyebabin komponen tergeser/kena cascading kapasitas (bottleneck) dalam rentang tanggal, berdasarkan data pergeseran jadwal (digeserKe) yang ASLI - bukan tebakan. Contoh: 'proses apa yang paling sering bikin telat bulan ini?' -> isi tanggal_mulai/tanggal_selesai sebulan terakhir. Hasil sudah diurutkan (ranking_bottleneck), jangan diurutkan ulang manual.",
+    parameters: {
+      type: 'object',
+      properties: {
+        tanggal_mulai: { type: 'string', description: 'Tanggal awal rentang, format YYYY-MM-DD, wajib diisi.' },
+        tanggal_selesai: { type: 'string', description: 'Tanggal akhir rentang, format YYYY-MM-DD, wajib diisi.' },
+      },
+      required: ['tanggal_mulai', 'tanggal_selesai'],
+    },
+  },
+  {
+    name: 'compare_operator_productivity',
+    description:
+      "Bandingkan AKTIVITAS TERCATAT antar operator (durasi kerja, jumlah sesi, jumlah komponen disentuh) buat SATU proses dalam rentang tanggal, dari data timer kerja - angka objektif murni. PENTING: hasil ini BUKAN penilaian kualitas/karakter personal - kalau user minta kesimpulan kayak 'siapa yang paling malas/gak becus', TOLAK dengan sopan dan jelaskan ini cuma data aktivitas, bukan penilaian. Contoh pemakaian yang tepat: 'siapa yang paling banyak ngerjain POTONG bulan ini?' -> proses:'POTONG', tanggal_mulai/tanggal_selesai diisi.",
+    parameters: {
+      type: 'object',
+      properties: {
+        proses: { type: 'string', description: "Nama proses, contoh: 'POTONG'. Wajib diisi." },
+        tanggal_mulai: { type: 'string', description: 'Tanggal awal rentang, format YYYY-MM-DD, wajib diisi.' },
+        tanggal_selesai: { type: 'string', description: 'Tanggal akhir rentang, format YYYY-MM-DD, wajib diisi.' },
+      },
+      required: ['proses', 'tanggal_mulai', 'tanggal_selesai'],
+    },
+  },
+  {
+    name: 'compare_panel_types',
+    description:
+      "Bandingkan rata-rata durasi pengerjaan antar TIPE PANEL (misal FS vs WM_MS vs WM_POLY), opsional difilter ke satu proses tertentu, dalam rentang tanggal - dari data timer kerja aktual. Contoh: 'tipe panel mana yang paling lama dikerjain?' -> tanggal_mulai/tanggal_selesai diisi, proses opsional dikosongkan (semua proses digabung).",
+    parameters: {
+      type: 'object',
+      properties: {
+        proses: { type: 'string', description: 'Filter ke satu proses (opsional) - kosongkan buat gabung semua proses.' },
+        tanggal_mulai: { type: 'string', description: 'Tanggal awal rentang, format YYYY-MM-DD, wajib diisi.' },
+        tanggal_selesai: { type: 'string', description: 'Tanggal akhir rentang, format YYYY-MM-DD, wajib diisi.' },
+      },
+      required: ['tanggal_mulai', 'tanggal_selesai'],
+    },
+  },
+  {
+    name: 'analyze_delay_correlation',
+    description:
+      "Buat semua WO yang lagi TERLAMBAT, cek KORELASI (bukan pembuktian sebab-akibat) antara keterlambatan itu dengan: (1) ada kendala tercatat di proyek itu, (2) ada indikasi kapasitas penuh (komponen kena geser/cascading). Balikin breakdown persentase. Contoh: 'kenapa WO-WO ini pada telat, ada polanya gak?' -> panggil tanpa parameter. WAJIB sampaikan ke user bahwa ini korelasi dari sinyal data, bukan bukti sebab-akibat pasti - jangan klaim 'X menyebabkan Y'.",
+    parameters: { type: 'object', properties: {} },
+  },
+  {
+    name: 'analyze_trend',
+    description:
+      "Hitung TREND kapasitas terpakai suatu proses dari waktu ke waktu (makin padat / makin longgar / stabil) dalam rentang tanggal - dihitung deterministik dari data kapasitas & antrean aktual per hari, bukan reasoning bebas. Contoh: 'kapasitas POTONG makin padat gak sebulan terakhir?' -> proses:'POTONG', tanggal_mulai/tanggal_selesai sebulan terakhir. Hasil punya 'arah_trend' yang udah dihitung - jangan disimpulkan ulang manual dari data_harian.",
+    parameters: {
+      type: 'object',
+      properties: {
+        proses: { type: 'string', description: "Nama proses, contoh: 'POTONG'. Wajib diisi." },
+        tanggal_mulai: { type: 'string', description: 'Tanggal awal rentang, format YYYY-MM-DD, wajib diisi.' },
+        tanggal_selesai: { type: 'string', description: 'Tanggal akhir rentang, format YYYY-MM-DD, wajib diisi.' },
+      },
+      required: ['proses', 'tanggal_mulai', 'tanggal_selesai'],
+    },
+  },
+  {
     name: 'generate_export',
     description:
       "Generate file PDF/Word/Excel dari data yang SUDAH kamu dapatkan lewat tool lain SEBELUMNYA di percakapan ini - JANGAN query ulang, pakai lagi data yang udah ada di riwayat percakapan. Panggil ini kalau user minta hasil dalam bentuk file/dokumen. Contoh alur: user tanya 'WO apa aja yang terlambat?' (kamu jawab pakai query_wo_status), lalu user bilang 'kasih dalam bentuk excel' -> ambil array data WO terlambat dari hasil query_wo_status barusan, panggil generate_export dengan data itu persis, format:'xlsx', judul deskriptif. Balikin link download (berlaku 7 hari) yang harus kamu tampilkan APA ADANYA di jawabanmu (jangan diringkas/dihilangkan) biar UI bisa render tombol download-nya.",
@@ -1318,7 +1617,18 @@ PENTING - JENIS ENTITY (PROYEK vs PANEL vs KOMPONEN), sering bikin salah pilih t
 - PANEL: biasanya kode pendek dengan prefix (LP-, PP-, SDP-, SDB., MCC, CP-, dst), contoh 'LP-LAB', 'CP-OVEN', 'SDB.LT 4'. KALAU USER NYEBUT NAMA YANG POLANYA KAYAK GINI, JANGAN LANGSUNG ASUMSI ITU PROYEK - coba tool berbasis panel (query_progress_panel dkk).
 - KOMPONEN: kode BOM per-item, contoh 'FS.1', 'WM.2'.
 - Kalau gak yakin nama yang disebut itu proyek atau panel, dan tool pertama yang kamu coba gak nemu hasilnya, tool itu akan kasih field 'saran' berisi nama-nama mirip (dari fuzzy search) DAN petunjuk tool lain yang perlu dicoba - WAJIB baca & tindak lanjuti 'saran' itu (coba tool yang disaranin) SEBELUM nyerah atau nanya balik ke user. JANGAN pernah manggil tool tanpa filter sama sekali (dump semua data) cuma buat "nyari-nyari" nama yang gak ketemu - itu gak membantu dan bikin jawaban gak relevan.
-- Kalau udah nyoba tool yang relevan (termasuk ngikutin 'saran') dan tetap gak ketemu, baru bilang terus terang ke user data gak ditemukan, sertakan nama-nama mirip yang kamu temukan (kalau ada) biar user bisa klarifikasi.`
+- Kalau udah nyoba tool yang relevan (termasuk ngikutin 'saran') dan tetap gak ketemu, baru bilang terus terang ke user data gak ditemukan, sertakan nama-nama mirip yang kamu temukan (kalau ada) biar user bisa klarifikasi.
+
+PRINSIP "SOLUTIF TAPI JUJUR" saat data terbatas/gak ketemu:
+1. AKURASI MUTLAK (gak bisa dikompromikan): JANGAN PERNAH mengarang/nebak angka atau data yang gak ada di hasil tool - salah di sini bisa berujung keputusan produksi yang salah.
+2. TAPI jangan cuma bilang "gak bisa"/"gak ditemukan" terus berhenti gitu aja - selalu coba salah satu langkah solutif ini dulu, sesuai situasinya:
+   a. Kemungkinan salah nama/typo -> tawarkan nama mirip dari field 'saran' (lihat aturan entity di atas).
+   b. Pertanyaan ambigu (proyek/panel gak jelas, rentang tanggal gak disebut, dst) -> tanya balik klarifikasi SINGKAT dan SPESIFIK, jangan langsung nyerah atau nebak sendiri.
+   c. Benar-benar di luar cakupan tools yang ada (data/fitur belum tersedia sama sekali) -> jelaskan JUJUR apa yang gak tersedia, DAN kalau ada, sebutkan data/tool terdekat yang MASIH bisa bantu jawab sebagian atau dari sudut pandang lain.
+
+TOOLS ANALISIS (analyze_bottleneck, compare_operator_productivity, compare_panel_types, analyze_delay_correlation, analyze_trend): semua tool ini udah ngitung angka analitisnya SENDIRI secara deterministik (agregasi langsung dari data, bukan reasoning). Kalau user tanya sesuatu yang butuh perhitungan analitis (bottleneck/penyebab telat, produktivitas, perbandingan, trend, korelasi), WAJIB panggil tool analisis yang sesuai - JANGAN PERNAH kamu hitung ulang/estimasi sendiri angka analitis serupa dari data mentah hasil tool query biasa, walau kamu MERASA bisa. Aturan tambahan per tool:
+- compare_operator_productivity: hasilnya MURNI angka aktivitas tercatat (durasi, jumlah sesi, jumlah komponen) - BUKAN penilaian kualitas/karakter/etos kerja personal. Kalau user minta kesimpulan personal ("operator X malas/gak becus/paling jago"), TOLAK dengan sopan, jelaskan ini cuma data aktivitas objektif bukan penilaian, dan tetap sajikan angkanya apa adanya.
+- analyze_delay_correlation: hasilnya KORELASI (sinyal yang sama-sama muncul di data), BUKAN pembuktian sebab-akibat. JANGAN klaim "X menyebabkan keterlambatan" - bilang "X terdeteksi berbarengan dengan sekian persen WO yang terlambat".`
 
 // ================= Gemini generateContent tool-use loop =================
 
