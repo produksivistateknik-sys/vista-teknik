@@ -878,12 +878,98 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+rawRow?.panel+" - "+rawRow?.proyek+" ("+cellModal?.date+")",module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""});
   };
 
+  // Drag & drop BUSBAR - proses ini gak pakai `schedule[tanggal][].komponen` sama sekali
+  // (raw_schedule.busbar_schedule[tanggal]=string[] flat, gak ada breakdown per-tahap kayak
+  // di checklist Vista Pekerja). Jejak-nya juga TERPISAH (busbar_jejak, bukan numpang di
+  // `schedule` pakai wp:"BUSBAR" palsu) - soalnya banyak tempat lain (dateTasks, WP & Komponen
+  // Terjadwal, dll) baca `row.schedule` apa adanya sebagai tugas beneran, entry BUSBAR palsu di
+  // situ bakal kebaca ganda/salah di banyak tempat sekaligus. Sengaja TANPA cek kapasitas/
+  // cascading (BUSBAR gak punya data fcs_process_time buat hitung demand-nya sama sekali, sama
+  // seperti auto-geser-harian yang juga ngecualiin BUSBAR dari cascading).
+  const confirmDragBusbar=async(mode:"move"|"copy",row:any,fromDate:string,toDate:string,kodeDrag:string[])=>{
+    if(mode==="move"){
+      const{data:timerAktifRows}=await supabase.from("fcs_timer_kerja").select("kode_komponen")
+        .eq("panel_id",row.panel_id||row.panelId).eq("proses","BUSBAR").in("kode_komponen",kodeDrag).is("selesai",null);
+      if(timerAktifRows&&timerAktifRows.length>0){
+        alert("Gak bisa dipindah - ada timer yang lagi jalan buat komponen: "+[...new Set(timerAktifRows.map((t:any)=>t.kode_komponen))].join(", "));
+        setDragMode(null);setDragInfo(null);
+        return;
+      }
+    }
+    markRawDirty(row.id);
+    const newBusbarSchedule={...(row.busbar_schedule||{})};
+    const existingAtTarget=newBusbarSchedule[toDate]||[];
+    newBusbarSchedule[toDate]=[...new Set([...existingAtTarget,...kodeDrag])];
+    let newBusbarJejak=row.busbar_jejak||{};
+    if(mode==="move"){
+      // Kode TETAP ada di busbar_schedule[fromDate] (gak dihapus) - cuma ditandai jejak, sama
+      // konsep persis kayak digeserKe di entry.komponen proses lain.
+      const jejakFromDate={...(newBusbarJejak[fromDate]||{})};
+      kodeDrag.forEach((kode:string)=>{jejakFromDate[kode]=toDate;});
+      newBusbarJejak={...newBusbarJejak,[fromDate]:jejakFromDate};
+    }
+    setRawData((prev:any[])=>prev.map((r:any)=>r.id!==row.id?r:{...r,busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak}));
+    await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak});
+    if(mode==="move"){
+      // Sync renhar wp="BUSBAR" - sama logic split/gabung kayak proses lain (lihat confirmDrag).
+      const renharBusbar=renhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
+      for(const rh of renharBusbar){
+        const komponenLama=rh.komponen||[];
+        const komponenPindah=komponenLama.filter((k:string)=>kodeDrag.includes(k));
+        const komponenTinggal=komponenLama.filter((k:string)=>!kodeDrag.includes(k));
+        if(komponenPindah.length===0)continue;
+        if(komponenTinggal.length===0){
+          markRenharDirty(rh.id);
+          await updateRenhar(rh.id,{tanggal:toDate,komponen:komponenPindah});
+          setRenhar((prev:any[])=>prev.map((x:any)=>x.id===rh.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
+        } else {
+          markRenharDirty(rh.id);
+          await updateRenhar(rh.id,{komponen:komponenTinggal});
+          setRenhar((prev:any[])=>prev.map((x:any)=>x.id===rh.id?{...x,komponen:komponenTinggal}:x));
+          const releasedLama=rh.komponen_released||[];
+          const releasedPindah=komponenPindah.filter((k:string)=>releasedLama.includes(k));
+          await withRenharQueue({rawId:row.id,wp:"BUSBAR",tanggal:toDate},async(existingTarget:any)=>{
+            if(existingTarget){
+              const komponenGabung=[...new Set([...(existingTarget.komponen||[]),...komponenPindah])];
+              const releasedGabung=[...new Set([...(existingTarget.komponen_released||[]),...releasedPindah])];
+              markRenharDirty(existingTarget.id);
+              await updateRenhar(existingTarget.id,{komponen:komponenGabung,komponen_released:releasedGabung});
+              setRenhar((prev:any[])=>prev.map((x:any)=>x.id===existingTarget.id?{...x,komponen:komponenGabung,komponen_released:releasedGabung}:x));
+            } else {
+              const result=await createRenhar({
+                raw_id:row.id,wo_id:rh.wo_id,panel_id:rh.panel_id,
+                proyek:rh.proyek,panel:rh.panel,proses:rh.proses,
+                prioritas:rh.prioritas||"Sedang",wp:"BUSBAR",komponen:komponenPindah,
+                tanggal:toDate,pekerja:rh.pekerja||[],komponen_released:releasedPindah,
+              });
+              if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
+              markRenharDirty(result.data.id);setRenhar((prev:any[])=>[...prev,result.data]);
+            }
+          });
+        }
+      }
+    }
+    setDragMode(null);setDragInfo(null);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({
+      user_name:uname,
+      action:mode==="move"?"PINDAH JADWAL":"COPY JADWAL",
+      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row.panel+" ("+row.proyek+") proses BUSBAR: "+kodeDrag.join(", ")+" dari "+fromDate+" ke "+toDate,
+      module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||"",
+    });
+  };
+
   const confirmDrag=async(mode)=>{
     if(!dragMode)return;
     const{rawId,fromDate,entries,toDate}=dragMode;
+    const rowForDrag=rawData.find((r:any)=>r.id===rawId);
+    if(rowForDrag?.proses==="BUSBAR"){
+      await confirmDragBusbar(mode,rowForDrag,fromDate,toDate,entries[0]?.komponen||[]);
+      return;
+    }
     let updatedRow=null;
     markRawDirty(rawId);
-    const rowForDrag=rawData.find((r:any)=>r.id===rawId);
     const panelDataForDrag=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(rowForDrag?.panel_id||rowForDrag?.panelId));
     const checklistForDrag=panelDataForDrag?.checklist||{};
     setRawData(prev=>prev.map(r=>{
@@ -1481,7 +1567,57 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
-                          {entries.length>0?(
+                          {row.proses==="BUSBAR"?(()=>{
+                            // BUSBAR gak lewat `entries`/`row.schedule` sama sekali - branch sendiri,
+                            // baca busbar_schedule (list aktif) + busbar_jejak (marker histori read-only).
+                            if(busbarEntries.length===0){
+                              return(
+                                <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                                  style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
+                                  onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
+                                  onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
+                                  <span>+</span>
+                                </div>
+                              );
+                            }
+                            const panelDataForBusbar=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
+                            const checklistForBusbar=panelDataForBusbar?.checklist||{};
+                            const busbarJejakHariIni:Record<string,string>=row.busbar_jejak?.[d]||{};
+                            // Cuma kode progress<100% & belum jejak yang ikut ke-drag - 100% (selesai)
+                            // TETAP di tanggal ini, gak ikut pindah (sama rule kayak proses lain).
+                            const kodeDraggable=busbarEntries.filter((kode:string)=>{
+                              if(busbarJejakHariIni[kode])return false;
+                              const pct=checklistForBusbar[kode]?.progress?.BUSBAR||0;
+                              return pct<100;
+                            });
+                            const isDraggableBusbar=kodeDraggable.length>0;
+                            return(
+                              <div draggable={isDraggableBusbar}
+                                onDragStart={e=>{if(isDraggableBusbar)onDragStart(e,row.id,d,[{wp:"BUSBAR",komponen:kodeDraggable}]);}}
+                                onDragEnd={onDragEnd}
+                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                                style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center",cursor:isDraggableBusbar?"grab":"pointer",padding:"3px",borderRadius:6}}>
+                                {busbarEntries.map((b:string)=>{
+                                  const jejakTujuan=busbarJejakHariIni[b];
+                                  const pctB=checklistForBusbar[b]?.progress?.BUSBAR||0;
+                                  const isDoneB=pctB>=100;
+                                  return(
+                                    <span key={b} title={jejakTujuan?"Belum selesai - sudah digeser ke "+jejakTujuan+" (data di sini histori, gak bisa diaksi lagi)":""}
+                                      style={{display:"inline-flex",alignItems:"center",gap:2,
+                                        background:(BUSBAR_COLORS[b]||"#64748b")+"22",
+                                        color:BUSBAR_COLORS[b]||"#64748b",
+                                        border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
+                                        borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700,
+                                        opacity:(isDoneB||jejakTujuan)?0.5:1}}>
+                                      {isDoneB&&<span style={{fontSize:8,fontWeight:900}}>✓</span>}
+                                      {jejakTujuan&&<span style={{fontSize:8}}>➡️</span>}
+                                      {b}
+                                    </span>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })():entries.length>0?(
                             PROSES_ORANG_RAW.includes(row.proses)?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
                                 onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
@@ -1529,20 +1665,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
                               onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
                               onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
-                              {row.proses==="BUSBAR"&&busbarEntries.length>0?(
-                                <div style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center"}}>
-                                  {busbarEntries.map((b:string)=>(
-                                    <span key={b} style={{background:(BUSBAR_COLORS[b]||"#64748b")+"22",
-                                      color:BUSBAR_COLORS[b]||"#64748b",
-                                      border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
-                                      borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700}}>
-                                      {b}
-                                    </span>
-                                  ))}
-                                </div>
-                              ):(
-                                <span>+</span>
-                              )}
+                              <span>+</span>
                             </div>
                           )}
                         </td>
