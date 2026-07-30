@@ -559,6 +559,97 @@ async function generateDocxBuffer(data: any[], judul: string): Promise<Uint8Arra
   return new Uint8Array(buffer)
 }
 
+// Kalau progress komponen di suatu proses UDAH 100%, cari tanggal PALING AWAL kali nyampe 100%
+// itu (bukan tanggal terakhir - checkpoint bisa di-re-confirm berkali-kali di tanggal beda) -
+// dipakai buat nentuin "titik mulai" proses BERIKUTNYA dalam rantai simulate_estimasi_selesai_panel.
+function getTanggalSelesaiAktual(cl: any, proses: string): string | null {
+  const hist = cl?.history?.[proses]
+  if (hist && hist.length > 0) {
+    const tglSelesai = hist
+      .filter((h: any) => (h.pct || 0) >= 100)
+      .map((h: any) => h.tanggal || String(h.ts || '').slice(0, 10))
+      .filter(Boolean)
+    if (tglSelesai.length > 0) return tglSelesai.sort()[0]
+  }
+  const byDate = cl?.progressByDate?.[proses]
+  if (byDate) {
+    const tglSelesai = Object.entries(byDate)
+      .filter(([, v]: [string, any]) => (v as number) >= 100)
+      .map(([k]) => k)
+    if (tglSelesai.length > 0) return tglSelesai.sort()[0]
+  }
+  return null
+}
+
+type SimulasiProsesHasil =
+  | { status: 'sudah_selesai'; tanggal_selesai: string }
+  | { status: 'tidak_bisa_disimulasikan'; alasan: string }
+  | { status: 'disimulasikan'; qty_sisa: number; tanggal_mulai: string; tanggal_selesai: string }
+
+// Logic INTI simulasi (dipakai BERSAMA oleh simulate_estimasi_selesai standalone DAN
+// simulate_estimasi_selesai_panel yang nge-chain banyak proses berurutan) - satu-satunya
+// tempat algoritma cascading dipanggil, biar KEDUA tool selalu konsisten. `mulaiDari` yang
+// diparameterisasi (bukan selalu getLocalDateStr()) itu YANG BIKIN chaining antar-proses bisa
+// jalan - proses berikutnya dalam rantai mulai dari estimasi selesai proses sebelumnya, bukan
+// selalu dari hari ini. `ctxCache` di-share LINTAS PANGGILAN dalam satu tool invocation, keyed
+// per proses - fetchProsesContext (raw_schedule/panels/process_time buat SATU proses) gak
+// gantung tanggal, jadi aman dipakai ulang buat kode komponen manapun & mulaiDari manapun
+// selama proses-nya sama (hemat drastis query pas nyimulasiin banyak komponen sekaligus).
+async function simulasiSatuProsesKomponen(
+  supabase: any,
+  panel: any,
+  kodeKomponen: string,
+  proses: string,
+  mulaiDari: string,
+  ctxCache: Record<string, { capMap: Record<string, number>; ctx: any; ptMap: Record<string, number> }>
+): Promise<SimulasiProsesHasil> {
+  if (PROSES_TANPA_CASCADE.includes(proses) || PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) {
+    return { status: 'tidak_bisa_disimulasikan', alasan: `Proses '${proses}' whole-panel/gak punya data waktu proses yang cocok buat cascading - gak bisa disimulasikan.` }
+  }
+
+  const cl = (panel.checklist || {})[kodeKomponen]
+  if (!cl) return { status: 'tidak_bisa_disimulasikan', alasan: `Komponen '${kodeKomponen}' gak ditemukan di panel ini.` }
+
+  const pctSekarang = getBestProgress(cl, proses)
+  if (pctSekarang >= 100) {
+    return { status: 'sudah_selesai', tanggal_selesai: getTanggalSelesaiAktual(cl, proses) || mulaiDari }
+  }
+
+  if (!ctxCache[proses]) {
+    const ptRows = (await fetchAll(supabase, 'fcs_process_time', 'tipe_panel,kode_komponen,jenis_pekerjaan,menit_per_pcs,is_active')).filter(
+      (r: any) => r.is_active && r.jenis_pekerjaan === proses
+    )
+    const ptMap: Record<string, number> = {}
+    ptRows.forEach((r: any) => (ptMap[`${r.tipe_panel}|${r.kode_komponen}`] = Number(r.menit_per_pcs) || 0))
+    const capMap: Record<string, number> = {}
+    ;(await fetchAll(supabase, 'fcs_kapasitas_override', 'tanggal,jenis_pekerjaan,kapasitas_unit')).forEach((c: any) => {
+      if (c.jenis_pekerjaan === proses) capMap[c.tanggal] = Number(c.kapasitas_unit) || 0
+    })
+    const ctx = await fetchProsesContext(supabase, proses)
+    ctxCache[proses] = { capMap, ctx, ptMap }
+  }
+  const { capMap, ctx, ptMap } = ctxCache[proses]
+  const menitPerPcs = ptMap[`${panel.tipe}|${kodeKomponen}`]
+  if (!menitPerPcs) {
+    return { status: 'tidak_bisa_disimulasikan', alasan: `Gak ada data waktu proses (fcs_process_time) buat kombinasi tipe panel ${panel.tipe} + komponen ${kodeKomponen} + proses ${proses}.` }
+  }
+
+  const qtyTotal = Number(cl.qty) || 0
+  const qtyProsesSkrg = Number(cl.qtyProses?.[proses]) || 0
+  const qtySisa = Math.max(0, qtyTotal - qtyProsesSkrg)
+  const demand = qtySisa * menitPerPcs
+
+  const getCap = (tanggal: string) => (capMap[tanggal] !== undefined ? capMap[tanggal] : null)
+  const woTarget = ctx.woTargetMap[String(panel.wo_id)] || '9999-99-99'
+
+  const existingUnits = computeUnitsForDateFromCtx(ctx, mulaiDari, proses)
+  const candidateId = `simulasi_${panel.id}_${kodeKomponen}_${proses}`
+  const allUnits = [...existingUnits, { id: candidateId, demand, woTarget, sortKode: kodeKomponen }]
+  const tanggalSelesai = cascadePlaceSimple(mulaiDari, allUnits, getCap, candidateId)
+
+  return { status: 'disimulasikan', qty_sisa: qtySisa, tanggal_mulai: mulaiDari, tanggal_selesai: tanggalSelesai }
+}
+
 // ================= Tool implementations (READ-ONLY) - identik dengan ai-assistant =================
 
 const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
@@ -738,60 +829,97 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     const kodeKomponen = input?.kode_komponen
     const proses = input?.proses
     if (!namaPanel || !kodeKomponen || !proses) return { error: 'Wajib isi nama_panel, kode_komponen, dan proses.' }
-    if (PROSES_TANPA_CASCADE.includes(proses)) {
-      return { error: `Proses '${proses}' dikecualikan dari perhitungan kapasitas (gak punya data waktu proses) - gak bisa disimulasikan.` }
-    }
 
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
     if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
-    const cl = (panel.checklist || {})[kodeKomponen]
-    if (!cl) return { error: `Komponen '${kodeKomponen}' gak ditemukan di panel ${panel.nama}.` }
-    // Konsisten sama calcPanelProgress dkk - pakai getBestProgress (history > progressByDate >
-    // progress), bukan progress[proses] mentah. Kalau langsung baca progress[proses] doang,
-    // komponen yang history-nya udah nunjukin 100% tapi field progress belum ke-sync bisa
-    // salah disimulasikan seolah masih perlu dikerjakan.
-    const pctSekarang = getBestProgress(cl, proses)
-    if (pctSekarang >= 100) {
+    const hariIni = getLocalDateStr()
+    const ctxCache: Record<string, any> = {}
+    const hasil = await simulasiSatuProsesKomponen(supabase, panel, kodeKomponen, proses, hariIni, ctxCache)
+
+    if (hasil.status === 'tidak_bisa_disimulasikan') return { error: hasil.alasan }
+    if (hasil.status === 'sudah_selesai') {
       return { panel: panel.nama, kode_komponen: kodeKomponen, proses, catatan: 'Komponen ini udah 100% selesai di proses ini - gak perlu disimulasikan.' }
     }
-
-    const ptRows = (await fetchAll(supabase, 'fcs_process_time', 'tipe_panel,kode_komponen,jenis_pekerjaan,menit_per_pcs,is_active')).filter((r: any) => r.is_active)
-    const pt = ptRows.find((r: any) => r.tipe_panel === panel.tipe && r.kode_komponen === kodeKomponen && r.jenis_pekerjaan === proses)
-    if (!pt || !Number(pt.menit_per_pcs)) {
-      return { error: `Gak ada data waktu proses (fcs_process_time) buat kombinasi tipe panel ${panel.tipe} + komponen ${kodeKomponen} + proses ${proses} - gak bisa disimulasikan secara akurat.` }
-    }
-
-    const qtyTotal = Number(cl.qty) || 0
-    const qtyProsesSkrg = Number(cl.qtyProses?.[proses]) || 0
-    const qtySisa = Math.max(0, qtyTotal - qtyProsesSkrg)
-    const demand = qtySisa * Number(pt.menit_per_pcs)
-
-    const capMap: Record<string, number> = {}
-    ;(await fetchAll(supabase, 'fcs_kapasitas_override', 'tanggal,jenis_pekerjaan,kapasitas_unit')).forEach((c: any) => {
-      if (c.jenis_pekerjaan === proses) capMap[c.tanggal] = Number(c.kapasitas_unit) || 0
-    })
-    const getCap = (tanggal: string) => (capMap[tanggal] !== undefined ? capMap[tanggal] : null)
-
-    const woRow = panel.wo_id != null ? (await fetchAll(supabase, 'work_orders', 'id,target')).find((w: any) => w.id === panel.wo_id) : null
-    const woTarget = woRow?.target || '9999-99-99'
-
-    const hariIni = getLocalDateStr()
-    const existingUnits = await computeExistingUnitsForProses(supabase, hariIni, proses)
-    const candidateId = `simulasi_${panel.id}_${kodeKomponen}`
-    const allUnits = [...existingUnits, { id: candidateId, demand, woTarget, sortKode: kodeKomponen }]
-
-    const finalDate = cascadePlaceSimple(hariIni, allUnits, getCap, candidateId)
 
     return {
       panel: panel.nama,
       kode_komponen: kodeKomponen,
       proses,
-      qty_sisa: qtySisa,
-      estimasi_tanggal_selesai: finalDate,
+      qty_sisa: hasil.qty_sisa,
+      estimasi_tanggal_selesai: hasil.tanggal_selesai,
       catatan:
         'Estimasi dihitung pakai algoritma cascading capacity yang sama persis dengan sistem auto-geser, berdasarkan antrean & kapasitas HARI INI. Kalau hasilnya kepending sampai beberapa hari ke depan, hari-hari SETELAH hari ini diasumsikan belum ada pekerjaan lain yang bersaing (selain yang udah kegeser dari hari ini) - jadi kemungkinan sedikit lebih optimis dari kenyataan kalau proses ini emang lagi padat berkelanjutan berhari-hari.',
+    }
+  },
+
+  // Simulasi PANEL UTUH (rangkaian SEMUA proses relevan, per komponen) - REUSE persis
+  // simulasiSatuProsesKomponen (sama kayak simulate_estimasi_selesai standalone), cuma di-chain:
+  // proses berikutnya dalam urutan estafet (ALL_PROSES, difilter relevan) mulai dari estimasi
+  // selesai proses sebelumnya, bukan selalu dari hari ini.
+  async simulate_estimasi_selesai_panel(supabase, input) {
+    const namaPanel = input?.nama_panel
+    if (!namaPanel) return { error: 'Wajib isi nama_panel.' }
+    const matches = await findPanels(supabase, namaPanel, input?.proyek)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
+    const panel = matches[0]
+
+    const bomProsesRelevan = await fetchAll(supabase, 'bom_proses_relevan', 'kode_komponen,tipe_panel,jenis_pekerjaan')
+    const relevanSet = new Set(bomProsesRelevan.map((r: any) => `${r.kode_komponen}|${r.tipe_panel}|${r.jenis_pekerjaan}`))
+    const hasMappingSet = new Set(bomProsesRelevan.map((r: any) => `${r.kode_komponen}|${r.tipe_panel}`))
+
+    const checklist = panel.checklist || {}
+    const activeKode = Object.keys(checklist).filter((k) => (checklist[k]?.qty || 0) > 0)
+    if (activeKode.length === 0) return { error: `Panel ${panel.nama} gak punya komponen aktif (qty>0) buat disimulasikan.` }
+
+    // Proses yang BISA disimulasikan (punya data waktu-proses/kapasitas) - whole-panel marker
+    // (QC TEST/PACKING/NAMEPLATE/YELLOWMARK) dan BUSBAR dikecualikan, sama kayak tool standalone.
+    const PROSES_SIMULASI = ALL_PROSES.filter((pr) => !PROSES_TANPA_MAPPING_KOMPONEN.includes(pr) && !PROSES_TANPA_CASCADE.includes(pr))
+    const hariIni = getLocalDateStr()
+    const ctxCache: Record<string, any> = {}
+    const perKomponen: any[] = []
+    let panelSelesaiTanggal = hariIni
+    const prosesTakDihitung = new Set<string>()
+
+    for (const kode of activeKode) {
+      // Urutan estafet = urutan ALL_PROSES (checkEstafet di RawSchedule.tsx), difilter ke proses
+      // yang relevan buat kode ini - linear per komponen, gak ada percabangan. Paralelisme yang
+      // ada itu ANTAR KOMPONEN (ditangani lewat MAX di bawah), bukan di dalam satu rantai.
+      const relevantProsesSimulasi = PROSES_SIMULASI.filter((pr) => isKomponenRelevant(kode, panel.tipe, pr, relevanSet, hasMappingSet))
+      ALL_PROSES.filter(
+        (pr) => (PROSES_TANPA_MAPPING_KOMPONEN.includes(pr) || PROSES_TANPA_CASCADE.includes(pr)) && isKomponenRelevant(kode, panel.tipe, pr, relevanSet, hasMappingSet)
+      ).forEach((pr) => prosesTakDihitung.add(pr))
+
+      let cursor = hariIni
+      const rantai: any[] = []
+      for (const proses of relevantProsesSimulasi) {
+        const hasil = await simulasiSatuProsesKomponen(supabase, panel, kode, proses, cursor, ctxCache)
+        if (hasil.status === 'tidak_bisa_disimulasikan') {
+          rantai.push({ proses, status: 'Tidak bisa disimulasikan', alasan: hasil.alasan })
+          continue
+        }
+        if (hasil.status === 'sudah_selesai') {
+          cursor = hasil.tanggal_selesai
+          rantai.push({ proses, status: 'Selesai', tanggal_selesai: hasil.tanggal_selesai })
+          continue
+        }
+        cursor = hasil.tanggal_selesai
+        rantai.push({ proses, status: 'Disimulasikan', tanggal_mulai: hasil.tanggal_mulai, tanggal_selesai: hasil.tanggal_selesai, qty_sisa: hasil.qty_sisa })
+      }
+      perKomponen.push({ kode_komponen: kode, estimasi_selesai_komponen_ini: cursor, rantai_proses: rantai })
+      if (cursor > panelSelesaiTanggal) panelSelesaiTanggal = cursor
+    }
+
+    return {
+      panel: panel.nama,
+      proyek: panel.__wo?.proyek,
+      wo: panel.__wo?.wo,
+      estimasi_panel_selesai: panelSelesaiTanggal,
+      detail_per_komponen: perKomponen,
+      proses_whole_panel_tidak_dihitung: prosesTakDihitung.size > 0 ? [...prosesTakDihitung] : undefined,
+      catatan:
+        `Estimasi rantai per-proses per komponen, urutan estafet: ${PROSES_SIMULASI.join(' -> ')}. Dihitung deterministik pakai algoritma cascading capacity yang sama kayak sistem auto-geser, berdasarkan antrean & kapasitas HARI INI. estimasi_panel_selesai = komponen paling LAMBAT selesai (bottleneck), BUKAN dijumlah. KETERBATASAN yang perlu disampaikan ke user: (1) proses whole-panel (QC TEST/PACKING/NAMEPLATE/YELLOWMARK/BUSBAR) gak ikut dihitung dalam rantai timeline ini - lihat proses_whole_panel_tidak_dihitung; (2) kalau panel ini punya banyak komponen yang sama-sama butuh proses yang sama, simulasi tiap komponen gak saling "tau" kompetisi kapasitas satu sama lain (cuma dibandingin ke beban ASLI yang udah ada di database, bukan ke sesama komponen yang lagi disimulasikan) - jadi bisa sedikit lebih optimis dari kenyataan; (3) urutan estafet ini logic yang SEHARUSNYA diikuti tapi SAAT INI TIDAK di-hard-enforce di sistem produksi (planner masih bisa jadwalkan di luar urutan) - estimasi ini asumsi kalau alur normal diikuti.`,
     }
   },
 
@@ -1499,6 +1627,19 @@ const TOOL_DECLARATIONS = [
     },
   },
   {
+    name: 'simulate_estimasi_selesai_panel',
+    description:
+      "Simulasikan kapan SATU PANEL UTUH (rangkaian SEMUA proses dari awal sampai selesai, buat SEMUA komponennya) bakal kelar, pakai algoritma cascading capacity yang SAMA PERSIS dengan sistem auto-geser (BUKAN tebakan/reasoning) - WAJIB dipakai kalau user tanya estimasi buat PANEL SECARA KESELURUHAN (bukan 1 komponen/proses spesifik), JANGAN coba jawab manual dengan minta user breakdown per proses. Contoh: 'Panel P-SWP 02 ini kira-kira selesai berapa hari dengan load kerjaan sekarang?' -> nama_panel:'P-SWP 02'. Hasilnya per-komponen (rantai proses lengkap tiap komponen) DAN estimasi_panel_selesai (yang paling lambat/bottleneck di antara semua komponen). WAJIB sampaikan disclaimer di field 'catatan' ke user (soal proses whole-panel yang gak ikut dihitung, dan keterbatasan lain) - jangan disembunyikan.",
+    parameters: {
+      type: 'object',
+      properties: {
+        nama_panel: { type: 'string', description: 'Nama/kode panel (partial match), wajib diisi.' },
+        proyek: { type: 'string', description: 'Filter nama proyek (opsional) - isi kalau nama panel ambigu.' },
+      },
+      required: ['nama_panel'],
+    },
+  },
+  {
     name: 'query_raw_schedule_detail',
     description:
       "Ambil detail entry jadwal (raw_schedule) di rentang tanggal tertentu - termasuk histori/jejak (komponen yang pernah dijadwalkan di tanggal itu tapi kedigeser ke tanggal lain, ditandai status 'Jejak'). Cocok buat pertanyaan historis kayak 'apa aja yang dikerjakan tanggal 22 Juli?' atau 'FS.1 di panel PNL-01 pernah kedigeser dari tanggal berapa aja?'. tanggal_mulai & tanggal_selesai WAJIB diisi (batasi rentang biar gak kebanyakan data) - nama_panel/proses opsional buat mempersempit. Hasil dibatasi 200 entry, ada flag 'dipotong' kalau lebih dari itu.",
@@ -1707,7 +1848,9 @@ PRINSIP "SOLUTIF TAPI JUJUR" saat data terbatas/gak ketemu:
 
 TOOLS ANALISIS (analyze_bottleneck, compare_operator_productivity, compare_panel_types, analyze_delay_correlation, analyze_trend): semua tool ini udah ngitung angka analitisnya SENDIRI secara deterministik (agregasi langsung dari data, bukan reasoning). Kalau user tanya sesuatu yang butuh perhitungan analitis (bottleneck/penyebab telat, produktivitas, perbandingan, trend, korelasi), WAJIB panggil tool analisis yang sesuai - JANGAN PERNAH kamu hitung ulang/estimasi sendiri angka analitis serupa dari data mentah hasil tool query biasa, walau kamu MERASA bisa. Aturan tambahan per tool:
 - compare_operator_productivity: hasilnya MURNI angka aktivitas tercatat (durasi, jumlah sesi, jumlah komponen) - BUKAN penilaian kualitas/karakter/etos kerja personal. Kalau user minta kesimpulan personal ("operator X malas/gak becus/paling jago"), TOLAK dengan sopan, jelaskan ini cuma data aktivitas objektif bukan penilaian, dan tetap sajikan angkanya apa adanya.
-- analyze_delay_correlation: hasilnya KORELASI (sinyal yang sama-sama muncul di data), BUKAN pembuktian sebab-akibat. JANGAN klaim "X menyebabkan keterlambatan" - bilang "X terdeteksi berbarengan dengan sekian persen WO yang terlambat".`
+- analyze_delay_correlation: hasilnya KORELASI (sinyal yang sama-sama muncul di data), BUKAN pembuktian sebab-akibat. JANGAN klaim "X menyebabkan keterlambatan" - bilang "X terdeteksi berbarengan dengan sekian persen WO yang terlambat".
+
+ESTIMASI SELESAI - PANEL vs KOMPONEN: kalau user tanya estimasi selesai buat SATU komponen di SATU proses spesifik (contoh: "kapan FS.1 selesai POTONG?"), pakai simulate_estimasi_selesai. Kalau user tanya estimasi buat PANEL SECARA KESELURUHAN/UTUH (contoh: "panel ini kira-kira selesai berapa hari lagi?", "kapan panel X kelar semua?"), WAJIB pakai simulate_estimasi_selesai_panel - JANGAN coba jawab manual dengan minta user breakdown per komponen/proses satu-satu, dan JANGAN nolak/bilang "gak bisa" buat pertanyaan kayak gitu karena tool-nya udah ada.`
 
 // ================= Gemini generateContent tool-use loop =================
 
