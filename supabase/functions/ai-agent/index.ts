@@ -203,11 +203,41 @@ async function findPanels(supabase: any, namaPanel: string, proyek?: string) {
   return matches
 }
 
+// Fuzzy search pakai pg_trgm (similarity trigram, function SQL search_panel_fuzzy/
+// search_proyek_fuzzy - lihat migrasi terkait) - dipanggil kalau exact/substring match gak
+// ketemu apa-apa, biar bisa nyaranin nama yang mirip (termasuk typo) alih-alih langsung
+// nyerah atau (lebih parah) nge-dump semua data yang gak relevan.
+async function fuzzySearchPanel(supabase: any, term: string) {
+  const { data, error } = await supabase.rpc('search_panel_fuzzy', { search_term: term })
+  if (error) { console.error('fuzzySearchPanel error:', error); return [] }
+  return data || []
+}
+async function fuzzySearchProyek(supabase: any, term: string) {
+  const { data, error } = await supabase.rpc('search_proyek_fuzzy', { search_term: term })
+  if (error) { console.error('fuzzySearchProyek error:', error); return [] }
+  return data || []
+}
+// Cross-check DUA ARAH: kalau user nyebut nama yang ternyata gak ketemu di satu kategori
+// (misal dicari sebagai panel), cek juga kategori LAIN (proyek) - INI YANG FIX bug utama:
+// AI sebelumnya cuma nyoba satu kategori terus nyerah/dump semua data kalau gagal, gak
+// pernah nyoba kategori lain padahal namanya ada di sana. Sekalian kasih saran nama mirip
+// dari trigram similarity kalau memang gak ketemu di manapun.
+async function noMatchHint(supabase: any, term: string): Promise<string[]> {
+  const [panelFuzzy, proyekFuzzy] = await Promise.all([fuzzySearchPanel(supabase, term), fuzzySearchProyek(supabase, term)])
+  const hints: string[] = []
+  if (panelFuzzy.length > 0) hints.push(`Mirip nama PANEL: ${panelFuzzy.slice(0, 5).map((p: any) => `'${p.nama}'`).join(', ')} - kalau ini yang dimaksud, coba tool berbasis panel (query_progress_panel dkk).`)
+  if (proyekFuzzy.length > 0) hints.push(`Mirip nama PROYEK: ${proyekFuzzy.slice(0, 5).map((p: any) => `'${p.proyek}' (WO ${p.wo})`).join(', ')} - kalau ini yang dimaksud, coba tool berbasis proyek (query_wo_status dkk).`)
+  return hints
+}
+
 // Kalau nama_panel gak ketemu / ambigu, balikin bentuk hasil yang SAMA di semua tool
 // berbasis-panel (error + daftar kandidat) - biar Gemini bisa minta klarifikasi ke user
 // dengan cara yang konsisten, bukan pesan error yang beda-beda tiap tool.
-function panelLookupError(matches: any[], namaPanel: string) {
-  if (matches.length === 0) return { error: `Panel dengan nama mengandung '${namaPanel}' gak ditemukan.` }
+async function panelLookupError(supabase: any, matches: any[], namaPanel: string) {
+  if (matches.length === 0) {
+    const saran = await noMatchHint(supabase, namaPanel)
+    return { error: `Panel dengan nama mengandung '${namaPanel}' gak ditemukan.`, ...(saran.length > 0 ? { saran } : {}) }
+  }
   return {
     error: `Ada ${matches.length} panel yang cocok, sebutkan proyek buat lebih spesifik.`,
     kandidat: matches.slice(0, 10).map((p: any) => ({ nama: p.nama, tipe: p.tipe, proyek: p.__wo?.proyek, wo: p.__wo?.wo })),
@@ -448,6 +478,10 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     wos = wos.filter((w: any) => !w.deleted_at && !w.is_archived)
     if (search) {
       wos = wos.filter((w: any) => (w.wo || '').toLowerCase().includes(search) || (w.proyek || '').toLowerCase().includes(search))
+      if (wos.length === 0) {
+        const saran = await noMatchHint(supabase, search)
+        return { error: `Proyek/WO dengan nama mengandung '${input.search}' gak ditemukan.`, ...(saran.length > 0 ? { saran } : {}) }
+      }
     }
 
     const bomProsesRelevan = await fetchAll(supabase, 'bom_proses_relevan', 'kode_komponen,tipe_panel,jenis_pekerjaan')
@@ -502,7 +536,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     const namaPanel = input?.nama_panel
     if (!namaPanel) return { error: 'Wajib isi nama_panel.' }
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
-    if (matches.length !== 1) return panelLookupError(matches, namaPanel)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
     const bomProsesRelevan = await fetchAll(supabase, 'bom_proses_relevan', 'kode_komponen,tipe_panel,jenis_pekerjaan')
@@ -532,7 +566,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     const namaPanel = input?.nama_panel
     if (!namaPanel) return { error: 'Wajib isi nama_panel.' }
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
-    if (matches.length !== 1) return panelLookupError(matches, namaPanel)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
     // Sama persis logic statusTugasNp() di LaporanNameplateView.tsx - dipakai konsisten
@@ -562,7 +596,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     const namaPanel = input?.nama_panel
     if (!namaPanel) return { error: 'Wajib isi nama_panel.' }
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
-    if (matches.length !== 1) return panelLookupError(matches, namaPanel)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
     // qc_checklist itu JSONB TERPISAH dari checklist progress biasa (bukan proses "QC TEST"
@@ -619,7 +653,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     }
 
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
-    if (matches.length !== 1) return panelLookupError(matches, namaPanel)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
     const cl = (panel.checklist || {})[kodeKomponen]
@@ -679,7 +713,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     let panelIdFilter: number | null = null
     if (input?.nama_panel) {
       const matches = await findPanels(supabase, input.nama_panel, input?.proyek)
-      if (matches.length !== 1) return panelLookupError(matches, input.nama_panel)
+      if (matches.length !== 1) return await panelLookupError(supabase, matches, input.nama_panel)
       panelIdFilter = matches[0].id
     }
 
@@ -771,6 +805,11 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     if (input?.tanggal_mulai) rows = rows.filter((r: any) => (r.tanggal || '') >= input.tanggal_mulai)
     if (input?.tanggal_selesai) rows = rows.filter((r: any) => (r.tanggal || '') <= input.tanggal_selesai)
 
+    if (rows.length === 0 && (input?.proyek || input?.panel)) {
+      const saran = await noMatchHint(supabase, input?.panel || input?.proyek)
+      return { error: `Gak ada kendala yang cocok sama filter '${input?.panel || input?.proyek}'.`, ...(saran.length > 0 ? { saran } : {}) }
+    }
+
     rows.sort((a: any, b: any) => String(b.ts || b.created_at || '').localeCompare(String(a.ts || a.created_at || '')))
     const LIMIT = 50
     return {
@@ -800,6 +839,11 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
       rows = rows.filter((r: any) => (r.panel_nama || '').toLowerCase().includes(q))
     }
     if (input?.status) rows = rows.filter((r: any) => r.status === input.status)
+
+    if (rows.length === 0 && (input?.proyek || input?.panel_nama)) {
+      const saran = await noMatchHint(supabase, input?.panel_nama || input?.proyek)
+      return { error: `Gak ada komponen tambahan yang cocok sama filter '${input?.panel_nama || input?.proyek}'.`, ...(saran.length > 0 ? { saran } : {}) }
+    }
 
     rows.sort((a: any, b: any) => String(b.tanggal || '').localeCompare(String(a.tanggal || '')))
     const LIMIT = 50
@@ -832,6 +876,10 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     if (input?.panel_nama) {
       const q = String(input.panel_nama).toLowerCase()
       rows = rows.filter((r: any) => (r.nama || '').toLowerCase().includes(q))
+    }
+    if (rows.length === 0 && (input?.proyek || input?.panel_nama)) {
+      const saran = await noMatchHint(supabase, input?.panel_nama || input?.proyek)
+      return { error: `Gak ada arsip yang cocok sama filter '${input?.panel_nama || input?.proyek}'.`, ...(saran.length > 0 ? { saran } : {}) }
     }
     rows.sort((a: any, b: any) => String(b.diarsipkan_pada || '').localeCompare(String(a.diarsipkan_pada || '')))
 
@@ -926,6 +974,11 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     if (input?.status === 'to_do') hasil = hasil.filter((h: any) => h.status === 'To Do')
     if (input?.status === 'in_progress') hasil = hasil.filter((h: any) => h.status === 'In Progress')
 
+    if (hasil.length === 0 && (input?.proyek || input?.panel)) {
+      const saran = await noMatchHint(supabase, input?.panel || input?.proyek)
+      return { error: `Gak ada pekerjaan outstanding yang cocok sama filter '${input?.panel || input?.proyek}'.`, ...(saran.length > 0 ? { saran } : {}) }
+    }
+
     hasil.sort((a: any, b: any) => String(a.tanggal).localeCompare(b.tanggal))
     const LIMIT = 100
     return {
@@ -939,7 +992,7 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
     const namaPanel = input?.nama_panel
     if (!namaPanel) return { error: 'Wajib isi nama_panel.' }
     const matches = await findPanels(supabase, namaPanel, input?.proyek)
-    if (matches.length !== 1) return panelLookupError(matches, namaPanel)
+    if (matches.length !== 1) return await panelLookupError(supabase, matches, namaPanel)
     const panel = matches[0]
 
     // Gak ada tabel riwayat tunggal yang otoritatif - digabung dari progress_checkpoint_log
@@ -1258,7 +1311,14 @@ const TOOL_DECLARATIONS = [
   },
 ]
 
-const SYSTEM_PROMPT = `Kamu adalah AI Assistant internal Vista Teknik (perusahaan fabrikasi panel listrik). Tugasmu jawab pertanyaan seputar kondisi produksi (WO, panel, progress, BOM, dst) HANYA berdasarkan data yang didapat dari tools yang tersedia - jangan pernah mengarang angka atau status. Kalau tool gak punya data yang relevan atau hasilnya kosong, bilang terus terang gak tau / data gak tersedia, jangan menebak. Ini versi v1 READ-ONLY: kamu cuma bisa BACA data, gak bisa ubah/hapus apapun, dan gak perlu menyarankan aksi ubah data. Jawab dalam Bahasa Indonesia informal, singkat dan langsung ke poin, format angka/persen dengan jelas.`
+const SYSTEM_PROMPT = `Kamu adalah AI Assistant internal Vista Teknik (perusahaan fabrikasi panel listrik). Tugasmu jawab pertanyaan seputar kondisi produksi (WO, panel, progress, BOM, dst) HANYA berdasarkan data yang didapat dari tools yang tersedia - jangan pernah mengarang angka atau status. Kalau tool gak punya data yang relevan atau hasilnya kosong, bilang terus terang gak tau / data gak tersedia, jangan menebak. Ini versi v1 READ-ONLY: kamu cuma bisa BACA data, gak bisa ubah/hapus apapun, dan gak perlu menyarankan aksi ubah data. Jawab dalam Bahasa Indonesia informal, singkat dan langsung ke poin, format angka/persen dengan jelas.
+
+PENTING - JENIS ENTITY (PROYEK vs PANEL vs KOMPONEN), sering bikin salah pilih tool kalau gak hati-hati:
+- PROYEK/WO: biasanya nama perusahaan/lokasi klien, sering multi-kata, contoh 'CIMORY CITEUREUP', 'GODREJ BOROBUDUR', 'RS. TUNAS SUVARNA'.
+- PANEL: biasanya kode pendek dengan prefix (LP-, PP-, SDP-, SDB., MCC, CP-, dst), contoh 'LP-LAB', 'CP-OVEN', 'SDB.LT 4'. KALAU USER NYEBUT NAMA YANG POLANYA KAYAK GINI, JANGAN LANGSUNG ASUMSI ITU PROYEK - coba tool berbasis panel (query_progress_panel dkk).
+- KOMPONEN: kode BOM per-item, contoh 'FS.1', 'WM.2'.
+- Kalau gak yakin nama yang disebut itu proyek atau panel, dan tool pertama yang kamu coba gak nemu hasilnya, tool itu akan kasih field 'saran' berisi nama-nama mirip (dari fuzzy search) DAN petunjuk tool lain yang perlu dicoba - WAJIB baca & tindak lanjuti 'saran' itu (coba tool yang disaranin) SEBELUM nyerah atau nanya balik ke user. JANGAN pernah manggil tool tanpa filter sama sekali (dump semua data) cuma buat "nyari-nyari" nama yang gak ketemu - itu gak membantu dan bikin jawaban gak relevan.
+- Kalau udah nyoba tool yang relevan (termasuk ngikutin 'saran') dan tetap gak ketemu, baru bilang terus terang ke user data gak ditemukan, sertakan nama-nama mirip yang kamu temukan (kalau ada) biar user bisa klarifikasi.`
 
 // ================= Gemini generateContent tool-use loop =================
 
