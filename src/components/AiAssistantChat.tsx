@@ -13,6 +13,47 @@ const CONTOH_PERTANYAAN = [
   'siapa aja yang lagi kerja sekarang?',
 ]
 
+// Deteksi link download hasil generate_export di teks jawaban AI - baik dalam bentuk markdown
+// link [label](url) maupun URL polos - biar bisa dirender jadi tombol download, bukan teks
+// link biasa. Match spesifik ke ekstensi pdf/docx/xlsx (+ query string token signed URL).
+const EXPORT_LINK_RE = /\[([^\]]*)\]\((https?:\/\/[^\s)]+\.(pdf|docx|xlsx)(?:\?[^\s)]*)?)\)|(https?:\/\/[^\s)]+\.(pdf|docx|xlsx)(?:\?[^\s)]*)?)/g
+
+type MsgSegment = { type: 'text'; value: string } | { type: 'export'; url: string; format: string }
+
+function parseMessageSegments(text: string): MsgSegment[] {
+  const segments: MsgSegment[] = []
+  let lastIndex = 0
+  let match: RegExpExecArray | null
+  EXPORT_LINK_RE.lastIndex = 0
+  while ((match = EXPORT_LINK_RE.exec(text))) {
+    if (match.index > lastIndex) segments.push({ type: 'text', value: text.slice(lastIndex, match.index) })
+    const url = match[2] || match[4]
+    const format = match[3] || match[5]
+    segments.push({ type: 'export', url, format })
+    lastIndex = match.index + match[0].length
+  }
+  if (lastIndex < text.length) segments.push({ type: 'text', value: text.slice(lastIndex) })
+  return segments.length ? segments : [{ type: 'text', value: text }]
+}
+
+const EXPORT_META: Record<string, { icon: string; label: string; color: string }> = {
+  pdf: { icon: 'ti ti-file-type-pdf', label: 'PDF', color: '#dc2626' },
+  docx: { icon: 'ti ti-file-type-doc', label: 'Word', color: '#2563eb' },
+  xlsx: { icon: 'ti ti-file-type-xls', label: 'Excel', color: '#16a34a' },
+}
+
+function ExportDownloadButton({ url, format }: { url: string; format: string }) {
+  const meta = EXPORT_META[format] || { icon: 'ti ti-file', label: format.toUpperCase(), color: '#64748b' }
+  return (
+    <a href={url} target="_blank" rel="noopener noreferrer"
+      style={{ display: 'inline-flex', alignItems: 'center', gap: 8, background: '#fff', border: `1px solid ${meta.color}40`, borderRadius: 10, padding: '8px 14px', margin: '4px 0', textDecoration: 'none', color: '#1e293b', fontSize: 13, fontWeight: 600 }}>
+      <i className={meta.icon} style={{ fontSize: 18, color: meta.color }} />
+      <span>Download {meta.label}</span>
+      <i className="ti ti-download" style={{ fontSize: 13, color: '#94a3b8', marginLeft: 2 }} />
+    </a>
+  )
+}
+
 export function AiAssistantChat() {
   const [contents, setContents] = useState<ChatContent[]>([])
   const [input, setInput] = useState('')
@@ -84,18 +125,22 @@ export function AiAssistantChat() {
           )}
           {displayMsgs.map((c, i) => (
             <div key={i} style={{ alignSelf: c.role === 'user' ? 'flex-end' : 'flex-start', maxWidth: '75%' }}>
-              <div style={{ padding: '9px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', background: c.role === 'user' ? '#2563eb' : '#f1f5f9', color: c.role === 'user' ? '#fff' : '#1e293b' }}>
-                {textOf(c.parts)}
+              <div style={{ padding: '9px 14px', borderRadius: 12, fontSize: 13.5, lineHeight: 1.6, whiteSpace: 'pre-wrap', textAlign: 'left', background: c.role === 'user' ? '#2563eb' : '#f1f5f9', color: c.role === 'user' ? '#fff' : '#1e293b' }}>
+                {parseMessageSegments(textOf(c.parts)).map((seg, j) =>
+                  seg.type === 'export'
+                    ? <ExportDownloadButton key={j} url={seg.url} format={seg.format} />
+                    : <span key={j}>{seg.value}</span>
+                )}
               </div>
             </div>
           ))}
           {loading && (
-            <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#f1f5f9', color: '#94a3b8', fontSize: 12.5 }}>
+            <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#f1f5f9', color: '#94a3b8', fontSize: 12.5, textAlign: 'left' }}>
               Mikir...
             </div>
           )}
           {error && (
-            <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#fee2e2', color: '#dc2626', fontSize: 12.5, maxWidth: '90%' }}>
+            <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#fee2e2', color: '#dc2626', fontSize: 12.5, maxWidth: '90%', textAlign: 'left' }}>
               {error}
             </div>
           )}
@@ -110,7 +155,7 @@ export function AiAssistantChat() {
             placeholder="Tulis pertanyaan..."
             disabled={loading}
             autoFocus
-            style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 8, padding: '9px 12px', fontSize: 13.5, outline: 'none', fontFamily: 'inherit' }}
+            style={{ flex: 1, border: '1px solid #e2e8f0', borderRadius: 8, padding: '9px 12px', fontSize: 13.5, outline: 'none', fontFamily: 'inherit', textAlign: 'left' }}
           />
           <button
             onClick={() => kirim()}

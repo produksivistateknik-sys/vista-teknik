@@ -38,9 +38,18 @@ Node), SDK resmi provider sering punya dependency khusus Node yang beresiko gak 
 di runtime Deno edge function - fetch() langsung ke REST API menghindari resiko itu sama
 sekali, dan udah terbukti jalan lancar buat Anthropic sebelumnya.
 
-FASE 0 (sekarang): infrastruktur dasar + 2 tool smoke-test (query_wo_status,
-query_bom_komponen). Tool berikutnya ditambah bertahap ke TOOL_DECLARATIONS array +
-TOOL_IMPL map di bawah, pola yang sama persis.
+FASE 0-5: 15 tool baca (query_wo_status s/d query_riwayat_lengkap_panel) dibangun bertahap,
+semua strict read-only lewat anon key.
+
+REVISI: ditambah tool ke-16, `generate_export` - SATU-SATUNYA tool yang nulis, tapi cuma ke
+storage bucket 'ai-exports' (bukan tabel produksi apapun), pakai SUPABASE_SERVICE_ROLE_KEY
+TERPISAH khusus buat operasi ini (client `supabase` anon-key yang dipakai 15 tool baca lain
+TETAP gak pernah dikasih privilege tulis). Generate file dari data yang UDAH ditarik tool lain
+di percakapan yang sama (gak query ulang), upload ke storage, balikin signed URL (7 hari) -
+cleanup file lama dilakukan opportunistic tiap generate_export dipanggil (bukan cron
+terpisah). Library: exceljs (xlsx), pdf-lib (pdf, dipilih drpd pdfmake karena isomorphic/gak
+ada dependency native), docx (docx) - semua diimport via npm: specifier (didukung native sama
+Supabase Edge Functions, gak perlu esm.sh).
 
 SETUP WAJIB SEBELUM DIPAKAI: secret GEMINI_API_KEY harus di-set manual (BUKAN lewat
 percakapan - biar API key gak kesimpen di riwayat chat), via Supabase Dashboard ->
@@ -49,6 +58,19 @@ dijalankan di terminal sendiri (bukan di sesi ini).
 */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Library generate dokumen buat tool generate_export - lewat npm: specifier. SEMPAT dicoba
+// dynamic import (di dalam generateXxxBuffer, bukan top-level) biar gak kena cold-start
+// penalty pas request gak sentuh generate_export - TAPI ternyata malah bikin function MACET
+// TOTAL (curl timeout 90s, 0 bytes, bahkan buat request yang gak butuh library ini sama
+// sekali) - kemungkinan besar Deno edge runtime gak bisa resolve npm: import dinamis saat
+// runtime (beda dari static import yang di-bundle ke eszip pas deploy). BALIK ke static
+// import di top-level - ATURANNYA: cold start ~33 detik (diverifikasi, bukan ideal tapi
+// FUNGSIONAL), jauh lebih baik daripada macet total. Kalau nanti mau optimasi cold-start,
+// pertimbangkan Edge Function TERPISAH khusus generate_export (biar function chat utama gak
+// kebawa beban bundling library dokumen).
+import ExcelJS from 'npm:exceljs@4'
+import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1'
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType } from 'npm:docx@8'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -283,6 +305,138 @@ function cascadePlaceSimple(mulaiTanggal: string, unitsAwal: { id: string; deman
     tanggal = addDaysStr(tanggal, 1); hari++
   }
   return tanggal
+}
+
+// ================= generate_export: bikin file dari data yang udah ditarik tool lain =================
+// SATU-SATUNYA tool yang nulis (ke storage bucket 'ai-exports' - bukan ke database produksi
+// apapun). Pakai SERVICE_ROLE_KEY khusus buat operasi storage ini (anon key yang dipakai 15
+// tool baca lainnya TETAP gak punya privilege tulis apapun) - jadi kalau nanti ada bug di
+// tool baca manapun, gak ada jalan buat nulis data lewat situ sama sekali.
+
+const EXPORT_BUCKET = 'ai-exports'
+const EXPORT_RETENTION_MS = 7 * 24 * 60 * 60 * 1000 // 7 hari
+
+// Cleanup OPPORTUNISTIC (bukan cron terpisah) - tiap generate_export dipanggil, sekalian buang
+// file yang udah lewat retensi. Cukup buat skala pemakaian internal yang jarang; gak fatal
+// kalau gagal (network dsb), makanya di-try/catch sendiri biar gak gagalin export yang lagi
+// diminta user.
+async function cleanupOldExports(serviceClient: any) {
+  try {
+    const { data: files, error } = await serviceClient.storage.from(EXPORT_BUCKET).list('', { limit: 1000 })
+    if (error || !files) return
+    const now = Date.now()
+    const toDelete = files
+      .filter((f: any) => {
+        const created = f.created_at ? new Date(f.created_at).getTime() : 0
+        return created > 0 && now - created > EXPORT_RETENTION_MS
+      })
+      .map((f: any) => f.name)
+    if (toDelete.length > 0) await serviceClient.storage.from(EXPORT_BUCKET).remove(toDelete)
+  } catch (e) {
+    console.error('cleanupOldExports gagal (diabaikan, gak fatal):', e)
+  }
+}
+
+function normalizeRows(data: any[]): { headers: string[]; rows: any[] } {
+  const headers = Object.keys(data[0] || {})
+  return { headers, rows: data }
+}
+
+async function generateExcelBuffer(data: any[], judul: string): Promise<Uint8Array> {
+  const { headers, rows } = normalizeRows(data)
+  const wb = new ExcelJS.Workbook()
+  const ws = wb.addWorksheet((judul || 'Data').slice(0, 31) || 'Data')
+  const headerRow = ws.addRow(headers)
+  headerRow.font = { bold: true }
+  headerRow.eachCell((cell: any) => {
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
+  })
+  rows.forEach((row) => ws.addRow(headers.map((h) => row[h] ?? '')))
+  ws.columns.forEach((col: any) => { col.width = 20 })
+  const buf = await wb.xlsx.writeBuffer()
+  return new Uint8Array(buf as ArrayBuffer)
+}
+
+async function generatePdfBuffer(data: any[], judul: string): Promise<Uint8Array> {
+  const { headers, rows } = normalizeRows(data)
+  const pdfDoc = await PDFDocument.create()
+  const font = await pdfDoc.embedFont(StandardFonts.Helvetica)
+  const fontBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+
+  const pageWidth = 842, pageHeight = 595 // A4 landscape (points) - lebih muat buat tabel lebar
+  const margin = 36
+  const fontSize = 8.5
+  const rowHeight = 16
+  const colWidth = (pageWidth - margin * 2) / Math.max(headers.length, 1)
+  const maxChars = Math.max(4, Math.floor(colWidth / (fontSize * 0.55)))
+
+  let page = pdfDoc.addPage([pageWidth, pageHeight])
+  let y = pageHeight - margin
+
+  const drawHeaderRow = () => {
+    headers.forEach((h, i) => {
+      page.drawText(String(h).slice(0, maxChars), { x: margin + i * colWidth, y, size: fontSize, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+    })
+    y -= rowHeight
+    page.drawLine({ start: { x: margin, y: y + 6 }, end: { x: pageWidth - margin, y: y + 6 }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) })
+  }
+  const newPage = () => {
+    page = pdfDoc.addPage([pageWidth, pageHeight])
+    y = pageHeight - margin
+    drawHeaderRow()
+  }
+
+  page.drawText(judul || 'Export', { x: margin, y, size: 14, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+  y -= 22
+  page.drawText(`Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik`, { x: margin, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) })
+  y -= 18
+  drawHeaderRow()
+
+  rows.forEach((row) => {
+    if (y < margin + rowHeight) newPage()
+    headers.forEach((h, i) => {
+      const val = row[h]
+      const text = val === null || val === undefined ? '' : String(val)
+      page.drawText(text.slice(0, maxChars), { x: margin + i * colWidth, y, size: fontSize, font, color: rgb(0.2, 0.2, 0.2) })
+    })
+    y -= rowHeight
+  })
+
+  return await pdfDoc.save()
+}
+
+async function generateDocxBuffer(data: any[], judul: string): Promise<Uint8Array> {
+  const { headers, rows } = normalizeRows(data)
+  const headerCells = headers.map(
+    (h) =>
+      new TableCell({
+        children: [new Paragraph({ children: [new TextRun({ text: String(h), bold: true })] })],
+        shading: { fill: 'E2E8F0' },
+      })
+  )
+  const bodyRows = rows.map(
+    (row) =>
+      new TableRow({
+        children: headers.map((h) => new TableCell({ children: [new Paragraph(String(row[h] ?? ''))] })),
+      })
+  )
+  const table = new Table({
+    width: { size: 100, type: WidthType.PERCENTAGE },
+    rows: [new TableRow({ children: headerCells }), ...bodyRows],
+  })
+  const doc = new Document({
+    sections: [
+      {
+        children: [
+          new Paragraph({ text: judul || 'Export', heading: HeadingLevel.HEADING_1 }),
+          new Paragraph({ text: `Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik`, spacing: { after: 200 } }),
+          table,
+        ],
+      },
+    ],
+  })
+  const buffer = await Packer.toBuffer(doc)
+  return new Uint8Array(buffer)
 }
 
 // ================= Tool implementations (READ-ONLY) - identik dengan ai-assistant =================
@@ -824,6 +978,59 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
       per_proses: perProses,
     }
   },
+
+  // Satu-satunya tool yang nulis - TAPI cuma ke bucket storage 'ai-exports' (bukan tabel
+  // produksi apapun), pakai service-role client TERPISAH dari `supabase` (anon key) yang
+  // dipakai parameter pertama - lihat komentar di atas TOOL_IMPL soal alasan privilege split.
+  async generate_export(_supabase, input) {
+    const data = input?.data
+    const format = input?.format
+    const judul = input?.judul || 'Export'
+    if (!Array.isArray(data) || data.length === 0) return { error: 'Wajib isi data (array of objects, minimal 1 baris) yang mau di-export.' }
+    if (!['pdf', 'docx', 'xlsx'].includes(format)) return { error: "Format wajib salah satu dari 'pdf', 'docx', 'xlsx'." }
+
+    const serviceClient = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
+    await cleanupOldExports(serviceClient)
+
+    let buffer: Uint8Array
+    let ext: string
+    let contentType: string
+    try {
+      if (format === 'xlsx') {
+        buffer = await generateExcelBuffer(data, judul)
+        ext = 'xlsx'
+        contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+      } else if (format === 'pdf') {
+        buffer = await generatePdfBuffer(data, judul)
+        ext = 'pdf'
+        contentType = 'application/pdf'
+      } else {
+        buffer = await generateDocxBuffer(data, judul)
+        ext = 'docx'
+        contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+      }
+    } catch (e: any) {
+      return { error: `Gagal generate file: ${String(e?.message || e)}` }
+    }
+
+    const safeTitle = String(judul).replace(/[^a-zA-Z0-9_\- ]/g, '').trim().replace(/\s+/g, '_').slice(0, 60) || 'export'
+    const path = `${Date.now()}_${safeTitle}.${ext}`
+
+    const { error: uploadError } = await serviceClient.storage.from(EXPORT_BUCKET).upload(path, buffer, { contentType, upsert: false })
+    if (uploadError) return { error: `Gagal upload file ke storage: ${uploadError.message}` }
+
+    const { data: signedData, error: signError } = await serviceClient.storage.from(EXPORT_BUCKET).createSignedUrl(path, EXPORT_RETENTION_MS / 1000)
+    if (signError || !signedData) return { error: `File berhasil dibuat tapi gagal bikin link download: ${signError?.message}` }
+
+    return {
+      berhasil: true,
+      format,
+      judul,
+      jumlah_baris: data.length,
+      url_download: signedData.signedUrl,
+      berlaku_sampai: '7 hari dari sekarang',
+    }
+  },
 }
 
 // ================= Tool declarations format GEMINI (functionDeclarations) =================
@@ -1031,6 +1238,24 @@ const TOOL_DECLARATIONS = [
       required: ['nama_panel'],
     },
   },
+  {
+    name: 'generate_export',
+    description:
+      "Generate file PDF/Word/Excel dari data yang SUDAH kamu dapatkan lewat tool lain SEBELUMNYA di percakapan ini - JANGAN query ulang, pakai lagi data yang udah ada di riwayat percakapan. Panggil ini kalau user minta hasil dalam bentuk file/dokumen. Contoh alur: user tanya 'WO apa aja yang terlambat?' (kamu jawab pakai query_wo_status), lalu user bilang 'kasih dalam bentuk excel' -> ambil array data WO terlambat dari hasil query_wo_status barusan, panggil generate_export dengan data itu persis, format:'xlsx', judul deskriptif. Balikin link download (berlaku 7 hari) yang harus kamu tampilkan APA ADANYA di jawabanmu (jangan diringkas/dihilangkan) biar UI bisa render tombol download-nya.",
+    parameters: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          description: 'Array data yang mau di-export, tiap item object dengan struktur key yang SAMA (key jadi header kolom) - ambil dari hasil tool sebelumnya di percakapan ini, jangan dikarang.',
+          items: { type: 'object' },
+        },
+        format: { type: 'string', enum: ['pdf', 'docx', 'xlsx'], description: "Format file: 'pdf', 'docx' (Word), atau 'xlsx' (Excel)." },
+        judul: { type: 'string', description: "Judul singkat & deskriptif, jadi nama file juga, contoh: 'Daftar WO Terlambat 30 Juli 2026'." },
+      },
+      required: ['data', 'format', 'judul'],
+    },
+  },
 ]
 
 const SYSTEM_PROMPT = `Kamu adalah AI Assistant internal Vista Teknik (perusahaan fabrikasi panel listrik). Tugasmu jawab pertanyaan seputar kondisi produksi (WO, panel, progress, BOM, dst) HANYA berdasarkan data yang didapat dari tools yang tersedia - jangan pernah mengarang angka atau status. Kalau tool gak punya data yang relevan atau hasilnya kosong, bilang terus terang gak tau / data gak tersedia, jangan menebak. Ini versi v1 READ-ONLY: kamu cuma bisa BACA data, gak bisa ubah/hapus apapun, dan gak perlu menyarankan aksi ubah data. Jawab dalam Bahasa Indonesia informal, singkat dan langsung ke poin, format angka/persen dengan jelas.`
@@ -1045,24 +1270,41 @@ const SYSTEM_PROMPT = `Kamu adalah AI Assistant internal Vista Teknik (perusahaa
 const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 const MAX_TOOL_ITERATIONS = 6
 
+// Diverifikasi empiris: panggilan Gemini API kadang HANG TOTAL (gak error, gak timeout dari
+// sisi Gemini sendiri - beberapa kali dites, ~1 dari 3 request identik macet tanpa respons
+// sama sekali). Tanpa batas waktu di sisi kita, satu hang Gemini bikin seluruh chat "Mikir..."
+// selamanya tanpa ada error yang bisa ditunjukkan ke user. AbortController biar gagal CEPAT
+// dengan pesan jelas, bukan diam-diam gantung sampai limit eksekusi Edge Function sendiri.
+const GEMINI_TIMEOUT_MS = 25000
+
 async function callGemini(apiKey: string, contents: any[]) {
-  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
-    method: 'POST',
-    headers: {
-      'content-type': 'application/json',
-      'x-goog-api-key': apiKey,
-    },
-    body: JSON.stringify({
-      contents,
-      systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
-      tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
-    }),
-  })
-  if (!res.ok) {
-    const text = await res.text()
-    throw new Error(`Gemini API error ${res.status}: ${text}`)
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
+  try {
+    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-goog-api-key': apiKey,
+      },
+      body: JSON.stringify({
+        contents,
+        systemInstruction: { parts: [{ text: SYSTEM_PROMPT }] },
+        tools: [{ functionDeclarations: TOOL_DECLARATIONS }],
+      }),
+      signal: controller.signal,
+    })
+    if (!res.ok) {
+      const text = await res.text()
+      throw new Error(`Gemini API error ${res.status}: ${text}`)
+    }
+    return await res.json()
+  } catch (e: any) {
+    if (e?.name === 'AbortError') throw new Error(`Gemini API gak respons dalam ${GEMINI_TIMEOUT_MS / 1000} detik (kemungkinan hang di sisi Gemini) - coba tanya ulang.`)
+    throw e
+  } finally {
+    clearTimeout(timeoutId)
   }
-  return res.json()
 }
 
 Deno.serve(async (req) => {
