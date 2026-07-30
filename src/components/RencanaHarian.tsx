@@ -80,6 +80,42 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
   };
 
+  // Fallback kalau BELUM ADA yang mulai timer di selDate buat komponen ini (kasus carry-over
+  // yang belum dilanjutkan lagi hari ini) - biar kolom operator gak pernah keliatan kosong/gak
+  // jelas padahal komponennya udah pernah dikerjain (cuma bukan hari ini). Sumbernya RPC
+  // latest_operator_per_komponen (agregasi SQL: tanggal aktivitas TERAKHIR <= selDate per
+  // panel+kode+proses, plus semua operator yang kerja di tanggal itu) - dihitung di server biar
+  // gak perlu tarik ribuan baris fcs_timer_kerja ke browser. WAJIB paginasi .range() - RPC yang
+  // balikin table kena cap 1000 baris juga sama kayak .select() biasa (udah kejadian sebelumnya
+  // di renhar, jangan diulang di sini).
+  const [fallbackOperatorData,setFallbackOperatorData]=useState<any[]>([]);
+  useEffect(()=>{
+    let cancelled=false;
+    const fetchFallback=async()=>{
+      let all:any[]=[],from=0;
+      while(true){
+        const{data,error}:any=await supabase.rpc("latest_operator_per_komponen",{as_of_date:selDate}).range(from,from+999);
+        if(error||!data)break;
+        all=all.concat(data);
+        if(data.length<1000)break;
+        from+=1000;
+      }
+      if(!cancelled)setFallbackOperatorData(all);
+    };
+    fetchFallback();
+    const ch=supabase.channel("realtime-fallback-operator-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchFallback)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+  },[selDate]);
+  const getFallbackOperatorForKode=(panelId:any,kode:string,proses:string):{names:string[],tanggal:string|null}=>{
+    const rows=fallbackOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+    if(rows.length===0)return{names:[],tanggal:null};
+    const ids=[...new Set(rows.map((t:any)=>t.pekerja_id))];
+    const names=ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
+    return{names,tanggal:rows[0].tanggal};
+  };
+
   // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
   // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
   // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
@@ -506,11 +542,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
                         const ppkKode=ppk[kode];
                         const opIdsKode:number[]=Array.isArray(ppkKode)?ppkKode:(ppkKode&&typeof ppkKode==="object"?Object.values(ppkKode).flat() as number[]:[]);
-                        // Prioritas: nama dari timer beneran di tanggal INI (ground truth siapa
-                        // yang ngerjain) - fallback ke assignment planner (pekerja_per_komponen)
-                        // kalau belum ada yang mulai timer sama sekali di tanggal ini.
+                        // Prioritas: (1) nama dari timer beneran di tanggal INI (ground truth siapa
+                        // yang ngerjain hari ini) - (2) kalau belum ada yang mulai timer HARI INI
+                        // (kasus carry-over yang belum dilanjutkan lagi), fallback ke operator
+                        // TERAKHIR yang beneran ngerjain (tanggal berapapun sebelumnya) - biar kolom
+                        // operator gak pernah keliatan kosong/gak jelas padahal ada riwayatnya -
+                        // (3) fallback terakhir ke assignment planner (pekerja_per_komponen) kalau
+                        // gak ada riwayat timer sama sekali.
                         const operatorTimerKode=getOperatorNamesForKode(t.panelId,kode,t.proses);
-                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
+                        const fallbackOp=operatorTimerKode.length===0?getFallbackOperatorForKode(t.panelId,kode,t.proses):null;
+                        const isLanjutan=operatorTimerKode.length===0&&!!fallbackOp&&fallbackOp.names.length>0;
+                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?fallbackOp!.names:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean));
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return(
                           <tr key={ti+"-"+kode}>
@@ -545,7 +587,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               {!sudahRelease&&!digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
                               ):workersKode.length>0?(
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>{workersKode.map((n:string)=>(<span key={n} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}</div>
+                                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+                                  {workersKode.map((n:string)=>(<span key={n} style={{background:isLanjutan?"#f8fafc":"#eff6ff",border:isLanjutan?"1px solid #e2e8f0":"1px solid #bfdbfe",color:isLanjutan?"#64748b":"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}
+                                  {isLanjutan&&<span title={"Terakhir ngerjain "+fmtShort(fallbackOp!.tanggal!)+", belum ada yang mulai lagi hari ini"} style={{fontSize:9,color:"#94a3b8",fontStyle:"italic"}}>lanjutan {fmtShort(fallbackOp!.tanggal!)}</span>}
+                                </div>
                               ):digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>-</span>
                               ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
