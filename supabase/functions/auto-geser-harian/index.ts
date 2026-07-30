@@ -337,6 +337,11 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           if (kode.startsWith('__wiring_')) return
           if (isJejakKode(e, kode)) return // jejak - gak ikut kompetisi kapasitas lagi
           const cl = checklist[kode]
+          // FIX INSIDEN 30 Jul 2026: kode yang progress-nya UDAH 100% gak boleh ikut jadi unit
+          // yang "bersaing kapasitas" - satu entry WP bisa nyampur kode selesai+belum-selesai,
+          // dan tanpa cek ini kode yang 100% ikut kebawa ke-geser/jejak kalau kapasitas hari itu
+          // penuh, padahal harusnya gak pernah disentuh (persis kayak guard di Fase 1).
+          if ((cl?.progress?.[proses] || 0) >= 100) return
           const qtyTotal = Number(cl?.qty) || 0
           const menit = qtyTotal * getMenitPcs(panel.tipe, kode, proses)
           const id = `ex_${row.id}_${e.wp}_${kode}`
@@ -411,10 +416,15 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     rawRows.forEach((row: any) => {
       if (row.proses !== proses) return
       const panel = panelMap[String(row.panel_id)]
+      const checklist = panel?.checklist || {}
       const entries = row.schedule?.[hariTarget] || []
       entries.forEach((e: any) => {
         const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_')) || null
-        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k))
+        // FIX INSIDEN 30 Jul 2026: sama kayak jam-based - kode yang progress-nya udah 100% gak
+        // boleh ikut jadi bagian unit yang bersaing kapasitas (dan gak boleh dapet jejak lewat
+        // sini kalau tim-nya ke-bump). Kalau SEMUA kode di entry ini udah 100%, realKode kosong,
+        // unit-nya otomatis gak kebentuk (baris di bawah).
+        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100)
         if (realKode.length === 0) return
         const m = token?.match(/^__wiring_(\d+)org_/)
         const orang = m ? parseInt(m[1], 10) : 1
