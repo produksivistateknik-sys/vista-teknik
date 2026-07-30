@@ -54,11 +54,21 @@ function ExportDownloadButton({ url, format }: { url: string; format: string }) 
   )
 }
 
+// Pesan ramah buat user - error teknis mentah dari backend (timeout Gemini dkk) gak pernah
+// ditampilin langsung, selalu dipetakan ke sini dulu. code:'TIMEOUT' dari backend (sudah lewat
+// 1x retry otomatis di sisi server) jadi kasus utama.
+const pesanErrorRamah = (code?: string) =>
+  code === 'TIMEOUT'
+    ? 'Maaf, sistem AI sedang lambat merespons. Coba kirim ulang pertanyaannya sebentar lagi.'
+    : 'Maaf, ada gangguan menghubungi AI Assistant. Coba kirim ulang sebentar lagi.'
+
 export function AiAssistantChat() {
   const [contents, setContents] = useState<ChatContent[]>([])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [loadingLama, setLoadingLama] = useState(false)
   const [error, setError] = useState('')
+  const [lastAttempt, setLastAttempt] = useState<ChatContent[] | null>(null)
   const inputRef = useRef<HTMLInputElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
 
@@ -66,30 +76,49 @@ export function AiAssistantChat() {
     if (bodyRef.current) bodyRef.current.scrollTop = bodyRef.current.scrollHeight
   }, [contents, loading])
 
-  const kirim = async (teks?: string) => {
-    const pertanyaan = (teks ?? input).trim()
-    if (!pertanyaan || loading) return
-    setInput('')
+  const kirimKePayload = async (payloadContents: ChatContent[]) => {
     setError('')
-    const newContents: ChatContent[] = [...contents, { role: 'user', parts: [{ text: pertanyaan }] }]
-    setContents(newContents)
+    setLastAttempt(null)
     setLoading(true)
+    // Kalau prosesnya kelamaan (indikasi backend lagi retry internal), kasih tau user sistem
+    // masih jalan bukan diam macet - bukan cuma "Mikir..." tanpa kepastian.
+    const timerLama = setTimeout(() => setLoadingLama(true), 8000)
     try {
       const res = await fetch(`${supabaseUrl}/functions/v1/ai-agent`, {
         method: 'POST',
         headers: { Authorization: `Bearer ${supabaseAnonKey}`, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ contents: newContents }),
+        body: JSON.stringify({ contents: payloadContents }),
       })
       const json = await res.json()
-      if (!res.ok || json.error) throw new Error(json.error || `Error ${res.status}`)
+      if (!res.ok || json.error) {
+        const err: any = new Error(json.error || `Error ${res.status}`)
+        err.code = json.code
+        throw err
+      }
       setContents(json.contents)
     } catch (e: any) {
-      setError(e?.message || 'Gagal menghubungi AI Assistant.')
-      setContents(newContents)
+      setError(pesanErrorRamah(e?.code))
+      setContents(payloadContents)
+      setLastAttempt(payloadContents)
     } finally {
+      clearTimeout(timerLama)
+      setLoadingLama(false)
       setLoading(false)
       setTimeout(() => inputRef.current?.focus(), 50)
     }
+  }
+
+  const kirim = (teks?: string) => {
+    const pertanyaan = (teks ?? input).trim()
+    if (!pertanyaan || loading) return
+    setInput('')
+    const newContents: ChatContent[] = [...contents, { role: 'user', parts: [{ text: pertanyaan }] }]
+    setContents(newContents)
+    kirimKePayload(newContents)
+  }
+
+  const cobaLagi = () => {
+    if (lastAttempt && !loading) kirimKePayload(lastAttempt)
   }
 
   const textOf = (parts: any[]): string => (parts || []).filter((p) => p.text).map((p) => p.text).join('\n')
@@ -136,12 +165,19 @@ export function AiAssistantChat() {
           ))}
           {loading && (
             <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#f1f5f9', color: '#94a3b8', fontSize: 12.5, textAlign: 'left' }}>
-              Mikir...
+              {loadingLama ? 'Masih diproses, ini agak lama dari biasanya...' : 'Mikir...'}
             </div>
           )}
           {error && (
-            <div style={{ alignSelf: 'flex-start', padding: '9px 14px', borderRadius: 12, background: '#fee2e2', color: '#dc2626', fontSize: 12.5, maxWidth: '90%', textAlign: 'left' }}>
-              {error}
+            <div style={{ alignSelf: 'flex-start', display: 'flex', flexDirection: 'column', gap: 8, padding: '9px 14px', borderRadius: 12, background: '#fee2e2', color: '#dc2626', fontSize: 12.5, maxWidth: '90%', textAlign: 'left' }}>
+              <span>{error}</span>
+              {lastAttempt && (
+                <button onClick={cobaLagi} disabled={loading}
+                  style={{ alignSelf: 'flex-start', display: 'flex', alignItems: 'center', gap: 6, background: '#fff', border: '1px solid #dc262640', borderRadius: 8, padding: '5px 12px', fontSize: 12, fontWeight: 700, color: '#dc2626', cursor: loading ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                  <i className="ti ti-refresh" style={{ fontSize: 13 }} />
+                  Coba Lagi
+                </button>
+              )}
             </div>
           )}
         </div>

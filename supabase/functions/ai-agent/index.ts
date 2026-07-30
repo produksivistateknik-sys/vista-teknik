@@ -70,7 +70,7 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // kebawa beban bundling library dokumen).
 import ExcelJS from 'npm:exceljs@4'
 import { PDFDocument, StandardFonts, rgb } from 'npm:pdf-lib@1'
-import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType } from 'npm:docx@8'
+import { Document, Packer, Paragraph, Table, TableRow, TableCell, TextRun, HeadingLevel, WidthType, Footer, AlignmentType } from 'npm:docx@8'
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -383,17 +383,35 @@ function normalizeRows(data: any[]): { headers: string[]; rows: any[] } {
   return { headers, rows: data }
 }
 
+// Header kolom di data biasanya snake_case (nama field, misal 'jumlah_panel',
+// 'progress_keseluruhan_pct') - gak enak dibaca di dokumen jadi. Dipakai di SEMUA 3 format
+// (xlsx/pdf/docx) biar konsisten - data-nya tetap diakses lewat key asli (snake_case), cuma
+// LABEL yang ditampilkan yang dihumanize.
+function humanizeHeader(key: string): string {
+  return key
+    .replace(/_/g, ' ')
+    .split(' ')
+    .filter(Boolean)
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(' ')
+}
+
 async function generateExcelBuffer(data: any[], judul: string): Promise<Uint8Array> {
   const { headers, rows } = normalizeRows(data)
   const wb = new ExcelJS.Workbook()
   const ws = wb.addWorksheet((judul || 'Data').slice(0, 31) || 'Data')
-  const headerRow = ws.addRow(headers)
-  headerRow.font = { bold: true }
+  const headerRow = ws.addRow(headers.map(humanizeHeader))
+  headerRow.font = { bold: true, color: { argb: 'FF1E293B' } }
   headerRow.eachCell((cell: any) => {
     cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFE2E8F0' } }
+    cell.border = { bottom: { style: 'thin', color: { argb: 'FF94A3B8' } } }
   })
-  rows.forEach((row) => ws.addRow(headers.map((h) => row[h] ?? '')))
+  rows.forEach((row, i) => {
+    const r = ws.addRow(headers.map((h) => row[h] ?? ''))
+    if (i % 2 === 1) r.eachCell((cell: any) => { cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF8FAFC' } } })
+  })
   ws.columns.forEach((col: any) => { col.width = 20 })
+  ws.views = [{ state: 'frozen', ySplit: 1 }]
   const buf = await wb.xlsx.writeBuffer()
   return new Uint8Array(buf as ArrayBuffer)
 }
@@ -406,20 +424,54 @@ async function generatePdfBuffer(data: any[], judul: string): Promise<Uint8Array
 
   const pageWidth = 842, pageHeight = 595 // A4 landscape (points) - lebih muat buat tabel lebar
   const margin = 36
-  const fontSize = 8.5
-  const rowHeight = 16
-  const colWidth = (pageWidth - margin * 2) / Math.max(headers.length, 1)
-  const maxChars = Math.max(4, Math.floor(colWidth / (fontSize * 0.55)))
+  const footerReserve = 26 // ruang disisain di bawah buat footer, gak boleh ketiban baris tabel
+  const fontSize = 9
+  const rowHeight = 20
+  const headerHumanized = headers.map(humanizeHeader)
+
+  // Deteksi kolom numerik (semua nilai non-kosong berupa angka) - dipakai buat rata kanan,
+  // konsisten sama konvensi tabel angka pada umumnya.
+  const isNumericCol = headers.map((h) => rows.every((r: any) => r[h] === null || r[h] === undefined || r[h] === '' || !isNaN(Number(r[h]))))
+
+  // Lebar kolom DINAMIS dari isi konten (header + semua baris) - bukan rata sama rata kayak
+  // sebelumnya (yang bikin kolom pendek kosong melompong, kolom panjang kepotong). Discale
+  // proporsional kalau totalnya kelebihan lebar halaman, atau disebar rata kalau sisa ruang.
+  const tableWidth = pageWidth - margin * 2
+  const MIN_COL_W = 50
+  const rawWidths = headers.map((h, i) => {
+    const headerW = fontBold.widthOfTextAtSize(headerHumanized[i], fontSize)
+    const maxCellW = rows.reduce((mx: number, r: any) => {
+      const text = r[h] === null || r[h] === undefined ? '' : String(r[h])
+      return Math.max(mx, font.widthOfTextAtSize(text, fontSize))
+    }, 0)
+    return Math.max(MIN_COL_W, headerW, maxCellW) + 16
+  })
+  const totalRaw = rawWidths.reduce((a, b) => a + b, 0)
+  const colWidths =
+    totalRaw > tableWidth
+      ? rawWidths.map((w) => (w / totalRaw) * tableWidth)
+      : rawWidths.map((w) => w + (tableWidth - totalRaw) / headers.length)
+  const colX: number[] = []
+  ;(() => { let acc = margin; colWidths.forEach((w) => { colX.push(acc); acc += w }) })()
+
+  const truncateToWidth = (text: string, maxW: number, f: any, size: number) => {
+    if (f.widthOfTextAtSize(text, size) <= maxW) return text
+    let t = text
+    while (t.length > 1 && f.widthOfTextAtSize(t + '…', size) > maxW) t = t.slice(0, -1)
+    return t + '…'
+  }
 
   let page = pdfDoc.addPage([pageWidth, pageHeight])
   let y = pageHeight - margin
 
   const drawHeaderRow = () => {
-    headers.forEach((h, i) => {
-      page.drawText(String(h).slice(0, maxChars), { x: margin + i * colWidth, y, size: fontSize, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+    page.drawRectangle({ x: margin, y: y - rowHeight + 6, width: tableWidth, height: rowHeight, color: rgb(0.89, 0.92, 0.96) })
+    headerHumanized.forEach((h, i) => {
+      const text = truncateToWidth(h, colWidths[i] - 8, fontBold, fontSize)
+      page.drawText(text, { x: colX[i] + 4, y: y - rowHeight + 12, size: fontSize, font: fontBold, color: rgb(0.12, 0.16, 0.22) })
     })
     y -= rowHeight
-    page.drawLine({ start: { x: margin, y: y + 6 }, end: { x: pageWidth - margin, y: y + 6 }, thickness: 0.5, color: rgb(0.7, 0.7, 0.7) })
+    page.drawLine({ start: { x: margin, y }, end: { x: margin + tableWidth, y }, thickness: 1, color: rgb(0.58, 0.64, 0.72) })
   }
   const newPage = () => {
     page = pdfDoc.addPage([pageWidth, pageHeight])
@@ -427,20 +479,33 @@ async function generatePdfBuffer(data: any[], judul: string): Promise<Uint8Array
     drawHeaderRow()
   }
 
-  page.drawText(judul || 'Export', { x: margin, y, size: 14, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
-  y -= 22
-  page.drawText(`Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik`, { x: margin, y, size: 8, font, color: rgb(0.5, 0.5, 0.5) })
-  y -= 18
+  page.drawText(judul || 'Export', { x: margin, y, size: 15, font: fontBold, color: rgb(0.1, 0.1, 0.1) })
+  y -= 28
   drawHeaderRow()
 
-  rows.forEach((row) => {
-    if (y < margin + rowHeight) newPage()
+  rows.forEach((row: any, rowIdx: number) => {
+    if (y < margin + footerReserve + rowHeight) newPage()
+    if (rowIdx % 2 === 1) {
+      page.drawRectangle({ x: margin, y: y - rowHeight + 6, width: tableWidth, height: rowHeight, color: rgb(0.97, 0.98, 0.99) })
+    }
     headers.forEach((h, i) => {
       const val = row[h]
-      const text = val === null || val === undefined ? '' : String(val)
-      page.drawText(text.slice(0, maxChars), { x: margin + i * colWidth, y, size: fontSize, font, color: rgb(0.2, 0.2, 0.2) })
+      const text = truncateToWidth(val === null || val === undefined ? '' : String(val), colWidths[i] - 8, font, fontSize)
+      const textW = font.widthOfTextAtSize(text, fontSize)
+      const xPos = isNumericCol[i] ? colX[i] + colWidths[i] - 8 - textW : colX[i] + 4
+      page.drawText(text, { x: xPos, y: y - rowHeight + 12, size: fontSize, font, color: rgb(0.2, 0.2, 0.2) })
     })
+    page.drawLine({ start: { x: margin, y: y - rowHeight + 6 }, end: { x: margin + tableWidth, y: y - rowHeight + 6 }, thickness: 0.5, color: rgb(0.88, 0.9, 0.93) })
     y -= rowHeight
+  })
+
+  // Footer di SETIAP halaman - baru bisa ditulis di sini (bukan sambil jalan) karena total
+  // halaman baru diketahui setelah semua baris selesai di-layout.
+  const allPages = pdfDoc.getPages()
+  allPages.forEach((p: any, i: number) => {
+    p.drawText(`Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik  |  Halaman ${i + 1} dari ${allPages.length}`, {
+      x: margin, y: margin - 14, size: 7.5, font, color: rgb(0.55, 0.58, 0.64),
+    })
   })
 
   return await pdfDoc.save()
@@ -448,31 +513,45 @@ async function generatePdfBuffer(data: any[], judul: string): Promise<Uint8Array
 
 async function generateDocxBuffer(data: any[], judul: string): Promise<Uint8Array> {
   const { headers, rows } = normalizeRows(data)
+  const isNumericCol = headers.map((h) => rows.every((r: any) => r[h] === null || r[h] === undefined || r[h] === '' || !isNaN(Number(r[h]))))
+
   const headerCells = headers.map(
-    (h) =>
+    (h, i) =>
       new TableCell({
-        children: [new Paragraph({ children: [new TextRun({ text: String(h), bold: true })] })],
+        children: [new Paragraph({ alignment: isNumericCol[i] ? AlignmentType.RIGHT : AlignmentType.LEFT, children: [new TextRun({ text: humanizeHeader(h), bold: true, color: '1E293B' })] })],
         shading: { fill: 'E2E8F0' },
       })
   )
   const bodyRows = rows.map(
-    (row) =>
+    (row: any, rowIdx: number) =>
       new TableRow({
-        children: headers.map((h) => new TableCell({ children: [new Paragraph(String(row[h] ?? ''))] })),
+        children: headers.map(
+          (h, i) =>
+            new TableCell({
+              children: [new Paragraph({ alignment: isNumericCol[i] ? AlignmentType.RIGHT : AlignmentType.LEFT, text: String(row[h] ?? '') })],
+              shading: rowIdx % 2 === 1 ? { fill: 'F8FAFC' } : undefined,
+            })
+        ),
       })
   )
   const table = new Table({
     width: { size: 100, type: WidthType.PERCENTAGE },
-    rows: [new TableRow({ children: headerCells }), ...bodyRows],
+    rows: [new TableRow({ children: headerCells, tableHeader: true }), ...bodyRows],
   })
   const doc = new Document({
     sections: [
       {
-        children: [
-          new Paragraph({ text: judul || 'Export', heading: HeadingLevel.HEADING_1 }),
-          new Paragraph({ text: `Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik`, spacing: { after: 200 } }),
-          table,
-        ],
+        footers: {
+          default: new Footer({
+            children: [
+              new Paragraph({
+                alignment: AlignmentType.LEFT,
+                children: [new TextRun({ text: `Digenerate ${getLocalDateStr()} - AI Assistant Vista Teknik`, size: 16, color: '8C97A6' })],
+              }),
+            ],
+          }),
+        },
+        children: [new Paragraph({ text: judul || 'Export', heading: HeadingLevel.HEADING_1, spacing: { after: 200 } }), table],
       },
     ],
   })
@@ -1641,13 +1720,19 @@ const GEMINI_MODEL = 'gemini-3.5-flash-lite'
 const MAX_TOOL_ITERATIONS = 6
 
 // Diverifikasi empiris: panggilan Gemini API kadang HANG TOTAL (gak error, gak timeout dari
-// sisi Gemini sendiri - beberapa kali dites, ~1 dari 3 request identik macet tanpa respons
-// sama sekali). Tanpa batas waktu di sisi kita, satu hang Gemini bikin seluruh chat "Mikir..."
-// selamanya tanpa ada error yang bisa ditunjukkan ke user. AbortController biar gagal CEPAT
-// dengan pesan jelas, bukan diam-diam gantung sampai limit eksekusi Edge Function sendiri.
+// sisi Gemini sendiri - dites berkali-kali, kira-kira 1 dari 3-4 request macet tanpa respons
+// sama sekali, TERLEPAS dari kompleksitas request-nya - request sesederhana "halo" pun kena,
+// jadi ini BUKAN soal ukuran/kompleksitas request (misal generate_export/PDF) melainkan
+// flakiness murni di sisi Gemini API, di luar kendali kita. Tanpa batas waktu, satu hang bikin
+// seluruh chat "Mikir..." selamanya. AbortController biar gagal CEPAT, PLUS retry otomatis
+// sekali (dengan backoff singkat) KHUSUS buat kasus timeout - kalau retry itu juga gagal, baru
+// benar-benar nyerah dengan error `code:'TIMEOUT'` yang bisa dikenali frontend (biar bisa
+// dikasih pesan ramah + tombol coba lagi, bukan nampilin pesan teknis mentah ke user).
 const GEMINI_TIMEOUT_MS = 25000
+const GEMINI_MAX_ATTEMPTS = 2
+const GEMINI_RETRY_BACKOFF_MS = 800
 
-async function callGemini(apiKey: string, contents: any[]) {
+async function callGeminiOnce(apiKey: string, contents: any[]) {
   const controller = new AbortController()
   const timeoutId = setTimeout(() => controller.abort(), GEMINI_TIMEOUT_MS)
   try {
@@ -1670,11 +1755,37 @@ async function callGemini(apiKey: string, contents: any[]) {
     }
     return await res.json()
   } catch (e: any) {
-    if (e?.name === 'AbortError') throw new Error(`Gemini API gak respons dalam ${GEMINI_TIMEOUT_MS / 1000} detik (kemungkinan hang di sisi Gemini) - coba tanya ulang.`)
+    if (e?.name === 'AbortError') {
+      const err: any = new Error('timeout')
+      err.code = 'TIMEOUT'
+      throw err
+    }
     throw e
   } finally {
     clearTimeout(timeoutId)
   }
+}
+
+async function callGemini(apiKey: string, contents: any[]) {
+  let lastErr: any = null
+  for (let attempt = 1; attempt <= GEMINI_MAX_ATTEMPTS; attempt++) {
+    try {
+      return await callGeminiOnce(apiKey, contents)
+    } catch (e: any) {
+      lastErr = e
+      if (e?.code === 'TIMEOUT' && attempt < GEMINI_MAX_ATTEMPTS) {
+        await new Promise((r) => setTimeout(r, GEMINI_RETRY_BACKOFF_MS))
+        continue
+      }
+      break
+    }
+  }
+  if (lastErr?.code === 'TIMEOUT') {
+    const err: any = new Error('Sistem AI sedang lambat merespons. Coba kirim ulang pertanyaannya sebentar lagi.')
+    err.code = 'TIMEOUT'
+    throw err
+  }
+  throw lastErr
 }
 
 Deno.serve(async (req) => {
@@ -1724,6 +1835,6 @@ Deno.serve(async (req) => {
     return jsonResponse({ error: 'Terlalu banyak iterasi tool-use, coba pertanyaan yang lebih spesifik.', contents }, 500)
   } catch (e: any) {
     console.error(e)
-    return jsonResponse({ error: String(e?.message || e) }, 500)
+    return jsonResponse({ error: String(e?.message || e), ...(e?.code ? { code: e.code } : {}) }, 500)
   }
 })
