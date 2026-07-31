@@ -1631,9 +1631,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
                                   const sudahSelesaiKomp=progressUntukTelat>=100;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
-                                  // digeserKe: marker resmi dari auto-geser server-side (kode ini udah
-                                  // dipindah aksinya ke tanggal tsb). Fallback ke heuristik lama (peek
-                                  // jadwal besok) buat entry lama yang dibuat sebelum marker ini ada.
+                                  // digeserKe: field dipakai BERSAMA oleh auto-geser server-side (selalu
+                                  // maju, kapasitas penuh) DAN Pindah Jadwal manual di sini (bisa ke
+                                  // tanggal manapun termasuk mundur - planner koreksi jadwal) - field ini
+                                  // TIDAK menyimpan siapa/apa penyebabnya, cuma "kode ini udah dipindah
+                                  // aksinya ke tanggal tsb". Jangan asumsikan selalu otomatis/maju.
+                                  // Fallback ke heuristik lama (peek jadwal besok) buat entry lama yang
+                                  // dibuat sebelum marker ini ada.
                                   const digeserKeTgl=entry.digeserKe?.[kode]||(kodeDigeserKeBesok.has(kode)?addDays(d,1):null);
                                   return(
                                     <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>

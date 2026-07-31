@@ -564,7 +564,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td}}>
                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${kode} - ${item.nama}`:kode}</span>
                               {t.carriedOverFrom&&(
-                                <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", otomatis lanjut ke hari ini"}
+                                <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", lanjut ke hari ini"}
                                   style={{marginLeft:5,background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
                                   🔁 Lanjutan {fmtShort(t.carriedOverFrom)}
                                 </span>
@@ -576,7 +576,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 const pctDiTanggalIni=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
                                 const tidakDikerjakan=pctDiTanggalIni<=0;
                                 return(
-                                  <span title={(tidakDikerjakan?"Gak sempat dikerjakan sama sekali di ":"Belum selesai di ")+t.tanggal+", otomatis lanjut ke "+fmtShort(digeserKeTanggal)+" - data di sini disimpan sbg histori, gak bisa diaksi lagi"}
+                                  <span title={(tidakDikerjakan?"Gak sempat dikerjakan sama sekali di ":"Belum selesai di ")+t.tanggal+", dipindah ke "+fmtShort(digeserKeTanggal)+" (otomatis krn kapasitas, atau dipindah manual lewat Raw Schedule) - data di sini disimpan sbg histori, gak bisa diaksi lagi"}
                                     style={{marginLeft:5,background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
                                     {tidakDikerjakan?"🚫 Digeser - Tidak Dikerjakan":"➡️ Digeser ke "+fmtShort(digeserKeTanggal)}
                                   </span>
