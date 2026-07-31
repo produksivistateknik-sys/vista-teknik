@@ -11,12 +11,14 @@ export function SubBagianPasswordCard(){
   const subBagianIconLocal:Record<string,string>={
     Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍",
     Potong:"✂️",Bending:"📐",Stel:"🔩",Finishing:"✨",
-    Rendam:"💧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
+    Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
   };
 
+  // Rendam+Painting digabung jadi 1 sub-bagian login "Painting" di Vista Pekerja - "Rendam"
+  // sengaja gak ada lagi di sini (dulu 2 field password terpisah, sekarang cuma 1).
   const SUBBAGIAN_GROUPS:{label:string,icon:string,color:string,members:string[]}[]=[
     {label:"Mekanik",icon:"🔧",color:"#d97706",members:["Potong","Bending","Stel","Finishing"]},
-    {label:"Painting",icon:"🎨",color:"#7c3aed",members:["Rendam","Painting"]},
+    {label:"Painting",icon:"🎨",color:"#7c3aed",members:["Painting"]},
     {label:"Assembling",icon:"⚙️",color:"#059669",members:["Assembling Luar","Assembling Dalam"]},
     {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Warehouse","Assembling","QS","QC"]},
   ];
