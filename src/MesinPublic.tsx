@@ -27,6 +27,10 @@ export default function MesinPublic(){
   const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
   const [pekerjaPilih,setPekerjaPilih]=useState("")
   const [menyimpan,setMenyimpan]=useState(false)
+  // Rutin id yang BARU AJA ditandai selesai di sesi halaman ini - dikecualikan dari daftar
+  // seketika (optimistic, sebelum round-trip server kelar) supaya item langsung hilang, bukan
+  // nongol jadi status "Selesai". Direset kalau item beneran jatuh tempo lagi (reload halaman).
+  const [selesaiHariIniIds,setSelesaiHariIniIds]=useState<Set<any>>(new Set())
 
   const mesinId=new URLSearchParams(window.location.search).get("id")
 
@@ -53,6 +57,11 @@ export default function MesinPublic(){
   const tandaiSelesai=async(rutin:any)=>{
     if(!pekerjaPilih)return
     setMenyimpan(true)
+    // Optimistic - hilang dari daftar SEKETIKA, gak nunggu server dulu.
+    setSelesaiHariIniIds(prev=>new Set(prev).add(rutin.id))
+    setSelesaiFormId(null)
+    const pekerjaTerpilih=pekerjaPilih
+    setPekerjaPilih("")
     const todayStr=getLocalDateStr()
     const nextDate=calcNext(todayStr,rutin.frekuensi)
     const{data,error}=await supabase.from("maintenance_rutin").update({
@@ -61,16 +70,18 @@ export default function MesinPublic(){
     }).eq("id",rutin.id).select("*").single()
     if(!error&&data){
       await supabase.from("maintenance_rutin_log").insert({
-        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaPilih,completed_via:"qr_worker",
+        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaTerpilih,completed_via:"qr_worker",
       })
       await supabase.from("activity_log").insert({
-        user_name:pekerjaPilih,action:"MAINTENANCE RUTIN DONE (QR)",
+        user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
         description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
         module:"maintenance",halaman:"Mesin Public (QR)",
       })
       setRutinList((prev:any[])=>prev.map((x:any)=>x.id===rutin.id?data:x))
-      setSelesaiFormId(null)
-      setPekerjaPilih("")
+    } else {
+      // Gagal simpan - batalkan penyembunyian optimistic, biar item muncul lagi & bisa dicoba ulang.
+      setSelesaiHariIniIds(prev=>{const n=new Set(prev);n.delete(rutin.id);return n})
+      alert("Gagal menyimpan - coba lagi.")
     }
     setMenyimpan(false)
   }
@@ -122,6 +133,11 @@ export default function MesinPublic(){
   const daysLeft=getDaysLeft(nearestRutin?.jatuh_tempo)
   const daysBadge=getDaysBadge(daysLeft,nearestRutin?.jatuh_tempo)
   const lastLog=logList[0]
+  // Yang ditampilkan di daftar "Jadwal Maintenance Rutin" cuma yang beneran jatuh tempo (hari ini
+  // atau sudah lewat) DAN belum ditandai selesai barusan di sesi ini - begitu ditandai selesai,
+  // hilang dari sini, baru muncul lagi kalau jadwal berikutnya (dari frekuensinya) jatuh tempo lagi.
+  const todayStr=getLocalDateStr()
+  const rutinDue=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<=todayStr&&!selesaiHariIniIds.has(r.id))
 
   return(
     <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"Inter,sans-serif",paddingBottom:32}}>
@@ -169,18 +185,16 @@ export default function MesinPublic(){
           <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
             <span style={{fontSize:14}}>📅</span>
             <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Jadwal Maintenance Rutin</span>
-            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{rutinList.length} jadwal aktif</span>
+            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{rutinDue.length} jadwal aktif</span>
           </div>
-          {rutinList.length===0?(
-            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada jadwal rutin</div>
-          ):rutinList.map((r:any,i:number)=>{
+          {rutinDue.length===0?(
+            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Tidak ada jadwal maintenance aktif saat ini</div>
+          ):rutinDue.map((r:any,i:number)=>{
             const d=getDaysLeft(r.jatuh_tempo)
             const b=getDaysBadge(d,r.jatuh_tempo)
-            const todayStr=getLocalDateStr()
-            const sudahHariIni=r.terakhir_dilakukan===todayStr
             const formTerbuka=selesaiFormId===r.id
             return(
-              <div key={i} style={{padding:"10px 14px",borderBottom:i<rutinList.length-1?"1px solid #f1f5f9":"none"}}>
+              <div key={i} style={{padding:"10px 14px",borderBottom:i<rutinDue.length-1?"1px solid #f1f5f9":"none"}}>
                 <div style={{display:"flex",alignItems:"center",gap:10}}>
                   <div style={{width:8,height:8,borderRadius:"50%",background:b.color,flexShrink:0}}/>
                   <div style={{flex:1}}>
@@ -192,11 +206,7 @@ export default function MesinPublic(){
                   </div>
                   <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
                 </div>
-                {sudahHariIni?(
-                  <div style={{marginTop:8,marginLeft:18,fontSize:10.5,color:"#16a34a",background:"#f0fdf4",borderRadius:8,padding:"6px 10px",fontWeight:600}}>
-                    ✓ Sudah diselesaikan oleh {r.teknisi||"—"} pada {fmtDate(r.terakhir_dilakukan)}
-                  </div>
-                ):formTerbuka?(
+                {formTerbuka?(
                   <div style={{marginTop:8,marginLeft:18,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                     <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
                       style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,background:"#fff",color:"#1e293b"}}>
