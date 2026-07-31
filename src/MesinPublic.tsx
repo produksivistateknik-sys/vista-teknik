@@ -31,6 +31,10 @@ export default function MesinPublic(){
   // seketika (optimistic, sebelum round-trip server kelar) supaya item langsung hilang, bukan
   // nongol jadi status "Selesai". Direset kalau item beneran jatuh tempo lagi (reload halaman).
   const [selesaiHariIniIds,setSelesaiHariIniIds]=useState<Set<any>>(new Set())
+  // Log kerusakan mana yang lagi diperluas (detail lengkap) dan berapa banyak yang ditampilkan
+  // duluan (batasi awal, "Lihat lebih banyak" nambah - semua log tetap bisa diakses).
+  const [expandedLogId,setExpandedLogId]=useState<any>(null)
+  const [logShowCount,setLogShowCount]=useState(10)
 
   const mesinId=new URLSearchParams(window.location.search).get("id")
 
@@ -43,7 +47,7 @@ export default function MesinPublic(){
     const [{data:m},{data:r},{data:l},{data:p}]=await Promise.all([
       supabase.from("mesin").select("*").eq("id",mesinId).single(),
       supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinId).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
-      supabase.from("maintenance_log").select("*").eq("mesin_id",mesinId).order("created_at",{ascending:false}).limit(5),
+      supabase.from("maintenance_log").select("*").eq("mesin_id",mesinId).order("created_at",{ascending:false}),
       supabase.from("pekerja").select("id,nama").is("deleted_at",null).order("nama"),
     ])
     if(!m){setNotFound(true);setLoading(false);return}
@@ -233,27 +237,68 @@ export default function MesinPublic(){
           })}
         </div>
 
-        {/* Log Kerusakan */}
+        {/* Log Kerusakan - list semua histori, klik buat expand detail lengkap. Read-only,
+            gak ada tombol edit/tambah di sini (cuma bisa diinput/diedit dari Vista Teknik). */}
         <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden"}}>
           <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
             <span style={{fontSize:14}}>📋</span>
-            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Log Kerusakan Terakhir</span>
+            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Log Kerusakan</span>
+            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{logList.length} log</span>
           </div>
           {logList.length===0?(
             <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada log kerusakan</div>
-          ):logList.map((l:any,i:number)=>{
-            const ls=LOG_STATUS[l.status]||{bg:"#f1f5f9",color:"#64748b",label:l.status}
-            return(
-              <div key={i} style={{padding:"10px 14px",borderBottom:i<logList.length-1?"1px solid #f1f5f9":"none",display:"flex",gap:10,alignItems:"flex-start"}}>
-                <div style={{fontSize:10,color:"#94a3b8",minWidth:72,flexShrink:0,paddingTop:2}}>{fmtDate(l.tgl_kendala||l.created_at?.slice(0,10))}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,color:"#1e293b",fontWeight:500}}>{l.kendala||"—"}</div>
-                  {l.teknisi&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>Teknisi: {l.teknisi}</div>}
+          ):(<>
+            {logList.slice(0,logShowCount).map((l:any,i:number)=>{
+              const ls=LOG_STATUS[l.status]||{bg:"#f1f5f9",color:"#64748b",label:l.status}
+              const isOpen=expandedLogId===l.id
+              const kendalaLines=(l.kendala||"").split("\n")
+              const judulTampil=(l.judul||"").trim()||kendalaLines[0]||"(tanpa judul)"
+              const deskripsiTampil=(l.judul||"").trim()?(l.kendala||""):kendalaLines.slice(1).join(" ").trim()
+              const updateHarian=l.update_harian||[]
+              const foto=l.foto||[]
+              return(
+                <div key={l.id} style={{borderLeft:`3px solid ${ls.color}`,borderBottom:i<Math.min(logList.length,logShowCount)-1?"1px solid #f1f5f9":"none"}}>
+                  <div onClick={()=>setExpandedLogId(isOpen?null:l.id)} style={{padding:"10px 14px 10px 12px",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{judulTampil}</div>
+                      {deskripsiTampil&&<div style={{fontSize:10.5,color:"#64748b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>{deskripsiTampil}</div>}
+                      <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{fmtDate(l.tgl_kendala||l.created_at?.slice(0,10))}</div>
+                    </div>
+                    <span style={{background:ls.bg,color:ls.color,borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{ls.label}</span>
+                    <span style={{fontSize:10,color:"#cbd5e1",flexShrink:0}}>{isOpen?"▴":"▾"}</span>
+                  </div>
+                  {isOpen&&(
+                    <div style={{padding:"0 14px 12px 14px",display:"flex",flexDirection:"column",gap:6}}>
+                      {l.teknisi&&<div style={{fontSize:11,color:"#64748b"}}>👤 PIC: <b>{l.teknisi}</b></div>}
+                      <div style={{fontSize:11,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"6px 9px",lineHeight:1.4}}><b>Penyebab:</b> {deskripsiTampil||judulTampil}</div>
+                      {l.perbaikan&&<div style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",borderRadius:6,padding:"6px 9px",lineHeight:1.4}}><b>Perbaikan:</b> {l.perbaikan}</div>}
+                      {l.catatan&&<div style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:6,padding:"6px 9px",lineHeight:1.4,fontStyle:"italic"}}><b>Catatan lama:</b> {l.catatan}</div>}
+                      {updateHarian.map((u:any,ui:number)=>(
+                        <div key={ui} style={{fontSize:11,color:"#475569",background:"#eff6ff",borderRadius:6,padding:"6px 9px",lineHeight:1.4,borderLeft:"2px solid #93c5fd"}}>
+                          <b>Hari ke-{ui+1}</b> · {fmtDate(u.tanggal)}{u.oleh?" · "+u.oleh:""}<br/>{u.catatan}
+                        </div>
+                      ))}
+                      {foto.length>0&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
+                          {foto.map((f:any,fi:number)=>(
+                            <a key={fi} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/></a>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <span style={{background:ls.bg,color:ls.color,borderRadius:4,padding:"2px 7px",fontSize:9,fontWeight:700,flexShrink:0}}>{ls.label}</span>
+              )
+            })}
+            {logList.length>logShowCount&&(
+              <div style={{padding:"10px 14px",textAlign:"center"}}>
+                <button onClick={()=>setLogShowCount(c=>c+10)}
+                  style={{background:"#f8fafc",color:"#1d4ed8",border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
+                  Lihat lebih banyak ({logList.length-logShowCount} lagi)
+                </button>
               </div>
-            )
-          })}
+            )}
+          </>)}
         </div>
 
         <div style={{textAlign:"center",marginTop:20,fontSize:10,color:"#cbd5e1"}}>Vista Teknik ERP · Data realtime</div>
