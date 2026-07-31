@@ -84,12 +84,15 @@ export default function MesinPublic(){
     return diff
   }
 
-  const getDaysBadge=(d:number|null)=>{
-    if(d===null)return{label:"—",bg:"#f1f5f9",color:"#64748b"}
-    if(d<0)return{label:`Terlambat ${Math.abs(d)} hr`,bg:"#FCEBEB",color:"#A32D2D"}
-    if(d<=3)return{label:`H-${d}`,bg:"#FAEEDA",color:"#854F0B"}
-    if(d<=7)return{label:`H-${d}`,bg:"#FEF3C7",color:"#92400E"}
-    return{label:`H-${d}`,bg:"#EAF3DE",color:"#3B6D11"}
+  // Label badge SEKARANG tanggal jatuh tempo aslinya (bukan hitungan mundur "Terlambat X hr"/
+  // "H-X") - warna tetap dipakai buat indikasi terlambat/mendesak/aman, cuma teksnya diganti.
+  const getDaysBadge=(d:number|null,tanggal?:string)=>{
+    if(d===null||!tanggal)return{label:"—",bg:"#f1f5f9",color:"#64748b"}
+    const label=fmtDate(tanggal)
+    if(d<0)return{label,bg:"#FCEBEB",color:"#A32D2D"}
+    if(d<=3)return{label,bg:"#FAEEDA",color:"#854F0B"}
+    if(d<=7)return{label,bg:"#FEF3C7",color:"#92400E"}
+    return{label,bg:"#EAF3DE",color:"#3B6D11"}
   }
 
   const STATUS_COLOR:any={aktif:"#16a34a",maintenance:"#f59e0b",nonaktif:"#94a3b8"}
@@ -117,7 +120,7 @@ export default function MesinPublic(){
 
   const nearestRutin=rutinList[0]
   const daysLeft=getDaysLeft(nearestRutin?.jatuh_tempo)
-  const daysBadge=getDaysBadge(daysLeft)
+  const daysBadge=getDaysBadge(daysLeft,nearestRutin?.jatuh_tempo)
   const lastLog=logList[0]
 
   return(
@@ -172,7 +175,7 @@ export default function MesinPublic(){
             <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada jadwal rutin</div>
           ):rutinList.map((r:any,i:number)=>{
             const d=getDaysLeft(r.jatuh_tempo)
-            const b=getDaysBadge(d)
+            const b=getDaysBadge(d,r.jatuh_tempo)
             const todayStr=getLocalDateStr()
             const sudahHariIni=r.terakhir_dilakukan===todayStr
             const formTerbuka=selesaiFormId===r.id
@@ -196,7 +199,7 @@ export default function MesinPublic(){
                 ):formTerbuka?(
                   <div style={{marginTop:8,marginLeft:18,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                     <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
-                      style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,color:"#1e293b"}}>
+                      style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,background:"#fff",color:"#1e293b"}}>
                       <option value="">-- Pilih nama pekerja --</option>
                       {pekerjaList.map((p:any)=><option key={p.id} value={p.nama}>{p.nama}</option>)}
                     </select>
