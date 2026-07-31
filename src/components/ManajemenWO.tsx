@@ -303,6 +303,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
         const ratio=oldQty2/nq2;
         const newProgress:any={};
         const newHistory:any={...(nc[kode].history||{})};
+        // FIX bug "operator kosong": progressByDate (snapshot terkunci per tanggal, dipakai buat
+        // nampilin angka histori di Rencana Harian) DULU gak ikut direcalculate di sini - jadi
+        // snapshot lama tetap nunjukin persentase SEBELUM qty diedit (mis. masih 100% padahal
+        // progress live udah turun ke 25%), bikin data keliatan gak konsisten/gak bisa dipercaya.
+        // Sekarang ikut di-scale pakai rasio yang sama biar tetap konsisten sama progress live.
+        const newProgressByDate:any={...(nc[kode].progressByDate||{})};
         ALL_PROSES.forEach(pr=>{
           const oldPct=nc[kode].progress?.[pr]||0;
           const newPct=Math.min(100,Math.round(oldPct*ratio));
@@ -317,9 +323,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
               ts:new Date().toISOString()
             };
           }
+          if(newProgressByDate[pr]){
+            const scaledByDate:any={};
+            Object.entries(newProgressByDate[pr]).forEach(([tgl,pctLama]:any)=>{
+              scaledByDate[tgl]=Math.min(100,Math.round((Number(pctLama)||0)*ratio));
+            });
+            newProgressByDate[pr]=scaledByDate;
+          }
         });
         nc[kode].progress=newProgress;
         nc[kode].history=newHistory;
+        nc[kode].progressByDate=newProgressByDate;
       }
       return{...p,checklist:nc};
     })}));
