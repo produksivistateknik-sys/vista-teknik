@@ -116,6 +116,39 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return{names,tanggal:rows[0].tanggal};
   };
 
+  // Fallback TERAKHIR kalau fcs_timer_kerja gak punya baris SAMA SEKALI buat komponen ini
+  // (progress dikunci lewat "Kunci Progress" di Vista Pekerja tanpa timer - proses non-WIRING/
+  // non-BUSBAR memang gak wajib timer buat lock, lihat audit operator kosong) - progress_
+  // checkpoint_log tetap nyimpen pekerja_nama (teks, bukan id) tiap kali dikunci, dipakai di sini
+  // biar operator gak keliatan "Pilih sendiri di tablet" padahal sebenarnya sudah ada yang ngerjain.
+  const [checkpointOperatorData,setCheckpointOperatorData]=useState<any[]>([]);
+  useEffect(()=>{
+    let cancelled=false;
+    const fetchCheckpoint=async()=>{
+      let all:any[]=[],from=0;
+      while(true){
+        const{data,error}:any=await supabase.from("progress_checkpoint_log").select("panel_id,kode_komponen,proses,pekerja_nama,tanggal").lte("tanggal",selDate).range(from,from+999);
+        if(error||!data)break;
+        all=all.concat(data);
+        if(data.length<1000)break;
+        from+=1000;
+      }
+      if(!cancelled)setCheckpointOperatorData(all);
+    };
+    fetchCheckpoint();
+    const ch=supabase.channel("realtime-checkpoint-operator-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},fetchCheckpoint)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+  },[selDate]);
+  const getCheckpointOperatorForKode=(panelId:any,kode:string,proses:string):{names:string[],tanggal:string|null}=>{
+    const rows=checkpointOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+    if(rows.length===0)return{names:[],tanggal:null};
+    const terbaru=rows.slice().sort((a:any,b:any)=>b.tanggal.localeCompare(a.tanggal))[0];
+    const names=[...new Set(rows.filter((r:any)=>r.tanggal===terbaru.tanggal).flatMap((r:any)=>String(r.pekerja_nama||"").split(",").map((n:string)=>n.trim()).filter(Boolean)))];
+    return{names,tanggal:terbaru.tanggal};
+  };
+
   // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
   // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
   // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
@@ -547,12 +580,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // (kasus carry-over yang belum dilanjutkan lagi), fallback ke operator
                         // TERAKHIR yang beneran ngerjain (tanggal berapapun sebelumnya) - biar kolom
                         // operator gak pernah keliatan kosong/gak jelas padahal ada riwayatnya -
-                        // (3) fallback terakhir ke assignment planner (pekerja_per_komponen) kalau
-                        // gak ada riwayat timer sama sekali.
+                        // (3) kalau fcs_timer_kerja gak punya baris SAMA SEKALI (progress dikunci
+                        // tanpa timer), fallback ke pekerja_nama di progress_checkpoint_log -
+                        // (4) fallback terakhir ke assignment planner (pekerja_per_komponen) kalau
+                        // gak ada riwayat apapun sama sekali.
                         const operatorTimerKode=getOperatorNamesForKode(t.panelId,kode,t.proses);
                         const fallbackOp=operatorTimerKode.length===0?getFallbackOperatorForKode(t.panelId,kode,t.proses):null;
-                        const isLanjutan=operatorTimerKode.length===0&&!!fallbackOp&&fallbackOp.names.length>0;
-                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?fallbackOp!.names:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean));
+                        const checkpointOp=(operatorTimerKode.length===0&&(!fallbackOp||fallbackOp.names.length===0))?getCheckpointOperatorForKode(t.panelId,kode,t.proses):null;
+                        const lanjutanOp=(fallbackOp&&fallbackOp.names.length>0)?fallbackOp:checkpointOp;
+                        const isLanjutan=operatorTimerKode.length===0&&!!lanjutanOp&&lanjutanOp.names.length>0;
+                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?lanjutanOp!.names:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean));
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return(
                           <tr key={ti+"-"+kode}>
@@ -589,7 +626,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               ):workersKode.length>0?(
                                 <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
                                   {workersKode.map((n:string)=>(<span key={n} style={{background:isLanjutan?"#f8fafc":"#eff6ff",border:isLanjutan?"1px solid #e2e8f0":"1px solid #bfdbfe",color:isLanjutan?"#64748b":"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}
-                                  {isLanjutan&&<span title={"Terakhir ngerjain "+fmtShort(fallbackOp!.tanggal!)+", belum ada yang mulai lagi hari ini"} style={{fontSize:9,color:"#94a3b8",fontStyle:"italic"}}>lanjutan {fmtShort(fallbackOp!.tanggal!)}</span>}
+                                  {isLanjutan&&<span title={"Terakhir ngerjain "+fmtShort(lanjutanOp!.tanggal!)+", belum ada yang mulai lagi hari ini"} style={{fontSize:9,color:"#94a3b8",fontStyle:"italic"}}>lanjutan {fmtShort(lanjutanOp!.tanggal!)}</span>}
                                 </div>
                               ):digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>-</span>
