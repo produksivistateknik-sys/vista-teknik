@@ -9,16 +9,18 @@ export function MaintenancePageTab({user}:any){
   const [mesinList,setMesinList]=useState<any[]>([]);
   const [maintenanceList,setMaintenanceList]=useState<any[]>([]);
   const [rutinList,setRutinList]=useState<any[]>([]);
+  const [rutinLogList,setRutinLogList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
   useEffect(()=>{
     const load=async()=>{
       setLoading(true);
-      const [{data:ms},{data:ml},{data:rl}]=await Promise.all([
+      const [{data:ms},{data:ml},{data:rl},{data:rll}]=await Promise.all([
         supabase.from("mesin").select("*").is("deleted_at",null).order("kode"),
         supabase.from("maintenance_log").select("*,mesin(nama,kode)").order("created_at",{ascending:false}),
         supabase.from("maintenance_rutin").select("*,mesin(nama,kode)").eq("is_active",true).order("jatuh_tempo"),
+        supabase.from("maintenance_rutin_log").select("*").order("dilakukan_pada",{ascending:false}),
       ]);
-      setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setLoading(false);
+      setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setRutinLogList(rll??[]);setLoading(false);
     };load();
     // mesin bisa diedit dari SystemTab (Master Mesin) sementara tab ini kebuka bareng - refetch
     // silent (gak toggle `loading` yang nutup seluruh tab) biar list mesin di sini gak basi.
@@ -26,8 +28,20 @@ export function MaintenancePageTab({user}:any){
       const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode");
       setMesinList(data??[]);
     };
+    // Rutin bisa "Tandai Selesai" dari 2 tempat sekaligus (Vista Teknik ATAU halaman public QR
+    // yang di-scan pekerja) - refetch silent biar badge terlambat/jatuh tempo minggu ini di sini
+    // auto-update tanpa perlu admin refresh manual, dari mana pun perubahannya datang.
+    const fetchRutin=async()=>{
+      const [{data:rl},{data:rll}]=await Promise.all([
+        supabase.from("maintenance_rutin").select("*,mesin(nama,kode)").eq("is_active",true).order("jatuh_tempo"),
+        supabase.from("maintenance_rutin_log").select("*").order("dilakukan_pada",{ascending:false}),
+      ]);
+      setRutinList(rl??[]);setRutinLogList(rll??[]);
+    };
     const ch=supabase.channel("realtime-mesin-maintenance-page")
       .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
+      .on("postgres_changes",{event:"*",schema:"public",table:"maintenance_rutin"},fetchRutin)
+      .on("postgres_changes",{event:"*",schema:"public",table:"maintenance_rutin_log"},fetchRutin)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
@@ -54,7 +68,7 @@ export function MaintenancePageTab({user}:any){
       {loading?<div style={{textAlign:"center",padding:"40px",color:"#94a3b8"}}>Memuat data...</div>:
         subTab==="kerusakan"?
         <KerusakanTab mesinList={mesinList} maintenanceList={maintenanceList} setMaintenanceList={setMaintenanceList} user={user}/>:
-        <MaintenanceRutinTab mesinList={mesinList} rutinList={rutinList} setRutinList={setRutinList} user={user} today={today} terlambat={terlambat} mingguIni={mingguIni}/>
+        <MaintenanceRutinTab mesinList={mesinList} rutinList={rutinList} setRutinList={setRutinList} rutinLogList={rutinLogList} user={user} today={today} terlambat={terlambat} mingguIni={mingguIni}/>
       }
     </div>
   );

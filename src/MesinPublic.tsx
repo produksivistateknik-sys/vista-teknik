@@ -1,12 +1,32 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
+import { getLocalDateStr } from './lib/dateHelpers'
+
+// Sama persis calcNext di MaintenanceRutinTab.tsx (Vista Teknik) - sengaja diduplikasi kecil,
+// bukan di-share, karena halaman ini PUBLIC/tanpa login sementara MaintenanceRutinTab bagian
+// admin - biar dua konteks itu tetap independen satu sama lain.
+function calcNext(d:string,f:string){
+  if(!d)return""
+  const dt=new Date(d)
+  if(f==="harian")dt.setDate(dt.getDate()+1)
+  else if(f==="mingguan")dt.setDate(dt.getDate()+7)
+  else if(f==="bulanan")dt.setMonth(dt.getMonth()+1)
+  else if(f==="3bulan")dt.setMonth(dt.getMonth()+3)
+  else if(f==="tahunan")dt.setFullYear(dt.getFullYear()+1)
+  return dt.toISOString().slice(0,10)
+}
 
 export default function MesinPublic(){
   const [mesin,setMesin]=useState<any>(null)
   const [rutinList,setRutinList]=useState<any[]>([])
   const [logList,setLogList]=useState<any[]>([])
+  const [pekerjaList,setPekerjaList]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
   const [notFound,setNotFound]=useState(false)
+  // Rutin mana yang lagi buka form "pilih pekerja", nama yang dipilih, dan status simpan.
+  const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
+  const [pekerjaPilih,setPekerjaPilih]=useState("")
+  const [menyimpan,setMenyimpan]=useState(false)
 
   const mesinId=new URLSearchParams(window.location.search).get("id")
 
@@ -16,16 +36,43 @@ export default function MesinPublic(){
   },[mesinId])
 
   const fetchData=async()=>{
-    const [{data:m},{data:r},{data:l}]=await Promise.all([
+    const [{data:m},{data:r},{data:l},{data:p}]=await Promise.all([
       supabase.from("mesin").select("*").eq("id",mesinId).single(),
       supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinId).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
       supabase.from("maintenance_log").select("*").eq("mesin_id",mesinId).order("created_at",{ascending:false}).limit(5),
+      supabase.from("pekerja").select("id,nama").is("deleted_at",null).order("nama"),
     ])
     if(!m){setNotFound(true);setLoading(false);return}
     setMesin(m)
     setRutinList(r??[])
     setLogList(l??[])
+    setPekerjaList(p??[])
     setLoading(false)
+  }
+
+  const tandaiSelesai=async(rutin:any)=>{
+    if(!pekerjaPilih)return
+    setMenyimpan(true)
+    const todayStr=getLocalDateStr()
+    const nextDate=calcNext(todayStr,rutin.frekuensi)
+    const{data,error}=await supabase.from("maintenance_rutin").update({
+      terakhir_dilakukan:todayStr,
+      jatuh_tempo:nextDate,
+    }).eq("id",rutin.id).select("*").single()
+    if(!error&&data){
+      await supabase.from("maintenance_rutin_log").insert({
+        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaPilih,completed_via:"qr_worker",
+      })
+      await supabase.from("activity_log").insert({
+        user_name:pekerjaPilih,action:"MAINTENANCE RUTIN DONE (QR)",
+        description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
+        module:"maintenance",halaman:"Mesin Public (QR)",
+      })
+      setRutinList((prev:any[])=>prev.map((x:any)=>x.id===rutin.id?data:x))
+      setSelesaiFormId(null)
+      setPekerjaPilih("")
+    }
+    setMenyimpan(false)
   }
 
   const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-"
@@ -126,17 +173,48 @@ export default function MesinPublic(){
           ):rutinList.map((r:any,i:number)=>{
             const d=getDaysLeft(r.jatuh_tempo)
             const b=getDaysBadge(d)
+            const todayStr=getLocalDateStr()
+            const sudahHariIni=r.terakhir_dilakukan===todayStr
+            const formTerbuka=selesaiFormId===r.id
             return(
-              <div key={i} style={{padding:"10px 14px",borderBottom:i<rutinList.length-1?"1px solid #f1f5f9":"none",display:"flex",alignItems:"center",gap:10}}>
-                <div style={{width:8,height:8,borderRadius:"50%",background:b.color,flexShrink:0}}/>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{r.jenis_maintenance}</div>
-                  <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
-                    {r.frekuensi&&<span>{r.frekuensi} · </span>}
-                    {r.teknisi&&<span>Teknisi: {r.teknisi}</span>}
+              <div key={i} style={{padding:"10px 14px",borderBottom:i<rutinList.length-1?"1px solid #f1f5f9":"none"}}>
+                <div style={{display:"flex",alignItems:"center",gap:10}}>
+                  <div style={{width:8,height:8,borderRadius:"50%",background:b.color,flexShrink:0}}/>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{r.jenis_maintenance}</div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
+                      {r.frekuensi&&<span>{r.frekuensi} · </span>}
+                      {r.teknisi&&<span>Teknisi: {r.teknisi}</span>}
+                    </div>
                   </div>
+                  <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
                 </div>
-                <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
+                {sudahHariIni?(
+                  <div style={{marginTop:8,marginLeft:18,fontSize:10.5,color:"#16a34a",background:"#f0fdf4",borderRadius:8,padding:"6px 10px",fontWeight:600}}>
+                    ✓ Sudah diselesaikan oleh {r.teknisi||"—"} pada {fmtDate(r.terakhir_dilakukan)}
+                  </div>
+                ):formTerbuka?(
+                  <div style={{marginTop:8,marginLeft:18,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                    <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
+                      style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,color:"#1e293b"}}>
+                      <option value="">-- Pilih nama pekerja --</option>
+                      {pekerjaList.map((p:any)=><option key={p.id} value={p.nama}>{p.nama}</option>)}
+                    </select>
+                    <button onClick={()=>tandaiSelesai(r)} disabled={!pekerjaPilih||menyimpan}
+                      style={{background:pekerjaPilih?"#16a34a":"#cbd5e1",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:pekerjaPilih?"pointer":"not-allowed"}}>
+                      {menyimpan?"Menyimpan...":"Konfirmasi"}
+                    </button>
+                    <button onClick={()=>{setSelesaiFormId(null);setPekerjaPilih("")}} disabled={menyimpan}
+                      style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"7px 12px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Batal</button>
+                  </div>
+                ):(
+                  <div style={{marginTop:8,marginLeft:18}}>
+                    <button onClick={()=>{setSelesaiFormId(r.id);setPekerjaPilih("")}}
+                      style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
+                      Tandai Selesai
+                    </button>
+                  </div>
+                )}
               </div>
             )
           })}

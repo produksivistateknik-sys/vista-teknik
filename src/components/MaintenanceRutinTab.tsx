@@ -4,7 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { getLocalDateStr } from '../lib/dateHelpers'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
 
-export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today,terlambat,mingguIni}:any){
+export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogList,user,today,terlambat,mingguIni}:any){
   const [form,setForm]=useState({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
   const [showForm,setShowForm]=useState(false);
   const [editId,setEditId]=useState<any>(null);
@@ -67,6 +67,9 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today
     }).eq("id",item.id).select("*,mesin(nama,kode)").single();
     if(data){
       setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
+      await supabase.from("maintenance_rutin_log").insert({
+        rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",
+      });
       await activityLogService.insert({
         user_name:uname,
         action:"MAINTENANCE RUTIN DONE",
@@ -75,6 +78,13 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today
       });
     }
     setDoneId(null);
+  };
+  // Entry terbaru per rutin_id dari maintenance_rutin_log - buat nunjukin siapa & lewat mana
+  // (admin vs QR pekerja) terakhir nandain jadwal ini selesai.
+  const getLatestLog=(rutinId:number)=>{
+    const rows=(rutinLogList||[]).filter((l:any)=>l.rutin_id===rutinId);
+    if(rows.length===0)return null;
+    return rows.slice().sort((a:any,b:any)=>(b.dilakukan_pada||"").localeCompare(a.dilakukan_pada||"")||b.id-a.id)[0];
   };
   const kepatuhan=rutinList.length>0?Math.round((rutinList.filter((r:any)=>r.terakhir_dilakukan&&r.jatuh_tempo>=today).length/rutinList.length)*100):0;
   const filtered=filterFrek==="ALL"?rutinList:rutinList.filter((r:any)=>r.frekuensi===filterFrek);
@@ -129,13 +139,13 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,user,today
           <thead><tr>{["Mesin","Jenis Maintenance","Frekuensi","Teknisi","Terakhir","Jatuh Tempo","Status","Aksi"].map((h:string)=><th key={h} style={thS}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.length===0?(<tr><td colSpan={8} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Belum ada jadwal</td></tr>):
-            filtered.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};return(
+            filtered.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};const latestLog=getLatestLog(r.id);return(
               <tr key={r.id}>
                 <td style={td}><div style={{fontWeight:700}}>{r.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{r.mesin?.kode}</div></td>
                 <td style={{...td,fontWeight:600,color:"#475569"}}>{r.jenis_maintenance}</td>
                 <td style={td}><span style={{background:fc.bg,color:fc.color,border:`1px solid ${fc.border}`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{fc.label}</span></td>
                 <td style={{...td,color:"#64748b"}}>{r.teknisi||"—"}</td>
-                <td style={{...td,fontSize:11,color:"#94a3b8"}}>{r.terakhir_dilakukan||"—"}</td>
+                <td style={{...td,fontSize:11,color:"#94a3b8"}}>{r.terakhir_dilakukan||"—"}{latestLog&&<div style={{fontSize:9.5,color:latestLog.completed_via==="qr_worker"?"#7c3aed":"#94a3b8",fontWeight:700,marginTop:1}}>{latestLog.completed_via==="qr_worker"?`via QR (${latestLog.teknisi})`:"Admin ("+latestLog.teknisi+")"}</div>}</td>
                 <td style={{...td,fontSize:11,fontWeight:600,color:st.color}}>{r.jatuh_tempo||"—"}</td>
                 <td style={td}><span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{st.label}</span></td>
                 <td style={{...td,textAlign:"center"}}>
