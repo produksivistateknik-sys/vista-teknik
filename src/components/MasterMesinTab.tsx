@@ -4,27 +4,43 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { Card, Lbl, Inp, Sel, Btn, Modal } from './ui/Primitives'
 
+// Sama persis KEY/LABEL DIVISI_CONFIG di vista-pekerja/src/App.tsx (repo terpisah, gak ada
+// shared package - duplikat kecil, sama pola dengan konstanta lain yang direplikasi lintas repo
+// di codebase ini). KEY yang disimpan (bukan label) supaya bisa langsung dicocokkan sama
+// `user.divisi` login Vista Pekerja pas targeting push notification maintenance.
+const DIVISI_OPTIONS=[
+  {value:"mekanik",label:"Mekanik (Potong/Bending/Stel/Finishing)"},
+  {value:"painting",label:"Painting (+Rendam)"},
+  {value:"assembling",label:"Assembling (Luar/Dalam)"},
+  {value:"wiring_ctrl",label:"Wiring Control"},
+  {value:"wiring_pwr",label:"Wiring Power"},
+  {value:"qc",label:"QC"},
+  {value:"nameplate",label:"Nameplate"},
+  {value:"komponen",label:"Komponen (Warehouse/QS)"},
+];
+const divisiLabel=(v:string)=>DIVISI_OPTIONS.find(d=>d.value===v)?.label||v;
+
 export function MasterMesinTab({mesinList,setMesinList,user}:any){
   const [printQR,setPrintQR]=useState<any>(null);
-  const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif"});
+  const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif",divisi:""});
   const [editId,setEditId]=useState<any>(null);
   const [delId,setDelId]=useState<any>(null);
   const save=async()=>{
     if(!form.kode.trim()||!form.nama.trim())return;
     if(editId){
-      const{data,error}=await supabase.from("mesin").update({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).eq("id",editId).select().single();
+      const{data,error}=await supabase.from("mesin").update({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status,divisi:form.divisi||null}).eq("id",editId).select().single();
       if(!error){
         setMesinList((prev:any[])=>prev.map(m=>m.id===editId?data:m));
         setEditId(null);
-        setForm({kode:"",nama:"",lokasi:"",status:"aktif"});
+        setForm({kode:"",nama:"",lokasi:"",status:"aktif",divisi:""});
         const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
         await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"EDIT MESIN",description:"Edit mesin: "+form.kode+" - "+form.nama,module:"maintenance",halaman:"System"});
       }
     } else {
-      const{data,error}=await supabase.from("mesin").insert({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status}).select().single();
+      const{data,error}=await supabase.from("mesin").insert({kode:form.kode,nama:form.nama,lokasi:form.lokasi,status:form.status,divisi:form.divisi||null}).select().single();
       if(!error){
         setMesinList((prev:any[])=>[...prev,data]);
-        setForm({kode:"",nama:"",lokasi:"",status:"aktif"});
+        setForm({kode:"",nama:"",lokasi:"",status:"aktif",divisi:""});
         const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
         await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"TAMBAH MESIN",description:"Tambah mesin: "+form.kode+" - "+form.nama,module:"maintenance",halaman:"System"});
       }
@@ -41,7 +57,7 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
         <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:14}}>
           {editId?"✏️ Edit Mesin":"➕ Tambah Mesin"}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr 150px auto",gap:12,alignItems:"flex-end"}}>
+        <div style={{display:"grid",gridTemplateColumns:"120px 1fr 1fr 150px 1fr auto",gap:12,alignItems:"flex-end"}}>
           <div><Lbl>Kode</Lbl><Inp value={form.kode} onChange={e=>setForm({...form,kode:e.target.value})} placeholder="MSN-001"/></div>
           <div><Lbl>Nama Mesin</Lbl><Inp value={form.nama} onChange={e=>setForm({...form,nama:e.target.value})} placeholder="Nama mesin..."/></div>
           <div><Lbl>Lokasi</Lbl><Inp value={form.lokasi} onChange={e=>setForm({...form,lokasi:e.target.value})} placeholder="Lantai 1 / Area B..."/></div>
@@ -53,9 +69,15 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
               <option value="nonaktif">Nonaktif</option>
             </Sel>
           </div>
+          <div><Lbl>Divisi (buat notifikasi maintenance)</Lbl>
+            <Sel value={form.divisi} onChange={e=>setForm({...form,divisi:e.target.value})}>
+              <option value="">— Belum ditentukan —</option>
+              {DIVISI_OPTIONS.map(d=><option key={d.value} value={d.value}>{d.label}</option>)}
+            </Sel>
+          </div>
           <div style={{display:"flex",gap:8,paddingBottom:2}}>
             <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"+ Tambah"}</Btn>
-            {editId&&<Btn outline color="#64748b" onClick={()=>{setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif"});}}>Batal</Btn>}
+            {editId&&<Btn outline color="#64748b" onClick={()=>{setEditId(null);setForm({kode:"",nama:"",lokasi:"",status:"aktif",divisi:""});}}>Batal</Btn>}
           </div>
         </div>
       </Card>
@@ -77,6 +99,7 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
               <th style={thS}>NAMA MESIN</th>
               <th style={thS}>LOKASI</th>
               <th style={{...thS,textAlign:"center"}}>STATUS</th>
+              <th style={thS}>DIVISI</th>
               <th style={{...thS,textAlign:"center"}}>AKSI</th>
             </tr>
           </thead>
@@ -95,9 +118,10 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
                       {m.status}
                     </span>
                   </td>
+                  <td style={{...td,color:m.divisi?"#1e293b":"#cbd5e1",fontStyle:m.divisi?"normal":"italic",fontSize:11}}>{m.divisi?divisiLabel(m.divisi):"belum ditentukan"}</td>
                   <td style={{...td,textAlign:"center"}}>
                     <div style={{display:"flex",gap:5,justifyContent:"center"}}>
-                      <button onClick={()=>{setEditId(m.id);setForm({kode:m.kode,nama:m.nama,lokasi:m.lokasi||"",status:m.status});}}
+                      <button onClick={()=>{setEditId(m.id);setForm({kode:m.kode,nama:m.nama,lokasi:m.lokasi||"",status:m.status,divisi:m.divisi||""});}}
                         style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#475569"}}>✏️</button>
                       <button onClick={()=>setDelId(m.id)}
                         style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"4px 8px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>

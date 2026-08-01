@@ -18,11 +18,18 @@ BUKAN jatuh_tempo yang mungkin sudah berubah pas dibaca ulang) dipakai sebagai b
 kalau jadwal ini SELESAI lalu jatuh tempo lagi di siklus berikutnya, itung sebagai "reminder
 baru" (bukan ke-dedup sama reminder siklus lama).
 
-TARGET PENERIMA: v1 broadcast ke SEMUA baris push_subscriptions (semua admin Vista Teknik yang
-sudah aktifkan notifikasi) - field maintenance_rutin.teknisi adalah TEKS BEBAS (bukan FK ke akun
-manapun, dicek langsung ke data: nilai kayak "AFIF"/"WILDAN"/"Tim Painting"/"TIM PAINTING" -
-gak konsisten & gak reliable buat dicocokkan ke akun tertentu), jadi TIDAK dipakai buat targeting
-di v1 ini - kalau nanti field itu dirapikan jadi link ke akun, baru layak ditargetkan per-orang.
+TARGET PENERIMA (REVISI): field maintenance_rutin.teknisi adalah TEKS BEBAS (bukan FK ke akun
+manapun, dicek langsung ke data: nilai kayak "AFIF"/"WILDAN"/"Tim Painting"/"TIM PAINTING" - gak
+konsisten & gak reliable), jadi TETAP gak dipakai buat targeting. SEBAGAI GANTINYA dipakai
+mesin.divisi (field baru, diisi admin lewat Master Mesin, KEY-nya sama persis DIVISI_CONFIG di
+vista-pekerja - "mekanik"/"painting"/"assembling"/dst) - reminder untuk mesin dengan divisi X
+dikirim ke:
+1. push_subscriptions.divisi = X (tablet/HP Vista Pekerja yang login ke divisi itu - TARGET UTAMA
+   sesuai kebutuhan: teknisi di lapangan dapat notif langsung di HP-nya).
+2. push_subscriptions.admin_username IS NOT NULL (semua admin Vista Teknik yang subscribe - TETAP
+   dapat semua reminder apapun divisinya, buat visibilitas/pemantauan, gak dibatasi).
+Kalau mesin.divisi belum diisi admin (NULL) - fallback ke SEMUA push_subscriptions (baik admin
+maupun divisi manapun) supaya gak ada reminder yang "hilang" cuma karena belum sempat ditandai.
 
 Subscription yang sudah invalid (browser unsubscribe/uninstall, endpoint gak berlaku lagi -
 web-push balikin HTTP 404/410) dihapus otomatis dari push_subscriptions di sini.
@@ -86,18 +93,26 @@ Deno.serve(async (req) => {
     if (perluDikirim.length === 0) return jsonResponse({ checked: rutinAktif.length, kandidat: kandidat.length, dikirim: 0, catatan: 'semua sudah dapat reminder hari ini' })
 
     const mesinIds = [...new Set(perluDikirim.map((r: any) => r.mesin_id))]
-    const mesinRows = mesinIds.length ? await fetchAll(supabase, 'mesin', 'id,nama,kode', (q) => q.in('id', mesinIds)) : []
+    const mesinRows = mesinIds.length ? await fetchAll(supabase, 'mesin', 'id,nama,kode,divisi', (q) => q.in('id', mesinIds)) : []
     const mesinMap: Record<string, any> = {}
     mesinRows.forEach((m: any) => (mesinMap[String(m.id)] = m))
 
-    const subs = await fetchAll(supabase, 'push_subscriptions', 'id,endpoint,p256dh,auth')
+    const subs = await fetchAll(supabase, 'push_subscriptions', 'id,endpoint,p256dh,auth,admin_username,divisi')
     if (subs.length === 0) {
-      // Gak ada satupun admin yang subscribe - gak ada yang bisa dikirimin, tapi TETAP catat log
-      // dedup (jumlah_penerima:0) biar gak nyoba lagi berkali-kali hari yang sama begitu ada yang subscribe di tengah hari.
+      // Gak ada satupun yang subscribe (admin maupun divisi manapun) - gak ada yang bisa dikirimin,
+      // tapi TETAP catat log dedup (jumlah_penerima:0) biar gak nyoba lagi berkali-kali hari yang
+      // sama begitu ada yang subscribe di tengah hari.
       const logRows = perluDikirim.map((r: any) => ({ rutin_id: r.id, jatuh_tempo_saat_kirim: r.jatuh_tempo, tanggal_kirim: hariIni, jumlah_penerima: 0 }))
       await supabase.from('maintenance_reminder_log').insert(logRows)
-      return jsonResponse({ checked: rutinAktif.length, kandidat: kandidat.length, dikirim: 0, catatan: 'belum ada admin yang subscribe push notification' })
+      return jsonResponse({ checked: rutinAktif.length, kandidat: kandidat.length, dikirim: 0, catatan: 'belum ada admin/teknisi yang subscribe push notification' })
     }
+    const adminSubs = subs.filter((s: any) => s.admin_username)
+    const subsByDivisi: Record<string, any[]> = {}
+    subs.forEach((s: any) => {
+      if (!s.divisi) return
+      if (!subsByDivisi[s.divisi]) subsByDivisi[s.divisi] = []
+      subsByDivisi[s.divisi].push(s)
+    })
 
     const subsInvalid = new Set<number>()
     let totalTerkirim = 0
@@ -124,8 +139,16 @@ Deno.serve(async (req) => {
         url: '/?tab=maintenance',
       })
 
+      // Target: admin (selalu) + divisi yang match mesin.divisi. Kalau mesin.divisi belum diisi,
+      // fallback ke SEMUA subscription (admin + semua divisi) - lihat komentar di atas file.
+      const divisiMesin = mesin?.divisi
+      const targetSubs = divisiMesin
+        ? [...adminSubs, ...(subsByDivisi[divisiMesin] || [])]
+        : subs
+      const targetUnik = [...new Map(targetSubs.map((s: any) => [s.id, s])).values()]
+
       let terkirimUntukIni = 0
-      for (const s of subs) {
+      for (const s of targetUnik) {
         if (subsInvalid.has(s.id)) continue
         try {
           await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } }, payload)
