@@ -3,6 +3,9 @@ import { supabase } from '../lib/supabase'
 import { getLocalDateStr } from '../lib/dateHelpers'
 import { KerusakanTab } from './KerusakanTab'
 import { MaintenanceRutinTab } from './MaintenanceRutinTab'
+import { isPushSupported, getPushPermissionState, subscribeToPush } from '../lib/pushNotif'
+
+const PUSH_BANNER_DISMISS_KEY='vista_push_banner_dismissed';
 
 export function MaintenancePageTab({user}:any){
   const [subTab,setSubTab]=useState("kerusakan");
@@ -11,6 +14,30 @@ export function MaintenancePageTab({user}:any){
   const [rutinList,setRutinList]=useState<any[]>([]);
   const [rutinLogList,setRutinLogList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
+
+  // Banner ajakan aktifkan push notification - cuma muncul kalau: browser dukung, izin belum
+  // diputuskan ("default", bukan udah granted/denied), dan user belum pernah nutup banner ini
+  // (localStorage, biar gak nanya berulang tiap buka tab kalau user pilih "Nanti").
+  const [showPushBanner,setShowPushBanner]=useState(false);
+  const [pushLoading,setPushLoading]=useState(false);
+  useEffect(()=>{
+    if(!isPushSupported())return;
+    if(localStorage.getItem(PUSH_BANNER_DISMISS_KEY))return;
+    if(getPushPermissionState()==="default")setShowPushBanner(true);
+  },[]);
+  const aktifkanPush=async()=>{
+    if(!user?.username)return;
+    setPushLoading(true);
+    const res=await subscribeToPush(user.username);
+    setPushLoading(false);
+    setShowPushBanner(false);
+    localStorage.setItem(PUSH_BANNER_DISMISS_KEY,"1");
+    if(!res.success)alert("Gagal aktifkan notifikasi: "+(res.error||"unknown error"));
+  };
+  const tutupPushBanner=()=>{
+    setShowPushBanner(false);
+    localStorage.setItem(PUSH_BANNER_DISMISS_KEY,"1");
+  };
   useEffect(()=>{
     const load=async()=>{
       setLoading(true);
@@ -54,6 +81,17 @@ export function MaintenancePageTab({user}:any){
   });
   return(
     <div className="fi">
+      {showPushBanner&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",marginBottom:16,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10}}>
+          <div style={{fontSize:20}}>🔔</div>
+          <div style={{flex:1,fontSize:12,color:"#1e3a5f"}}>
+            <div style={{fontWeight:700,marginBottom:2}}>Aktifkan notifikasi pengingat Maintenance?</div>
+            <div style={{color:"#475569"}}>Vista Teknik bisa kirim notifikasi langsung ke device ini kalau ada jadwal maintenance rutin yang jatuh tempo/terlambat - gak perlu buka aplikasi terus buat mantau.</div>
+          </div>
+          <button onClick={aktifkanPush} disabled={pushLoading} style={{padding:"7px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{pushLoading?"...":"Aktifkan"}</button>
+          <button onClick={tutupPushBanner} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",fontSize:12,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Nanti</button>
+        </div>
+      )}
       <div style={{display:"flex",gap:0,marginBottom:16,background:"var(--card-bg,#fff)",borderRadius:10,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden",width:"fit-content"}}>
         {[{id:"kerusakan",label:"Kerusakan"},{id:"rutin",label:"Maintenance Rutin"}].map((t:any)=>(
           <button key={t.id} onClick={()=>setSubTab(t.id)}

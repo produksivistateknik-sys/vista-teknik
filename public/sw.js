@@ -56,3 +56,38 @@ self.addEventListener('fetch', (event) => {
     }).catch(() => caches.match(req))
   );
 });
+
+// Push notification (pengingat Maintenance Rutin jatuh tempo, dikirim dari edge function
+// maintenance-reminder-check via Web Push API) - payload JSON {title,body,url}, url dipakai
+// notificationclick buat fokus/buka tab yang sudah ada alih-alih selalu buka tab baru.
+self.addEventListener('push', (event) => {
+  let payload = { title: 'Vista Teknik', body: 'Ada pembaruan.', url: '/' };
+  try {
+    if (event.data) payload = { ...payload, ...event.data.json() };
+  } catch { /* payload bukan JSON valid - pakai default */ }
+
+  event.waitUntil(
+    self.registration.showNotification(payload.title, {
+      body: payload.body,
+      icon: '/icon-192.png',
+      badge: '/icon-192.png',
+      data: { url: payload.url },
+    })
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const targetUrl = event.notification.data?.url || '/';
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+      for (const client of clientList) {
+        if (client.url.includes(self.location.origin) && 'focus' in client) {
+          client.navigate(targetUrl);
+          return client.focus();
+        }
+      }
+      return self.clients.openWindow(targetUrl);
+    })
+  );
+});
