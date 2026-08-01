@@ -1529,6 +1529,32 @@ const TOOL_IMPL: Record<string, (supabase: any, input: any) => Promise<any>> = {
       berlaku_sampai: '7 hari dari sekarang',
     }
   },
+
+  // Basis pengetahuan STATIS tentang aplikasinya sendiri (nama_tab/kategori/fungsi/isi dari
+  // tabel app_documentation, diisi & diedit admin lewat System > Dokumentasi Aplikasi) - BEDA
+  // dari 16 tool lain di atas yang semuanya query DATA PRODUKSI. Dipakai buat pertanyaan
+  // "apa itu tab X" / "jelasin fitur aplikasi ini", bukan buat pertanyaan status WO/panel/dst.
+  async explain_fitur_aplikasi(supabase, input) {
+    const namaTab = String(input?.nama_tab || '').trim()
+    const rows = await fetchAll(supabase, 'app_documentation', 'nama_tab,kategori,fungsi_singkat,isi_lengkap')
+    if (!namaTab) return rows
+
+    const q = namaTab.toLowerCase()
+    let matches = rows.filter((r: any) => r.nama_tab.toLowerCase().includes(q) || q.includes(r.nama_tab.toLowerCase()))
+    if (matches.length === 0) {
+      // Fallback fuzzy ringan: cocokkan per-kata, biar toleran typo/nama gak persis
+      // (mis. user bilang "outstanding" vs data "Outstanding", atau "master mesin" vs "17b. Master Mesin").
+      const qWords = q.split(/\s+/).filter(Boolean)
+      matches = rows.filter((r: any) => {
+        const nama = r.nama_tab.toLowerCase()
+        return qWords.some((w) => w.length >= 3 && nama.includes(w))
+      })
+    }
+    if (matches.length === 0) {
+      return { error: `Gak ketemu dokumentasi untuk '${namaTab}'.`, daftar_tab_tersedia: rows.map((r: any) => r.nama_tab) }
+    }
+    return matches
+  },
 }
 
 // ================= Tool declarations format GEMINI (functionDeclarations) =================
@@ -1828,6 +1854,17 @@ const TOOL_DECLARATIONS = [
       required: ['data', 'format', 'judul'],
     },
   },
+  {
+    name: 'explain_fitur_aplikasi',
+    description:
+      "Jelasin FUNGSI/CARA PAKAI tab atau fitur di aplikasi Vista Teknik ITU SENDIRI (dokumentasi statis tentang aplikasinya, BUKAN data produksi). Pakai tool ini kalau user tanya 'apa itu tab X', 'tab mana buat lihat Y', 'jelasin semua fitur/tab yang ada', 'gimana cara pakai Z'. Kosongkan nama_tab buat dapetin dokumentasi SEMUA tab sekaligus. Isi nama_tab (boleh gak persis sama persis, ada fuzzy match) buat cari satu tab spesifik. JANGAN dipakai buat pertanyaan DATA produksi (WO/panel/progress/kapasitas dst) - itu tetap pakai tools lain yang sesuai.",
+    parameters: {
+      type: 'object',
+      properties: {
+        nama_tab: { type: 'string', description: "Nama tab/fitur yang ditanyakan, contoh 'Raw Schedule', 'Outstanding', 'Master Mesin'. Kosongkan kalau user minta penjelasan SEMUA tab sekaligus." },
+      },
+    },
+  },
 ]
 
 const SYSTEM_PROMPT = `Kamu adalah AI Assistant internal Vista Teknik (perusahaan fabrikasi panel listrik). Tugasmu jawab pertanyaan seputar kondisi produksi (WO, panel, progress, BOM, dst) HANYA berdasarkan data yang didapat dari tools yang tersedia - jangan pernah mengarang angka atau status. Kalau tool gak punya data yang relevan atau hasilnya kosong, bilang terus terang gak tau / data gak tersedia, jangan menebak. Ini versi v1 READ-ONLY: kamu cuma bisa BACA data, gak bisa ubah/hapus apapun, dan gak perlu menyarankan aksi ubah data. Jawab dalam Bahasa Indonesia informal, singkat dan langsung ke poin, format angka/persen dengan jelas.
@@ -1850,7 +1887,9 @@ TOOLS ANALISIS (analyze_bottleneck, compare_operator_productivity, compare_panel
 - compare_operator_productivity: hasilnya MURNI angka aktivitas tercatat (durasi, jumlah sesi, jumlah komponen) - BUKAN penilaian kualitas/karakter/etos kerja personal. Kalau user minta kesimpulan personal ("operator X malas/gak becus/paling jago"), TOLAK dengan sopan, jelaskan ini cuma data aktivitas objektif bukan penilaian, dan tetap sajikan angkanya apa adanya.
 - analyze_delay_correlation: hasilnya KORELASI (sinyal yang sama-sama muncul di data), BUKAN pembuktian sebab-akibat. JANGAN klaim "X menyebabkan keterlambatan" - bilang "X terdeteksi berbarengan dengan sekian persen WO yang terlambat".
 
-ESTIMASI SELESAI - PANEL vs KOMPONEN: kalau user tanya estimasi selesai buat SATU komponen di SATU proses spesifik (contoh: "kapan FS.1 selesai POTONG?"), pakai simulate_estimasi_selesai. Kalau user tanya estimasi buat PANEL SECARA KESELURUHAN/UTUH (contoh: "panel ini kira-kira selesai berapa hari lagi?", "kapan panel X kelar semua?"), WAJIB pakai simulate_estimasi_selesai_panel - JANGAN coba jawab manual dengan minta user breakdown per komponen/proses satu-satu, dan JANGAN nolak/bilang "gak bisa" buat pertanyaan kayak gitu karena tool-nya udah ada.`
+ESTIMASI SELESAI - PANEL vs KOMPONEN: kalau user tanya estimasi selesai buat SATU komponen di SATU proses spesifik (contoh: "kapan FS.1 selesai POTONG?"), pakai simulate_estimasi_selesai. Kalau user tanya estimasi buat PANEL SECARA KESELURUHAN/UTUH (contoh: "panel ini kira-kira selesai berapa hari lagi?", "kapan panel X kelar semua?"), WAJIB pakai simulate_estimasi_selesai_panel - JANGAN coba jawab manual dengan minta user breakdown per komponen/proses satu-satu, dan JANGAN nolak/bilang "gak bisa" buat pertanyaan kayak gitu karena tool-nya udah ada.
+
+PERTANYAAN TENTANG APLIKASI ITU SENDIRI vs DATA PRODUKSI: kalau user nanya soal FUNGSI/CARA PAKAI aplikasi Vista Teknik-nya sendiri (contoh: "apa itu tab Outstanding?", "tab mana buat lihat stok komponen?", "jelasin semua fitur yang ada di aplikasi ini", "gimana cara pakai Rencana Harian?") - WAJIB pakai explain_fitur_aplikasi, JANGAN pakai tools data produksi lain sama sekali buat pertanyaan jenis ini (gak nyambung, tools lain query data WO/panel/dst, bukan dokumentasi tab). Sebaliknya, kalau user nanya soal DATA/STATUS produksi (WO, panel, progress, kapasitas, kendala, dst) - tetap pakai tools query yang sesuai seperti biasa, JANGAN pakai explain_fitur_aplikasi buat itu.`
 
 // ================= Gemini generateContent tool-use loop =================
 

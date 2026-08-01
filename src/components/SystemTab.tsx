@@ -11,6 +11,7 @@ import { InventarisWrapper } from './InventarisWrapper'
 import { KapasitasPekerjaanTab } from './KapasitasPekerjaanTab'
 import { RecycleBinTab } from './RecycleBinTab'
 import { TimerAktifTab } from './TimerAktifTab'
+import { AppDocumentationTab } from './AppDocumentationTab'
 
 export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
   const [subTab,setSubTab]=useState("masteruser");
@@ -71,6 +72,7 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
     {id:"kapasitas",label:"🗄 Database"},
     {id:"recycle",label:"🗑 Recycle Bin"},
     {id:"timeraktif",label:"⏱ Timer Aktif"},
+    {id:"appdocs",label:"📄 Dokumentasi App"},
   ];
 
   return(
@@ -175,6 +177,7 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
           {subTab==="kapasitas"&&<KapasitasPekerjaanTab/>}
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
           {subTab==="timeraktif"&&<TimerAktifTab user={user}/>}
+          {subTab==="appdocs"&&<AppDocumentationTab/>}
         </>
       )}
     </div>
