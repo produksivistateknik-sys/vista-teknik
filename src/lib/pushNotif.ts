@@ -2,10 +2,23 @@ import { supabase } from './supabase'
 
 // Konversi VAPID public key (base64url) ke Uint8Array - format yang diminta
 // PushManager.subscribe's applicationServerKey.
+// .trim() JAGA-JAGA whitespace/newline tersembunyi yang kebawa pas value di-copy-paste ke
+// environment variable (Vercel dkk) - karakter itu bukan base64url valid & gak kena replace di
+// bawah, jadi atob() gagal decode dengan error kriptis ("not correctly encoded") kalau lolos.
 const urlBase64ToUint8Array = (base64String: string) => {
-  const padding = '='.repeat((4 - (base64String.length % 4)) % 4)
-  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/')
-  const rawData = window.atob(base64)
+  const cleaned = base64String.trim()
+  const padding = '='.repeat((4 - (cleaned.length % 4)) % 4)
+  const base64 = (cleaned + padding).replace(/-/g, '+').replace(/_/g, '/')
+  let rawData: string
+  try {
+    rawData = window.atob(base64)
+  } catch {
+    throw new Error(`VAPID public key gak valid base64url (setelah dibersihkan: "${cleaned.slice(0, 10)}...", panjang ${cleaned.length}) - cek ulang nilai VITE_VAPID_PUBLIC_KEY, kemungkinan ada karakter tersembunyi ikut ter-copy.`)
+  }
+  // P-256 uncompressed public key (format Web Push) WAJIB persis 65 byte (0x04 + X 32-byte + Y 32-byte).
+  if (rawData.length !== 65) {
+    throw new Error(`VAPID public key panjangnya salah setelah decode (${rawData.length} byte, harusnya 65) - kemungkinan nilai VITE_VAPID_PUBLIC_KEY kepotong atau kecampur karakter lain.`)
+  }
   const outputArray = new Uint8Array(rawData.length)
   for (let i = 0; i < rawData.length; i++) outputArray[i] = rawData.charCodeAt(i)
   return outputArray
