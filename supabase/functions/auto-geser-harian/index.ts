@@ -96,6 +96,15 @@ const PROSES_ORANG = ['WIRING CONTROL', 'WIRING POWER']
 // BUSBAR: progress per-tahap (busbar_progress), gak match model qty x menit_per_pcs - dikecualikan dari cascading kapasitas DAN dari skema jejak/digeserKe (di luar scope revisi ini), tetap geser langsung.
 const PROSES_TANPA_CASCADE = ['BUSBAR']
 const MAX_CASCADE_HARI = 90
+// FIX INSIDEN WIRING CONTROL/POWER (1 Agu 2026): kapasitas fcs_kapasitas_override cuma
+// dikonfigurasi sampai tanggal tertentu di masa depan - begitu cascading nyampe tanggal yang
+// BELUM ADA row-nya sama sekali (getCap()===null), dulu diperlakukan SAMA PERSIS kayak "hari itu
+// penuh" (kapasitas dikonfigurasi tapi habis) - jalan diam-diam sampai MAX_CASCADE_HARI (90 hari)
+// tanpa sinyal apa pun. Sekarang dibedakan: hari yang MEMANG dikonfigurasi (walau hasilnya 0/penuh)
+// tetap geser 1 hari demi 1 hari seperti biasa (perilaku ini SENGAJA gak diubah - kapasitas penuh
+// beberapa hari berturut itu wajar, terutama WIRING yang kuotanya kecil per hari) - yang di-stop
+// cuma kalau ketemu MAX_HARI_TANPA_KONFIG hari BERTURUT-TURUT tanpa row konfigurasi sama sekali.
+const MAX_HARI_TANPA_KONFIG = 3
 // Batas berapa hari catch-up boleh diproses dalam SATU invocation - jaga-jaga kalau gap-nya
 // kebetulan sangat panjang (misal cron mati berminggu-minggu), biar gak timeout. Kalau kepotong di
 // sini, tombol tinggal diklik lagi buat lanjut dari titik terakhir (auto_geser_runs jadi checkpoint).
@@ -297,10 +306,26 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     let pool = unitsAwal.slice()
     let tanggal = mulaiTanggal
     let hari = 0
+    let hariTanpaKonfigBerturut = 0
     while (pool.length > 0 && hari < MAX_CASCADE_HARI) {
       const cap = getCap(tanggal, proses)
-      const kapasitasUnit = cap?.unit || 0
-      if (!cap || kapasitasUnit <= 0) {
+      if (!cap) {
+        hariTanpaKonfigBerturut++
+        if (hariTanpaKonfigBerturut >= MAX_HARI_TANPA_KONFIG) {
+          // Kapasitas belum dikonfigurasi MAX_HARI_TANPA_KONFIG hari berturut-turut - STOP di sini
+          // (jangan lanjut nebak-nebak sampai 90 hari), tempatkan paksa + catat warning jelas biar
+          // ketauan ini beda kasus dari "kapasitas emang lagi penuh".
+          const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
+          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit ditempatkan sementara di ${tanggal}. PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
+          pool.forEach((u) => hasil.set(u.id, { finalDate: tanggal }))
+          pool = []
+          break
+        }
+        tanggal = addDaysStr(tanggal, 1); hari++; continue
+      }
+      hariTanpaKonfigBerturut = 0 // hari ini ADA konfigurasi (walau mungkin penuh) - reset counter
+      const kapasitasUnit = cap.unit || 0
+      if (kapasitasUnit <= 0) {
         tanggal = addDaysStr(tanggal, 1); hari++; continue
       }
       const sorted = pool.slice().sort(priorityCompare)
@@ -625,6 +650,19 @@ Deno.serve(async (req) => {
         user_name: triggeredBy,
         action: 'TARIK MANUAL AUTO-GESER',
         description: `Tarik manual ${jumlahHariDiproses} hari (${hariMulai} s/d ${hariIniWib}), total ${jumlahKomponenTotal} komponen (${komponenLangsungTotal} langsung, ${komponenDidorongTotal} didorong kapasitas)`,
+        module: 'rencana', halaman: 'Rencana Harian',
+      })
+    }
+    // Warning cascading (kapasitas belum dikonfigurasi berturut-turut, lihat MAX_HARI_TANPA_KONFIG,
+    // atau overbook mentok MAX_CASCADE_HARI) SEBELUMNYA cuma console.warn() + ikut di response JSON
+    // yang gak pernah dibaca frontend (RencanaHarian.tsx tarikKeHariIni cuma baca success/jumlah*) -
+    // jadi dulu gak pernah kelihatan sampai digali manual. Sekarang ditulis ke activity_log biar
+    // langsung nongol di halaman yang udah dicek admin, gak nunggu 90 hari buat ketauan.
+    if (!dryRun && overbookWarningsTotal.length > 0) {
+      await supabase.from('activity_log').insert({
+        user_name: triggeredBy || 'System',
+        action: 'AUTO-GESER: PERLU REVIEW MANUAL',
+        description: overbookWarningsTotal.join(' | '),
         module: 'rencana', halaman: 'Rencana Harian',
       })
     }
