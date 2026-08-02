@@ -321,6 +321,12 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           pool = []
           break
         }
+        // FIX: hari yang cuma "dilewati" karena belum ada konfigurasi (bukan yang jadi finalDate)
+        // WAJIB dapat jejak juga, persis kayak hari yang dilewati karena kapasitas penuh (branch
+        // overflow di bawah) - sebelumnya gak dicatat, bikin cascading KELIATAN loncat langsung
+        // dari tanggal asal ke finalDate (mis. 2 Agu -> 7 Agu tanpa bekas 5/6 Agu di raw_schedule),
+        // padahal algoritmanya udah benar jalan hari-demi-hari - cuma jejaknya yang bolong.
+        pool.forEach((u) => hops.get(u.id)!.push(tanggal))
         tanggal = addDaysStr(tanggal, 1); hari++; continue
       }
       hariTanpaKonfigBerturut = 0 // hari ini ADA konfigurasi (walau mungkin penuh) - reset counter
