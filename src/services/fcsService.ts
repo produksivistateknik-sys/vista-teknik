@@ -935,6 +935,8 @@ export async function executeSwapKomponenV2(params: {
       }
 
       await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+      // FIX bug "row renhar lama nyangkut" - lihat komentar bersihkanRenharSetelahGeser di bawah.
+      await bersihkanRenharSetelahGeser(rawId, komponenList.map((k) => ({ wp: k.wp, kode: k.kode_komponen })), tanggalAsal)
     }
 
     return { success: true }
@@ -1179,6 +1181,12 @@ export async function executeSwapKomponenOrang(params: {
       }
 
       await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+      // FIX bug "row renhar lama nyangkut" (sama akar masalah dengan reschedule Outstanding) -
+      // fungsi ini SEBELUMNYA cuma nulis raw_schedule, gak pernah bersihin renhar sama sekali buat
+      // komponen yang ke-swap-geser - row renhar lama di tanggalAsal tetap nganggep komponen itu
+      // aktif/released selamanya. Bersihin di sini juga (row TETAP ada buat histori, cuma gak
+      // dianggap aktif lagi).
+      await bersihkanRenharSetelahGeser(rawId, komponenList.map((k) => ({ wp: k.wp, kode: k.kode_komponen })), tanggalAsal)
     }
 
     return { success: true }
@@ -1187,6 +1195,23 @@ export async function executeSwapKomponenOrang(params: {
   }
 }
 
+// Bersihin komponen yang ke-geser dari row renhar di tanggal asal (dipakai executeSwapKomponenV2 &
+// executeSwapKomponenOrang - dua-duanya cuma nulis raw_schedule sebelumnya, renhar dibiarkan basi).
+// Reuse prinsip cleanup yang sama dengan tulisReschedule kasus2 di OutstandingView.tsx.
+async function bersihkanRenharSetelahGeser(rawId: number, items: Array<{ wp: string; kode: string }>, tanggalAsal: string) {
+  const { data: rows } = await supabase.from('renhar').select('id,wp,komponen,komponen_released,pekerja_per_komponen')
+    .eq('raw_id', rawId).eq('tanggal', tanggalAsal)
+  if (!rows) return
+  for (const { wp, kode } of items) {
+    const rh = rows.find((r: any) => r.wp === wp)
+    if (!rh || !(rh.komponen || []).includes(kode)) continue
+    const sisaKomp = (rh.komponen || []).filter((k: string) => k !== kode)
+    const sisaReleased = (rh.komponen_released || []).filter((k: string) => k !== kode)
+    const sisaPpk = { ...(rh.pekerja_per_komponen || {}) }
+    delete sisaPpk[kode]
+    await supabase.from('renhar').update({ komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk }).eq('id', rh.id)
+  }
+}
 
 const PROSES_ORANG_LIST = ['WIRING CONTROL', 'WIRING POWER']
 

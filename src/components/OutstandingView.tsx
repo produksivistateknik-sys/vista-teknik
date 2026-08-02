@@ -174,6 +174,22 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
           setRenhar((prev: any[]) => prev.map((x) => x.id === existingSrc.id ? { ...x, tanggal: newDate, komponen: [row.kode] } : x))
           return
         }
+      } else {
+        // FIX bug "reschedule bikin row renhar lama nyangkut" (kasus2/partial): sebelumnya CUMA
+        // kasus1 yang bersihin komponen dari row renhar sumber - kasus2 dibiarkan, jadi row renhar
+        // lama di tanggal asal TETAP nganggep kode itu aktif/released di sana selamanya, padahal
+        // raw_schedule udah bener2 nandain jejak (digeserKe). Efeknya kalau kode yang sama
+        // di-reschedule LAGI nanti, sistem baca row renhar lama yang basi itu, bikin data tampilan
+        // (operator/status rilis) kontradiktif antara tanggal asal vs tujuan. Bersihin persis pola
+        // kasus1 (komponen/komponen_released/pekerja_per_komponen), row renhar TETAP ada (historis
+        // valid buat audit "siapa yang sempat kerja di sini"), cuma gak dianggap aktif lagi.
+        const sisaKomp = (existingSrc.komponen || []).filter((k: string) => k !== row.kode)
+        const sisaReleased = (existingSrc.komponen_released || []).filter((k: string) => k !== row.kode)
+        const sisaPpk = { ...(existingSrc.pekerja_per_komponen || {}) }
+        delete sisaPpk[row.kode]
+        markRenharDirty(existingSrc.id)
+        await updateRenhar(existingSrc.id, { komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk })
+        setRenhar((prev: any[]) => prev.map((x) => x.id === existingSrc.id ? { ...x, komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk } : x))
       }
       const releasedLama = existingSrc.komponen_released || []
       const ppkLama = existingSrc.pekerja_per_komponen || {}
