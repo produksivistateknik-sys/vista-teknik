@@ -80,6 +80,13 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
           const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_')) || null
           ;(e.komponen || []).forEach((kode: string) => {
             if (kode.startsWith('__wiring_')) return
+            // FIX bug "tanggal balik lagi": entry yang UDAH jejak (digeserKe) di tanggal ini
+            // adalah histori read-only - kode-nya emang masih nongol di `komponen` (desain jejak
+            // yang sudah ada di seluruh codebase), TAPI ini BUKAN lokasi live-nya lagi. Tanpa cek
+            // ini, dedup "tanggal terbaru" di bawah bisa salah pilih entry jejak (kalau tanggal
+            // jejaknya kebetulan lebih besar dari tanggal live sebenarnya) - itu akar masalah
+            // Outstanding nampilin tanggal salah & reschedule keliatan "gak nyimpen".
+            if (e.digeserKe?.[kode]) return
             const cl = panel.checklist?.[kode]
             // Kode terjadwal di raw_schedule tapi checklist-nya belum ada di panel (data BOM
             // belum lengkap), atau qty-nya 0 (komponen ini emang gak dipakai/gak dibutuhkan di
