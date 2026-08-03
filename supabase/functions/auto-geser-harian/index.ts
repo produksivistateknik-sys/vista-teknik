@@ -71,8 +71,14 @@ PRINSIP ANTI-TABRAKAN (lihat diskusi sebelum implementasi ini):
 1. TIDAK PERNAH menyentuh panels.checklist[kode].progressByDate/history - itu punya fitur "kunci
    progress per hari" (snapshot), ditulis EKSKLUSIF oleh Vista Pekerja. Fungsi ini cuma BACA
    progress[proses]/qty/qtyProses (live) buat nentuin sudah selesai/sebagian/belum & demand kapasitas.
-2. TIDAK PERNAH menyentuh tabel renhar - status Rilis SELALU mulai "Belum Dirilis" di tanggal baru,
-   planner rilis manual.
+2. REVISI (3 Agu 2026, fix gap "renhar nyangkut"): status Rilis di tanggal TUJUAN BARU tetap SELALU
+   mulai "Belum Dirilis" (planner tetap wajib rilis manual di sana, TIDAK diubah) - TAPI row renhar
+   di tanggal ASAL/tanggal yang cuma "kelewat" (hop) SEKARANG dibersihkan (kode dilepas dari
+   komponen/komponen_released/pekerja_per_komponen, row-nya sendiri TETAP ada buat histori) begitu
+   kode itu dapat jejak (digeserKe). Sebelumnya SAMA SEKALI gak disentuh - akibatnya row renhar lama
+   terus "keliatan aktif/released" bertahun-hari walau raw_schedule udah bilang itu jejak/udah
+   pindah, bikin fitur lain yang scan raw_schedule (mis. notifikasi "operator selesai lebih cepat")
+   dapat tanggal yang gak sinkron sama tanggal rilis aktual. Lihat komentar di FASE 3.
 3. Fresh-fetch raw_schedule PENUH di awal TIAP hari yang diproses (bukan cuma sekali di awal
    invocation) - kalau catch-up jalan >1 hari, hari ke-2 harus lihat hasil tulisan hari ke-1.
 4. Paginasi PENUH pas fetch semua tabel - jangan ulangi bug limit 1000 baris default Supabase.
@@ -104,7 +110,9 @@ const MAX_CASCADE_HARI = 90
 // tetap geser 1 hari demi 1 hari seperti biasa (perilaku ini SENGAJA gak diubah - kapasitas penuh
 // beberapa hari berturut itu wajar, terutama WIRING yang kuotanya kecil per hari) - yang di-stop
 // cuma kalau ketemu MAX_HARI_TANPA_KONFIG hari BERTURUT-TURUT tanpa row konfigurasi sama sekali.
-const MAX_HARI_TANPA_KONFIG = 3
+// REVISI (3 Agu 2026): turunin dari 3 ke 1 - begitu ketemu SATU hari tanpa konfigurasi, langsung
+// stop & flag (jangan tunggu 3 hari dulu), biar gap kapasitas belum diisi ketauan lebih cepat.
+const MAX_HARI_TANPA_KONFIG = 1
 // Batas berapa hari catch-up boleh diproses dalam SATU invocation - jaga-jaga kalau gap-nya
 // kebetulan sangat panjang (misal cron mati berminggu-minggu), biar gak timeout. Kalau kepotong di
 // sini, tombol tinggal diklik lagi buat lanjut dari titik terakhir (auto_geser_runs jadi checkpoint).
@@ -581,7 +589,52 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       await supabase.from('raw_schedule').update({ schedule: scheduleBaru }).eq('id', rowId)
     }
     jumlahRowDiproses++
-    // Sengaja TIDAK menyentuh renhar sama sekali - status rilis di tanggal baru harus selalu mulai "Belum Dirilis", planner wajib rilis manual lagi.
+    // Tanggal TUJUAN BARU tetap gak disentuh (planner tetap wajib rilis manual) - cuma tanggal
+    // yang kode-nya dapat JEJAK yang renhar-nya dibersihkan, lihat FASE 3.5 di bawah.
+  }
+
+  // ================= FASE 3.5: bersihin renhar buat tanggal yang kode-nya dapat jejak =================
+  // FIX gap "renhar nyangkut" (lihat PRINSIP ANTI-TABRAKAN #2) - kode yang dapat jejak (digeserKe)
+  // di raw_schedule TAPI row renhar di tanggal itu masih nganggep kode itu released/aktif bikin
+  // fitur lain yang scan raw_schedule (mis. notifikasi "operator selesai lebih cepat") dapat
+  // tanggal yang gak sinkron sama tanggal rilis SEBENARNYA. Row renhar TETAP ada (histori valid),
+  // cuma kode-nya dilepas dari komponen/komponen_released/pekerja_per_komponen.
+  if (!dryRun) {
+    const kodePerRenharKey: Record<string, Set<string>> = {} // `${rowId}|${tanggal}|${wp}` -> Set<kode>
+    Object.entries(rowOps).forEach(([rowIdStr, dateOps]) => {
+      Object.entries(dateOps).forEach(([tanggal, ops]) => {
+        ops.jejak.forEach(({ wp, kode }) => {
+          const key = `${rowIdStr}|${tanggal}|${wp}`
+          if (!kodePerRenharKey[key]) kodePerRenharKey[key] = new Set()
+          kodePerRenharKey[key].add(kode)
+        })
+      })
+    })
+    const renharKeys = Object.keys(kodePerRenharKey)
+    if (renharKeys.length > 0) {
+      const rowIdsTerpengaruh = [...new Set(Object.keys(rowOps).map(Number))]
+      let renharRows: any[] = []
+      let from = 0
+      while (true) {
+        const { data, error } = await supabase.from('renhar').select('id,raw_id,tanggal,wp,komponen,komponen_released,pekerja_per_komponen').in('raw_id', rowIdsTerpengaruh).range(from, from + 999)
+        if (error) throw error
+        renharRows = renharRows.concat(data ?? [])
+        if (!data || data.length < 1000) break
+        from += 1000
+      }
+      for (const rh of renharRows) {
+        const key = `${rh.raw_id}|${rh.tanggal}|${rh.wp}`
+        const kodeSet = kodePerRenharKey[key]
+        if (!kodeSet) continue
+        const komponenLama = rh.komponen || []
+        if (!komponenLama.some((k: string) => kodeSet.has(k))) continue
+        const komponenBaru = komponenLama.filter((k: string) => !kodeSet.has(k))
+        const releasedBaru = (rh.komponen_released || []).filter((k: string) => !kodeSet.has(k))
+        const ppkBaru = { ...(rh.pekerja_per_komponen || {}) }
+        kodeSet.forEach((k) => delete ppkBaru[k])
+        await supabase.from('renhar').update({ komponen: komponenBaru, komponen_released: releasedBaru, pekerja_per_komponen: ppkBaru }).eq('id', rh.id)
+      }
+    }
   }
 
   if (overbookWarnings.length > 0) console.warn(overbookWarnings.join('\n'))
