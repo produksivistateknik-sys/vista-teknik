@@ -241,6 +241,14 @@ export async function generateFCSSchedule(params: {
     const { woId, woNumber, proyek, panelId, panelNama, tipePanel, checklist, jenisPekerjaan, tanggalMulai, generatedBy, selectedKomponen } = params
 
     // 1. Ambil process time
+    // FIX: dulu kalau ptData kosong sama sekali buat tipe+proses ini, LANGSUNG gagal total (gak
+    // ada satupun komponen kecantum di raw_schedule) - akibatnya proses yang belum sempat diisi
+    // data waktunya (mis. FINISHING buat tipe panel baru) jadi HILANG TOTAL dari jadwal, bukan
+    // cuma "belum optimal". Sekarang: komponen yang PUNYA data waktu tetap lewat alur kapasitas
+    // normal seperti biasa: komponen yang BELUM punya data waktu TETAP dimasukkan ke
+    // raw_schedule (langsung di tanggalMulai, gak ikut kompetisi kapasitas karena memang gak
+    // bisa dihitung demand-nya) - sama prinsip dengan cara BUSBAR/proses-tanpa-data ditangani di
+    // auto-geser-harian, biar komponennya kelihatan & bisa diatur manual, bukan diam-diam hilang.
     const { data: ptData } = await supabase
       .from('fcs_process_time')
       .select('*')
@@ -248,12 +256,17 @@ export async function generateFCSSchedule(params: {
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .eq('is_active', true)
 
-    if (!ptData || ptData.length === 0) {
-      return { success: false, count: 0, error: `Process time untuk ${tipePanel} - ${jenisPekerjaan} belum ada` }
-    }
-
     const processTimeMap: Record<string, FCSProcessTime> = {}
-    ptData.forEach((pt: FCSProcessTime) => { processTimeMap[pt.kode_komponen] = pt })
+    ;(ptData || []).forEach((pt: FCSProcessTime) => { processTimeMap[pt.kode_komponen] = pt })
+
+    // Fallback nama_komponen/wp dari bom_master - dibutuhkan buat komponen yang gak punya
+    // process_time (jadi gak ada baris FCSProcessTime buat ambil nama/wp-nya).
+    const { data: bomFallback } = await supabase
+      .from('bom_master')
+      .select('kode_komponen,nama_komponen,wp')
+      .eq('tipe_panel', tipePanel)
+    const bomMap: Record<string, { nama_komponen: string; wp: string }> = {}
+    ;(bomFallback || []).forEach((b: any) => { bomMap[b.kode_komponen] = { nama_komponen: b.nama_komponen, wp: b.wp } })
 
     // 2. Hapus SEMUA schedule lama untuk panel+proses ini (semua status, termasuk completed)
     // Generate ulang dianggap sumber kebenaran baru - qty/komponen terbaru menggantikan total
@@ -301,14 +314,22 @@ export async function generateFCSSchedule(params: {
       })
     }
 
-    // 5. Hitung kebutuhan komponen (filter berdasarkan selectedKomponen kalau ada)
+    // 5. Hitung kebutuhan komponen (filter berdasarkan selectedKomponen kalau ada) - dipisah
+    // 2 kelompok: yang PUNYA data waktu proses (lewat alur kapasitas normal, generateFCSBatch)
+    // dan yang GAK PUNYA (ditempatkan langsung, lihat komentar FIX di atas).
     const kebutuhan: KomponenKebutuhan[] = []
+    const tanpaDataWaktu: { kode_komponen: string; nama_komponen: string; wp: string; qty_total: number }[] = []
     for (const [kode, cl] of Object.entries(checklist)) {
       const qty = cl.qty || 0
       if (qty <= 0) continue
       if (selectedKomponen && selectedKomponen.length > 0 && !selectedKomponen.includes(kode)) continue
       const pt = processTimeMap[kode]
-      if (!pt || pt.menit_per_pcs <= 0) continue
+      if (!pt || pt.menit_per_pcs <= 0) {
+        const fallback = bomMap[kode]
+        if (!fallback) continue // gak ada di BOM master sama sekali - beneran gak bisa diidentifikasi, skip
+        tanpaDataWaktu.push({ kode_komponen: kode, nama_komponen: fallback.nama_komponen, wp: fallback.wp, qty_total: qty })
+        continue
+      }
       kebutuhan.push({
         kode_komponen: kode,
         nama_komponen: pt.nama_komponen,
@@ -318,17 +339,29 @@ export async function generateFCSSchedule(params: {
       })
     }
 
-    if (kebutuhan.length === 0) {
-      return { success: false, count: 0, error: 'Tidak ada komponen dengan qty > 0 dan process time terdefinisi' }
+    if (kebutuhan.length === 0 && tanpaDataWaktu.length === 0) {
+      return { success: false, count: 0, error: 'Tidak ada komponen dengan qty > 0 untuk proses ini' }
     }
 
     kebutuhan.sort((a, b) => a.wp.localeCompare(b.wp) || a.kode_komponen.localeCompare(b.kode_komponen))
 
     // 6. Generate FCS dengan kapasitas dari override
     const woInfo = { wo_id: woId, wo_number: woNumber, proyek, panel_id: panelId, panel_nama: panelNama, tipe_panel: tipePanel }
-    const { items: allItems, tanggalHabis } = generateFCSBatch(
-      kebutuhan, tanggalMulai, jenisPekerjaan, kapasitasMap, kapasitasTerpakaiAwal, woInfo, generatedBy
-    )
+    const { items: batchItems, tanggalHabis } = kebutuhan.length > 0
+      ? generateFCSBatch(kebutuhan, tanggalMulai, jenisPekerjaan, kapasitasMap, kapasitasTerpakaiAwal, woInfo, generatedBy)
+      : { items: [] as FCSScheduleItem[], tanggalHabis: false }
+
+    // Komponen tanpa data waktu: langsung ditempatkan di tanggalMulai, TANPA ikut kompetisi
+    // kapasitas (menit_per_pcs:0/total_menit:0 - gak ada demand yang bisa dihitung).
+    const tanpaWaktuItems: FCSScheduleItem[] = tanpaDataWaktu.map((k) => ({
+      wo_id: woId, wo_number: woNumber, proyek, panel_id: panelId, panel_nama: panelNama, tipe_panel: tipePanel,
+      kode_komponen: k.kode_komponen, nama_komponen: k.nama_komponen, wp: k.wp,
+      jenis_pekerjaan: jenisPekerjaan, tanggal: tanggalMulai,
+      qty_total: k.qty_total, qty_hari: k.qty_total, menit_per_pcs: 0, total_menit: 0,
+      status: 'planning', urutan: 1, generated_by: generatedBy,
+    }))
+
+    const allItems = [...batchItems, ...tanpaWaktuItems]
 
     if (allItems.length === 0) {
       return { success: false, count: 0, error: 'Tidak ada jadwal yang berhasil digenerate. Kapasitas mungkin sudah penuh untuk semua tanggal yang diatur.' }
@@ -1741,7 +1774,14 @@ export async function generateAndSaveToRawSchedule(
               const menitPerPcs = menitMap[panel.tipe + '|' + kode + '|' + proses] || 0
               const qtySisa = sisaQty[kode]
               if (menitPerPcs <= 0) {
-                sisaQtyBerikutnya[kode] = qtySisa
+                // FIX: sebelumnya komponen tanpa data fcs_process_time DIDIAMKAN gak pernah
+                // kejadwal (didorong "sisaQtyBerikutnya" terus tiap hari, sampai 21 percobaan
+                // habis lalu cuma di-console.warn - efeknya komponen/proses itu HILANG TOTAL
+                // dari raw_schedule, gak ada bekasnya sama sekali). Sekarang: tetap tempatkan
+                // LANGSUNG di tanggal ini, TANPA ikut kompetisi kapasitas (gak ada cara ngitung
+                // demand-nya) - sama prinsip kayak BUSBAR/proses-tanpa-data yang sudah ada.
+                kodeHariIni.push(kode)
+                qtyHariIni[kode] = qtySisa
                 continue
               }
               const menitTotal = qtySisa * menitPerPcs
