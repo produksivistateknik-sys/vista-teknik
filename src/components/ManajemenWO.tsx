@@ -171,11 +171,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     setArsipLoading(false);
   };
 
-  const buildNp=(list:any[])=>list.filter(p=>p.nama).map((p,i)=>{
+  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>)=>list.filter(p=>p.nama).map((p,i)=>{
     if((p as any).id){
       const newQty=Number(p.qty)||1;
       const origQty=(p as any)._origQty!==undefined?Number((p as any)._origQty)||1:newQty;
-      let finalChecklist=(p as any).checklist||initChecklist(p.tipe,newQty);
+      const freshChecklist=freshChecklistMap?.[String((p as any).id)];
+      let finalChecklist=freshChecklist||(p as any).checklist||initChecklist(p.tipe,newQty);
       if(origQty!==newQty&&origQty>0&&(p as any).checklist){
         const ratio=newQty/origQty;
         const scaledChecklist:any={};
@@ -204,13 +205,20 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     if(editId){
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
+        // ambil checklist TERBARU dari DB biar gak nimpa edit qty admin lain yang masuk selagi modal ini kebuka
+        const panelIds=panels.filter(p=>p.nama&&(p as any).id).map(p=>(p as any).id);
+        let freshChecklistMap:Record<string,any>={};
+        if(panelIds.length>0){
+          const{data:freshRows}=await supabase.from("panels").select("id,checklist").in("id",panelIds);
+          freshChecklistMap=Object.fromEntries((freshRows||[]).map((r:any)=>[String(r.id),r.checklist]));
+        }
         const groups:Record<string,any[]>={};
         panels.filter(p=>p.nama).forEach(p=>{
           const tgl=(p as any).tanggal||form.target;
           if(!groups[tgl])groups[tgl]=[];
           groups[tgl].push(p);
         });
-        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl])}));
+        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap)}));
         await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
@@ -354,7 +362,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     if(!panel){alert('Panel tidak ditemukan!');return;}
     const dirty=dirtyQty[String(panelId)]||{};
     const panelQtyMultiplier=Number(panel.qty)||1;
-    const finalChecklist={...panel.checklist};
+    // ambil checklist TERBARU dari DB (bukan state lokal) biar gak nimpa edit qty admin lain yang barusan masuk
+    const{data:freshPanelRow}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
+    const finalChecklist={...(freshPanelRow?.checklist||panel.checklist)};
     if(panelQtyMultiplier>1){
       Object.keys(dirty).forEach(kode=>{
         const dirtyEntry=(dirty as any)[kode];
