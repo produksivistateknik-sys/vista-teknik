@@ -113,6 +113,19 @@ const MAX_CASCADE_HARI = 90
 // REVISI (3 Agu 2026): turunin dari 3 ke 1 - begitu ketemu SATU hari tanpa konfigurasi, langsung
 // stop & flag (jangan tunggu 3 hari dulu), biar gap kapasitas belum diisi ketauan lebih cepat.
 const MAX_HARI_TANPA_KONFIG = 1
+// REVISI (4 Agu 2026) - WIRING CONTROL/WIRING POWER TIDAK PAKAI priority-displacement:
+// `cascadePlace` (dipakai proses jam-based normal) sengaja BOLEH mendorong komponen yang UDAH ADA
+// di suatu tanggal kalau kandidat baru prioritasnya lebih tinggi (WO lebih deket) - ini perilaku
+// yang MEMANG diinginkan buat proses normal. Buat WIRING CONTROL/POWER, perilaku ini SEKARANG
+// DIMATIKAN lewat `cascadePlaceNoDisplacement` (fungsi terpisah, cuma dipakai di blok WIRING) -
+// komponen yang udah ada di suatu tanggal SELALU dipin di situ, gak pernah dievaluasi buat digeser
+// lewat mekanisme ini, gak peduli prioritas kandidat baru. Kandidat baru cuma boleh mendarat di
+// hari yang BENERAN masih ada sisa kapasitas kosong (gak numpang/nge-squeeze siapapun keluar).
+// Kalau sampai MAX_CASCADE_HARI (90 hari) tetap gak ketemu slot kosong, BEDA dari cascadePlace
+// biasa (yang force-overbook di hari terakhir) - kandidat WIRING TIDAK dipaksa masuk kemanapun,
+// dibiarin apa adanya di tanggal asal (gak di-jejak, gak dipindah), cuma dicatat warning "PERLU
+// REVIEW MANUAL" biar admin isi kapasitas ke depan. `cascadePlace` asli TIDAK berubah sama sekali -
+// proses jam-based (POTONG/BENDING/dst) tetap persis seperti sebelumnya.
 // Batas berapa hari catch-up boleh diproses dalam SATU invocation - jaga-jaga kalau gap-nya
 // kebetulan sangat panjang (misal cron mati berminggu-minggu), biar gak timeout. Kalau kepotong di
 // sini, tombol tinggal diklik lagi buat lanjut dari titik terakhir (auto_geser_runs jadi checkpoint).
@@ -362,6 +375,72 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     return { hasil, hops }
   }
 
+  // Varian khusus WIRING CONTROL/WIRING POWER - TANPA priority-displacement (lihat komentar
+  // MAX_HARI_TANPA_KONFIG di atas). Existing (unit yang UDAH ADA di hariTargetPin) SELALU dipin
+  // di situ, gak lewat pencarian hari sama sekali. Cuma kandidat baru yang jalan maju satu hari
+  // demi satu hari, mendarat di hari pertama yang sisa kapasitasnya (setelah dikurangi existing +
+  // kandidat lain yang udah diterima hari itu) CUKUP buat demand-nya secara PENUH - gak ada
+  // squeeze/overbook paksa. Kalau MAX_CASCADE_HARI abis tetap gak ketemu, unit itu SENGAJA gak
+  // dikasih placement sama sekali (dibiarin di tanggal asal, gak di-jejak) - beda dari cascadePlace
+  // biasa yang force-overbook di hari terakhir.
+  const cascadePlaceNoDisplacement = (proses: string, hariTargetPin: string, existingUnits: Unit[], candidateUnitsAwal: Unit[]) => {
+    const hasil = new Map<string, { finalDate: string }>()
+    const hops = new Map<string, string[]>()
+    candidateUnitsAwal.forEach((u) => hops.set(u.id, []))
+
+    // Existing gak pernah dievaluasi buat digeser lewat sini - selalu dipin di hariTargetPin.
+    existingUnits.forEach((u) => hasil.set(u.id, { finalDate: hariTargetPin }))
+    const demandExistingPinned = existingUnits.reduce((s, u) => s + u.demand, 0)
+
+    const committedPerDate: Record<string, number> = { [hariTargetPin]: demandExistingPinned }
+    let pool = candidateUnitsAwal.slice().sort(priorityCompare)
+    let tanggal = hariTargetPin
+    let hari = 0
+    let hariTanpaKonfigBerturut = 0
+
+    while (pool.length > 0 && hari < MAX_CASCADE_HARI) {
+      const cap = getCap(tanggal, proses)
+      if (!cap) {
+        hariTanpaKonfigBerturut++
+        if (hariTanpaKonfigBerturut >= MAX_HARI_TANPA_KONFIG) {
+          const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
+          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit WIRING TIDAK dipindah (tetap di tanggal asal, gak dipaksa masuk kemanapun sesuai rule no-displacement). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
+          pool = []
+          break
+        }
+        pool.forEach((u) => hops.get(u.id)!.push(tanggal))
+        tanggal = addDaysStr(tanggal, 1); hari++; continue
+      }
+      hariTanpaKonfigBerturut = 0
+      const kapasitasUnit = cap.unit || 0
+      const sisaAwalHari = kapasitasUnit - (committedPerDate[tanggal] || 0)
+      if (sisaAwalHari <= 0) {
+        pool.forEach((u) => hops.get(u.id)!.push(tanggal))
+        tanggal = addDaysStr(tanggal, 1); hari++; continue
+      }
+      let sisa = sisaAwalHari
+      const sisaPool: Unit[] = []
+      pool.forEach((u) => {
+        if (u.demand <= sisa) {
+          hasil.set(u.id, { finalDate: tanggal })
+          committedPerDate[tanggal] = (committedPerDate[tanggal] || 0) + u.demand
+          sisa -= u.demand
+        } else {
+          hops.get(u.id)!.push(tanggal)
+          sisaPool.push(u)
+        }
+      })
+      pool = sisaPool
+      tanggal = addDaysStr(tanggal, 1); hari++
+    }
+    if (pool.length > 0) {
+      overbookWarnings.push(`Kapasitas ${proses} gak ketemu slot kosong sampai ${MAX_CASCADE_HARI} hari sejak ${hariTargetPin} - ${pool.length} unit WIRING TIDAK dipindah (dibiarin di tanggal asal sesuai rule no-displacement, JANGAN dipaksa overbook). PERLU REVIEW MANUAL: ${pool.map((u) => u.sortKode).join(',')}`)
+      // Sengaja TIDAK di-hasil.set() - unit ini gak dapat placement, dibiarin utuh di tanggal asal
+      // (pemanggil skip unit tanpa placement, lihat `if (!p) return` di call-site).
+    }
+    return { hasil, hops }
+  }
+
   // -- proses jam-based (semua kecuali WIRING & BUSBAR) --
   for (const [proses, kandidatList] of Object.entries(kandidatJam)) {
     const existingUnits: Unit[] = []
@@ -489,7 +568,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     })
 
     const semuaUnit = [...existingUnits, ...candUnits]
-    const { hasil: placement, hops: hopsMap } = cascadePlace(proses, hariTarget, semuaUnit)
+    const { hasil: placement, hops: hopsMap } = cascadePlaceNoDisplacement(proses, hariTarget, existingUnits, candUnits)
 
     semuaUnit.forEach((u) => {
       const p = placement.get(u.id)
