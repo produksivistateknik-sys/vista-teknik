@@ -365,14 +365,18 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     // ambil checklist TERBARU dari DB (bukan state lokal) biar gak nimpa edit qty admin lain yang barusan masuk
     const{data:freshPanelRow}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
     const finalChecklist={...(freshPanelRow?.checklist||panel.checklist)};
-    if(panelQtyMultiplier>1){
-      Object.keys(dirty).forEach(kode=>{
-        const dirtyEntry=(dirty as any)[kode];
-        if(dirtyEntry.newQty!==dirtyEntry.oldQty&&finalChecklist[kode]){
-          finalChecklist[kode]={...finalChecklist[kode],qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
-        }
-      });
-    }
+    // FIX (4 Agu 2026): dulu blok ini cuma jalan kalau panelQtyMultiplier>1 - buat panel qty=1
+    // (mayoritas panel), perubahan qty yang diketik admin gak PERNAH nempel ke finalChecklist sama
+    // sekali (cuma "ketutupan" sebelumnya karena basisnya masih state lokal yang udah kebawa
+    // perubahan lewat updateItemQty - begitu basisnya diganti fresh-fetch DB, jadi no-op total).
+    // Sekarang jalan SELALU - kali panelQtyMultiplier tetap benar dipertahankan buat panel qty>1,
+    // kali 1 otomatis gak ngefek buat panel qty=1.
+    Object.keys(dirty).forEach(kode=>{
+      const dirtyEntry=(dirty as any)[kode];
+      if(dirtyEntry.newQty!==dirtyEntry.oldQty&&finalChecklist[kode]){
+        finalChecklist[kode]={...finalChecklist[kode],qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
+      }
+    });
     const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
     if(error){alert('Gagal menyimpan: '+error.message);return;}
     setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
