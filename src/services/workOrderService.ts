@@ -177,6 +177,19 @@ export const workOrderService = {
         if (p.id) {
           const { error } = await supabase.from('panels').update(row).eq('id', p.id)
           if (error) throw new Error(error.message)
+          // FIX (5 Agu 2026): raw_schedule/renhar/fcs_schedule nyimpen wo_id-nya SENDIRI, cache
+          // terpisah dari panels.wo_id di atas (panel_id-nya sendiri gak pernah berubah, cuma
+          // wo_id yang barusan di-update). Dulu cache ini gak pernah ikut disinkronkan pas panel
+          // pindah ke WO sibling (kena split tanggal pengiriman) - bikin baris-baris ini "orphan"
+          // (nyantol ke wo_id lama, gak ketemu lagi dari WO yang sekarang beneran punya panelnya),
+          // dan kalau WO lama itu belakangan kehabisan panel sama sekali, cleanup di bawah
+          // (sisaPanel.length===0) malah ikut MENGHAPUS baris-baris orphan itu karena masih
+          // ke-filter wo_id lama - padahal secara logis udah "milik" WO sibling yang baru.
+          // Sinkronisasi ini CUMA nyentuh kolom wo_id - schedule/komponen/pekerja/tanggal dkk
+          // di 3 tabel ini SAMA SEKALI gak disentuh.
+          await supabase.from('raw_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+          await supabase.from('renhar').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+          await supabase.from('fcs_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
         } else {
           const { error } = await supabase.from('panels').insert(row)
           if (error) throw new Error(error.message)
