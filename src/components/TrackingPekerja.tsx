@@ -15,11 +15,28 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   const [timerData,setTimerData]=useState<any[]>([]);
   const [checkpointLogData,setCheckpointLogData]=useState<any[]>([]);
 
+  // Supabase/PostgREST default-nya cuma balikin maks 1000 baris tanpa .range() - progress_
+  // checkpoint_log dan fcs_timer_kerja sudah ribuan baris (tumbuh tiap kali ada yang simpan
+  // qty/progress atau mulai/selesai timer di SELURUH pabrik), jadi KPI di halaman ini kemungkinan
+  // sudah kepotong diam-diam sebelum fix ini - persis kelas bug renhar/activity_log yang sudah
+  // pernah kejadian.
+  const fetchAllRows=async(table:string,select:string)=>{
+    let all:any[]=[];
+    let from=0;
+    const step=1000;
+    while(true){
+      const{data}=await supabase.from(table).select(select).range(from,from+step-1);
+      if(!data)break;
+      all=all.concat(data);
+      if(data.length<step)break;
+      from+=step;
+    }
+    return all;
+  };
+
   useEffect(()=>{
     const fetchCheckpointLog=()=>{
-      supabase.from("progress_checkpoint_log").select("*").then(({data})=>{
-        setCheckpointLogData(data??[]);
-      });
+      fetchAllRows("progress_checkpoint_log","*").then(setCheckpointLogData);
     };
     fetchCheckpointLog();
     const ch=supabase.channel("realtime-checkpoint-log-tracking")
@@ -30,9 +47,7 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
 
   useEffect(()=>{
     const fetchTimer=()=>{
-      supabase.from("fcs_timer_kerja").select("*").then(({data})=>{
-        setTimerData(data??[]);
-      });
+      fetchAllRows("fcs_timer_kerja","*").then(setTimerData);
     };
     fetchTimer();
     const ch=supabase.channel("realtime-timer-kerja-tracking")

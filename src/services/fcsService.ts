@@ -1623,7 +1623,24 @@ export async function generateAndSaveToRawSchedule(
     const kapMap: Record<string, any> = {}
     ;(kapRows || []).forEach((k: any) => { kapMap[k.tanggal + '|' + k.jenis_pekerjaan] = k })
 
-    const { data: existingRaw } = await supabase.from('raw_schedule').select('*')
+    // BUG FIX (Sprint 3, 5 Agu 2026): dulu .select('*') tanpa .range() - raw_schedule sengaja
+    // dibaca GLOBAL di sini (lihat komentar di atas soal terpakaiTracker), dan tabelnya sudah
+    // ~800-900+ baris (dekat cap 1000 default Supabase) - begitu lewat, existingRaw kepotong
+    // diam-diam, sudahAdaJadwalSet/qtyProsesSelesaiMap yang dibangun dari sini jadi gak lengkap,
+    // dan komponen yang sebenarnya sudah terjadwal bisa lolos ke-generate ulang lagi - persis
+    // kelas bug yang barusan diperbaiki (skip generate utk komponen yang udah ada jadwalnya).
+    let existingRaw: any[] = []
+    {
+      let from = 0
+      const step = 1000
+      while (true) {
+        const { data } = await supabase.from('raw_schedule').select('*').range(from, from + step - 1)
+        if (!data) break
+        existingRaw = existingRaw.concat(data)
+        if (data.length < step) break
+        from += step
+      }
+    }
 
     const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
     const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
