@@ -253,11 +253,11 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                 <tbody>
                   {(()=>{
                     const totalRowsPanel=wps.reduce((sum:number,wp:any)=>{
-                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
                       return sum+ai.length;
                     },0);
                     const firstRenderedWp=wps.find((wp:any)=>{
-                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                      const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
                       return ai.length>0;
                     });
                     const qcCl=p.qc_checklist||{};
@@ -265,7 +265,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                     const qcStatus=qcStatuses.every((s:string)=>s==="complete")?"complete":qcStatuses.some((s:string)=>s==="in_progress"||s==="complete")?"in_progress":"to_do";
                   return wps.map((wp:any)=>{
                     const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
-                    const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0||(p.checklist?.[it.kode]));
+                    const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
                     if(!activeItems.length) return null;
                     return activeItems.map((it:any,ii:number)=>{
                       const cl=p.checklist?.[it.kode];

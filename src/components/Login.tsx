@@ -28,13 +28,16 @@ export function Login({onLogin}){
     if(!username.trim()){setErr("Masukkan username!");return;}
     if(!pwd){setErr("Masukkan password!");return;}
     setLoading(true);
-    const{data,error}=await supabase.from("admins").select("*").eq("username",username.trim()).eq("password",pwd).eq("is_active",true).single();
+    // Password di-hash (bcrypt) - verifikasi lewat RPC yang compare pakai crypt() di server,
+    // bukan compare plaintext di WHERE client-side kayak sebelumnya.
+    const{data,error}=await supabase.rpc("verify_admin_login",{p_username:username.trim(),p_password:pwd}).single();
     if(error||!data){setErr("Username atau password salah!");setLoading(false);return;}
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
     await activityLogService.insert({user_name:data.nama,action:"LOGIN",description:"Login ke sistem",module:"auth",halaman:"Login"});
-    localStorage.setItem("vista_admin_session",JSON.stringify({...data,divisi:"admin"}));
+    const{password:_pw,...safeData}=data;
+    localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi:"admin"}));
     setSuccess(true);
-    setTimeout(()=>onLogin({...data,divisi:"admin",name:data.nama}),800);
+    setTimeout(()=>onLogin({...safeData,divisi:"admin",name:data.nama}),800);
     setLoading(false);
   };
 
