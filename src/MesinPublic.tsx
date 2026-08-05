@@ -44,10 +44,11 @@ export default function MesinPublic(){
   },[mesinId])
 
   const fetchData=async()=>{
+    const mesinIdNum=Number(mesinId)
     const [{data:m},{data:r},{data:l},{data:p}]=await Promise.all([
-      supabase.from("mesin").select("*").eq("id",mesinId).single(),
-      supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinId).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
-      supabase.from("maintenance_log").select("*").eq("mesin_id",mesinId).order("created_at",{ascending:false}),
+      supabase.from("mesin").select("*").eq("id",mesinIdNum).single(),
+      supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinIdNum).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
+      supabase.from("maintenance_log").select("*").eq("mesin_id",mesinIdNum).order("created_at",{ascending:false}),
       supabase.from("pekerja").select("id,nama").is("deleted_at",null).order("nama"),
     ])
     if(!m){setNotFound(true);setLoading(false);return}

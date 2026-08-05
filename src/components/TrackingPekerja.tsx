@@ -25,7 +25,7 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     let from=0;
     const step=1000;
     while(true){
-      const{data}=await supabase.from(table).select(select).range(from,from+step-1);
+      const{data}=await supabase.from(table as any).select(select).range(from,from+step-1);
       if(!data)break;
       all=all.concat(data);
       if(data.length<step)break;

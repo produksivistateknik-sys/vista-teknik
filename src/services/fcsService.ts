@@ -236,6 +236,7 @@ export async function generateFCSSchedule(params: {
   jenisPekerjaan: string
   tanggalMulai: string
   generatedBy: string
+  selectedKomponen?: string[] | null
 }): Promise<{ success: boolean; count: number; error?: string; tanggalHabis?: boolean }> {
   try {
     const { woId, woNumber, proyek, panelId, panelNama, tipePanel, checklist, jenisPekerjaan, tanggalMulai, generatedBy, selectedKomponen } = params
@@ -647,7 +648,7 @@ export async function syncFCSToRawSchedule(
       }
 
       // Merge dengan schedule existing (jangan timpa total, gabung unik per WP per tanggal)
-      const existingSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = finalRawRow.schedule || {}
+      const existingSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = (finalRawRow.schedule as any) || {}
       const mergedSchedule: Record<string, Array<{ wp: string; komponen: string[] }>> = {}
       for (const [tgl, entries] of Object.entries(existingSchedule)) {
         mergedSchedule[tgl] = entries.map(e => ({ wp: e.wp, komponen: [...e.komponen] }))
@@ -941,7 +942,7 @@ export async function executeSwapKomponenV2(params: {
 
       if (!row) continue
 
-      const schedule = { ...row.schedule }
+      const schedule: Record<string, any> = { ...(row.schedule as any) }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
       // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
@@ -1182,7 +1183,7 @@ export async function executeSwapKomponenOrang(params: {
 
       if (!row) continue
 
-      const schedule = { ...row.schedule }
+      const schedule: Record<string, any> = { ...(row.schedule as any) }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
       // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
@@ -1237,10 +1238,10 @@ async function bersihkanRenharSetelahGeser(rawId: number, items: Array<{ wp: str
   if (!rows) return
   for (const { wp, kode } of items) {
     const rh = rows.find((r: any) => r.wp === wp)
-    if (!rh || !(rh.komponen || []).includes(kode)) continue
-    const sisaKomp = (rh.komponen || []).filter((k: string) => k !== kode)
-    const sisaReleased = (rh.komponen_released || []).filter((k: string) => k !== kode)
-    const sisaPpk = { ...(rh.pekerja_per_komponen || {}) }
+    if (!rh || !((rh.komponen as any) || []).includes(kode)) continue
+    const sisaKomp = ((rh.komponen as any) || []).filter((k: string) => k !== kode)
+    const sisaReleased = ((rh.komponen_released as any) || []).filter((k: string) => k !== kode)
+    const sisaPpk: Record<string, any> = { ...((rh.pekerja_per_komponen as any) || {}) }
     delete sisaPpk[kode]
     await supabase.from('renhar').update({ komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk }).eq('id', rh.id)
   }

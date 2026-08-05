@@ -48,7 +48,7 @@ export function getEffCfgGlobal(tipe:string){
   return (GLOBAL_LIVE_PANEL_TYPES?.[tipe]?.wps?.length>0)?GLOBAL_LIVE_PANEL_TYPES[tipe]:(PANEL_TYPES as any)[tipe];
 }
 
-export function initChecklist(tipe, qty=1, customPanelTypes){
+export function initChecklist(tipe, qty=1, customPanelTypes?){
   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};
   const qtyAwal=qty>1?0:qty;

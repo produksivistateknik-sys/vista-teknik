@@ -159,27 +159,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     const iv=setInterval(()=>setTimerTick(t=>t+1),1000);
     return ()=>clearInterval(iv);
   },[timerAktifData]);
-  const onDragStart=(e,rawId,fromDate,entries)=>{
-    e.dataTransfer.effectAllowed="move";
-    setDragInfo({rawId,fromDate,entries});
-  };
-
-  const onDragOver=(e,rawId,date)=>{
-    e.preventDefault();
-    e.dataTransfer.dropEffect="move";
-    setDragOverCell({rawId,date});
-  };
-
-  const onDrop=(e,rawId,toDate)=>{
-    e.preventDefault();
-    setDragOverCell(null);
-    if(!dragInfo)return;
-    if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
-    if(dragInfo.fromDate===toDate){setDragInfo(null);return;}
-    setDragMode({...dragInfo,toDate});
-    setDragInfo(null);
-  };
-
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
   const allTasks=useMemo(()=>{
@@ -527,7 +506,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
         const distTasks=countReleased(tasks);
         const totalTasksKomp=countKomponen(tasks);
-        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap",textAlign:"left",position:"sticky",top:0,borderRight:"1px solid #ffffff18"};
+        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
             <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>

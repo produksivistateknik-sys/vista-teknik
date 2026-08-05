@@ -1,6 +1,6 @@
 import { pColor } from '../../lib/dateHelpers'
 
-export function Badge({label,color,bg}){
+export function Badge({label,color,bg}:any){
   return <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,
     fontSize:10,fontWeight:700,color,background:bg||color+"18",border:`1px solid ${color}30`,whiteSpace:"nowrap"}}>{label}</span>;
 }

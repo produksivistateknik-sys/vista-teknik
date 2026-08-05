@@ -1,7 +1,7 @@
-import { useState } from 'react'
+import { useState, type CSSProperties } from 'react'
 import { getLocalDateStr } from '../lib/dateHelpers'
 
-export function ActivityLogView({activityLog}){
+export function ActivityLogView({activityLog}:any){
   const [filterAdmin,setFilterAdmin]=useState("ALL");
   const [filterModule,setFilterModule]=useState("ALL");
   const [filterAction,setFilterAction]=useState("ALL");
@@ -28,9 +28,9 @@ export function ActivityLogView({activityLog}){
     distribute:{label:"Distribusi",color:"#085041",bg:"#E1F5EE"},
   };
   const todayStr=getLocalDateStr();
-  const adminList=[...new Set(activityLog.map(a=>a.admin_nama||a.user_name).filter(Boolean))];
-  const moduleList=[...new Set(activityLog.map(a=>a.module||a.jenis).filter(Boolean))];
-  const actionList=[...new Set(activityLog.map(a=>a.action_type).filter(Boolean))];
+  const adminList=[...new Set(activityLog.map((a:any)=>a.admin_nama||a.user_name).filter(Boolean))] as string[];
+  const moduleList=[...new Set(activityLog.map((a:any)=>a.module||a.jenis).filter(Boolean))] as string[];
+  const actionList=[...new Set(activityLog.map((a:any)=>a.action_type).filter(Boolean))] as string[];
   const filtered=activityLog.filter(a=>{
     const adminName=a.admin_nama||a.user_name||"";
     const modKey=a.module||a.jenis||"";
@@ -57,7 +57,7 @@ export function ActivityLogView({activityLog}){
   ];
   const isReset=filterAdmin!=="ALL"||filterModule!=="ALL"||filterAction!=="ALL"||filterTgl||search;
   const selSt={height:26,padding:"0 8px",border:"0.5px solid #d1d5db",borderRadius:5,fontSize:11,background:"#fff",color:"#374151",outline:"none",cursor:"pointer",fontFamily:"inherit"};
-  const thS={background:"var(--bg-secondary,#f8f9fb)",color:"var(--text-muted,#6b7280)",fontWeight:600,padding:"7px 12px",textAlign:"left",fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,borderBottom:"0.5px solid #e5e8ed",whiteSpace:"nowrap"};
+  const thS:CSSProperties={background:"var(--bg-secondary,#f8f9fb)",color:"var(--text-muted,#6b7280)",fontWeight:600,padding:"7px 12px",textAlign:"left",fontSize:9.5,textTransform:"uppercase",letterSpacing:.5,borderBottom:"0.5px solid #e5e8ed",whiteSpace:"nowrap"};
   return(
     <div className="fi">
       <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:8,marginBottom:12}}>

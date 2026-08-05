@@ -163,7 +163,7 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
         </div>
       </div>
       <div style={{ borderTop: "2px dashed #e2e8f0", margin: "8px 0 28px" }} />
-      <MasterPekerjaInline pekerja={pekerja} />
+      <MasterPekerjaInline pekerja={pekerja} user={user} />
       <SubBagianPasswordCard/>
       {resetId && (
         <Modal title="Reset Password Admin" onClose={() => setResetId(null)} width={380}>

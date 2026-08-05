@@ -46,10 +46,21 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
       }
     }
   };
+  const del=async()=>{
+    if(!delId)return;
+    const mesin=mesinList.find((m:any)=>m.id===delId);
+    const{error}=await supabase.from("mesin").update({deleted_at:new Date().toISOString()}).eq("id",delId);
+    if(!error){
+      setMesinList((prev:any[])=>prev.filter(m=>m.id!==delId));
+      setDelId(null);
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"HAPUS MESIN",description:"Hapus mesin: "+(mesin?.kode||"")+" - "+(mesin?.nama||""),module:"maintenance",halaman:"System"});
+    }
+  };
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
 
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
+  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #ffffff10"};
 
   return(
     <div>

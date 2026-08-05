@@ -4,7 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { DIVISI_CONFIG, OPERATOR_ROLES } from '../constants/panelTypes'
 import { Card, Lbl, Sel, Btn, Inp, Modal } from './ui/Primitives'
 
-export function MasterPekerjaInline({pekerja}:any){
+export function MasterPekerjaInline({pekerja,user}:any){
   const [ops, setOps] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [form, setForm] = useState({ nama: "", username: "", password: "1234", divisi: "mekanik", is_active: true });

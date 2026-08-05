@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance } from '../services/fcsService'
@@ -1235,7 +1235,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   <input type="checkbox" checked={filterProyek.length===0} onChange={()=>{setFilterProyek([]);setFilterPanel([]);}}/>
                   Semua Proyek
                 </label>
-                {[...new Set(rawData.map(r=>r.proyek))].map(p=>(
+                {([...new Set(rawData.map((r:any)=>r.proyek))] as string[]).map(p=>(
                   <label key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}>
                     <input type="checkbox" checked={filterProyek.includes(p)} onChange={()=>toggleFilterProyek(p)}/>
                     {p}
@@ -1258,7 +1258,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   <input type="checkbox" checked={filterPanel.length===0} onChange={()=>setFilterPanel([])}/>
                   Semua Panel
                 </label>
-                {[...new Set(rawData.filter(r=>filterProyek.length===0||filterProyek.includes(r.proyek)).map(r=>r.panel))].map(p=>(
+                {([...new Set(rawData.filter((r:any)=>filterProyek.length===0||filterProyek.includes(r.proyek)).map((r:any)=>r.panel))] as string[]).map(p=>(
                   <label key={p} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",fontSize:12}}>
                     <input type="checkbox" checked={filterPanel.includes(p)} onChange={()=>toggleFilterPanel(p)}/>
                     {p}
@@ -2560,7 +2560,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <Modal title="Tambah Panel ke Raw Schedule" onClose={()=>setAddModal(false)} width={480}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div><Lbl>Work Order</Lbl>
-              <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelId:""})}>
+              <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelIds:[]})}>
                 <option value="">-- Pilih WO --</option>
                 {woData.filter((w:any)=>(w.panels||[]).some((p:any)=>getMissingRelevantProses(p).length>0)).map((w:any)=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
               </Sel>

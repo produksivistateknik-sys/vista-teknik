@@ -12,7 +12,7 @@ export function RecycleBinTab({user}:any){
     const load=async()=>{
       setLoading(true);
       const cats=["work_orders","mesin","pekerja","raw_schedule","renhar","kendala"];
-      const results=await Promise.all(cats.map((t:string)=>supabase.from(t).select("*").not("deleted_at","is",null).order("deleted_at",{ascending:false})));
+      const results=await Promise.all(cats.map((t:string)=>supabase.from(t as any).select("*").not("deleted_at","is",null).order("deleted_at",{ascending:false})));
       const all:any[]=[];
       results.forEach(({data}:any,i:number)=>{(data??[]).forEach((row:any)=>all.push({...row,_cat:cats[i]}));});
       all.sort((a:any,b:any)=>new Date(b.deleted_at).getTime()-new Date(a.deleted_at).getTime());

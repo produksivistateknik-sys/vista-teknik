@@ -205,7 +205,7 @@ export function KapasitasPekerjaanTab(){
   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
   const isProsesOrang=(p:string)=>PROSES_ORANG.includes(p);
   const [overrideMode,setOverrideMode]=useState<"single"|"rentang">("single");
-  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5,7] as number[],jenis_pekerjaan:[...ALL_PROSES] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
+  const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5,7] as number[],jenis_pekerjaan:[...ALL_PROSES] as string[],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
   const [rentangSaving,setRentangSaving]=useState(false);
   const [rentangResult,setRentangResult]=useState<{sukses:number;skip:number}|null>(null);
 
@@ -486,12 +486,6 @@ export function KapasitasPekerjaanTab(){
   const deleteProcess=async(id:number)=>{
     await supabase.from("fcs_process_time").delete().eq("id",id);
     setProcessList(prev=>prev.filter(p=>p.id!==id));
-  };
-
-  const toggleHari=(item:any,hari:number)=>{
-    const curr=item.hari_kerja||[];
-    const updated=curr.includes(hari)?curr.filter((h:number)=>h!==hari):[...curr,hari].sort();
-    setEditKap({...item,hari_kerja:updated});
   };
 
   const combosList=useMemo(()=>{
@@ -870,7 +864,7 @@ export function KapasitasPekerjaanTab(){
                               <button onClick={()=>{
                                 setWizardTipe(w.tipe_panel);setWizardWp(w.wp);setWizardColor(w.color);setWizardRange(w.range_label||"");
                                 supabase.from("bom_master").select("nama_komponen").then(({data}:any)=>{
-                                  const uniqueNama=Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))).sort();
+                                  const uniqueNama=(Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))) as string[]).sort();
                                   setWizardAllNama(uniqueNama);
                                   setWizardSelectedNama([]);setWizardProsesPerNama({});setWizardStep(2);
                                 });

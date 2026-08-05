@@ -224,7 +224,7 @@ export const workOrderService = {
       // panel_id-nya BENERAN gak ada lagi di tabel panels (yatim piatu murni, panelnya sendiri
       // udah kehapus dari jalur idsToDelete di atas).
       const cekYatimPiatu = async (table: string) => {
-        const { data: candidates } = await supabase.from(table).select('id,panel_id').eq('wo_id', editWoId)
+        const { data: candidates } = await supabase.from(table as any).select('id,panel_id').eq('wo_id', editWoId)
         if (!candidates || candidates.length === 0) return
         const panelIds = [...new Set(candidates.map((r: any) => r.panel_id).filter(Boolean))]
         let masihHidup = new Set<number>()
@@ -234,7 +234,7 @@ export const workOrderService = {
         }
         const idsAmanDihapus = candidates.filter((r: any) => !r.panel_id || !masihHidup.has(r.panel_id)).map((r: any) => r.id)
         if (idsAmanDihapus.length > 0) {
-          const { error: cleanupErr } = await supabase.from(table).delete().in('id', idsAmanDihapus)
+          const { error: cleanupErr } = await supabase.from(table as any).delete().in('id', idsAmanDihapus)
           if (cleanupErr) throw new Error('Gagal cleanup ' + table + ' yatim piatu WO ' + editWoId + ': ' + cleanupErr.message)
         }
       }

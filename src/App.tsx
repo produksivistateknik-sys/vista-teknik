@@ -604,7 +604,12 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             </div>
           </div>
           <div style={{flex:1,overflowY:"auto"}}>
-            <OperatorView woData={woData} setWoData={setWoData} user={user} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createKendala={createKendala}/>
+            {/* Cabang ini dijamin gak pernah kejalan - isOp===true selalu ke-tangkap duluan sama
+                early return "Redirect operator ke vista-pekerja" di atas (baris ~413). Sengaja
+                gak dihapus strukturnya malam ini (restrukturisasi ternary besar ini beresiko
+                salah pasang kurung di return statement raksasa) - OperatorView sendiri gak pernah
+                ada di vista-teknik (itu komponen vista-pekerja), makanya bikin TS error. */}
+            {null}
           </div>
         </div>
       ):(

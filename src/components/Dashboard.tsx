@@ -186,13 +186,11 @@ export function Dashboard({woData}){
                       <td style={tdS}><PBar pct={pct}/></td>
                       <td style={tdS}><StatusBadge w={wo}/></td>
                       <td style={{...tdS,textAlign:"center" as const}}>
-                        {pct===100?(
-                          <Btn color="#16a34a" style={{fontSize:11,padding:"4px 10px"}} onClick={()=>setArsipModal(wo)}>
-                            📦 Arsipkan
-                          </Btn>
-                        ):(
-                          <span style={{fontSize:10,color:"#cbd5e1"}}>—</span>
-                        )}
+                        {/* Tombol "Arsipkan" di sini sebelumnya manggil setArsipModal yang gak
+                            pernah didefinisikan - selalu error kalau diklik. Arsip WO yang beneran
+                            jalan ada di Manajemen WO (snapshot lengkap ke fcs_arsip_wo), jadi
+                            tombol duplikat yang rusak ini dihapus, bukan diperbaiki jadi fitur baru. */}
+                        <span style={{fontSize:10,color:"#cbd5e1"}}>—</span>
                       </td>
                     </tr>
                   );

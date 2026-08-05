@@ -5,7 +5,7 @@ export function getLocalDateStr(d=new Date()){
   return `${y}-${m}-${day}`;
 }
 export const TODAY=getLocalDateStr();
-export function daysUntil(t){ return Math.ceil((new Date(t)-new Date(TODAY))/86400000); }
+export function daysUntil(t){ return Math.ceil((new Date(t).getTime()-new Date(TODAY).getTime())/86400000); }
 export function isDelayed(t){ return daysUntil(t)<0; }
 export function isUrgent(t){ const d=daysUntil(t); return d>=0&&d<=7; }  // H-7
 export function getStatus(t,pct){
