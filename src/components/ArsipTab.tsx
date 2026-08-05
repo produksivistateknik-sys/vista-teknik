@@ -61,7 +61,6 @@ const totalFotoQualityCenter=(p:any):number=>{
 };
 
 export function ArsipTab({user,refetchWO}:any){
-  const[subTab,setSubTab]=useState<'panel'|'seksi'>('panel');
   const[panelList,setPanelList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
@@ -133,35 +132,12 @@ export function ArsipTab({user,refetchWO}:any){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap" as const,gap:10}}>
         <div>
           <h2 style={{fontSize:18,fontWeight:800,color:"#1e293b",margin:0}}>📦 Arsip</h2>
-          <p style={{fontSize:12,color:"#64748b",margin:"4px 0 0"}}>
-            {subTab==='panel'?"WO yang punya panel diarsipkan - klik untuk lihat rincian panelnya":"Arsip otomatis per-seksi (Warehouse/QS/QC/Pasang Komponen) - salinan read-only, data live di panel TIDAK dihapus"}
-          </p>
+          <p style={{fontSize:12,color:"#64748b",margin:"4px 0 0"}}>WO yang punya panel diarsipkan - klik untuk lihat rincian panelnya</p>
         </div>
-        {subTab==='panel'&&(
-          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari WO/proyek/panel..."
-            style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:240,outline:"none",fontFamily:"inherit"}}/>
-        )}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari WO/proyek/panel..."
+          style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:240,outline:"none",fontFamily:"inherit"}}/>
       </div>
 
-      <div style={{display:"flex",gap:6,marginBottom:16,background:"#f1f5f9",borderRadius:10,padding:4,width:"fit-content"}}>
-        <button onClick={()=>setSubTab('panel')}
-          style={{padding:"7px 16px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",
-            background:subTab==='panel'?"#fff":"transparent",color:subTab==='panel'?"#1e293b":"#64748b",
-            boxShadow:subTab==='panel'?"0 1px 3px #00000015":"none"}}>
-          📦 Arsip Panel
-        </button>
-        <button onClick={()=>setSubTab('seksi')}
-          style={{padding:"7px 16px",borderRadius:8,border:"none",fontSize:12,fontWeight:700,cursor:"pointer",
-            background:subTab==='seksi'?"#fff":"transparent",color:subTab==='seksi'?"#1e293b":"#64748b",
-            boxShadow:subTab==='seksi'?"0 1px 3px #00000015":"none"}}>
-          🗂️ Arsip Seksi
-        </button>
-      </div>
-
-      {subTab==='seksi'?(
-        <ArsipSeksiSection user={user}/>
-      ):(
-      <>
       {loading?(
         <div style={{textAlign:"center",padding:48,color:"#94a3b8"}}>Memuat arsip...</div>
       ):filtered.length===0?(
@@ -333,181 +309,6 @@ export function ArsipTab({user,refetchWO}:any){
           </Modal>
         );
       })()}
-
-      {lightbox&&<FotoZoomViewer fotos={lightbox.fotos} startIndex={lightbox.index} label={lightbox.label} onClose={()=>setLightbox(null)}/>}
-      </>
-      )}
-    </div>
-  );
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Arsip Seksi - Warehouse/QS/QC/Pasang Komponen. Beda dari Arsip Panel di atas: ini SALINAN
-// (bukan pemindahan) yang diisi OTOMATIS oleh trigger DB panels_auto_archive_seksi() begitu
-// progress seksi itu 100% - data live di panels TIDAK dihapus/disentuh (lihat komentar di
-// migrasi panel_seksi_archived). "Unarchive" di sini murni hapus baris arsip (koreksi status
-// "selesai" yang keliru) - TIDAK ada apapun yang perlu direstore karena data aslinya memang
-// gak pernah hilang dari panels.
-// panel_id/wo_id di panel_seksi_archived SENGAJA tanpa FK - baris arsip di sini TETAP ada
-// walau WO/panel sumbernya sudah dihapus dari Manajemen WO (makanya render pakai kolom
-// snapshot - wo_number_snapshot/proyek_snapshot/panel_nama - bukan join ke work_orders/panels).
-const SEKSI_LABEL:Record<string,{label:string,icon:string,color:string}>={
-  warehouse:{label:"Warehouse",icon:"📦",color:"#0d9488"},
-  qs:{label:"QS",icon:"📋",color:"#7c3aed"},
-  qc:{label:"QC",icon:"🔍",color:"#16a34a"},
-  pasang_komponen:{label:"Pasang Komponen",icon:"🔧",color:"#f97316"},
-};
-
-function ArsipSeksiSection({user}:any){
-  const[rows,setRows]=useState<any[]>([]);
-  const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState("");
-  const[filterSeksi,setFilterSeksi]=useState<string>("ALL");
-  const[expandedWo,setExpandedWo]=useState<Record<string,boolean>>({});
-  const[unarsipLoadingId,setUnarsipLoadingId]=useState<number|null>(null);
-  const[lightbox,setLightbox]=useState<{fotos:any[],index:number,label:string}|null>(null);
-
-  const fetchRows=async()=>{
-    setLoading(true);
-    const{data}=await supabase.from("panel_seksi_archived").select("*").order("diarsipkan_pada",{ascending:false});
-    setRows(data??[]);
-    setLoading(false);
-  };
-  useEffect(()=>{fetchRows();},[]);
-
-  const unarsipkan=async(row:any)=>{
-    if(!confirm(`Hapus arsip "${SEKSI_LABEL[row.seksi]?.label}" untuk panel "${row.panel_nama}" dari daftar arsip?\n\nIni CUMA menghapus catatan arsipnya - data aslinya di panel (progress/foto) TIDAK berubah/hilang, karena arsip ini cuma salinan. Kalau progress-nya memang keliru ke-set 100%, koreksi lewat halaman biasa (Manajemen WO / Vista Pekerja) setelah ini.`))return;
-    setUnarsipLoadingId(row.id);
-    const{error}=await supabase.from("panel_seksi_archived").delete().eq("id",row.id);
-    setUnarsipLoadingId(null);
-    if(error){alert("Gagal hapus arsip: "+error.message);return;}
-    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-    const uname=user?.name||user?.nama||sess?.nama||"Admin";
-    await activityLogService.insert({
-      user_name:uname,action:"UNARCHIVE SEKSI",
-      description:`Hapus arsip ${SEKSI_LABEL[row.seksi]?.label} panel ${row.panel_nama}${row.kode?` (${row.komponen_nama||row.kode})`:""} - WO ${row.wo_number_snapshot||""} - ${row.proyek_snapshot||""}`,
-      module:"wo",halaman:"Arsip",proyek:row.proyek_snapshot||"",panel:row.panel_nama||"",wo_number:row.wo_number_snapshot||"",
-    });
-    setRows(prev=>prev.filter((r:any)=>r.id!==row.id));
-  };
-
-  const filtered=rows.filter(r=>
-    (filterSeksi==="ALL"||r.seksi===filterSeksi)&&
-    (!search||r.panel_nama?.toLowerCase().includes(search.toLowerCase())||r.proyek_snapshot?.toLowerCase().includes(search.toLowerCase())||r.wo_number_snapshot?.toLowerCase().includes(search.toLowerCase()))
-  );
-
-  const grouped=useMemo(()=>{
-    const map:Record<string,{key:string,wo_number:string,proyek:string,rows:any[]}>={};
-    filtered.forEach((r:any)=>{
-      const key=String(r.wo_id ?? `noWo_${r.panel_nama}`);
-      if(!map[key])map[key]={key,wo_number:r.wo_number_snapshot,proyek:r.proyek_snapshot,rows:[]};
-      map[key].rows.push(r);
-    });
-    return Object.values(map).sort((a,b)=>{
-      const latestA=Math.max(...a.rows.map(r=>new Date(r.diarsipkan_pada).getTime()));
-      const latestB=Math.max(...b.rows.map(r=>new Date(r.diarsipkan_pada).getTime()));
-      return latestB-latestA;
-    });
-  },[filtered]);
-
-  const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
-  const fotoListOf=(row:any):any[]=>{
-    if(row.seksi==="pasang_komponen")return row.data?.fotoPemasangan||[];
-    if(row.seksi==="qc"){
-      let total:any[]=[];
-      ["fisik","spesifikasi","baut","test"].forEach(k=>{total=total.concat(row.data?.[k]?.foto||[]);});
-      return total;
-    }
-    return row.data?.photos||[];
-  };
-
-  const thS:any={padding:"8px 12px",textAlign:"left",fontSize:10,color:"#64748b",fontWeight:700,background:"#f8fafc"};
-  const td:any={padding:"9px 12px",borderTop:"1px solid #f1f5f9",fontSize:12,verticalAlign:"middle"};
-
-  return(
-    <div>
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap" as const,alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari WO/proyek/panel..."
-          style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:240,outline:"none",fontFamily:"inherit"}}/>
-        <select value={filterSeksi} onChange={e=>setFilterSeksi(e.target.value)}
-          style={{height:32,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",fontFamily:"inherit"}}>
-          <option value="ALL">Semua Seksi</option>
-          {Object.entries(SEKSI_LABEL).map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
-        </select>
-      </div>
-
-      {loading?(
-        <div style={{textAlign:"center",padding:48,color:"#94a3b8"}}>Memuat arsip...</div>
-      ):grouped.length===0?(
-        <div style={{textAlign:"center",padding:48,color:"#94a3b8",background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
-          <i className="ti ti-archive-off" style={{fontSize:32,display:"block",marginBottom:8}}/>
-          Belum ada seksi yang diarsipkan
-        </div>
-      ):(
-        <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
-          {grouped.map(g=>{
-            const isExp=!!expandedWo[g.key];
-            return(
-              <div key={g.key} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
-                <div onClick={()=>setExpandedWo(prev=>({...prev,[g.key]:!prev[g.key]}))}
-                  style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",cursor:"pointer",background:isExp?"#f8faff":"#fff"}}>
-                  <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {g.wo_number||"—"} — {g.proyek||"—"}</div>
-                    <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{g.rows.length} seksi diarsipkan</div>
-                  </div>
-                </div>
-                {isExp&&(
-                  <div style={{overflowX:"auto",borderTop:"1px solid #e2e8f0"}}>
-                    <table style={{width:"100%",borderCollapse:"collapse"}}>
-                      <thead><tr>
-                        <th style={thS}>Panel</th>
-                        <th style={thS}>Seksi</th>
-                        <th style={{...thS,textAlign:"center"}}>Foto</th>
-                        <th style={thS}>Diarsipkan</th>
-                        <th style={{...thS,textAlign:"center"}}>Aksi</th>
-                      </tr></thead>
-                      <tbody>
-                        {g.rows.map((r:any,i:number)=>{
-                          const si=SEKSI_LABEL[r.seksi]||{label:r.seksi,icon:"📄",color:"#64748b"};
-                          const fotoList=fotoListOf(r);
-                          return(
-                            <tr key={r.id} style={{background:i%2===0?"#fff":"#f8fafc"}}>
-                              <td style={{...td,fontWeight:700,color:"#1e293b"}}>{r.panel_nama}</td>
-                              <td style={{...td}}>
-                                <span style={{background:si.color+"18",color:si.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>
-                                  {si.icon} {si.label}{r.kode?` — ${r.komponen_nama||r.kode}`:""}
-                                </span>
-                              </td>
-                              <td style={{...td,textAlign:"center"}}>
-                                {fotoList.length>0?(
-                                  <button onClick={()=>setLightbox({fotos:fotoList,index:0,label:`${si.label} - ${r.panel_nama}`})}
-                                    style={{background:"none",border:"none",cursor:"pointer",color:"#1d4ed8",fontSize:11,textDecoration:"underline"}}>
-                                    📷 {fotoList.length} foto
-                                  </button>
-                                ):(
-                                  <span style={{fontSize:11,color:"#cbd5e1"}}>—</span>
-                                )}
-                              </td>
-                              <td style={{...td,color:"#94a3b8",fontSize:11}}>{r.diarsipkan_oleh||"—"} · {fmtTgl(r.diarsipkan_pada)}</td>
-                              <td style={{...td,textAlign:"center"}}>
-                                <button onClick={()=>unarsipkan(r)} disabled={unarsipLoadingId===r.id}
-                                  style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:11,fontWeight:700}}>
-                                  {unarsipLoadingId===r.id?"⏳...":"↩ Unarchive"}
-                                </button>
-                              </td>
-                            </tr>
-                          );
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
 
       {lightbox&&<FotoZoomViewer fotos={lightbox.fotos} startIndex={lightbox.index} label={lightbox.label} onClose={()=>setLightbox(null)}/>}
     </div>
