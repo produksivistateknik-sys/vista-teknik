@@ -1655,6 +1655,28 @@ export async function generateAndSaveToRawSchedule(
       })
     })
 
+    // FIX (5 Agu 2026): kode yang UDAH PUNYA baris di raw_schedule (live ATAU jejak, qty
+    // berapapun, di tanggal manapun) buat panel+proses ini - dipakai SKIP TOTAL, bukan cuma
+    // top-up qty. Insiden nyata: SDP-PASTEURIZER yang udah lengkap terjadwal (histori sejak 29
+    // Juli) di-generate-ulang (force) dan SEMUA komponennya kebuat ulang dari nol qty penuh -
+    // top-up qty-based (sudahTerjadwalQtyMap di bawah) semestinya nyegah ini tapi ternyata gak
+    // reliable buat kasus itu. Set ini jadi pengaman lebih sederhana & pasti: gak peduli hasil
+    // hitungan sisa-qty-nya, kalau kode itu SUDAH PERNAH muncul di jadwal, jangan disentuh lagi
+    // sama sekali oleh generate ulang - biar "Generate ulang cuma nambahin yang kosong" beneran
+    // gak pernah bisa nimpa yang udah ada, sesuai janji di dialog konfirmasi.
+    const sudahAdaJadwalSet = new Set<string>()
+    ;(existingRaw || []).forEach((row: any) => {
+      if (WIRING_LIST.includes(row.proses)) return
+      const schedule = row.schedule || {}
+      Object.values(schedule).forEach((entries: any) => {
+        ;(entries as any[]).forEach((e: any) => {
+          ;(e.komponen || []).forEach((kode: string) => {
+            sudahAdaJadwalSet.add(row.panel_id + '|' + row.proses + '|' + kode)
+          })
+        })
+      })
+    })
+
     // Qty yang sudah terjadwal sebelumnya per panel+proses+kode - biar generate ulang/force
     // cuma nambahin kekurangannya (top-up), bukan qty penuh lagi (mencegah dobel).
     const sudahTerjadwalQtyMap: Record<string, number> = {}
@@ -1753,8 +1775,9 @@ export async function generateAndSaveToRawSchedule(
 
           let sisaQty: Record<string, number> = {}
           kodes.forEach((kode) => {
-            const totalQty = checklist[kode]?.qty || 0
             const key = panel.id + '|' + proses + '|' + kode
+            if (sudahAdaJadwalSet.has(key)) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
+            const totalQty = checklist[kode]?.qty || 0
             const sudahQty = Math.max(sudahTerjadwalQtyMap[key] || 0, qtyProsesSelesaiMap[key] || 0)
             const sisa = Math.max(0, totalQty - sudahQty)
             if (sisa > 0) sisaQty[kode] = sisa

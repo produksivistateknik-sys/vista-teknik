@@ -810,7 +810,20 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                   }
                   setQuickGenResult(res);
                   setQuickGenLoading(false);
-                  if(res.success&&refetchWO)await refetchWO();
+                  if(res.success){
+                    // FIX (5 Agu 2026): generateAndSaveToRawSchedule gak pernah nulis activity_log
+                    // sendiri - aksi bulk-generate (apalagi __force__, yang bisa nyentuh panel yang
+                    // udah lama terjadwal) jadi gak kelihatan di histori manapun. Root cause laporan
+                    // "SDP-PASTEURIZER tiba-tiba jadwal full lagi" cuma ketauan dari createdAt di
+                    // dalam data schedule-nya sendiri, bukan dari Activity Log.
+                    const namaPanel=(quickGenModal.panels||[]).filter((p:any)=>quickGenSelectedPanelIds.includes(p.id)).map((p:any)=>p.nama).join(', ');
+                    await activityLogService.insert({
+                      user_name:uname,action:'GENERATE JADWAL FCS',
+                      description:'Generate jadwal Raw Schedule WO '+quickGenModal.wo+' - '+quickGenModal.proyek+' ('+quickGenSelectedPanelIds.length+' panel: '+namaPanel+'), mulai '+quickGenTanggal+', '+res.count+' baris dibuat',
+                      module:'wo',halaman:'Manajemen WO',proyek:quickGenModal.proyek||'',wo_number:quickGenModal.wo||'',
+                    });
+                    if(refetchWO)await refetchWO();
+                  }
                 }}>{quickGenLoading?"⏳ Generating...":quickGenSelectedPanelIds.length===0?"Pilih panel dulu":"Generate → ("+quickGenSelectedPanelIds.length+" panel)"}</Btn>
               </div>
             </div>
