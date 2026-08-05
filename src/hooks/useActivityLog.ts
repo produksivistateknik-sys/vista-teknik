@@ -31,11 +31,10 @@ export function useActivityLog() {
       .channel('realtime-activity')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'activity_log' },
         (payload) => {
-          console.log('[Realtime] activity_log INSERT:', payload.new)
           setData(prev => [payload.new, ...prev])
         }
       )
-      .subscribe((status) => console.log('[Realtime] activity_log status:', status))
+      .subscribe()
 
     return () => { supabase.removeChannel(channel) }
   }, [])
