@@ -389,6 +389,24 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     });
     const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
     if(error){alert('Gagal menyimpan: '+error.message);return;}
+    // VERIFIKASI (5 Agu 2026): baca balik dari DB, jangan percaya "sukses" cuma dari absennya
+    // error - 3 bug berbeda sebelumnya di fungsi ini (race condition snapshot basi, gate
+    // panelQtyMultiplier>1, gate kode-belum-ada-di-checklist) semuanya lolos tanpa error dari
+    // supabase padahal checklist-nya gak beneran berubah. Verifikasi ini nangkep KELAS bug yang
+    // sama ke depannya (termasuk yang belum ketemu), bukan cuma 3 yang udah di-fix satu-satu -
+    // toast "berhasil" cuma muncul kalau nilai yang BENERAN ada di database sudah dicek cocok
+    // sama yang dimaksud, dirtyQty juga SENGAJA gak dibersihkan kalau gagal biar input admin
+    // gak ilang dari layar dan bisa langsung dicoba simpan ulang.
+    const{data:verifyRow}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
+    const gagalTersimpan=Object.keys(dirty).filter(kode=>{
+      const dirtyEntry=(dirty as any)[kode];
+      if(dirtyEntry.newQty===dirtyEntry.oldQty)return false;
+      return (verifyRow?.checklist?.[kode]?.qty)!==(finalChecklist[kode]?.qty);
+    });
+    if(gagalTersimpan.length>0){
+      alert('Qty GAGAL tersimpan buat: '+gagalTersimpan.join(', ')+' - coba tekan Simpan Progress lagi. (Verifikasi baca-balik database gak cocok sama yang dimaksud disimpan)');
+      return;
+    }
     setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
     const uname=user?.name||user?.nama||sess?.nama||'Admin';
