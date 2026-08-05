@@ -371,11 +371,21 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     // perubahan lewat updateItemQty - begitu basisnya diganti fresh-fetch DB, jadi no-op total).
     // Sekarang jalan SELALU - kali panelQtyMultiplier tetap benar dipertahankan buat panel qty>1,
     // kali 1 otomatis gak ngefek buat panel qty=1.
+    // FIX (5 Agu 2026): dulu kode yang BELUM ADA sama sekali di checklist (BOM di-expand
+    // belakangan, atau kode sempat hilang dari insiden lain) di-skip diam-diam di sini (gate
+    // `finalChecklist[kode]`) - toast "Qty berhasil disimpan!" tetap muncul (qty_change_log/
+    // activity_log gak dikondisikan sama gate ini) padahal gak ada apapun yang benar-benar
+    // ketulis, dan retry berkali-kali gak pernah berhasil (root cause laporan "qty balik ke 0
+    // terus" - lihat docs/investigasi-qty-tersimpan.md). Sekarang kalau entry-nya belum ada,
+    // BUAT baru dulu (shape sama persis initChecklist) baru qty-nya di-apply - bukan di-skip.
     Object.keys(dirty).forEach(kode=>{
       const dirtyEntry=(dirty as any)[kode];
-      if(dirtyEntry.newQty!==dirtyEntry.oldQty&&finalChecklist[kode]){
-        finalChecklist[kode]={...finalChecklist[kode],qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
-      }
+      if(dirtyEntry.newQty===dirtyEntry.oldQty)return;
+      const base=finalChecklist[kode]||{qty:0,qtyProses:{},
+        progress:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{}),
+        progressByDate:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{}),
+        stepDates:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{})};
+      finalChecklist[kode]={...base,qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
     });
     const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
     if(error){alert('Gagal menyimpan: '+error.message);return;}
