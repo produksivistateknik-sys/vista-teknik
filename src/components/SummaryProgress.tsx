@@ -235,15 +235,13 @@ export function SummaryProgress({woData}:{woData:any[]}){
                           </td>
                           {prosesAda.map(pr=><ProsesPctCell key={pr} pct={pd[pr]} proses={pr}/>)}
                           {(()=>{
-                            const qcCl=p.qc_checklist||{};
-                            const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"to_do");
-                            const qcStatus=qcStatuses.every((s:string)=>s==="complete")?"complete":qcStatuses.some((s:string)=>s==="in_progress"||s==="complete")?"in_progress":"to_do";
+                            const qcStatus=p.qc_checklist?._global?.status||"to_do";
                             return(
                               <>
                                 <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>{p.nameplate_progress||0}%</td>
                                 <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>{p.yellowmark_progress||0}%</td>
                                 <td style={{...tdS,fontWeight:700,color:qcStatus==="complete"?"#16a34a":qcStatus==="in_progress"?"#ea580c":"#94a3b8",fontSize:9}}>{qcStatus==="complete"?"Selesai":qcStatus==="in_progress"?"Proses":"To Do"}</td>
-                                <td style={{...tdS,fontWeight:700,color:p.packing_done?"#2563eb":"#94a3b8",fontSize:9}}>{p.packing_done?"Selesai":"Belum"}</td>
+                                <td style={{...tdS,fontWeight:700,color:p.packing_done?"#16a34a":"#94a3b8",fontSize:9}}>{p.packing_done?"Selesai":"Belum"}</td>
                               </>
                             );
                           })()}

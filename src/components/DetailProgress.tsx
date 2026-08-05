@@ -260,9 +260,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                       const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
                       return ai.length>0;
                     });
-                    const qcCl=p.qc_checklist||{};
-                    const qcStatuses=["fisik","spesifikasi","baut","test"].map((k:string)=>qcCl[k]?.status||"to_do");
-                    const qcStatus=qcStatuses.every((s:string)=>s==="complete")?"complete":qcStatuses.some((s:string)=>s==="in_progress"||s==="complete")?"in_progress":"to_do";
+                    const qcStatus=p.qc_checklist?._global?.status||"to_do";
                   return wps.map((wp:any)=>{
                     const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
                     const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
