@@ -293,7 +293,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                               <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.nameplate_progress||0}%</td>
                               <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.yellowmark_progress||0}%</td>
                               <td style={{...tdS,fontWeight:700,color:qcStatus==="lolos"?"#16a34a":qcStatus==="gagal"?"#dc2626":"#94a3b8"}} rowSpan={totalRowsPanel}>{qcStatus==="lolos"?"Lolos":qcStatus==="gagal"?"Gagal":"Belum"}</td>
-                              <td style={{...tdS,fontWeight:700,color:p.packing_done?"#2563eb":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.packing_done?"Selesai":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:p.packing_done?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.packing_done?"Selesai":"Belum"}</td>
                             </>
                           )}
                         </tr>
