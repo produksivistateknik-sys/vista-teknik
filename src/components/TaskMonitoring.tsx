@@ -149,7 +149,7 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
             <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#166534",display:"inline-block"}}/>Done</div>
             <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#16a34a",display:"inline-block"}}/>In progress</div>
             <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fbbf24",display:"inline-block"}}/>To do</div>
-            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#ef4444",display:"inline-block"}}/>Not yet</div>
+            <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#dc2626",display:"inline-block"}}/>Not yet</div>
             <div style={{display:"flex",alignItems:"center",gap:4}}><span style={{width:10,height:10,borderRadius:2,background:"#fff",border:"1px solid #e2e8f0",display:"inline-block"}}/>Qty 0 (tidak ditampilkan)</div>
           </div>
         </>

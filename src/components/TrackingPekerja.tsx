@@ -390,9 +390,9 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
                   <td style={td}>
                     <div style={{display:"flex",alignItems:"center",gap:6}}>
                       <div style={{flex:1,height:5,background:"#e2e8f0",borderRadius:99,overflow:"hidden",minWidth:60}}>
-                        <div style={{width:stats.avg+"%",height:"100%",background:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#ef4444",borderRadius:99}}/>
+                        <div style={{width:stats.avg+"%",height:"100%",background:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#dc2626",borderRadius:99}}/>
                       </div>
-                      <span style={{fontSize:11,fontWeight:700,color:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#ef4444",minWidth:32}}>{stats.avg}%</span>
+                      <span style={{fontSize:11,fontWeight:700,color:stats.avg>=75?"#16a34a":stats.avg>=50?"#f59e0b":"#dc2626",minWidth:32}}>{stats.avg}%</span>
                     </div>
                   </td>
                   <td style={{...td,textAlign:"center" as const}}>
@@ -498,9 +498,9 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
                     <span style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ {r.selesai} selesai</span>
                     <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6}}>
                       <div style={{width:80,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-                        <div style={{width:r.avgProg+"%",height:"100%",background:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#ef4444",borderRadius:99}}/>
+                        <div style={{width:r.avgProg+"%",height:"100%",background:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#dc2626",borderRadius:99}}/>
                       </div>
-                      <span style={{fontSize:11,fontWeight:700,color:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#ef4444"}}>{r.avgProg}%</span>
+                      <span style={{fontSize:11,fontWeight:700,color:r.avgProg>=75?"#16a34a":r.avgProg>=50?"#f59e0b":"#dc2626"}}>{r.avgProg}%</span>
                     </div>
                   </div>
 

@@ -957,7 +957,7 @@ export function KapasitasPekerjaanTab(){
         </div>
       )}
       {wizardStep>0&&(
-        <div onClick={()=>setWizardStep(0)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
+        <div onClick={()=>setWizardStep(0)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:480,maxHeight:"85vh",overflowY:"auto" as const}}>
             <div style={{fontWeight:800,fontSize:16,marginBottom:4}}>+ Tambah WP — {wizardTipe}</div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:16}}>Langkah {wizardStep} dari 3</div>
