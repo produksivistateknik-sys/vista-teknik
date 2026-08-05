@@ -506,7 +506,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
         const distTasks=countReleased(tasks);
         const totalTasksKomp=countKomponen(tasks);
-        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
+        const thS={background:"#1e2330",color:"#c8d0e8",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #2d3348"};
         return(
           <div key={proses} style={{marginBottom:20}}>
             <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
@@ -717,7 +717,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const pc=PROSES_COLOR[proses]||"#64748b";
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
-        const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
+        const thS={background:"#1e2330",color:"#c8d0e8",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #2d3348"};
         return(
           <div key={proses} style={{marginBottom:20}}>
             <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>

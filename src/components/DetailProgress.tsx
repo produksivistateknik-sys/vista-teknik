@@ -34,9 +34,9 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
     return matchS&&matchWO&&matchPanel&&matchQ;
   });
 
-  const thS={background:"#1e3a5f",color:"#fff",fontWeight:600,padding:"7px 10px",
+  const thS={background:"#1e2330",color:"#c8d0e8",fontWeight:600,padding:"7px 10px",
     textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
-    letterSpacing:.3,borderBottom:"1px solid #1e3a5f",whiteSpace:"nowrap" as const,
+    letterSpacing:.3,borderBottom:"1px solid #2d3348",whiteSpace:"nowrap" as const,
     borderRight:"1px solid rgba(255,255,255,.1)"};
   const thSL={...thS,textAlign:"left" as const};
   const tdS={padding:"6px 10px",borderBottom:"1px solid #f5f7fa",
