@@ -43,3 +43,26 @@ lalu diff kolom per pasangan (lihat kolom yang ada di sumber tapi hilang di arsi
 
 Reminder yang sama juga ditulis sebagai `COMMENT ON TABLE`/`COMMENT ON FUNCTION`
 langsung di database (muncul di Supabase Studio saat lihat tabel/fungsi ini).
+
+## Tabel arsip lain yang SENGAJA TIDAK ikut pola di atas: `panel_seksi_archived`
+
+Fitur Arsip Seksi (`panel_seksi_archived`, trigger `panels_auto_archive_seksi()` di
+tabel `panels`, dipicu OTOMATIS begitu `warehouse_progress`/`qs_progress`/
+`qc_checklist._global.status`/`checklist[kode].pasangKomponenTahap` mencapai
+"selesai" - lihat tab "Arsip Seksi" di `ArsipTab.tsx` Vista Teknik dan tab "Arsip"
+di Vista Pekerja) BUKAN pemindahan seperti `arsip_panel()` di atas - ini SALINAN
+read-only, data live di `panels` TIDAK pernah dihapus/diubah (sengaja, supaya
+`calcPanelProgress()` yang baca `checklist[kode].progress["PASANG KOMPONEN"]`
+langsung dan berbagai laporan Vista Teknik yang baca `warehouse_*`/`qs_*`/
+`qc_checklist` gak jadi salah buat panel yang masih aktif di divisi lain).
+
+Payload-nya SATU kolom `data jsonb` per baris (bukan kolom-kolom yang meniru
+struktur sumber), jadi kelas bug "kolom ketinggalan pas tabel sumber dapat field
+baru" (insiden `busbar_jejak`) **tidak berlaku** di sini - field baru apa pun di
+`warehouse_*`/`qs_*`/`qc_checklist`/`checklist[kode].pasangKomponenTahap` otomatis
+ikut ke `data` tanpa perlu migrasi kolom tambahan. Yang WAJIB disesuaikan kalau ada
+field baru yang perlu ikut arsip: `jsonb_build_object(...)` di dalam fungsi
+`panels_auto_archive_seksi()` sendiri (lihat `COMMENT ON FUNCTION` di database).
+
+`panel_id`/`wo_id` di tabel ini juga tanpa FK (sama seperti `panels_archived`) -
+baris arsip tetap ada walau WO/panel sumbernya sudah dihapus dari Manajemen WO.
