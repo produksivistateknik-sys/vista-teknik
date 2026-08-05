@@ -199,9 +199,31 @@ export const workOrderService = {
 
     const { data: sisaPanel } = await supabase.from('panels').select('id').eq('wo_id', editWoId).limit(1)
     if (!sisaPanel || sisaPanel.length === 0) {
-      await supabase.from('renhar').delete().eq('wo_id', editWoId)
-      await supabase.from('raw_schedule').delete().eq('wo_id', editWoId)
-      await supabase.from('fcs_schedule').delete().eq('wo_id', editWoId)
+      // FIX (5 Agu 2026): dulu delete polos by wo_id=editWoId di sini - kalau ada baris
+      // raw_schedule/renhar/fcs_schedule yang somehow MASIH ke-tag wo_id lama ini (harusnya udah
+      // gak mungkin lagi berkat sinkronisasi wo_id di atas, tapi ini pengaman TAMBAHAN/belt-and-
+      // suspenders buat gap yang belum ketauan) PADAHAL panel_id-nya MASIH ADA & aktif (baru
+      // dipindah ke WO lain, misal kena split berantai 2x nyaris bersamaan), baris itu HARUS
+      // TETAP UTUH - itu tandanya ada gap sinkronisasi, bukan berarti barisnya beneran yatim
+      // piatu. Root cause insiden nyata (SWP-01 + 10 panel CIMORY CITEUREUP kehilangan total
+      // raw_schedule pas split berantai 2x dalam 44 detik). Sekarang cuma hapus baris yang
+      // panel_id-nya BENERAN gak ada lagi di tabel panels (yatim piatu murni, panelnya sendiri
+      // udah kehapus dari jalur idsToDelete di atas).
+      const cekYatimPiatu = async (table: string) => {
+        const { data: candidates } = await supabase.from(table).select('id,panel_id').eq('wo_id', editWoId)
+        if (!candidates || candidates.length === 0) return
+        const panelIds = [...new Set(candidates.map((r: any) => r.panel_id).filter(Boolean))]
+        let masihHidup = new Set<number>()
+        if (panelIds.length > 0) {
+          const { data: alive } = await supabase.from('panels').select('id').in('id', panelIds)
+          masihHidup = new Set((alive || []).map((p: any) => p.id))
+        }
+        const idsAmanDihapus = candidates.filter((r: any) => !r.panel_id || !masihHidup.has(r.panel_id)).map((r: any) => r.id)
+        if (idsAmanDihapus.length > 0) await supabase.from(table).delete().in('id', idsAmanDihapus)
+      }
+      await cekYatimPiatu('renhar')
+      await cekYatimPiatu('raw_schedule')
+      await cekYatimPiatu('fcs_schedule')
       await supabase.from('work_orders').delete().eq('id', editWoId)
     }
   }
