@@ -187,9 +187,23 @@ export const workOrderService = {
           // ke-filter wo_id lama - padahal secara logis udah "milik" WO sibling yang baru.
           // Sinkronisasi ini CUMA nyentuh kolom wo_id - schedule/komponen/pekerja/tanggal dkk
           // di 3 tabel ini SAMA SEKALI gak disentuh.
-          await supabase.from('raw_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
-          await supabase.from('renhar').update({ wo_id: targetWoId }).eq('panel_id', p.id)
-          await supabase.from('fcs_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+          // AUDIT FIX (5 Agu 2026): dulu 3 query ini gak dicek error-nya sama sekali (beda dari
+          // panels.update() tepat di atas yang throw kalau gagal) - kalau salah satu gagal
+          // (network blip dll), bug orphan yang baru diperbaiki bisa balik lagi diam-diam tanpa
+          // ada tanda apapun. Sekarang konsisten sama pola panels.update() di atas - throw kalau
+          // ada yang gagal, biar kelihatan jelas bukan silent-fail lagi.
+          // AUDIT FIX (5 Agu 2026): sinkronisasi cuma perlu jalan kalau panel ini BENERAN pindah
+          // WO (targetWoId beda dari editWoId) - sebelumnya jalan tanpa syarat buat SETIAP panel
+          // existing tiap kali save, termasuk yang gak pindah sama sekali (3 query mubazir per
+          // panel per save).
+          if (targetWoId !== editWoId) {
+            const { error: rawErr } = await supabase.from('raw_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (rawErr) throw new Error('Gagal sinkron wo_id raw_schedule panel ' + p.id + ': ' + rawErr.message)
+            const { error: renharErr } = await supabase.from('renhar').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (renharErr) throw new Error('Gagal sinkron wo_id renhar panel ' + p.id + ': ' + renharErr.message)
+            const { error: fcsErr } = await supabase.from('fcs_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (fcsErr) throw new Error('Gagal sinkron wo_id fcs_schedule panel ' + p.id + ': ' + fcsErr.message)
+          }
         } else {
           const { error } = await supabase.from('panels').insert(row)
           if (error) throw new Error(error.message)
@@ -219,7 +233,10 @@ export const workOrderService = {
           masihHidup = new Set((alive || []).map((p: any) => p.id))
         }
         const idsAmanDihapus = candidates.filter((r: any) => !r.panel_id || !masihHidup.has(r.panel_id)).map((r: any) => r.id)
-        if (idsAmanDihapus.length > 0) await supabase.from(table).delete().in('id', idsAmanDihapus)
+        if (idsAmanDihapus.length > 0) {
+          const { error: cleanupErr } = await supabase.from(table).delete().in('id', idsAmanDihapus)
+          if (cleanupErr) throw new Error('Gagal cleanup ' + table + ' yatim piatu WO ' + editWoId + ': ' + cleanupErr.message)
+        }
       }
       await cekYatimPiatu('renhar')
       await cekYatimPiatu('raw_schedule')

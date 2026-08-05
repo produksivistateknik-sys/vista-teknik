@@ -397,7 +397,16 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     // toast "berhasil" cuma muncul kalau nilai yang BENERAN ada di database sudah dicek cocok
     // sama yang dimaksud, dirtyQty juga SENGAJA gak dibersihkan kalau gagal biar input admin
     // gak ilang dari layar dan bisa langsung dicoba simpan ulang.
-    const{data:verifyRow}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
+    // AUDIT FIX (5 Agu 2026): dulu fetch verifikasi ini gak dicek error-nya sendiri - kalau FETCH
+    // verifikasinya yang gagal (bukan simpannya), semua kode di `dirty` otomatis kebaca "gagal"
+    // (verifyRow undefined) dan muncul alert "GAGAL tersimpan" yang keliru, padahal update panels
+    // barusan (baris di atas) sukses tanpa error. Sekarang dibedakan: gagal fetch verifikasi vs
+    // beneran gak cocok pas dicek.
+    const{data:verifyRow,error:verifyError}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
+    if(verifyError){
+      alert('Qty sudah terkirim (gak ada error pas simpan), tapi verifikasi baca-balik gagal karena koneksi - BELUM YAKIN datanya beneran sesuai. Refresh halaman buat mastiin, atau simpan ulang kalau ragu.');
+      return;
+    }
     const gagalTersimpan=Object.keys(dirty).filter(kode=>{
       const dirtyEntry=(dirty as any)[kode];
       if(dirtyEntry.newQty===dirtyEntry.oldQty)return false;
@@ -800,7 +809,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
                   let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname,quickGenSelectedPanelIds);
                   if(!res.success&&res.error==="__ALREADY_EXISTS__"){
-                    const lanjut=confirm("Panel yang dipilih UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP komponen yang udah lengkap terjadwal, dan cuma nambahin kekurangannya aja (top-up) - jadwal yang udah ada gak bakal dobel.\n\nYakin mau lanjut?");
+                    const lanjut=confirm("Panel yang dipilih UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP TOTAL komponen yang udah pernah dijadwalkan (gak diapa-apain lagi, gak ditambah gak diubah) - cuma komponen yang BENAR-BENAR belum pernah ada di jadwal yang bakal diisi.\n\nYakin mau lanjut?");
                     if(lanjut){
                       res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname,quickGenSelectedPanelIds);
                     } else {
