@@ -9,9 +9,10 @@ const STATUS_LABEL_WK:Record<string,{label:string,bg:string,color:string}>={
   selesai:{label:"Selesai",bg:"#f0fdf4",color:"#16a34a"},
 }
 
-// Komponen yang dapat Foto Pemasangan di WIRING CONTROL (lihat WIRING_KOMPONEN_FOTO_NAMA
-// di Vista Pekerja) - dicocokkan lewat nama komponen, bukan kode (kode beda-beda per tipe
-// panel, misal Box Control = FS.5 di tipe FS tapi F3B.7 di tipe F3B).
+// Komponen yang punya kontribusi WIRING ke progress PASANG KOMPONEN gabungan (lihat
+// PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA di Vista Pekerja) - dicocokkan lewat nama komponen,
+// bukan kode (kode beda-beda per tipe panel, misal Box Control = FS.5 di tipe FS tapi F3B.7
+// di tipe F3B).
 const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"]
 
 const statusWiringKomponen=(pct:number,jumlahFoto:number)=>{
@@ -21,7 +22,11 @@ const statusWiringKomponen=(pct:number,jumlahFoto:number)=>{
 }
 
 // Daftar kode Box Control/Pintu yang relevan buat 1 panel (bisa lebih dari 1 kalau tipe
-// panelnya punya lebih dari satu, meski biasanya cuma 1 masing-masing).
+// panelnya punya lebih dari satu, meski biasanya cuma 1 masing-masing). REVISI (5 Agu 2026):
+// pct di sini SEKARANG kontribusi tahap WIRING doang (checklist[kode].pasangKomponenTahap.WIRING)
+// - bukan lagi progress["WIRING CONTROL"] (kerja kabel, yang sekarang independen sepenuhnya
+// dan gak relevan buat laporan pasang-komponen ini). Fallback ke 0 kalau data lama belum
+// pernah disentuh fitur tahap ini sama sekali (panel belum pernah ada kontribusi WIRING).
 const komponenWiringPanel=(panel:any)=>{
   const cfg=getEffCfgGlobal(panel.tipe)
   if(!cfg)return[]
@@ -30,7 +35,7 @@ const komponenWiringPanel=(panel:any)=>{
     .filter((it:any)=>WIRING_KOMPONEN_NAMA.includes(it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
     .map((it:any)=>{
       const cl=panel.checklist?.[it.kode]
-      return{kode:it.kode,nama:it.nama,pct:cl?.progress?.["WIRING CONTROL"]||0,foto:cl?.fotoPemasangan||[]}
+      return{kode:it.kode,nama:it.nama,pct:cl?.pasangKomponenTahap?.WIRING?.progress||0,foto:cl?.fotoPemasangan||[]}
     })
 }
 

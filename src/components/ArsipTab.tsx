@@ -32,7 +32,10 @@ const QC_CENTER_SECTIONS_FLAT=[
 const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"];
 
 // Daftar kode Box Control/Pintu yang relevan buat 1 panel (nama, bukan kode - kode beda-beda
-// per tipe panel) - persis sama logic komponenWiringPanel di LaporanWiringKomponenView.
+// per tipe panel) - persis sama logic komponenWiringPanel di LaporanWiringKomponenView. REVISI
+// (5 Agu 2026): pct sekarang kontribusi tahap WIRING ke progress PASANG KOMPONEN gabungan
+// (checklist[kode].pasangKomponenTahap.WIRING), bukan lagi progress["WIRING CONTROL"] yang
+// sekarang independen sepenuhnya dari pasang-komponen.
 const komponenWiringPanel=(panel:any)=>{
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg)return[];
@@ -41,7 +44,7 @@ const komponenWiringPanel=(panel:any)=>{
     .filter((it:any)=>WIRING_KOMPONEN_NAMA.includes(it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
     .map((it:any)=>{
       const cl=panel.checklist?.[it.kode];
-      return{kode:it.kode,nama:it.nama,pct:cl?.progress?.["WIRING CONTROL"]||0,foto:cl?.fotoPemasangan||[]};
+      return{kode:it.kode,nama:it.nama,pct:cl?.pasangKomponenTahap?.WIRING?.progress||0,foto:cl?.fotoPemasangan||[]};
     });
 };
 

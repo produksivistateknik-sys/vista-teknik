@@ -98,13 +98,22 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
     return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
   }
 
+  // Box Control/Pintu (lihat PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA di Vista Pekerja) punya
+  // progress["PASANG KOMPONEN"] gabungan dari 2 kontribusi terpisah (ASSEMBLING + WIRING) -
+  // laporan Assembling ini cuma nampilin kontribusi ASSEMBLING-nya sendiri, bukan angka
+  // gabungan, biar konsisten sama laporan Wiring Control yang juga cuma nampilin punya sendiri.
+  const KOMPONEN_TAHAP_NAMA=["Box Control","Pintu"]
   const komponenPanel=(panel:any)=>{
     const cfg=getEffCfgGlobal(panel.tipe)
     if(!cfg)return[]
     const items=cfg.wps.flatMap((w:any)=>w.items)
     return items
       .filter((it:any)=>(panel.checklist?.[it.kode]?.qty||0)>0&&isKomponenRelevant(it.kode,panel.tipe,"PASANG KOMPONEN"))
-      .map((it:any)=>({kode:it.kode,nama:it.nama,pct:panel.checklist?.[it.kode]?.progress?.["PASANG KOMPONEN"]||0}))
+      .map((it:any)=>{
+        const cl=panel.checklist?.[it.kode]
+        const pct=KOMPONEN_TAHAP_NAMA.includes(it.nama)?(cl?.pasangKomponenTahap?.ASSEMBLING?.progress||0):(cl?.progress?.["PASANG KOMPONEN"]||0)
+        return{kode:it.kode,nama:it.nama,pct}
+      })
   }
 
   if(selectedPanel){
