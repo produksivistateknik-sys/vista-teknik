@@ -198,8 +198,8 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const totalKeluar=stokList.reduce((a:number,s:any)=>a+getKeluarTotal(s.id),0);
   const totalStok=stokList.reduce((a:number,s:any)=>a+s.stok,0);
 
-  const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,
-    fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10",
+  const thS:any={background:"#1e3a8a",color:"#fff",padding:"7px 10px",fontWeight:600,
+    fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff18",
     textTransform:"uppercase",letterSpacing:.4};
 
   const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-";

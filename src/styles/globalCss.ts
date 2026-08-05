@@ -42,7 +42,7 @@ export const GCss=`@import url('https://fonts.googleapis.com/css2?family=Inter:w
 [data-theme="dark"] table thead tr{background:var(--bg-tertiary)!important}
 [data-theme="dark"] table tbody tr:nth-child(even) td{background:var(--bg-secondary)!important}
 [data-theme="dark"] table tbody tr:nth-child(odd) td{background:var(--card-bg)!important}
-[data-theme="dark"] table th{background:#1e2330!important;color:#c8d0e8!important;border-color:var(--border-color)!important}
+[data-theme="dark"] table th{background:#1e3a8a!important;color:#fff!important;border-color:var(--border-color)!important}
 [data-theme="dark"] table td{border-color:var(--border-light)!important;color:var(--text-primary)!important}
 [data-theme="dark"] input,[data-theme="dark"] select,[data-theme="dark"] textarea{
   background:var(--input-bg)!important;border-color:var(--border-color)!important;

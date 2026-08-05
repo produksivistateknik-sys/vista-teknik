@@ -17,9 +17,9 @@ export function SummaryProgress({woData}:{woData:any[]}){
     return matchS&&matchQ;
   });
 
-  const thS={background:"#1e2330",color:"#c8d0e8",fontWeight:600,padding:"7px 10px",
+  const thS={background:"#1e3a8a",color:"#fff",fontWeight:600,padding:"7px 10px",
     textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
-    letterSpacing:.3,borderBottom:"1px solid #2d3348",whiteSpace:"nowrap" as const,
+    letterSpacing:.3,borderBottom:"1px solid #ffffff18",whiteSpace:"nowrap" as const,
     borderRight:"1px solid rgba(255,255,255,.1)"};
   const thSL={...thS,textAlign:"left" as const};
   const tdS={padding:"7px 10px",borderBottom:"1px solid #f5f7fa",

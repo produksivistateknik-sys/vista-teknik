@@ -61,7 +61,7 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
 
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #ffffff10"};
+  const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #ffffff18"};
 
   return(
     <div>

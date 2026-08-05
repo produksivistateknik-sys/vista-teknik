@@ -1200,7 +1200,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
   };
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #2d3348",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
+  const thS={background:"#1e3a8a",color:"#fff",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #ffffff18",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
 
   return(
     <div className="fi">
@@ -1442,10 +1442,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
           <thead style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
-              <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e2330"}}>PROYEK</th>
-              <th style={{...thS,textAlign:"left",minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e2330"}}>PANEL</th>
-              <th style={{...thS,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e2330"}}>PROSES</th>
-              <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e2330"}}>PRIORITAS</th>
+              <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
+              <th style={{...thS,textAlign:"left",minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
+              <th style={{...thS,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
+              <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
                   style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>

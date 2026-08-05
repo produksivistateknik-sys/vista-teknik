@@ -32,9 +32,9 @@ export function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,re
   const startEdit=(p)=>{setEditId(p.id);setForm({nama:p.nama,divisi:p.divisi});};
   const cancelEdit=()=>{setEditId(null);setForm({nama:"",divisi:"mekanik"});};
 
-  const thS={background:"#1e2330",color:"#c8d0e8",padding:"7px 10px",fontWeight:600,
+  const thS={background:"#1e3a8a",color:"#fff",padding:"7px 10px",fontWeight:600,
     fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,
-    borderRight:"1px solid #ffffff10",textTransform:"uppercase" as const,letterSpacing:.4};
+    borderRight:"1px solid #ffffff18",textTransform:"uppercase" as const,letterSpacing:.4};
 
   return(
     <div className="fi">
