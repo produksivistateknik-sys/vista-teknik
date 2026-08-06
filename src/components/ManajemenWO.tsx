@@ -450,7 +450,19 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     });
     setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
     setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    alert('Qty berhasil disimpan!');
+    // PERINGATAN (6 Agu 2026): qty di sini cuma nulis ke panels.checklist - Raw Schedule TIDAK
+    // otomatis ikut nyesuaikan. "Generate Jadwal" ulang juga gak nolong buat kasus ini - itu
+    // sengaja SKIP TOTAL komponen yang udah pernah terjadwal (biar gak nimpa histori/progress
+    // yang udah ada, lihat quickGenModal), jadi qty yang berubah pada komponen yang SUDAH
+    // terjadwal gak pernah ke-refleksikan otomatis ke Raw Schedule lewat jalur mana pun. Cuma
+    // kasih tahu admin di sini - BUKAN auto-sync (itu perubahan logic scheduling yang lebih
+    // besar, perlu desain terpisah).
+    const{data:existingRawCheck}=await supabase.from('raw_schedule').select('id').eq('panel_id',panel.id).limit(1);
+    if(existingRawCheck&&existingRawCheck.length>0){
+      alert('Qty berhasil disimpan!\n\n⚠️ Panel ini sudah punya jadwal di Raw Schedule - perubahan qty TIDAK otomatis masuk ke jadwal (Generate Jadwal ulang akan skip komponen yang sudah pernah terjadwal). Cek & tambahkan manual di Raw Schedule kalau qty-nya nambah.');
+    } else {
+      alert('Qty berhasil disimpan!');
+    }
   };
 
   return(
