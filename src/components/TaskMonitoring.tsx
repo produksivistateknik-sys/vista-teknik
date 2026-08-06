@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant } from '../lib/panelHelpers'
+import { isKomponenRelevant, computeProsesStatus } from '../lib/panelHelpers'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
 export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:any}){
@@ -20,21 +20,18 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
   const selectedPanel=panelList.find((p:any)=>p.id===selectedPanelId);
   const cfg=selectedPanel?getEffCfg(selectedPanel.tipe):null;
 
+  // Status kesiapan estafet direuse dari computeProsesStatus (lib/panelHelpers.ts) - single
+  // source of truth yang sama juga dipakai Rencana Harian & Vista Pekerja, biar gak ada 2
+  // definisi beda buat data identik.
   const getStatus=(kode:string,prosesIdx:number):{status:string;pct:number}|null=>{
     if(!selectedPanel)return null;
     const qty=selectedPanel.checklist?.[kode]?.qty||0;
     if(qty<=0)return null;
     const proses=ALL_PROSES[prosesIdx];
     if(!isKomponenRelevant(kode,selectedPanel.tipe,proses))return null;
-    const progress=selectedPanel.checklist?.[kode]?.progress?.[proses]||0;
-    if(progress>=100)return{status:"DONE",pct:100};
-    if(prosesIdx===0){
-      return progress>0?{status:"IN PROGRESS",pct:progress}:{status:"TO DO",pct:0};
-    }
-    const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
-    const progressSebelumnya=selectedPanel.checklist?.[kode]?.progress?.[prosesSebelumnya]||0;
-    if(progressSebelumnya<100)return{status:"NOT YET",pct:0};
-    return progress>0?{status:"IN PROGRESS",pct:progress}:{status:"TO DO",pct:0};
+    const progressMap=selectedPanel.checklist?.[kode]?.progress;
+    const status=computeProsesStatus(progressMap,proses);
+    return{status,pct:progressMap?.[proses]||0};
   };
 
   const statusStyle:Record<string,{bg:string;color:string;border:string}>={

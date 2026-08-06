@@ -1,5 +1,5 @@
 import { supabase } from '../lib/supabase'
-import { KOMPONEN_PROSES_MAP } from '../constants/panelTypes'
+import { KOMPONEN_PROSES_MAP, ALL_PROSES } from '../constants/panelTypes'
 
 interface FCSProcessTime {
   kode_komponen: string
@@ -1643,7 +1643,6 @@ export async function generateAndSaveToRawSchedule(
       }
     }
 
-    const ALL_PROSES_LIST = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]
     const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
     // QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - jangan
     // digantungkan ke mapping bom_proses_relevan per kode komponen (komponen/tipe_panel baru
@@ -1737,7 +1736,7 @@ export async function generateAndSaveToRawSchedule(
 
     let count = 0
     const scheduledOk = new Set<string>()
-    const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES_LIST.filter((pr) => {
+    const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES.filter((pr) => {
       if (PROSES_TANPA_MAPPING_KOMPONEN.includes(pr)) return true
       const mapKey = kode + '|' + tipe
       if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + tipe + '|' + pr)
@@ -1756,7 +1755,7 @@ export async function generateAndSaveToRawSchedule(
       const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
       if (activeKodes.length === 0) continue
 
-      for (const prosesSkeleton of ALL_PROSES_LIST) {
+      for (const prosesSkeleton of ALL_PROSES) {
         const adaRelevan = PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) || activeKodes.some((kode) => {
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
@@ -1765,7 +1764,7 @@ export async function generateAndSaveToRawSchedule(
         if (adaRelevan) await ensureSkeletonRow(wo, panel, prosesSkeleton)
       }
 
-      for (const proses of ALL_PROSES_LIST) {
+      for (const proses of ALL_PROSES) {
         if (WIRING_LIST.includes(proses)) continue
 
         const relevantKodes = (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses) ? activeKodes : activeKodes.filter((kode) => {

@@ -48,6 +48,27 @@ export function getEffCfgGlobal(tipe:string){
   return (GLOBAL_LIVE_PANEL_TYPES?.[tipe]?.wps?.length>0)?GLOBAL_LIVE_PANEL_TYPES[tipe]:(PANEL_TYPES as any)[tipe];
 }
 
+export type ProsesStatus="NOT YET"|"TO DO"|"IN PROGRESS"|"DONE";
+// Ambang progress proses SEBELUMNYA (dalam rantai ALL_PROSES) supaya komponen ini dianggap
+// "siap dikerjakan" (TO DO) - di bawah ini masih NOT YET. 6 Agu 2026: single source of truth
+// status kesiapan komponen, dipakai TaskMonitoring.tsx DAN Rencana Harian - jangan duplikasi
+// logic gating di tempat lain, panggil fungsi ini.
+export const PROSES_STATUS_GATE_PCT=25;
+// POTONG (index pertama di ALL_PROSES) dan BUSBAR (proses paralel/independen, gak masuk rantai
+// estafet WP) sengaja gak digating proses sebelumnya - selalu TO DO begitu progress masih 0.
+export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
+  const progress=progressMap?.[proses]||0;
+  if(progress>=100)return "DONE";
+  const prosesIdx=ALL_PROSES.indexOf(proses);
+  if(prosesIdx<=0||proses==="BUSBAR"){
+    return progress>0?"IN PROGRESS":"TO DO";
+  }
+  const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
+  const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
+  if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
+  return progress>0?"IN PROGRESS":"TO DO";
+}
+
 export function initChecklist(tipe, qty=1, customPanelTypes?){
   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};

@@ -2,10 +2,23 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, type ProsesStatus } from '../lib/panelHelpers'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
+
+// Warna status pipeline (readiness per-komponen) - beda dari statusStyle di TaskMonitoring.tsx
+// (itu urusan tampilan sendiri, sengaja gak diseragamkan warnanya, cuma computeProsesStatus()
+// yang sumbernya sama).
+const STATUS_PIPELINE_STYLE:Record<ProsesStatus,{bg:string,color:string,border:string}>={
+  "NOT YET":{bg:"#f1f5f9",color:"#64748b",border:"#e2e8f0"},
+  "TO DO":{bg:"#eff6ff",color:"#2563eb",border:"#bfdbfe"},
+  "IN PROGRESS":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},
+  "DONE":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},
+};
+const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
+  "NOT YET":"Not Yet","TO DO":"To Do","IN PROGRESS":"In Progress","DONE":"Done",
+};
 
 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,refetchRaw,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
@@ -16,6 +29,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [selProses,setSelProses]=useState("ALL");
+  const [statusFilter,setStatusFilter]=useState<"ALL"|ProsesStatus>("ALL");
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
@@ -491,6 +505,20 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt})</button>);
         })}
       </div>
+      {/* Filter status pipeline (NOT YET/TO DO/IN PROGRESS/DONE) - cuma berlaku ke tabel proses
+          yang masuk rantai ALL_PROSES (NAMEPLATE/YELLOWMARK gak punya kolom ini sama sekali). */}
+      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+        {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
+          const sc=s==="ALL"?"#475569":STATUS_PIPELINE_STYLE[s].color;
+          const isSel=statusFilter===s;
+          return(
+            <button key={s} onClick={()=>setStatusFilter(isSel?"ALL":s)}
+              style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?sc:"#e2e8f0"}`,background:isSel?sc+"18":"#fff",color:isSel?sc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>
+              {s==="ALL"?"Semua Status":STATUS_PIPELINE_LABEL[s]}
+            </button>
+          );
+        })}
+      </div>
       {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
           <div style={{fontSize:40,marginBottom:12}}>📭</div>
@@ -528,6 +556,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     <th style={{...thS,width:250}}>Komponen</th>
                     <th style={{...thS,width:160}}>Operator</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+                    <th style={{...thS,width:110,textAlign:"center"}}>Status Pipeline</th>
                     <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
                   </tr>
                 </thead>
@@ -544,6 +573,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                       const released=rh?.komponen_released||[];
                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).map((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
+                        const pipelineStatus=computeProsesStatus(panelData?.checklist?.[kode]?.progress,t.proses);
+                        if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return null;
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
                         const sudahRelease=released.includes(kode);
@@ -655,6 +686,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               })()}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
+                              <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                                {STATUS_PIPELINE_LABEL[pipelineStatus]}
+                              </span>
+                            </td>
+                            <td style={{...td,textAlign:"center"}}>
                               {digeserKeTanggal?(
                                 <span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>Sudah digeser, aksi di {fmtShort(digeserKeTanggal)}</span>
                               ):(()=>{
@@ -671,7 +707,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             </td>
                           </tr>
                         );
-                      });
+                      }).filter(Boolean);
                     }
 
                     const workers=(rh?.pekerja||[]).map(id=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean);
