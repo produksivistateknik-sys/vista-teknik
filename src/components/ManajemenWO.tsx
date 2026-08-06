@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
@@ -9,7 +9,7 @@ import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
-export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO}:any){
+export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActivity,logAct,log,user,refetchWO,highlightWoId}:any){
   const [bomPanelTypesCache,setBomPanelTypesCache]=useState<any>(null);
   useEffect(()=>{
     Promise.all([
@@ -56,6 +56,22 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
   const [open,setOpen]=useState(false);
   const [expandedWo,setExpandedWo]=useState({});
   const [expandedPanel,setExpandedPanel]=useState({});
+  // Scroll+highlight ke WO tertentu (dipicu klik notifikasi push "WO Baru Ditambahkan" -
+  // highlightWoId datang dari App.tsx via query param ?wo_id=). glowWoId cuma nyala sebentar
+  // (efek visual sementara), beda dari expandedWo yang permanen sampai user collapse manual.
+  const woCardRefs=useRef<Record<number,HTMLDivElement|null>>({});
+  const [glowWoId,setGlowWoId]=useState<number|null>(null);
+  useEffect(()=>{
+    if(!highlightWoId)return;
+    const id=Number(highlightWoId);
+    if(!woData.some((w:any)=>w.id===id))return; // WO-nya belum ke-load di state, tunggu render berikutnya
+    setExpandedWo((p:any)=>({...p,[id]:true}));
+    setGlowWoId(id);
+    const el=woCardRefs.current[id];
+    if(el)el.scrollIntoView({behavior:"smooth",block:"center"});
+    const t=setTimeout(()=>setGlowWoId((cur)=>cur===id?null:cur),3000);
+    return()=>clearTimeout(t);
+  },[highlightWoId,woData]);
   const [arsipModal,setArsipModal]=useState<any>(null);
   const [arsipLoading,setArsipLoading]=useState(false);
   const [arsipPanelModal,setArsipPanelModal]=useState<any>(null);
@@ -237,6 +253,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
           return [...prev,newWo];
         });
         if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+        // Push notif ke semua admin yang subscribe - fitur tambahan, GAGAL DI SINI TIDAK BOLEH
+        // gagalin proses simpan WO yang udah beres di atas, makanya dibungkus try/catch sendiri
+        // dan gak di-await sebagai bagian kondisi apapun.
+        try{
+          await supabase.functions.invoke("notify-wo-baru",{body:{wo_id:result.data.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+        }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
       }
     }
     setOpen(false);
@@ -481,7 +503,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
       {[...woData].sort((a:any,b:any)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99")).map(wo=>{
         const pct=woOverall(wo);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
         return(
-          <Card key={wo.id} style={{marginBottom:12,borderLeft:`3px solid ${st.color}`,padding:0,overflow:"hidden"}}>
+          <div key={wo.id} ref={(el)=>{woCardRefs.current[wo.id]=el;}}>
+          <Card style={{marginBottom:12,borderLeft:`3px solid ${st.color}`,padding:0,overflow:"hidden",
+            ...(glowWoId===wo.id?{boxShadow:"0 0 0 3px #2563eb66",transition:"box-shadow .4s ease"}:{transition:"box-shadow .4s ease"})}}>
             <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,alignItems:"center",
               cursor:"pointer",background:isExp?"#f8faff":"#fff",borderBottom:isExp?"1px solid #e2e8f0":"none"}}
               onClick={()=>setExpandedWo(p=>({...p,[wo.id]:!p[wo.id]}))}>
@@ -623,6 +647,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
               );
             })}
           </Card>
+          </div>
         );
       })}
       {arsipModal&&(
