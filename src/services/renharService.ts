@@ -1,6 +1,31 @@
 ﻿import { supabase } from '../lib/supabase'
 import { activityLogService } from './activityLogService'
 
+// Satu-satunya cara yang seharusnya dipakai buat merilis/menarik komponen ke/dari baris
+// renhar yang SUDAH ADA - menjamin `komponen` (satu-satunya field yang dibaca Vista Pekerja,
+// dikonfirmasi lewat OperatorView.tsx) TIDAK PERNAH jadi subset dari `komponen_released`
+// (field tracking rilis sisi admin). Root cause insiden "Pintu Hitam gak muncul" (6 Agu 2026,
+// CAPACITOR BANK-1): toggleReleaseKomponen/distributeAll dulu cuma nulis komponen_released,
+// gak pernah nyentuh komponen buat baris yang udah ada.
+// SENGAJA cuma nambah (union) pas "rilis" - "tarik" cuma lepas dari komponen_released, TIDAK
+// menghapus dari komponen (itu tanggung jawab alur lain - edit sel Raw Schedule/drag-move -
+// bukan toggle rilis ini, biar scope perubahan tetap sempit sesuai yang diminta).
+export function releaseKomponenToRenhar(
+  existing: { komponen?: string[]; komponen_released?: string[] } | null | undefined,
+  kodeList: string[],
+  aksi: 'rilis' | 'tarik',
+): { komponen: string[]; komponen_released: string[] } {
+  const komponenLama = existing?.komponen || []
+  const releasedLama = existing?.komponen_released || []
+  const releasedBaru = aksi === 'rilis'
+    ? [...new Set([...releasedLama, ...kodeList])]
+    : releasedLama.filter((k: string) => !kodeList.includes(k))
+  const komponenBaru = aksi === 'rilis'
+    ? [...new Set([...komponenLama, ...kodeList])]
+    : komponenLama
+  return { komponen: komponenBaru, komponen_released: releasedBaru }
+}
+
 export const renharService = {
   async getAll() {
     // Supabase/PostgREST default-nya CUMA balikin maks 1000 baris per request tanpa .range()

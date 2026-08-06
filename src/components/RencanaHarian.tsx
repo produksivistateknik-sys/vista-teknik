@@ -4,6 +4,7 @@ import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { markRenharDirty } from '../lib/globalState'
+import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 
 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,refetchRaw,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
@@ -346,18 +347,15 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>(ps as string[]).includes(task.proses))?.[0]||"mekanik";
       await withRenharQueue(task,async(existing)=>{
         if(existing){
-          const releasedLama=existing.komponen_released||[];
           // IDEMPOTEN: tentukan hasil akhir dari NIAT klik (kemungkinanSudahRelease -> mau
           // Tarik; sebaliknya -> mau Rilis), BUKAN dari toggle buta berdasarkan fresh-fetch.
           // Kalau state lokal sempat basi (gak sinkron sama DB), klik Rilis SELALU berakhir
           // released, klik Tarik SELALU berakhir tidak-released - gak pernah kebalik lagi.
           const mauRilis=!kemungkinanSudahRelease;
-          const releasedBaru=mauRilis
-            ?(releasedLama.includes(kode)?releasedLama:[...releasedLama,kode])
-            :releasedLama.filter((k:string)=>k!==kode);
-          await updateRenhar(existing.id,{komponen_released:releasedBaru});
+          const{komponen:komponenBaru,komponen_released:releasedBaru}=releaseKomponenToRenhar(existing,[kode],mauRilis?"rilis":"tarik");
+          await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
           markRenharDirty(existing.id);
-          setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+          setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen:komponenBaru,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen:komponenBaru,komponen_released:releasedBaru}]);
           showToast(mauRilis?`✅ "${namaTampil}" berhasil dirilis`:`↩️ "${namaTampil}" dibatalkan rilisnya`);
         } else {
           const result=await createRenhar({
@@ -405,12 +403,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       const allKode=task.komponen||[];
       await withRenharQueue(task,async(existing)=>{
         if(existing){
-          const releasedLama=existing.komponen_released||[];
-          const releasedBaru=[...new Set([...releasedLama,...allKode])];
-          if(releasedBaru.length===releasedLama.length)return;
-          await updateRenhar(existing.id,{komponen_released:releasedBaru});
+          const releasedLamaLen=(existing.komponen_released||[]).length;
+          const komponenLamaLen=(existing.komponen||[]).length;
+          const{komponen:komponenBaru,komponen_released:releasedBaru}=releaseKomponenToRenhar(existing,allKode,"rilis");
+          if(releasedBaru.length===releasedLamaLen&&komponenBaru.length===komponenLamaLen)return;
+          await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
           markRenharDirty(existing.id);
-          setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen_released:releasedBaru}]);
+          setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,komponen:komponenBaru,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen:komponenBaru,komponen_released:releasedBaru}]);
         } else {
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
