@@ -56,14 +56,27 @@ export type ProsesStatus="NOT YET"|"TO DO"|"IN PROGRESS"|"DONE";
 export const PROSES_STATUS_GATE_PCT=25;
 // POTONG (index pertama di ALL_PROSES) dan BUSBAR (proses paralel/independen, gak masuk rantai
 // estafet WP) sengaja gak digating proses sebelumnya - selalu TO DO begitu progress masih 0.
+// BUG FIX (6 Agu 2026): "proses sebelumnya" TIDAK BOLEH diambil lewat ALL_PROSES[idx-1] mentah -
+// BUSBAR duduk di antara PASANG KOMPONEN dan WIRING CONTROL di array, jadi index-1 buat WIRING
+// CONTROL nunjuk ke BUSBAR (yang progress-nya SELALU 0 buat kode non-busbar, terverifikasi di
+// data live - WM.4/FS.4 dst dengan WIRING CONTROL 50-100% semua punya BUSBAR=0). Akibatnya WIRING
+// CONTROL/WIRING POWER permanen kebaca NOT YET walau progress asli udah jalan. Fix: lompatin
+// BUSBAR pas nyari proses sebelumnya - WIRING CONTROL gating ke PASANG KOMPONEN, WIRING POWER
+// gating ke WIRING CONTROL, persis sesuai definisi yang diminta.
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
+  if(proses==="BUSBAR")return progress>0?"IN PROGRESS":"TO DO";
   const prosesIdx=ALL_PROSES.indexOf(proses);
-  if(prosesIdx<=0||proses==="BUSBAR"){
+  if(prosesIdx<=0){
     return progress>0?"IN PROGRESS":"TO DO";
   }
-  const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
+  let prevIdx=prosesIdx-1;
+  while(prevIdx>=0&&ALL_PROSES[prevIdx]==="BUSBAR")prevIdx--;
+  if(prevIdx<0){
+    return progress>0?"IN PROGRESS":"TO DO";
+  }
+  const prosesSebelumnya=ALL_PROSES[prevIdx];
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return progress>0?"IN PROGRESS":"TO DO";

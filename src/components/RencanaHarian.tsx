@@ -561,7 +561,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.flatMap((t,ti)=>{
+                  {(()=>{
+                  const renderedRows=tasks.flatMap((t,ti)=>{
                     const dist=isDist(t);const rh=getRenharEntry(t);
                     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===t.panelId);
                     const cfg2=panelData?getEffCfg(panelData.tipe):null;
@@ -686,9 +687,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               })()}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
-                              <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                                {STATUS_PIPELINE_LABEL[pipelineStatus]}
-                              </span>
+                              {digeserKeTanggal?(
+                                // Baris jejak/histori beku - status pipeline itu LIVE (kondisi sekarang),
+                                // bisa kontradiksi sama kolom Status di sebelah kiri yang murni snapshot
+                                // tanggal ini (mis. histori bilang "Tidak Dikerjakan" tapi sekarang udah
+                                // Done di tanggal lain). Daripada bingungin, tampilin netral aja di sini.
+                                <span style={{fontSize:11,color:"#cbd5e1"}}>–</span>
+                              ):(
+                                <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                                  {STATUS_PIPELINE_LABEL[pipelineStatus]}
+                                </span>
+                              )}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
                               {digeserKeTanggal?(
@@ -739,7 +748,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         </td>
                       </tr>
                     )];
-                  })}
+                  });
+                  if(renderedRows.length===0&&statusFilter!=="ALL"){
+                    return(
+                      <tr><td colSpan={10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                        Tidak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di {proses}.
+                      </td></tr>
+                    );
+                  }
+                  return renderedRows;
+                  })()}
                 </tbody>
               </table>
             </div>
