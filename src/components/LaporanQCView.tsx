@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 import { FotoZoomViewer } from './FotoZoomViewer'
+import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
 
 const QC_ITEMS_LAPORAN=[
   {key:"fisik",label:"Pemeriksaan Fisik"},
@@ -166,12 +167,25 @@ export function LaporanQCView({woData}:{woData:any[]}){
               )}
               {fotoList.length>0?(
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
-                  {fotoList.map((f:any,fi:number)=>(
-                    <div key={fi} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})} style={{cursor:"pointer"}} className="qc-foto-print">
-                      <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
-                      <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}</div>
-                    </div>
-                  ))}
+                  {fotoList.map((f:any,fi:number)=>{
+                    const fVideo=isVideoFoto(f)
+                    const fGeneric=isGenericFoto(f)
+                    return(
+                      <div key={fi} onClick={()=>{if(fGeneric)window.open(f.url,"_blank");else setLightbox({fotos:fotoList,index:fi,label:item.label})}} style={{cursor:"pointer"}} className="qc-foto-print">
+                        <div style={{position:"relative" as const,width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden",background:"#f1f5f9",display:fGeneric?"flex":undefined,alignItems:fGeneric?"center" as const:undefined,justifyContent:fGeneric?"center" as const:undefined}}>
+                          {fVideo?(
+                            <><video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                            <i className="ti ti-player-play-filled" style={{position:"absolute" as const,top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:20,color:"#fff",filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.5))"}}/></>
+                          ):fGeneric?(
+                            <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b"}}/>
+                          ):(
+                            <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                          )}
+                        </div>
+                        <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}</div>
+                      </div>
+                    )
+                  })}
                 </div>
               ):(
                 <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>

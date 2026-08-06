@@ -4,6 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { calcPanelProgress, getEffCfgGlobal } from '../lib/panelHelpers'
 import { Modal } from './ui/Primitives'
 import { FotoZoomViewer } from './FotoZoomViewer'
+import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
@@ -228,10 +229,23 @@ export function ArsipTab({user,refetchWO}:any){
             </div>
             {fotoList.length>0?(
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
-                {fotoList.map((f:any,fi:number)=>(
-                  <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label})}
-                    style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                ))}
+                {fotoList.map((f:any,fi:number)=>{
+                  const fVideo=isVideoFoto(f)
+                  const fGeneric=isGenericFoto(f)
+                  return(
+                    <div key={fi} onClick={()=>{if(fGeneric)window.open(f.url,"_blank");else setLightbox({fotos:fotoList,index:fi,label})}}
+                      style={{position:"relative" as const,width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer",overflow:"hidden",background:"#f1f5f9",display:fGeneric?"flex":undefined,alignItems:fGeneric?"center" as const:undefined,justifyContent:fGeneric?"center" as const:undefined}}>
+                      {fVideo?(
+                        <><video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                        <i className="ti ti-player-play-filled" style={{position:"absolute" as const,top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:20,color:"#fff",filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.5))"}}/></>
+                      ):fGeneric?(
+                        <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b"}}/>
+                      ):(
+                        <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                      )}
+                    </div>
+                  )
+                })}
               </div>
             ):(
               <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
@@ -271,10 +285,23 @@ export function ArsipTab({user,refetchWO}:any){
                         )}
                         {fotoList.length>0?(
                           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(80px,1fr))",gap:6}}>
-                            {fotoList.map((f:any,fi:number)=>(
-                              <img key={fi} src={f.url} onClick={()=>setLightbox({fotos:fotoList,index:fi,label:item.label})}
-                                style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                            ))}
+                            {fotoList.map((f:any,fi:number)=>{
+                              const fVideo=isVideoFoto(f)
+                              const fGeneric=isGenericFoto(f)
+                              return(
+                                <div key={fi} onClick={()=>{if(fGeneric)window.open(f.url,"_blank");else setLightbox({fotos:fotoList,index:fi,label:item.label})}}
+                                  style={{position:"relative" as const,width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer",overflow:"hidden",background:"#f1f5f9",display:fGeneric?"flex":undefined,alignItems:fGeneric?"center" as const:undefined,justifyContent:fGeneric?"center" as const:undefined}}>
+                                  {fVideo?(
+                                    <><video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                    <i className="ti ti-player-play-filled" style={{position:"absolute" as const,top:"50%",left:"50%",transform:"translate(-50%,-50%)",fontSize:20,color:"#fff",filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.5))"}}/></>
+                                  ):fGeneric?(
+                                    <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b"}}/>
+                                  ):(
+                                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                  )}
+                                </div>
+                              )
+                            })}
                           </div>
                         ):(
                           <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>
