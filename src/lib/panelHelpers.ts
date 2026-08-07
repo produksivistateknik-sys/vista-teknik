@@ -80,11 +80,15 @@ export const PROSES_STATUS_GATE_PCT=25;
 // yang udah dipakai buat nampilin "-" di kolom gak-relevan) - gating chain-nya difilter ke situ
 // dulu (urutan tetap ngikutin ALL_PROSES), BUSBAR-skip tetap jalan di atasnya sebagai jaga-jaga.
 // relevantProses opsional - kalau gak dikasih, fallback ke ALL_PROSES penuh (perilaku lama).
+// UNBLOCK QC TEST (7 Agu 2026): QC TEST sengaja dikeluarin dari gating juga - selalu TO DO
+// begitu progress masih 0, gak nunggu WIRING POWER/CONTROL nyampe 25% dulu kayak proses lain.
+// PACKING TETAP kena gating normal (gak diubah) - masih ngecek progress QC TEST via chain di
+// bawah, jadi PACKING baru TO DO kalau QC TEST komponen itu udah >=25%.
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
   if(progress>0)return "IN PROGRESS";
-  if(proses==="BUSBAR")return "TO DO";
+  if(proses==="BUSBAR"||proses==="QC TEST")return "TO DO";
   const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
   const prosesIdx=chain.indexOf(proses);
   if(prosesIdx<=0)return "TO DO";
