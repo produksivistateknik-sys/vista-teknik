@@ -233,6 +233,23 @@ export function getBestProgress(cl:any, proses:string):number{
   return cl?.progress?.[proses]||0;
 }
 
+// BUG FIX (7 Agu 2026): "Status" (kolom lama, getProgressAsOfDate) vs "Status Pipeline"
+// (computeProsesStatus, dulu baca cl.progress mentah) bisa nunjukin hasil KONTRADIKTIF buat
+// komponen yang sama - kejadian nyata: AFIF/FS.4 Groundplate/POTONG/CAPACITOR BANK-2 nunjukin
+// "Selesai" (progressByDate+history sama-sama 100%) tapi "In Progress" (cl.progress.POTONG
+// masih 13%, dari updateQtyProses yang nge-debounce write-nya - race sama updatePctManual/lock
+// yang nulis progressByDate+history duluan bisa bikin field progress[proses] SENDIRIAN nyangkut
+// nilai lama, gak ikut update). BUKAN ghost timer (fcs_timer_kerja komponen ini semua udah
+// selesai==NOT NULL, terverifikasi). Fix: computeProsesStatus jangan baca cl.progress mentah -
+// bangun progressMap dari getBestProgress (history>progressByDate>progress, SUMBER SAMA yang
+// dipercaya kolom "Status" & calcPanelProgress) buat SEMUA proses (bukan cuma yang dicek -
+// gating chain-nya juga butuh baca progress proses SEBELUMNYA dengan sumber yang sama).
+export function getBestProgressMap(cl:any):Record<string,number>{
+  const map:Record<string,number>={};
+  ALL_PROSES.forEach(pr=>{map[pr]=getBestProgress(cl,pr);});
+  return map;
+}
+
 export function calcPanelProgress(panel): Record<string, number> {
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);

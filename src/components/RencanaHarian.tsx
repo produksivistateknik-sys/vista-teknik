@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus } from '../lib/panelHelpers'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
@@ -575,7 +575,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).map((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const relevantProsesKode=panelData?getRelevantProsesForKode(kode,panelData.tipe):undefined;
-                        const pipelineStatus=computeProsesStatus(panelData?.checklist?.[kode]?.progress,t.proses,relevantProsesKode);
+                        const pipelineStatus=computeProsesStatus(getBestProgressMap(panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
                         if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return null;
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
