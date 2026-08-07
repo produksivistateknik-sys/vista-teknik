@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant, computeProsesStatus } from '../lib/panelHelpers'
+import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus } from '../lib/panelHelpers'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
 export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTypes?:any}){
@@ -30,7 +30,8 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
     const proses=ALL_PROSES[prosesIdx];
     if(!isKomponenRelevant(kode,selectedPanel.tipe,proses))return null;
     const progressMap=selectedPanel.checklist?.[kode]?.progress;
-    const status=computeProsesStatus(progressMap,proses);
+    const relevantProses=getRelevantProsesForKode(kode,selectedPanel.tipe);
+    const status=computeProsesStatus(progressMap,proses,relevantProses);
     return{status,pct:progressMap?.[proses]||0};
   };
 

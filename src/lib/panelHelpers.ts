@@ -71,17 +71,27 @@ export const PROSES_STATUS_GATE_PCT=25;
 // sekali. Fix: kalau progress proses INI SENDIRI udah >0, itu bukti nyata kerjaan udah mulai -
 // gak mungkin lagi NOT YET apapun kondisi proses sebelumnya. Gate NOT YET cuma relevan pas
 // progress proses ini masih benar-benar 0 (belum pernah disentuh sama sekali).
-export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
+// BUG FIX (7 Agu 2026): "proses sebelumnya" dulu diambil mentah dari ALL_PROSES[idx-1] (cuma
+// BUSBAR yang di-skip khusus) - gak peduli proses itu RELEVAN atau enggak buat kode ini. Kalau
+// ada proses gak-relevan yang duduk tepat sebelum proses yang dicek (mis. FINISHING buat
+// Groundplate/CAPACITOR BANK-2 - gak pernah kesentuh, progress permanen 0), proses sesudahnya
+// (RENDAM) ke-gate ke situ padahal proses relevan terakhir sebelumnya (BENDING) udah DONE.
+// Fix: terima daftar proses RELEVAN buat kode ini (dari getRelevantProsesForKode, sumber sama
+// yang udah dipakai buat nampilin "-" di kolom gak-relevan) - gating chain-nya difilter ke situ
+// dulu (urutan tetap ngikutin ALL_PROSES), BUSBAR-skip tetap jalan di atasnya sebagai jaga-jaga.
+// relevantProses opsional - kalau gak dikasih, fallback ke ALL_PROSES penuh (perilaku lama).
+export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
   if(progress>0)return "IN PROGRESS";
   if(proses==="BUSBAR")return "TO DO";
-  const prosesIdx=ALL_PROSES.indexOf(proses);
+  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
+  const prosesIdx=chain.indexOf(proses);
   if(prosesIdx<=0)return "TO DO";
   let prevIdx=prosesIdx-1;
-  while(prevIdx>=0&&ALL_PROSES[prevIdx]==="BUSBAR")prevIdx--;
+  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
   if(prevIdx<0)return "TO DO";
-  const prosesSebelumnya=ALL_PROSES[prevIdx];
+  const prosesSebelumnya=chain[prevIdx];
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return "TO DO";
