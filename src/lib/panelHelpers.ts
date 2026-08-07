@@ -63,23 +63,28 @@ export const PROSES_STATUS_GATE_PCT=25;
 // CONTROL/WIRING POWER permanen kebaca NOT YET walau progress asli udah jalan. Fix: lompatin
 // BUSBAR pas nyari proses sebelumnya - WIRING CONTROL gating ke PASANG KOMPONEN, WIRING POWER
 // gating ke WIRING CONTROL, persis sesuai definisi yang diminta.
+// BUG FIX #2 (6 Agu 2026): gate NOT YET dulu dicek SEBELUM cek progress komponen ini sendiri -
+// akibatnya komponen yang progress-nya SUDAH JALAN (mis. PAINTING 57%) tetap kebaca NOT YET
+// cuma gara-gara proses sebelumnya (RENDAM) di data 0% (kejadian nyata: FS.20 panel 287, urutan
+// riil di lapangan gak selalu ngikutin rantai linear ALL_PROSES persis). Kartu jadi ke-lock total
+// (pointerEvents:none) walau kerjaannya beneran udah berjalan - operator gak bisa lanjut sama
+// sekali. Fix: kalau progress proses INI SENDIRI udah >0, itu bukti nyata kerjaan udah mulai -
+// gak mungkin lagi NOT YET apapun kondisi proses sebelumnya. Gate NOT YET cuma relevan pas
+// progress proses ini masih benar-benar 0 (belum pernah disentuh sama sekali).
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
-  if(proses==="BUSBAR")return progress>0?"IN PROGRESS":"TO DO";
+  if(progress>0)return "IN PROGRESS";
+  if(proses==="BUSBAR")return "TO DO";
   const prosesIdx=ALL_PROSES.indexOf(proses);
-  if(prosesIdx<=0){
-    return progress>0?"IN PROGRESS":"TO DO";
-  }
+  if(prosesIdx<=0)return "TO DO";
   let prevIdx=prosesIdx-1;
   while(prevIdx>=0&&ALL_PROSES[prevIdx]==="BUSBAR")prevIdx--;
-  if(prevIdx<0){
-    return progress>0?"IN PROGRESS":"TO DO";
-  }
+  if(prevIdx<0)return "TO DO";
   const prosesSebelumnya=ALL_PROSES[prevIdx];
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
-  return progress>0?"IN PROGRESS":"TO DO";
+  return "TO DO";
 }
 
 export function initChecklist(tipe, qty=1, customPanelTypes?){
