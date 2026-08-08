@@ -53,4 +53,57 @@ export const rawScheduleService = {
     if (error) throw new Error(error.message)
     await logActivity(user_name, 'HAPUS RAW SCHEDULE', `Hapus ${old?.panel} dari Raw Schedule`, { proyek: old?.proyek, panel: old?.panel })
   },
+
+  // FITUR (8 Agu 2026): dipanggil setelah qty komponen diedit di Manajemen WO (grid per-komponen
+  // maupun modal Edit WO) - sync qtyPerKomponen yang di-cache di raw_schedule.schedule biar gak
+  // basi (dulu cuma dikasih warning manual "cek & tambahkan sendiri"). Komponen yang belum pernah
+  // dijadwalkan (gak ada di qtyPerKomponen manapun) DIBIARKAN - sengaja gak bikin row/entry baru,
+  // itu tetap lewat Generate Jadwal seperti biasa.
+  async syncQtyAfterEdit(panelId: number, changes: { kode: string; newQty: number }[]) {
+    if (!changes.length) return
+    const { data: rows } = await supabase.from('raw_schedule').select('id,schedule').eq('panel_id', panelId)
+    if (!rows || !rows.length) return
+    for (const row of rows) {
+      const scheduleSrc = row.schedule || {}
+      const scheduleNew: any = {}
+      Object.keys(scheduleSrc).forEach(tgl => {
+        scheduleNew[tgl] = (scheduleSrc[tgl] || []).map((e: any) => ({
+          ...e,
+          qtyPerKomponen: e.qtyPerKomponen ? { ...e.qtyPerKomponen } : e.qtyPerKomponen,
+        }))
+      })
+      let touched = false
+      for (const { kode, newQty } of changes) {
+        const occurrences: { tgl: string; idx: number; qty: number }[] = []
+        Object.keys(scheduleNew).forEach(tgl => {
+          scheduleNew[tgl].forEach((e: any, idx: number) => {
+            if (e.qtyPerKomponen && e.qtyPerKomponen[kode] !== undefined) {
+              occurrences.push({ tgl, idx, qty: Number(e.qtyPerKomponen[kode]) || 0 })
+            }
+          })
+        })
+        if (!occurrences.length) continue
+        const sumOld = occurrences.reduce((a, o) => a + o.qty, 0)
+        if (sumOld <= 0) continue
+        touched = true
+        if (occurrences.length === 1) {
+          const o = occurrences[0]
+          scheduleNew[o.tgl][o.idx].qtyPerKomponen[kode] = newQty
+        } else {
+          // ke-split di beberapa WP/tanggal (misal pernah digeser) - scale proporsional sesuai
+          // rasio alokasi lama, sisa pembulatan dirapihin di occurrence terakhir biar totalnya pas
+          let running = 0
+          occurrences.forEach((o, i) => {
+            const isLast = i === occurrences.length - 1
+            const scaled = isLast ? Math.max(0, newQty - running) : Math.max(0, Math.round((o.qty / sumOld) * newQty))
+            running += scaled
+            scheduleNew[o.tgl][o.idx].qtyPerKomponen[kode] = scaled
+          })
+        }
+      }
+      if (touched) {
+        await supabase.from('raw_schedule').update({ schedule: scheduleNew }).eq('id', row.id)
+      }
+    }
+  },
 }

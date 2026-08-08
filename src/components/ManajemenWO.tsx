@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
+import { rawScheduleService } from '../services/rawScheduleService'
 import { generateFCSSchedule, generateFCSWiring, generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { buildPanelTypesFromBom, initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
@@ -190,7 +191,10 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
   // conflictSink opsional (8 Agu 2026): dipakai save() buat kumpulin peringatan kalau qty PANEL
   // diturunkan sampai bikin qty komponen ikut turun di bawah qtyProses yang udah dikerjakan operator -
   // sama kelas masalahnya kayak yang dicek saveQtyEdit, tapi lewat jalur qty PANEL (modal Edit WO), bukan qty per-komponen di grid.
-  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>,conflictSink?:string[])=>list.filter(p=>p.nama).map((p,i)=>{
+  // qtyChangeSink opsional (8 Agu 2026): kumpulin {kode,newQty} per panelId buat sync ke
+  // raw_schedule (rawScheduleService.syncQtyAfterEdit) setelah save() sukses - jalur qty PANEL ini
+  // dulu gak pernah nyentuh raw_schedule sama sekali, beda dari saveQtyEdit yang udah disinkron.
+  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>,conflictSink?:string[],qtyChangeSink?:Record<string,{kode:string,newQty:number}[]>)=>list.filter(p=>p.nama).map((p,i)=>{
     if((p as any).id){
       const newQty=Number(p.qty)||1;
       const origQty=(p as any)._origQty!==undefined?Number((p as any)._origQty)||1:newQty;
@@ -200,9 +204,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
         const ratio=newQty/origQty;
         const scaledChecklist:any={};
         const cfg=conflictSink?getEffectiveCfg(p.tipe):null;
+        const panelIdStr=String((p as any).id);
         Object.entries(finalChecklist).forEach(([kode,cl]:any)=>{
           const newKodeQty=Math.round((cl.qty||0)*ratio);
           scaledChecklist[kode]={...cl,qty:newKodeQty};
+          if(qtyChangeSink&&newKodeQty!==(cl.qty||0)){
+            if(!qtyChangeSink[panelIdStr])qtyChangeSink[panelIdStr]=[];
+            qtyChangeSink[panelIdStr].push({kode,newQty:newKodeQty});
+          }
           if(conflictSink){
             const maxQtyProses=Math.max(0,...Object.values(cl.qtyProses||{}).map((v:any)=>Number(v)||0));
             if(maxQtyProses>newKodeQty){
@@ -247,7 +256,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
           groups[tgl].push(p);
         });
         const konflikListPanel:string[]=[];
-        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap,konflikListPanel)}));
+        const qtyChangeSinkPanel:Record<string,{kode:string,newQty:number}[]>={};
+        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap,konflikListPanel,qtyChangeSinkPanel)}));
         if(konflikListPanel.length>0){
           const lanjutPanel=window.confirm(
             'PERINGATAN: qty panel diubah sehingga qty sejumlah komponen ikut berkurang di bawah progress yang sudah dikerjakan operator:\n\n'+
@@ -258,6 +268,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
           if(!lanjutPanel)return;
         }
         await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
+        // FITUR (8 Agu 2026): sync qtyPerKomponen di raw_schedule yang udah ada - sama seperti
+        // saveQtyEdit, biar jalur qty PANEL ini juga gak ninggalin raw_schedule basi.
+        for(const panelIdStr of Object.keys(qtyChangeSinkPanel)){
+          await rawScheduleService.syncQtyAfterEdit(Number(panelIdStr),qtyChangeSinkPanel[panelIdStr]);
+        }
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
       }
@@ -523,19 +538,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     });
     setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
     setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    // PERINGATAN (6 Agu 2026): qty di sini cuma nulis ke panels.checklist - Raw Schedule TIDAK
-    // otomatis ikut nyesuaikan. "Generate Jadwal" ulang juga gak nolong buat kasus ini - itu
-    // sengaja SKIP TOTAL komponen yang udah pernah terjadwal (biar gak nimpa histori/progress
-    // yang udah ada, lihat quickGenModal), jadi qty yang berubah pada komponen yang SUDAH
-    // terjadwal gak pernah ke-refleksikan otomatis ke Raw Schedule lewat jalur mana pun. Cuma
-    // kasih tahu admin di sini - BUKAN auto-sync (itu perubahan logic scheduling yang lebih
-    // besar, perlu desain terpisah).
-    const{data:existingRawCheck}=await supabase.from('raw_schedule').select('id').eq('panel_id',panel.id).limit(1);
-    if(existingRawCheck&&existingRawCheck.length>0){
-      alert('Qty berhasil disimpan!\n\n⚠️ Panel ini sudah punya jadwal di Raw Schedule - perubahan qty TIDAK otomatis masuk ke jadwal (Generate Jadwal ulang akan skip komponen yang sudah pernah terjadwal). Cek & tambahkan manual di Raw Schedule kalau qty-nya nambah.');
-    } else {
-      alert('Qty berhasil disimpan!');
+    // FITUR (8 Agu 2026): qty yang udah ke-cache di raw_schedule.schedule (qtyPerKomponen) dulu
+    // basi begitu qty komponen diedit di sini - admin cuma dikasih warning suruh cek manual.
+    // Sekarang di-sync otomatis lewat rawScheduleService.syncQtyAfterEdit - komponen yang belum
+    // pernah dijadwalkan tetap dibiarkan (gak bikin entry baru), itu tetap lewat Generate Jadwal.
+    const qtyChangesForRaw=Object.entries(dirty)
+      .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
+      .map(([kode,v])=>({kode,newQty:Math.round(Number((v as any).newQty)*panelQtyMultiplier)}));
+    if(qtyChangesForRaw.length>0){
+      await rawScheduleService.syncQtyAfterEdit(panel.id,qtyChangesForRaw);
     }
+    alert('Qty berhasil disimpan!');
   };
 
   return(
