@@ -1,5 +1,6 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
+import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
 export type TugasKomponenProgress = {
@@ -9,6 +10,11 @@ export type TugasKomponenProgress = {
   color: string
   progressField: string
   fotoField: string
+  // gateField opsional (8 Agu 2026): field panel yang jadi penanda "siap dikerjakan" (misal
+  // QS baru relevan begitu warehouse_progress>0) - kalau field ini masih 0, status "Not Yet".
+  // Kalau gateField gak diisi (mis. Warehouse), tugas ini gak punya gate sama sekali - filter
+  // yang dipakai cuma 3-state (To Do/In Progress/Done), sama kayak QC.
+  gateField?: string
 }
 
 const STATUS_LABEL_KP:Record<string,{label:string,bg:string,color:string}>={
@@ -34,6 +40,8 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
   const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding")
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null)
   const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null)
+  const[statusFilter,setStatusFilter]=useState("ALL")
+  const statusListTugas=tugas.gateField?PIPELINE_STATUS_LIST:PIPELINE_STATUS_LIST.filter(s=>s.key!=="NOT_YET")
 
   const fotoKpPanel=(panel:any):FotoZipItem[]=>{
     const fotoList=panel[tugas.fotoField]||[]
@@ -76,16 +84,25 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
   const withStatus=useMemo(()=>allPanels.map((p:any)=>{
     const pct=p[tugas.progressField]||0
     const foto=p[tugas.fotoField]||[]
-    return{...p,_kpStatus:statusTugasKp(pct,foto.length)}
+    const kpStatus=statusTugasKp(pct,foto.length)
+    const gateReady=tugas.gateField?(p[tugas.gateField]||0)>0:true
+    const pipelineStatus=kpStatus==="selesai"?"DONE":!gateReady?"NOT_YET":kpStatus==="proses"?"IN_PROGRESS":"TO_DO"
+    return{...p,_kpStatus:kpStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels,tugas])
 
   const outstandingPanels=withStatus.filter((p:any)=>p._kpStatus!=="selesai")
   const finishedPanels=withStatus.filter((p:any)=>p._kpStatus==="selesai")
   const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels
 
-  const filtered=basePool.filter((p:any)=>
+  const bySearch=basePool.filter((p:any)=>
     !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
   )
+  const statusCounts=useMemo(()=>{
+    const c:Record<string,number>={}
+    bySearch.forEach((p:any)=>{c[p._pipelineStatus]=(c[p._pipelineStatus]||0)+1})
+    return c
+  },[bySearch])
+  const filtered=bySearch.filter((p:any)=>statusFilter==="ALL"||p._pipelineStatus===statusFilter)
 
   const woFolders=useMemo(()=>{
     const map:Record<string,{woId:number,wo:any,panels:any[]}>={}
@@ -166,7 +183,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
   return(
     <div className="fi">
       <div style={{display:"flex",gap:10,marginBottom:18}}>
-        <button onClick={()=>{setSubTab("outstanding");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="outstanding"?"linear-gradient(135deg,#f59e0b,#ea580c)":"#fff",
             boxShadow:subTab==="outstanding"?"0 4px 14px #ea580c33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -180,7 +197,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
             </div>
           </div>
         </button>
-        <button onClick={()=>{setSubTab("finished");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
             boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -199,6 +216,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
           style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
+        <PipelineStatusFilterTabs statusList={statusListTugas} statusFilter={statusFilter} setStatusFilter={setStatusFilter} counts={statusCounts}/>
       </div>
 
       {selectedFolder?(

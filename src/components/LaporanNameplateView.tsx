@@ -1,5 +1,7 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
+import { panelOverall, PROSES_STATUS_GATE_PCT } from '../lib/panelHelpers'
+import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
 const TUGAS_NP_LAPORAN=[
@@ -29,6 +31,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
   const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding")
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null)
   const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null)
+  const[statusFilter,setStatusFilter]=useState("ALL")
 
   const fotoNpPanel=(panel:any):FotoZipItem[]=>{
     const items:FotoZipItem[]=[]
@@ -74,18 +77,34 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
     return list
   },[woData])
 
+  // _pipelineStatus (8 Agu 2026): Nameplate/Yellowmark gak punya konsep "gated by proses
+  // sebelumnya" di manapun (beda dari checklist[kode] biasa yang punya computeProsesStatus) -
+  // jadi "Not Yet" di sini didefinisikan sendiri: rata-rata progress fabrikasi seluruh panel
+  // (panelOverall) belum nyampe ambang PROSES_STATUS_GATE_PCT (25%, sama ambang yang dipakai
+  // computeProsesStatus). Begitu udah lewat ambang tapi belum ada progress/foto -> To Do.
   const withStatus=useMemo(()=>allPanels.map((p:any)=>{
     const perTugas=TUGAS_NP_LAPORAN.map(t=>statusTugasNp(p[t.progressField]||0,(p[t.fotoField]||[]).length))
-    return{...p,_npDone:perTugas.every(s=>s==="selesai")}
+    const npDone=perTugas.every(s=>s==="selesai")
+    const anyStarted=perTugas.some(s=>s!=="belum")
+    const pipelineStatus=npDone?"DONE":panelOverall(p)<PROSES_STATUS_GATE_PCT?"NOT_YET":anyStarted?"IN_PROGRESS":"TO_DO"
+    return{...p,_npDone:npDone,_pipelineStatus:pipelineStatus}
   }),[allPanels])
 
   const outstandingPanels=withStatus.filter((p:any)=>!p._npDone)
   const finishedPanels=withStatus.filter((p:any)=>p._npDone)
   const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels
 
-  const filtered=basePool.filter((p:any)=>
+  const bySearch=basePool.filter((p:any)=>
     !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
   )
+  // Counter tiap tombol filter dihitung dari bySearch (SEBELUM statusFilter diterapkan) -
+  // sama pola QC, biar angka gak berubah pas salah satu tombol status lagi aktif.
+  const statusCounts=useMemo(()=>{
+    const c:Record<string,number>={}
+    bySearch.forEach((p:any)=>{c[p._pipelineStatus]=(c[p._pipelineStatus]||0)+1})
+    return c
+  },[bySearch])
+  const filtered=bySearch.filter((p:any)=>statusFilter==="ALL"||p._pipelineStatus===statusFilter)
 
   const woFolders=useMemo(()=>{
     const map:Record<string,{woId:number,wo:any,panels:any[]}>={}
@@ -177,7 +196,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
   return(
     <div className="fi">
       <div style={{display:"flex",gap:10,marginBottom:18}}>
-        <button onClick={()=>{setSubTab("outstanding");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="outstanding"?"linear-gradient(135deg,#f59e0b,#ea580c)":"#fff",
             boxShadow:subTab==="outstanding"?"0 4px 14px #ea580c33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -191,7 +210,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
             </div>
           </div>
         </button>
-        <button onClick={()=>{setSubTab("finished");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
             boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -210,6 +229,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
           style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
+        <PipelineStatusFilterTabs statusList={PIPELINE_STATUS_LIST} statusFilter={statusFilter} setStatusFilter={setStatusFilter} counts={statusCounts}/>
       </div>
 
       {selectedFolder?(

@@ -1,12 +1,32 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { getEffCfgGlobal } from '../lib/panelHelpers'
+import { getEffCfgGlobal, getBestProgressMap } from '../lib/panelHelpers'
+import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
 const STATUS_LABEL_WK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
   proses:{label:"Sedang Dikerjakan",bg:"#fff7ed",color:"#ea580c"},
   selesai:{label:"Selesai",bg:"#f0fdf4",color:"#16a34a"},
+}
+
+// Kontribusi WIRING (checklist[kode].pasangKomponenTahap.WIRING) gak punya gating resmi -
+// REUSE ambang RAKIT persis kayak yang dipakai LaporanPasangKomponenView buat komponen tahap
+// yang sama (Box Control/Pintu), biar definisinya konsisten di kedua laporan.
+const RANK_PIPELINE_WK:Record<string,number>={"NOT YET":0,"TO DO":1,"IN PROGRESS":2,"DONE":3}
+const kodePipelineStatusWk=(panel:any,kode:string,pct:number):string=>{
+  if(pct>=100)return"DONE"
+  if(pct>0)return"IN PROGRESS"
+  const progressMap=getBestProgressMap(panel.checklist?.[kode])
+  return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET"
+}
+const panelPipelineStatusWk=(panel:any,komponenList:{kode:string,pct:number}[]):string=>{
+  if(komponenList.length===0)return"NOT_YET"
+  const best=komponenList.map(k=>kodePipelineStatusWk(panel,k.kode,k.pct))
+    .reduce((acc,s)=>RANK_PIPELINE_WK[s]>RANK_PIPELINE_WK[acc]?s:acc,"NOT YET")
+  if(best==="DONE"||best==="IN PROGRESS")return"IN_PROGRESS"
+  if(best==="TO DO")return"TO_DO"
+  return"NOT_YET"
 }
 
 // Komponen yang punya kontribusi WIRING ke progress PASANG KOMPONEN gabungan (lihat
@@ -46,6 +66,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
   const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding")
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null)
   const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null)
+  const[statusFilter,setStatusFilter]=useState("ALL")
 
   const downloadZipPanelWk=async(panel:any,komponenList:any[])=>{
     const items:FotoZipItem[]=[]
@@ -90,16 +111,24 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
   const withStatus=useMemo(()=>allPanels.map((p:any)=>{
     const totalFoto=p._wkKomponen.reduce((s:number,k:any)=>s+k.foto.length,0)
     const pctRata=Math.round(p._wkKomponen.reduce((s:number,k:any)=>s+k.pct,0)/p._wkKomponen.length)
-    return{...p,_wkPct:pctRata,_wkStatus:statusWiringKomponen(pctRata,totalFoto)}
+    const wkStatus=statusWiringKomponen(pctRata,totalFoto)
+    const pipelineStatus=wkStatus==="selesai"?"DONE":panelPipelineStatusWk(p,p._wkKomponen)
+    return{...p,_wkPct:pctRata,_wkStatus:wkStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels])
 
   const outstandingPanels=withStatus.filter((p:any)=>p._wkStatus!=="selesai")
   const finishedPanels=withStatus.filter((p:any)=>p._wkStatus==="selesai")
   const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels
 
-  const filtered=basePool.filter((p:any)=>
+  const bySearch=basePool.filter((p:any)=>
     !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
   )
+  const statusCounts=useMemo(()=>{
+    const c:Record<string,number>={}
+    bySearch.forEach((p:any)=>{c[p._pipelineStatus]=(c[p._pipelineStatus]||0)+1})
+    return c
+  },[bySearch])
+  const filtered=bySearch.filter((p:any)=>statusFilter==="ALL"||p._pipelineStatus===statusFilter)
 
   const woFolders=useMemo(()=>{
     const map:Record<string,{woId:number,wo:any,panels:any[]}>={}
@@ -186,7 +215,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
   return(
     <div className="fi">
       <div style={{display:"flex",gap:10,marginBottom:18}}>
-        <button onClick={()=>{setSubTab("outstanding");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="outstanding"?"linear-gradient(135deg,#6366f1,#4f46e5)":"#fff",
             boxShadow:subTab==="outstanding"?"0 4px 14px #4f46e533":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -200,7 +229,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
             </div>
           </div>
         </button>
-        <button onClick={()=>{setSubTab("finished");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
             boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -219,6 +248,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
           style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
+        <PipelineStatusFilterTabs statusList={PIPELINE_STATUS_LIST} statusFilter={statusFilter} setStatusFilter={setStatusFilter} counts={statusCounts}/>
       </div>
 
       {selectedFolder?(

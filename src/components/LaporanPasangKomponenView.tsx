@@ -1,12 +1,40 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal } from '../lib/panelHelpers'
+import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal, computeProsesStatus, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
 const STATUS_LABEL_PK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
   proses:{label:"Sedang Dikerjakan",bg:"#fff7ed",color:"#ea580c"},
   selesai:{label:"Selesai",bg:"#f0fdf4",color:"#16a34a"},
+}
+
+// Box Control/Pintu (progress dari checklist[kode].pasangKomponenTahap.ASSEMBLING, BUKAN
+// checklist[kode].progress["PASANG KOMPONEN"]) gak punya gating resmi di sistem manapun -
+// REUSE ambang RAKIT yang udah dipakai computeProsesStatus buat WIRING CONTROL/POWER (proses
+// yang posisinya sama persis di alur kerja, sama-sama "abis RAKIT"). Komponen non-tahap
+// (Groundplate dst) pakai computeProsesStatus asli dengan proses="PASANG KOMPONEN".
+const RANK_PIPELINE:Record<string,number>={"NOT YET":0,"TO DO":1,"IN PROGRESS":2,"DONE":3}
+const kodePipelineStatusPk=(panel:any,kode:string,pct:number,isTahap:boolean):string=>{
+  if(pct>=100)return"DONE"
+  if(pct>0)return"IN PROGRESS"
+  const progressMap=getBestProgressMap(panel.checklist?.[kode])
+  if(isTahap)return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET"
+  return computeProsesStatus(progressMap,"PASANG KOMPONEN",getRelevantProsesForKode(kode,panel.tipe))
+}
+// Roll-up panel = status TERBAIK di antara semua komponennya (begitu ada 1 komponen yang udah
+// bisa dikerjakan/jalan, panel dianggap gak "Not Yet" lagi) - DONE per-komponen digambar ulang
+// jadi IN_PROGRESS di level panel, karena "Done" panel tetap dari definisi lama (pct rata2>=100
+// DAN ada foto) yang sudah dicek duluan sebelum fungsi ini dipanggil.
+const panelPipelineStatusPk=(panel:any,komponenList:{kode:string,nama:string,pct:number}[],tahapNama:string[]):string=>{
+  if(komponenList.length===0)return"NOT_YET"
+  const best=komponenList.map(k=>kodePipelineStatusPk(panel,k.kode,k.pct,tahapNama.includes(k.nama)))
+    .reduce((acc,s)=>RANK_PIPELINE[s]>RANK_PIPELINE[acc]?s:acc,"NOT YET")
+  if(best==="DONE")return"IN_PROGRESS"
+  if(best==="IN PROGRESS")return"IN_PROGRESS"
+  if(best==="TO DO")return"TO_DO"
+  return"NOT_YET"
 }
 
 // Sama kriteria dengan Nameplate/Yellowmark - progress Fabrikasi 100% DAN minimal 1 foto
@@ -26,6 +54,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
   const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding")
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null)
   const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null)
+  const[statusFilter,setStatusFilter]=useState("ALL")
 
   const fotoPkPanel=(panel:any):FotoZipItem[]=>{
     const fotoList=panel.pasang_komponen_photos||[]
@@ -65,19 +94,45 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
     return list
   },[woData])
 
+  // Box Control/Pintu (lihat PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA di Vista Pekerja) punya
+  // progress["PASANG KOMPONEN"] gabungan dari 2 kontribusi terpisah (ASSEMBLING + WIRING) -
+  // laporan Assembling ini cuma nampilin kontribusi ASSEMBLING-nya sendiri, bukan angka
+  // gabungan, biar konsisten sama laporan Wiring Control yang juga cuma nampilin punya sendiri.
+  const KOMPONEN_TAHAP_NAMA=["Box Control","Pintu"]
+  const komponenPanel=(panel:any)=>{
+    const cfg=getEffCfgGlobal(panel.tipe)
+    if(!cfg)return[]
+    const items=cfg.wps.flatMap((w:any)=>w.items)
+    return items
+      .filter((it:any)=>(panel.checklist?.[it.kode]?.qty||0)>0&&isKomponenRelevant(it.kode,panel.tipe,"PASANG KOMPONEN"))
+      .map((it:any)=>{
+        const cl=panel.checklist?.[it.kode]
+        const pct=KOMPONEN_TAHAP_NAMA.includes(it.nama)?(cl?.pasangKomponenTahap?.ASSEMBLING?.progress||0):(cl?.progress?.["PASANG KOMPONEN"]||0)
+        return{kode:it.kode,nama:it.nama,pct}
+      })
+  }
+
   const withStatus=useMemo(()=>allPanels.map((p:any)=>{
     const pct=calcPanelProgress(p)["PASANG KOMPONEN"]||0
     const foto=p.pasang_komponen_photos||[]
-    return{...p,_pkPct:pct,_pkStatus:statusPasangKomponen(pct,foto.length)}
+    const pkStatus=statusPasangKomponen(pct,foto.length)
+    const pipelineStatus=pkStatus==="selesai"?"DONE":panelPipelineStatusPk(p,komponenPanel(p),KOMPONEN_TAHAP_NAMA)
+    return{...p,_pkPct:pct,_pkStatus:pkStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels])
 
   const outstandingPanels=withStatus.filter((p:any)=>p._pkStatus!=="selesai")
   const finishedPanels=withStatus.filter((p:any)=>p._pkStatus==="selesai")
   const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels
 
-  const filtered=basePool.filter((p:any)=>
+  const bySearch=basePool.filter((p:any)=>
     !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
   )
+  const statusCounts=useMemo(()=>{
+    const c:Record<string,number>={}
+    bySearch.forEach((p:any)=>{c[p._pipelineStatus]=(c[p._pipelineStatus]||0)+1})
+    return c
+  },[bySearch])
+  const filtered=bySearch.filter((p:any)=>statusFilter==="ALL"||p._pipelineStatus===statusFilter)
 
   const woFolders=useMemo(()=>{
     const map:Record<string,{woId:number,wo:any,panels:any[]}>={}
@@ -96,24 +151,6 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
     if(!iso)return""
     const d=new Date(iso)
     return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
-  }
-
-  // Box Control/Pintu (lihat PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA di Vista Pekerja) punya
-  // progress["PASANG KOMPONEN"] gabungan dari 2 kontribusi terpisah (ASSEMBLING + WIRING) -
-  // laporan Assembling ini cuma nampilin kontribusi ASSEMBLING-nya sendiri, bukan angka
-  // gabungan, biar konsisten sama laporan Wiring Control yang juga cuma nampilin punya sendiri.
-  const KOMPONEN_TAHAP_NAMA=["Box Control","Pintu"]
-  const komponenPanel=(panel:any)=>{
-    const cfg=getEffCfgGlobal(panel.tipe)
-    if(!cfg)return[]
-    const items=cfg.wps.flatMap((w:any)=>w.items)
-    return items
-      .filter((it:any)=>(panel.checklist?.[it.kode]?.qty||0)>0&&isKomponenRelevant(it.kode,panel.tipe,"PASANG KOMPONEN"))
-      .map((it:any)=>{
-        const cl=panel.checklist?.[it.kode]
-        const pct=KOMPONEN_TAHAP_NAMA.includes(it.nama)?(cl?.pasangKomponenTahap?.ASSEMBLING?.progress||0):(cl?.progress?.["PASANG KOMPONEN"]||0)
-        return{kode:it.kode,nama:it.nama,pct}
-      })
   }
 
   if(selectedPanel){
@@ -201,7 +238,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
   return(
     <div className="fi">
       <div style={{display:"flex",gap:10,marginBottom:18}}>
-        <button onClick={()=>{setSubTab("outstanding");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="outstanding"?"linear-gradient(135deg,#f59e0b,#ea580c)":"#fff",
             boxShadow:subTab==="outstanding"?"0 4px 14px #ea580c33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -215,7 +252,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
             </div>
           </div>
         </button>
-        <button onClick={()=>{setSubTab("finished");setSelectedWoId(null)}}
+        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");setSelectedWoId(null)}}
           style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
             background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
             boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
@@ -234,6 +271,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
           style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
+        <PipelineStatusFilterTabs statusList={PIPELINE_STATUS_LIST} statusFilter={statusFilter} setStatusFilter={setStatusFilter} counts={statusCounts}/>
       </div>
 
       {selectedFolder?(

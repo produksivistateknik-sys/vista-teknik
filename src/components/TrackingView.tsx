@@ -6,7 +6,11 @@ import { LaporanWiringKomponenView } from './LaporanWiringKomponenView'
 import { LaporanKomponenProgressView } from './LaporanKomponenProgressView'
 
 const TUGAS_WAREHOUSE_LAPORAN={field:"warehouse",label:"Warehouse",icon:"📦",color:"#0d9488",progressField:"warehouse_progress",fotoField:"warehouse_photos"}
-const TUGAS_QS_LAPORAN={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:"qs_progress",fotoField:"qs_photos"}
+// gateField (8 Agu 2026): QS baru dianggap "siap dikerjakan" (bukan Not Yet) begitu
+// warehouse_progress panel itu udah mulai (>0) - alur kerja pabrik: QC -> Warehouse -> QS.
+// Warehouse sendiri sengaja TANPA gateField (belum ada sinyal readiness yang jelas dari QC),
+// jadi filternya tetap 3-state (To Do/In Progress/Done) kayak QC.
+const TUGAS_QS_LAPORAN={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:"qs_progress",fotoField:"qs_photos",gateField:"warehouse_progress"}
 
 // Tab "Komponen" LAMA (TrackingKomponenAdmin, arsip alur lama Assembling/Warehouse/QS) sengaja
 // dihilangkan - datanya sudah gak dipakai lagi (Warehouse/QS pindah ke sub-tab sendiri di atas).
