@@ -187,7 +187,10 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     setArsipLoading(false);
   };
 
-  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>)=>list.filter(p=>p.nama).map((p,i)=>{
+  // conflictSink opsional (8 Agu 2026): dipakai save() buat kumpulin peringatan kalau qty PANEL
+  // diturunkan sampai bikin qty komponen ikut turun di bawah qtyProses yang udah dikerjakan operator -
+  // sama kelas masalahnya kayak yang dicek saveQtyEdit, tapi lewat jalur qty PANEL (modal Edit WO), bukan qty per-komponen di grid.
+  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>,conflictSink?:string[])=>list.filter(p=>p.nama).map((p,i)=>{
     if((p as any).id){
       const newQty=Number(p.qty)||1;
       const origQty=(p as any)._origQty!==undefined?Number((p as any)._origQty)||1:newQty;
@@ -196,8 +199,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
       if(origQty!==newQty&&origQty>0&&(p as any).checklist){
         const ratio=newQty/origQty;
         const scaledChecklist:any={};
+        const cfg=conflictSink?getEffectiveCfg(p.tipe):null;
         Object.entries(finalChecklist).forEach(([kode,cl]:any)=>{
-          scaledChecklist[kode]={...cl,qty:Math.round((cl.qty||0)*ratio)};
+          const newKodeQty=Math.round((cl.qty||0)*ratio);
+          scaledChecklist[kode]={...cl,qty:newKodeQty};
+          if(conflictSink){
+            const maxQtyProses=Math.max(0,...Object.values(cl.qtyProses||{}).map((v:any)=>Number(v)||0));
+            if(maxQtyProses>newKodeQty){
+              const nama=cfg?.wps?.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+              conflictSink.push(`${p.nama} - ${nama}: progress sudah dikerjakan ${maxQtyProses}, qty baru cuma ${newKodeQty}`);
+            }
+          }
         });
         finalChecklist=scaledChecklist;
       }
@@ -234,7 +246,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
           if(!groups[tgl])groups[tgl]=[];
           groups[tgl].push(p);
         });
-        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap)}));
+        const konflikListPanel:string[]=[];
+        const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap,konflikListPanel)}));
+        if(konflikListPanel.length>0){
+          const lanjutPanel=window.confirm(
+            'PERINGATAN: qty panel diubah sehingga qty sejumlah komponen ikut berkurang di bawah progress yang sudah dikerjakan operator:\n\n'+
+            konflikListPanel.join('\n')+
+            '\n\nProgress yang sudah ada TIDAK akan diubah/dipotong otomatis - cuma qty target-nya yang berubah. '+
+            'Operator mungkin perlu koreksi manual di Vista Pekerja setelah ini. Lanjutkan simpan?'
+          );
+          if(!lanjutPanel)return;
+        }
         await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
@@ -400,6 +422,35 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,removeWO,logActi
     // ketulis, dan retry berkali-kali gak pernah berhasil (root cause laporan "qty balik ke 0
     // terus" - lihat docs/investigasi-qty-tersimpan.md). Sekarang kalau entry-nya belum ada,
     // BUAT baru dulu (shape sama persis initChecklist) baru qty-nya di-apply - bukan di-skip.
+
+    // FITUR (8 Agu 2026): qty DIKURANGI di bawah qty yang udah dikerjakan (qtyProses, dari
+    // input qty-based Vista Pekerja) - JANGAN langsung timpa, warning dulu + minta konfirmasi
+    // admin. Progress yang udah ada TIDAK disentuh sama sekali di sini apapun pilihan admin -
+    // cuma qty target yang berubah kalau admin lanjut. Qty dinaikkan aman, gak kena cek ini.
+    const konflikList:string[]=[];
+    Object.keys(dirty).forEach(kode=>{
+      const dirtyEntry=(dirty as any)[kode];
+      if(dirtyEntry.newQty===dirtyEntry.oldQty)return;
+      const newQtyFinal=Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier);
+      const existingCl=finalChecklist[kode];
+      if(!existingCl)return;
+      const maxQtyProses=Math.max(0,...Object.values(existingCl.qtyProses||{}).map((v:any)=>Number(v)||0));
+      if(maxQtyProses>newQtyFinal){
+        const cfg=getEffectiveCfg(panel.tipe);
+        const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+        konflikList.push(`${nama}: progress sudah dikerjakan ${maxQtyProses}, qty baru cuma ${newQtyFinal}`);
+      }
+    });
+    if(konflikList.length>0){
+      const lanjut=window.confirm(
+        'PERINGATAN: qty baru lebih kecil dari progress yang sudah dikerjakan operator untuk:\n\n'+
+        konflikList.join('\n')+
+        '\n\nProgress yang sudah ada TIDAK akan diubah/dipotong otomatis - cuma qty target-nya yang berubah. '+
+        'Operator mungkin perlu koreksi manual di Vista Pekerja setelah ini. Lanjutkan simpan qty baru?'
+      );
+      if(!lanjut)return;
+    }
+
     Object.keys(dirty).forEach(kode=>{
       const dirtyEntry=(dirty as any)[kode];
       if(dirtyEntry.newQty===dirtyEntry.oldQty)return;
