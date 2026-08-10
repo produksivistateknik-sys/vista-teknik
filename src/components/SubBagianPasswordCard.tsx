@@ -29,7 +29,13 @@ export function SubBagianPasswordCard(){
     setPwList(data??[]);
     setLoading(false);
   };
-  useEffect(()=>{fetchPwList();},[]);
+  useEffect(()=>{
+    fetchPwList();
+    const ch=supabase.channel("realtime-fcs-sub-bagian-password")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_sub_bagian_password"},fetchPwList)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch)};
+  },[]);
 
   const savePassword=async(subBagian:string)=>{
     const newPwd=pwEdit[subBagian];
@@ -64,18 +70,21 @@ export function SubBagianPasswordCard(){
                 <span style={{fontWeight:800,fontSize:12,color:group.color,textTransform:"uppercase" as const,letterSpacing:.4}}>{group.label}</span>
                 <div style={{flex:1,height:1,background:"#f1f5f9"}}/>
               </div>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(220px,1fr))",gap:10}}>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:12}}>
                 {group.members.map(sb=>{
                   const p=findPw(sb);
                   if(!p)return null;
                   return(
-                    <Card key={sb} style={{padding:"12px 14px",display:"flex",flexDirection:"column",gap:8}}>
+                    <Card key={sb} style={{padding:"14px 16px",display:"flex",flexDirection:"column",gap:10,minHeight:132}}>
                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                         <span style={{fontSize:15}}>{subBagianIconLocal[sb]||"🔑"}</span>
                         <span style={{fontWeight:700,fontSize:12,color:"#1e293b"}}>{sb}</span>
                       </div>
-                      <div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>Sekarang: {p.password}</div>
-                      <div style={{display:"flex",gap:6}}>
+                      <div style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:7,padding:"6px 10px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                        <span style={{fontSize:9,fontWeight:700,color:"#94a3b8",textTransform:"uppercase" as const,letterSpacing:.4}}>Sekarang</span>
+                        <span style={{fontFamily:"monospace",fontSize:13,fontWeight:800,color:"#1e293b",letterSpacing:1}}>{p.password}</span>
+                      </div>
+                      <div style={{display:"flex",gap:6,marginTop:"auto"}}>
                         <Inp value={pwEdit[sb]||""} onChange={(e:any)=>setPwEdit(prev=>({...prev,[sb]:e.target.value}))}
                           placeholder="Password baru..." style={{flex:1,fontSize:12}}/>
                         <Btn color="#1d4ed8" onClick={()=>savePassword(sb)} style={{padding:"7px 12px",fontSize:11}}>

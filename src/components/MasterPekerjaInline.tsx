@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { DIVISI_CONFIG, OPERATOR_ROLES } from '../constants/panelTypes'
 import { Card, Lbl, Sel, Btn, Inp, Modal } from './ui/Primitives'
+import { PipelineStatusFilterTabs } from './ui/PipelineStatusFilter'
 
 export function MasterPekerjaInline({pekerja,user}:any){
   const [ops, setOps] = useState<any[]>([]);
@@ -37,6 +38,9 @@ export function MasterPekerjaInline({pekerja,user}:any){
   const opDiv = Object.entries(DIVISI_CONFIG)
     .filter(([k]) => OPERATOR_ROLES.includes(k))
     .map(([k, v]: any) => ({ key: k, ...v }));
+  const divCounts: Record<string, number> = Object.fromEntries(
+    opDiv.map(d => [d.key, ops.filter((o: any) => o.divisi === d.key).length])
+  );
 
   const save = async () => {
     if (!form.nama.trim() || !form.username.trim()) return;
@@ -149,23 +153,10 @@ export function MasterPekerjaInline({pekerja,user}:any){
           </div>
         </div>
       </Card>
-      <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap", alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap", alignItems: "center" }}>
         <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Cari nama atau username..."
           style={{ height: 30, padding: "0 12px", border: "1px solid #e2e8f0", borderRadius: 8, fontSize: 12, background: "#f8fafc", outline: "none", color: "#1e293b", fontFamily: "inherit", width: 220 }} />
-        <button onClick={() => setFilterDiv("ALL")}
-          style={{ padding: "4px 14px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 700, border: filterDiv === "ALL" ? "1.5px solid #1d4ed8" : "1.5px solid #e2e8f0", background: filterDiv === "ALL" ? "#1d4ed8" : "#fff", color: filterDiv === "ALL" ? "#fff" : "#64748b" }}>
-          Semua ({ops.length})
-        </button>
-        {opDiv.map((d: any) => {
-          const cnt = ops.filter((o: any) => o.divisi === d.key).length;
-          const isSel = filterDiv === d.key;
-          return (
-            <button key={d.key} onClick={() => setFilterDiv(isSel ? "ALL" : d.key)}
-              style={{ padding: "4px 12px", borderRadius: 20, cursor: "pointer", fontSize: 11, fontWeight: 700, border: isSel ? "1.5px solid "+d.color : "1.5px solid #e2e8f0", background: isSel ? d.color+"18" : "#fff", color: isSel ? d.color : "#64748b" }}>
-              {d.icon} {d.label} ({cnt})
-            </button>
-          );
-        })}
+        <PipelineStatusFilterTabs statusList={opDiv} statusFilter={filterDiv} setStatusFilter={setFilterDiv} counts={divCounts} />
       </div>
       {loading ? (
         <div style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Memuat data...</div>
@@ -173,14 +164,14 @@ export function MasterPekerjaInline({pekerja,user}:any){
         <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid #e2e8f0" }}>
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
             <thead><tr>
-              <th style={thS}>NAMA</th>
-              <th style={thS}>USERNAME</th>
-              <th style={thS}>PASSWORD</th>
-              <th style={thS}>DIVISI</th>
-              <th style={{ ...thS, textAlign: "center" }}>STATUS</th>
-              <th style={thS}>LAST LOGIN</th>
-              <th style={thS}>DIBUAT</th>
-              <th style={{ ...thS, textAlign: "center" }}>AKSI</th>
+              <th style={{ ...thS, minWidth: 170 }}>NAMA</th>
+              <th style={{ ...thS, minWidth: 130 }}>USERNAME</th>
+              <th style={{ ...thS, minWidth: 130 }}>PASSWORD</th>
+              <th style={{ ...thS, minWidth: 150 }}>DIVISI</th>
+              <th style={{ ...thS, minWidth: 90, textAlign: "center" }}>STATUS</th>
+              <th style={{ ...thS, minWidth: 130 }}>LAST LOGIN</th>
+              <th style={{ ...thS, minWidth: 130 }}>DIBUAT</th>
+              <th style={{ ...thS, minWidth: 200, textAlign: "center" }}>AKSI</th>
             </tr></thead>
             <tbody>
               {filtered.length === 0 ? (
