@@ -803,6 +803,11 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
     for (const entry of entries) {
       if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
       for (const kode of (entry.komponen || [])) {
+        // Kode berstatus jejak (entry.digeserKe[kode] sudah keisi) itu histori read-only - GAK
+        // dihitung kapasitas (kode itu udah dipindah aksinya ke tanggal lain, gak lagi "makan
+        // slot" di tanggal ini) dan JELAS gak ditawarkan sebagai kandidat swap (gak boleh ikut
+        // proses geser/cascading lagi).
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
         const qty = panel.checklist?.[kode]?.qty || 0
         const pt = ptMap[`${panel.tipe}|${kode}`]
         const menitPcs = pt ? Number(pt.menit_per_pcs) : 0
@@ -810,10 +815,6 @@ export async function checkKapasitasDanKomponenSwapV2(params: {
         if (totalMenit <= 0) continue
 
         terpakaiSaatIni += totalMenit
-        // Kode berstatus jejak (entry.digeserKe[kode] sudah keisi) itu histori read-only - tetap
-        // dihitung kapasitasnya (baris di atas), tapi JANGAN ditawarkan sebagai kandidat swap
-        // (gak boleh ikut proses geser/cascading lagi).
-        if (entry.digeserKe && entry.digeserKe[kode]) continue
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
 
         opsiSwap.push({
@@ -881,6 +882,8 @@ async function hitungTerpakaiRawSchedule(tanggal: string, jenisPekerjaan: string
     const entries = row.schedule?.[tanggal] || []
     for (const entry of entries) {
       for (const kode of (entry.komponen || [])) {
+        // Jejak (digeserKe) itu histori read-only - gak dihitung kapasitas.
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
         const qty = panel.checklist?.[kode]?.qty || 0
         const menitPcs = ptMap[`${panel.tipe}|${kode}`] || 0
         total += qty * menitPcs
@@ -936,21 +939,27 @@ export async function executeSwapKomponenV2(params: {
       const rawId = Number(rawIdStr)
       const { data: row } = await supabase
         .from('raw_schedule')
-        .select('id, schedule')
+        .select('id, panel_id, proses, schedule')
         .eq('id', rawId)
         .single()
 
       if (!row) continue
 
+      // REVISI (10 Agu 2026): jejak (digeserKe) cuma ditinggalkan kalau BENERAN ADA pengerjaan
+      // (fcs_timer_kerja) di tanggalAsal - kalau enggak, pindah senyap tanpa jejak. Sama skema
+      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
+      const kodeUnik = [...new Set(komponenList.map((k) => k.kode_komponen))]
+      const { data: timerRows } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
+        .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [] }
+      const adaPengerjaanSet = new Set((timerRows || []).map((t: any) => t.kode_komponen))
+
       const schedule: Record<string, any> = { ...(row.schedule as any) }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
-      // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
-      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
-      for (const { wp, kode_komponen, progress } of komponenList) {
+      for (const { wp, kode_komponen } of komponenList) {
         const idxAsal = entriesAsal.findIndex((e: any) => e.wp === wp)
         if (idxAsal === -1) continue
-        if (progress > 0) {
+        if (adaPengerjaanSet.has(kode_komponen)) {
           entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], digeserKe: { ...(entriesAsal[idxAsal].digeserKe || {}), [kode_komponen]: tanggalTujuan } }
         } else {
           entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], komponen: entriesAsal[idxAsal].komponen.filter((k: string) => k !== kode_komponen) }
@@ -1071,14 +1080,14 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
       if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
+        // Jejak (entry.digeserKe[kode] keisi) itu histori read-only - GAK dihitung kuota (kode
+        // itu udah dipindah aksinya ke tanggal lain) dan gak ditawarkan buat kandidat swap.
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
         const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
         // Komponen yang sudah 100% selesai TIDAK lagi memakai kuota orang
         if (progress >= 100) continue
         terpakaiSaatIni += orang
-        // Jejak (entry.digeserKe[kode] keisi) tetap dihitung kuotanya (baris di atas) tapi gak
-        // ditawarkan buat kandidat swap - histori read-only, gak boleh digeser lagi.
-        if (entry.digeserKe && entry.digeserKe[kode]) continue
 
         opsiSwap.push({
           raw_id: row.id,
@@ -1124,6 +1133,8 @@ async function hitungTerpakaiOrangRawSchedule(tanggal: string, jenisPekerjaan: s
     for (const entry of entries) {
       const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
+        // Jejak (digeserKe) itu histori read-only - gak dihitung kuota.
+        if (entry.digeserKe && entry.digeserKe[kode]) continue
         total += (orangMap[kode] !== undefined ? orangMap[kode] : 1)
       }
     }
@@ -1177,21 +1188,27 @@ export async function executeSwapKomponenOrang(params: {
       const rawId = Number(rawIdStr)
       const { data: row } = await supabase
         .from('raw_schedule')
-        .select('id, schedule')
+        .select('id, panel_id, proses, schedule')
         .eq('id', rawId)
         .single()
 
       if (!row) continue
 
+      // REVISI (10 Agu 2026): jejak (digeserKe) cuma ditinggalkan kalau BENERAN ADA pengerjaan
+      // (fcs_timer_kerja) di tanggalAsal - kalau enggak, pindah senyap tanpa jejak. Sama skema
+      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
+      const kodeUnik = [...new Set(komponenList.map((k) => k.kode_komponen))]
+      const { data: timerRows } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
+        .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [] }
+      const adaPengerjaanSet = new Set((timerRows || []).map((t: any) => t.kode_komponen))
+
       const schedule: Record<string, any> = { ...(row.schedule as any) }
       const entriesAsal = [...(schedule[tanggalAsal] || [])]
 
-      // Progress partial (>0) -> TINGGALKAN JEJAK (digeserKe), bukan full-remove - sama skema
-      // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
-      for (const { wp, kode_komponen, progress } of komponenList) {
+      for (const { wp, kode_komponen } of komponenList) {
         const idxAsal = entriesAsal.findIndex((e: any) => e.wp === wp)
         if (idxAsal === -1) continue
-        if (progress > 0) {
+        if (adaPengerjaanSet.has(kode_komponen)) {
           entriesAsal[idxAsal] = { ...entriesAsal[idxAsal], digeserKe: { ...(entriesAsal[idxAsal].digeserKe || {}), [kode_komponen]: tanggalTujuan } }
         } else {
           const komponenBaru = entriesAsal[idxAsal].komponen.filter((k: string) => k !== kode_komponen)
@@ -1331,6 +1348,9 @@ export async function setOverrideAndRebalance(params: {
         if (isOrang) {
           const orangMap: Record<string, number> = entry.orangPerKomponen || {}
           for (const kode of (entry.komponen || [])) {
+            // Jejak (digeserKe) itu histori read-only - gak dihitung beban dan gak boleh ikut
+            // digeser lagi lewat rebalance ini.
+            if (entry.digeserKe && entry.digeserKe[kode]) continue
             const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
             const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
             if (progress >= 100) continue
@@ -1343,6 +1363,9 @@ export async function setOverrideAndRebalance(params: {
           }
         } else {
           for (const kode of (entry.komponen || [])) {
+            // Jejak (digeserKe) itu histori read-only - gak dihitung beban dan gak boleh ikut
+            // digeser lagi lewat rebalance ini.
+            if (entry.digeserKe && entry.digeserKe[kode]) continue
             const qty = panel.checklist?.[kode]?.qty || 0
             const pt = ptMap[panel.tipe + '|' + kode]
             const menitPcs = pt ? Number(pt.menit_per_pcs) : 0
@@ -1385,10 +1408,14 @@ export async function setOverrideAndRebalance(params: {
           if (isOrang) {
             const orangMap: Record<string, number> = entry.orangPerKomponen || {}
             for (const kode of (entry.komponen || [])) {
+              // Jejak (digeserKe) itu histori read-only - gak dihitung beban.
+              if (entry.digeserKe && entry.digeserKe[kode]) continue
               total += orangMap[kode] !== undefined ? orangMap[kode] : 1
             }
           } else {
             for (const kode of (entry.komponen || [])) {
+              // Jejak (digeserKe) itu histori read-only - gak dihitung beban.
+              if (entry.digeserKe && entry.digeserKe[kode]) continue
               const qty = panel.checklist?.[kode]?.qty || 0
               const pt = ptMap[panel.tipe + '|' + kode]
               total += qty * (pt ? Number(pt.menit_per_pcs) : 0)
@@ -1661,6 +1688,8 @@ export async function generateAndSaveToRawSchedule(
       Object.entries(schedule).forEach(([tgl, entries]: any) => {
         ;(entries as any[]).forEach((e: any) => {
           ;(e.komponen || []).forEach((kode: string) => {
+            // Jejak (digeserKe) itu histori read-only - gak dihitung kapasitas terpakai.
+            if (e.digeserKe && e.digeserKe[kode]) return
             const p = (panels as any[]).find((pp: any) => pp.id === row.panel_id)
             const tipe = p ? p.tipe : tipeSet[0]
             const qtyKomp = p?.checklist?.[kode]?.qty || 0
@@ -1876,6 +1905,10 @@ export async function generateAndSaveToRawSchedule(
         ;(entries as any[]).forEach((e: any) => {
           const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_'))
           if (token) {
+            // Jejak (digeserKe) itu histori read-only - tim ini dianggap masih "live"/makan
+            // kuota kalau MASIH ADA minimal 1 kode real yang belum di-jejak.
+            const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
+            if (realKode.length > 0 && realKode.every((k: string) => e.digeserKe && e.digeserKe[k])) return
             const m = token.match(/^__wiring_(\d+)org_/)
             const orang = m ? parseInt(m[1], 10) : 0
             const key = tgl + '|' + row.proses

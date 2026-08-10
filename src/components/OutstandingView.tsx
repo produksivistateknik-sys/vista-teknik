@@ -124,7 +124,13 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
     const rawRow = rawData.find((r: any) => r.id === row.rawId)
     if (!rawRow) return
     const fromDate = row.tanggal
-    const kasus1 = row.pct === 0 // 0% = geser murni; partial = duplikasi (sumber gak diubah)
+    // REVISI (10 Agu 2026): jejak (digeserKe) di tanggal asal cuma ditinggalkan kalau BENERAN
+    // ADA pengerjaan (fcs_timer_kerja) di fromDate - bukan lagi dari progress>0 aja (komponen
+    // bisa aja berprogres dari hari-hari sebelumnya tapi gak disentuh sama sekali hari ini).
+    // Sama skema dgn RawSchedule.tsx/auto-geser-harian.
+    const { data: timerRowsResched } = await supabase.from('fcs_timer_kerja').select('id')
+      .eq('panel_id', row.panelId).eq('proses', subProses).eq('tanggal', fromDate).eq('kode_komponen', row.kode).limit(1)
+    const kasus1 = !(timerRowsResched && timerRowsResched.length > 0) // gak ada pengerjaan hari itu = geser murni tanpa jejak
     const schedule = { ...(rawRow.schedule || {}) }
 
     if (kasus1) {
@@ -133,9 +139,9 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
         .filter((e: any) => (e.komponen || []).some((k: string) => !k.startsWith('__wiring_')))
       schedule[fromDate] = fromEntries
     } else {
-      // Progress partial -> TINGGALKAN JEJAK di tanggal asal (kode tetap ada, ditandai
-      // digeserKe read-only), bukan cuma "dibiarkan" tak berlabel seperti sebelumnya - reuse
-      // field digeserKe yang sama dengan RawSchedule.tsx & auto-geser-harian.
+      // Ada pengerjaan hari itu -> TINGGALKAN JEJAK di tanggal asal (kode tetap ada, ditandai
+      // digeserKe read-only) - reuse field digeserKe yang sama dengan RawSchedule.tsx &
+      // auto-geser-harian.
       const fromEntries = (schedule[fromDate] || [])
         .map((e: any) => e.wp !== row.wp ? e : { ...e, digeserKe: { ...(e.digeserKe || {}), [row.kode]: newDate } })
       schedule[fromDate] = fromEntries

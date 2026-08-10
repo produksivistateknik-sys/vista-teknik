@@ -183,6 +183,22 @@ const fetchAll = async (supabase: any, table: string, select: string) => {
   return all
 }
 
+// Sama seperti fetchAll, cuma difilter .eq(kolom,nilai) di server - dipakai buat fcs_timer_kerja
+// yang tabelnya bisa gede banget kalau di-fetch full (tumbuh tiap hari), padahal yang dibutuhkan
+// cuma baris di SATU tanggal (hariSumber) buat satu hari yang lagi diproses.
+const fetchAllEq = async (supabase: any, table: string, select: string, kolom: string, nilai: string) => {
+  let all: any[] = []
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase.from(table).select(select).eq(kolom, nilai).range(from, from + 999)
+    if (error) throw error
+    all = all.concat(data ?? [])
+    if (!data || data.length < 1000) break
+    from += 1000
+  }
+  return all
+}
+
 // Data yang dipakai bareng di SEMUA hari yang diproses dalam satu invocation - panel/target
 // WO/kapasitas/waktu-proses gak berubah sebagai AKIBAT dari geseran itu sendiri, jadi cukup
 // dihitung sekali di awal, dipakai ulang tiap hari (beda dari raw_schedule yang WAJIB fresh-fetch
@@ -234,9 +250,15 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   const addOp = (rowId: number, tanggal: string, wp: string, kode: string, asalTanggal: string) => {
     ensureBucket(rowId, tanggal).add.push({ wp, kode, asalTanggal })
   }
-  // removeOp (hapus kode tanpa jejak) sengaja udah gak dipakai lagi sejak revisi kasus1 (0%)
-  // ikut ninggalin jejak juga - bucket `remove` di rowOps dibiarin ada (Fase 3 masih baca-nya,
-  // selalu kosong sekarang, harmless no-op) biar gampang dipulihin kalau suatu saat perlu lagi.
+  // REVISI (10 Agu 2026): removeOp DIHIDUPKAN LAGI (sebelumnya di-nonaktifkan pas revisi kasus1
+  // ikut ninggalin jejak) - dipakai spesifik buat kode yang TIDAK ADA pengerjaan sama sekali di
+  // hariSumber (gak ada baris fcs_timer_kerja di tanggal itu, lihat `adaPengerjaan` di bawah).
+  // Kode kayak gitu dipindah SENYAP ke hariTarget (bawa progress terakhir sebagai starting
+  // point) TANPA ninggalin jejak - "gak ada yang perlu direkam" karena beneran gak ada aktivitas
+  // di hari itu. Kode yang ADA timer jalan/selesai hari itu TETAP jejakOp seperti biasa.
+  const removeOp = (rowId: number, tanggal: string, wp: string, kode: string) => {
+    ensureBucket(rowId, tanggal).remove.push({ wp, kode })
+  }
   // Tandai kode SEBAGAI JEJAK di tanggal itu - kode TETAP ada di komponen (gak di-remove), cuma
   // ditandai read-only lewat digeserKe[kode]=tujuan (dipakai UI RawSchedule/RencanaHarian yang
   // sudah ada). Dipakai baik buat tanggal asal (kasus2) maupun tanggal "numpang lewat" pas
@@ -250,6 +272,17 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // Kode yang UDAH berstatus jejak (punya digeserKe) di suatu entry - gak boleh dievaluasi ulang
   // buat geser berikutnya sama sekali (jejak "selesai perannya", gak ikut proses geser lagi).
   const isJejakKode = (entry: any, kode: string) => !!(entry?.digeserKe && entry.digeserKe[kode])
+
+  // ================= REVISI (10 Agu 2026): deteksi "ada pengerjaan di hariSumber" =================
+  // Sinyal = ada baris fcs_timer_kerja (jalan ATAUPUN udah selesai, gak peduli) buat kombinasi
+  // panel+proses+kode di tanggal hariSumber. Di-fetch SEKALI per hari yang diproses (bukan per
+  // kode - N+1 query) dan di-filter server-side (fcs_timer_kerja tumbuh terus tiap hari, gak
+  // boleh fetchAll semua baris kayak tabel master lain).
+  const timerRowsHariIni = await fetchAllEq(supabase, 'fcs_timer_kerja', 'panel_id,kode_komponen,proses', 'tanggal', hariSumber)
+  const adaPengerjaanSet = new Set<string>(timerRowsHariIni.map((t: any) => `${t.panel_id}|${t.proses}|${t.kode_komponen}`))
+  const panelIdOfRow: Record<number, string> = {}
+  rawRows.forEach((r: any) => { panelIdOfRow[r.id] = String(r.panel_id) })
+  const adaPengerjaan = (rowId: number, proses: string, kode: string) => adaPengerjaanSet.has(`${panelIdOfRow[rowId]}|${proses}|${kode}`)
 
   // ================= FASE 1: klasifikasi progress per kode =================
   const kandidatJam: Record<string, { rowId: number; wp: string; kode: string; tipePanel: string; woTarget: string; menit: number; kasus: number }[]> = {}
@@ -513,8 +546,16 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           addOp(u.rowId, p.finalDate, u.wp, u.kode!, hariTarget)
         }
       } else {
-        jejakOp(u.rowId, hariSumber, u.wp, u.kode!, p.finalDate)
-        hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
+        // REVISI (10 Agu 2026): kandidat baru dari Fase 1 (kode di hariSumber yang belum 100%) -
+        // cuma jejakOp kalau BENERAN ada pengerjaan (timer) di hariSumber. Kalau enggak, pindah
+        // senyap (removeOp di hariSumber, addOp tetap ke finalDate) - gak ada yang perlu direkam
+        // karena beneran gak ada aktivitas hari itu.
+        if (adaPengerjaan(u.rowId, proses, u.kode!)) {
+          jejakOp(u.rowId, hariSumber, u.wp, u.kode!, p.finalDate)
+          hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
+        } else {
+          removeOp(u.rowId, hariSumber, u.wp, u.kode!)
+        }
         addOp(u.rowId, p.finalDate, u.wp, u.kode!, hariSumber)
       }
     })
@@ -524,7 +565,8 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     // ke-cascade lagi hari ini), fallback hariTarget kalau entah kenapa gak ketemu placement-nya.
     dedupedKasus2.forEach(({ rowId, wp, kode, existingId }) => {
       const finalDate = placement.get(existingId)?.finalDate || hariTarget
-      jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      if (adaPengerjaan(rowId, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      else removeOp(rowId, hariSumber, wp, kode)
     })
   }
 
@@ -586,11 +628,18 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           if (u.tokenValue) tokenCarry[`${u.rowId}|${p.finalDate}|${u.wp}`] = u.tokenValue
         }
       } else {
+        // REVISI (10 Agu 2026): sama prinsip dgn jam-based - per kode dalam tim ini, jejakOp
+        // cuma kalau BENERAN ada pengerjaan (timer) hariSumber, kalau enggak pindah senyap
+        // (removeOp). addOp (mindahin ke finalDate) tetap jalan buat semua kode gak peduli itu.
         u.kodeList!.forEach((kode) => {
-          jejakOp(u.rowId, hariSumber, u.wp, kode, p.finalDate)
-          hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
-          addOp(u.rowId, p.finalDate, u.wp, kode, hariSumber)
+          if (adaPengerjaan(u.rowId, proses, kode)) {
+            jejakOp(u.rowId, hariSumber, u.wp, kode, p.finalDate)
+            hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
+          } else {
+            removeOp(u.rowId, hariSumber, u.wp, kode)
+          }
         })
+        u.kodeList!.forEach((kode) => addOp(u.rowId, p.finalDate, u.wp, kode, hariSumber))
         if (u.tokenValue) tokenCarry[`${u.rowId}|${p.finalDate}|${u.wp}`] = u.tokenValue
       }
     })
@@ -598,7 +647,8 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     // Sama seperti jam-based: selesaikan jejak buat kode yang WP-nya di-dedupe tadi.
     dedupedKasus2Orang.forEach(({ rowId, wp, kode, existingId }) => {
       const finalDate = placement.get(existingId)?.finalDate || hariTarget
-      jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      if (adaPengerjaan(rowId, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      else removeOp(rowId, hariSumber, wp, kode)
     })
   }
 

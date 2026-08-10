@@ -53,19 +53,20 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,items:{wp:string;kode:string}[])=>{
     const row=rawData.find((r:any)=>r.id===rawId);
     if(!row)return;
-    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId));
-    const checklist=panelData?.checklist||{};
     const schedule={...(row.schedule||{})};
-    // Progress partial (>0) -> TINGGALKAN JEJAK di tanggal asal (read-only, kode tetap ada tapi
-    // ditandai entry.digeserKe[kode]=toDate), bukan full-remove seperti kode 0% - reuse field
-    // digeserKe yang sudah ada (dipakai UI RawSchedule/RencanaHarian), skema sama dengan
-    // auto-geser-harian & reschedule dari Outstanding.
+    // REVISI (10 Agu 2026): jejak (digeserKe) di tanggal asal cuma ditinggalkan kalau BENERAN
+    // ADA pengerjaan (fcs_timer_kerja) di fromDate - kalau enggak (komponen berprogres tapi gak
+    // disentuh hari itu), pindah senyap tanpa jejak (reuse field digeserKe yang sama dgn
+    // auto-geser-harian, skema jejak-vs-remove yang sama juga).
+    const kodeUnik=[...new Set(items.map(it=>it.kode))];
+    const{data:timerRows}=kodeUnik.length>0?await supabase.from("fcs_timer_kerja").select("kode_komponen")
+      .eq("panel_id",row.panel_id||row.panelId).eq("proses",row.proses).eq("tanggal",fromDate).in("kode_komponen",kodeUnik):{data:[]};
+    const adaPengerjaanSet=new Set((timerRows||[]).map((t:any)=>t.kode_komponen));
     let fromEntries=(schedule[fromDate]||[]).map((e:any)=>({...e,komponen:[...(e.komponen||[])],digeserKe:{...(e.digeserKe||{})}}));
     for(const{wp,kode}of items){
-      const pct=checklist[kode]?.progress?.[row.proses]||0;
       fromEntries=fromEntries.map((e:any)=>{
         if(e.wp!==wp)return e;
-        if(pct>0){
+        if(adaPengerjaanSet.has(kode)){
           return{...e,digeserKe:{...e.digeserKe,[kode]:toDate}};
         }
         return{...e,komponen:e.komponen.filter((k:string)=>k!==kode)};
@@ -970,24 +971,32 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     let updatedRow=null;
     markRawDirty(rawId);
-    const panelDataForDrag=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(rowForDrag?.panel_id||rowForDrag?.panelId));
-    const checklistForDrag=panelDataForDrag?.checklist||{};
+    // REVISI (10 Agu 2026): jejak (digeserKe) di tanggal asal cuma ditinggalkan kalau BENERAN
+    // ADA pengerjaan (fcs_timer_kerja) di fromDate - kalau enggak, pindah senyap tanpa jejak.
+    // Sama skema dgn executeMoveKomponen/auto-geser-harian. Di-fetch di luar setRawData karena
+    // updater setState harus sinkron.
+    let adaPengerjaanSetDrag=new Set<string>();
+    if(mode==="move"){
+      const kodeSemua:string[]=[...new Set(entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"))))] as string[];
+      if(kodeSemua.length>0){
+        const{data:timerRowsDrag}=await supabase.from("fcs_timer_kerja").select("kode_komponen")
+          .eq("panel_id",rowForDrag?.panel_id||rowForDrag?.panelId).eq("proses",rowForDrag?.proses).eq("tanggal",fromDate).in("kode_komponen",kodeSemua);
+        adaPengerjaanSetDrag=new Set((timerRowsDrag||[]).map((t:any)=>t.kode_komponen));
+      }
+    }
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       const newSch={...r.schedule};
       if(mode==="move"){
         // Jangan hapus fromDate total - kode yang gak ikut ter-drag (misal udah selesai,
         // sudah difilter keluar dari `entries` sejak onDragStart) harus TETAP di tempatnya.
-        // Kode yang progress-nya PARTIAL (>0) TETAP ada di asal, ditandai digeserKe (jejak
-        // read-only) bukan dihapus - sama skema dgn executeMoveKomponen/auto-geser-harian.
         const sisaDiAsal=(r.schedule?.[fromDate]||[]).map((orig:any)=>{
           const dragged=entries.find((e:any)=>e.wp===orig.wp);
           if(!dragged)return orig;
           let digeserKe={...(orig.digeserKe||{})};
           const komponenSisa=(orig.komponen||[]).filter((k:string)=>{
             if(!dragged.komponen.includes(k))return true;
-            const pct=checklistForDrag[k]?.progress?.[r.proses]||0;
-            if(pct>0){digeserKe[k]=toDate;return true;}
+            if(adaPengerjaanSetDrag.has(k)){digeserKe[k]=toDate;return true;}
             return false;
           });
           if(komponenSisa.length===0)return null;
@@ -1373,6 +1382,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   const entries=r.schedule?.[d]||[];
                   entries.forEach((e:any)=>{
                     if(isOrangPr){
+                      // Jejak (digeserKe) itu histori read-only, gak boleh ikut kehitung kapasitas
+                      // (sama rule dgn checkKuotaOrangDanKomponenSwap) - tim WIRING dianggap masih
+                      // "live"/makan kuota di tanggal ini kalau MASIH ADA minimal 1 kode real yang
+                      // belum di-jejak (gak semua kode dalam tim ini otomatis jejak bareng).
+                      const realKode=(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'));
+                      if(realKode.length>0&&realKode.every((k:string)=>e.digeserKe?.[k]))return;
                       const orangMap:Record<string,number>=e.orangPerKomponen||{};
                       (e.komponen||[]).forEach((kode:string)=>{
                         if(!kode.startsWith('__wiring_'))return;
@@ -1385,6 +1400,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       });
                     } else {
                       (e.komponen||[]).forEach((kode:string)=>{
+                        // Jejak (digeserKe) itu histori read-only - JANGAN dihitung kapasitas
+                        // (sama rule dgn checkKapasitasDanKomponenSwapV2/auto-geser-harian).
+                        if(e.digeserKe?.[kode])return;
                         const qty=panelData.checklist?.[kode]?.qty||0;
                         const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
                         terpakaiPr+=qty*menitPcs;
@@ -1448,7 +1466,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":selDate===d?"#1d4ed8":d<TODAY?"#64748b":isSunday(d)?"#7f1d1d":"#1e3a8a",opacity:d<TODAY&&selDate!==d?.7:1,borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
@@ -1562,8 +1580,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const isOver=dragOverCell?.rawId===row.id&&dragOverCell?.date===d;
                       const isSelDate=selDate===d;
                       const isDraggableEntry=!rentangInfo;
+                      const isPast=d<TODAY;
                       return(
-                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSelDate&&entries.length?"#f0f9ff":isPast?"#e2e8f0":isSunday(d)?"#fff1f2":rentangInfo?"#eff6ff":rBg,opacity:isPast&&!isOver?.6:1,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
