@@ -107,13 +107,13 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
             </Card>
           </div>
 
-          <div style={{overflowX:"auto" as const,border:"1px solid #e2e8f0",borderRadius:10}}>
+          <div style={{overflowX:"auto" as const,overflowY:"auto" as const,maxHeight:"60vh",border:"1px solid #e2e8f0",borderRadius:10}}>
             <table style={{borderCollapse:"collapse" as const,fontSize:11,minWidth:900,width:"100%"}}>
               <thead>
                 <tr style={{background:"#1e3a5f"}}>
-                  <th style={{padding:"7px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,left:0,background:"#1e3a5f",minWidth:160,zIndex:1,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,fontWeight:600,borderRight:"1px solid rgba(255,255,255,.1)"}}>Komponen</th>
+                  <th style={{padding:"7px 10px",color:"#fff",textAlign:"left" as const,position:"sticky" as const,top:0,left:0,background:"#1e3a5f",minWidth:160,zIndex:3,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,fontWeight:600,borderRight:"1px solid rgba(255,255,255,.1)"}}>Komponen</th>
                   {ALL_PROSES.map((proses:string)=>(
-                    <th key={proses} style={{padding:"7px 10px",color:"#fff",minWidth:90,fontWeight:600,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,borderRight:"1px solid rgba(255,255,255,.1)"}}>{PROSES_LABEL[proses]||proses}</th>
+                    <th key={proses} style={{padding:"7px 10px",color:"#fff",minWidth:90,fontWeight:600,fontSize:9,textTransform:"uppercase" as const,letterSpacing:.3,borderRight:"1px solid rgba(255,255,255,.1)",position:"sticky" as const,top:0,background:"#1e3a5f",zIndex:2}}>{PROSES_LABEL[proses]||proses}</th>
                   ))}
                 </tr>
               </thead>
@@ -123,7 +123,7 @@ export function TaskMonitoring({woData,livePanelTypes}:{woData:any[],livePanelTy
                   if(qty<=0)return null;
                   return(
                     <tr key={item.kode}>
-                      <td style={{padding:"6px 10px",fontWeight:600,color:"#1e293b",background:ii%2===0?"#fff":"#f8fafc",position:"sticky" as const,left:0}}>{item.nama}</td>
+                      <td style={{padding:"6px 10px",fontWeight:600,color:"#1e293b",background:ii%2===0?"#fff":"#f8fafc",position:"sticky" as const,left:0,zIndex:1}}>{item.nama}</td>
                       {ALL_PROSES.map((proses:string,prosesIdx:number)=>{
                         const st=getStatus(item.kode,prosesIdx);
                         return(
