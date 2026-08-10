@@ -1466,7 +1466,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":selDate===d?"#1d4ed8":d<TODAY?"#64748b":isSunday(d)?"#7f1d1d":"#1e3a8a",opacity:d<TODAY&&selDate!==d?.7:1,borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
@@ -1582,7 +1582,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const isDraggableEntry=!rentangInfo;
                       const isPast=d<TODAY;
                       return(
-                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSelDate&&entries.length?"#f0f9ff":isPast?"#e2e8f0":isSunday(d)?"#fff1f2":rentangInfo?"#eff6ff":rBg,opacity:isPast&&!isOver?.6:1,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>onDragOver(e,row.id,d)}
                           onDrop={e=>onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
@@ -1623,9 +1623,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   return(
                                     <span key={b} title={jejakTujuan?"Belum selesai - sudah digeser ke "+jejakTujuan+" (data di sini histori, gak bisa diaksi lagi)":""}
                                       style={{display:"inline-flex",alignItems:"center",gap:2,
-                                        background:(BUSBAR_COLORS[b]||"#64748b")+"22",
-                                        color:BUSBAR_COLORS[b]||"#64748b",
-                                        border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
+                                        background:isPast?"#f1f5f9":(BUSBAR_COLORS[b]||"#64748b")+"22",
+                                        color:isPast?"#94a3b8":(BUSBAR_COLORS[b]||"#64748b"),
+                                        border:`1px solid ${isPast?"#e2e8f0":(BUSBAR_COLORS[b]||"#64748b")+"44"}`,
                                         borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700,
                                         opacity:(isDoneB||jejakTujuan)?0.5:1}}>
                                       {isDoneB&&<span style={{fontSize:8,fontWeight:900}}>✓</span>}
@@ -1659,7 +1659,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   // dibuat sebelum marker ini ada.
                                   const digeserKeTgl=entry.digeserKe?.[kode]||(kodeDigeserKeBesok.has(kode)?addDays(d,1):null);
                                   return(
-                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isTelat?"#fef2f2":wc+"22",color:isTelat?"#dc2626":wc,border:`1px solid ${isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
+                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
                                       {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
                                       {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {digeserKeTgl&&<span style={{fontSize:9}}>➡️</span>}
@@ -1679,7 +1679,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 // Warna badge SELALU ikut warna proses (gak berubah karena status) - status
                                 // ditandai ikon terpisah aja (✓ selesai, ● berprogres, kosong kalau belum).
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{background:PROSES_COLOR[row.proses]||"#64748b",color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                return(<div key={e.wp} style={{background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                             )
