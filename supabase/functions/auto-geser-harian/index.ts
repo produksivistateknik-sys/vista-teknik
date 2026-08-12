@@ -56,12 +56,21 @@ REVISI JEJAK/digeserKe (ganti pendekatan "split qty jadi 2 entry" lama):
 FASE 2 - CASCADING CAPACITY: kandidat dari fase 1 gak langsung ditulis ke tanggal tujuan kalau
 kapasitas proses itu di tanggal tujuan udah gak cukup. Kapasitas per (tanggal,proses) dibaca dari
 fcs_kapasitas_override (kolom kapasitas_unit - udah unify jam/orang), demand dihitung dari qty sisa
-x fcs_process_time.menit_per_pcs (proses jam-based) atau headcount token __wiring_Norg_ (WIRING,
-orang-based - satu tim/WP gerak bareng, gak dipecah per kode). SEMUA kode yang bersaing slot di
+x fcs_process_time.menit_per_pcs (proses jam-based). SEMUA kode yang bersaing slot di
 tanggal itu (yang UDAH ADA dari jadwal manual + kandidat baru dari geseran) diurutkan: target WO
 lebih dekat menang, seri -> kode lebih kecil (natural sort) menang. Yang kalah geser ke hari
 berikutnya, evaluasi ulang di sana, dst (maks 90 hari, kalau masih penuh tetap ditempatkan + log
 warning overbook, biar gak ada kerjaan yang hilang gak kejadwal sama sekali).
+WIRING CONTROL/POWER (orang-based) - REVISI TOTAL (12 Agu 2026): ganti model lama (headcount tetap
+dari token __wiring_{orang}org_{bobot}, dipilih manual sekali per tim/WP - terbukti beberapa kali
+salah baca kapasitas). Model baru: demand PER KOMPONEN (bukan per tim), dari bobot komponen
+(raw_schedule.bobot_komponen, level row - diisi planner sekali, otomatis berlaku di semua tanggal)
+dikali kebutuhan-orang-per-hari-kerja-AKTUAL (WIRING_BOBOT_TABLE, lihat panelHelpers.ts) - "hari
+kerja aktual" dihitung dari histori fcs_timer_kerja (BUKAN hari kalender - hari yang komponennya
+gak dikerjakan sama sekali gak bikin counter maju, konsisten dengan removeOp di atas). Demand
+tim/WP = jumlah demand semua komponen di dalamnya (tim tetap pindah bareng seperti proses lain -
+cuma cara hitung kebutuhannya yang berubah, bukan cara pindahnya). Token lama masih ada di data
+existing (histori, dibiarkan) tapi gak dipakai lagi buat hitung kapasitas.
 BUSBAR dikecualikan dari cascading (gak punya data fcs_process_time buat hitung demand-nya) - tetap
 geser langsung ke tanggal tujuan tanpa cek kapasitas. Drag manual BUSBAR (fitur terpisah di
 RawSchedule.tsx) punya jejak sendiri (busbar_jejak) - auto-geser ini TETAP gak menyentuhnya sama
@@ -156,6 +165,28 @@ const naturalKodeSort = (a: string, b: string) => {
   return pa.num - pb.num
 }
 
+// Sama persis WIRING_BOBOT_TABLE/kebutuhanOrangWiring di src/lib/panelHelpers.ts - direplikasi
+// di sini (Deno gak bisa import lintas src/). Lihat komentar lengkap di file itu buat penjelasan
+// model kapasitas WIRING CONTROL/POWER (per komponen, bobot dari raw_schedule.bobot_komponen +
+// hari kerja aktual dari fcs_timer_kerja) - REVISI TOTAL (12 Agu 2026) ganti model token lama.
+const WIRING_BOBOT_TABLE: Record<string, number[]> = {
+  EASY: [0.5],
+  MEDIUM: [1, 0.5],
+  HARD: [1, 1, 0.5],
+  VERY_HARD: [1, 1, 1, 0.5],
+}
+const kebutuhanOrangWiring = (bobot: string | null | undefined, hariKeN: number): number => {
+  const table = WIRING_BOBOT_TABLE[bobot || 'MEDIUM'] || WIRING_BOBOT_TABLE.MEDIUM
+  const idx = Math.min(Math.max(hariKeN, 1) - 1, table.length - 1)
+  return table[Math.max(0, idx)]
+}
+// hariKeN = jumlah hari kerja aktual (dari histori fcs_timer_kerja) SEBELUM `tanggal` + 1 - sama
+// formula dipakai buat tanggal yang sudah kejadian maupun tanggal kandidat yang belum kejadian.
+const hariKeNFromMap = (map: Record<string, string[]>, panelId: string, kode: string, proses: string, tanggal: string): number => {
+  const dates = map[`${panelId}|${kode}|${proses}`] || []
+  return dates.filter((t) => t < tanggal).length + 1
+}
+
 type Unit = {
   id: string; rowId: number; wp: string; kode?: string; kodeList?: string[]
   kodeKasus2?: string[] // subset kodeList yang progress>0 (WIRING) - butuh jejak kalau digeser lagi
@@ -168,6 +199,7 @@ type Ctx = {
   woTargetOfPanel: (panel: any) => string
   getCap: (tanggal: string, proses: string) => { tipe: string; unit: number } | null
   getMenitPcs: (tipe: string, kode: string, proses: string) => number
+  hariKerjaMap: Record<string, string[]>
 }
 
 const fetchAll = async (supabase: any, table: string, select: string) => {
@@ -230,15 +262,43 @@ const buildCtx = async (supabase: any): Promise<Ctx> => {
   ptRows.forEach((r: any) => { ptMap[`${r.tipe_panel}|${r.kode_komponen}|${r.jenis_pekerjaan}`] = Number(r.menit_per_pcs) || 0 })
   const getMenitPcs = (tipe: string, kode: string, proses: string) => ptMap[`${tipe}|${kode}|${proses}`] || 0
 
-  return { panelMap, woTargetOfPanel, getCap, getMenitPcs }
+  // Histori "hari kerja aktual" WIRING CONTROL/POWER (dari fcs_timer_kerja) - dipakai bareng
+  // kebutuhanOrangWiring() buat hitung kebutuhan orang per komponen dinamis. Fakta historis ini
+  // gak berubah sebagai akibat geseran hari ini, jadi cukup dihitung sekali di sini (sama prinsip
+  // dgn data lain di buildCtx), scoped ke panelIds yang relevan aja (fcs_timer_kerja tumbuh terus).
+  const hariKerjaMap: Record<string, string[]> = {}
+  if (panelIds.length > 0) {
+    const timerSet: Record<string, Set<string>> = {}
+    let from = 0
+    while (true) {
+      const { data, error } = await supabase.from('fcs_timer_kerja')
+        .select('panel_id,kode_komponen,proses,tanggal')
+        .in('panel_id', panelIds)
+        .in('proses', PROSES_ORANG)
+        .range(from, from + 999)
+      if (error) throw error
+      ;(data ?? []).forEach((r: any) => {
+        const key = `${r.panel_id}|${r.kode_komponen}|${r.proses}`
+        if (!timerSet[key]) timerSet[key] = new Set()
+        timerSet[key].add(r.tanggal)
+      })
+      if (!data || data.length < 1000) break
+      from += 1000
+    }
+    Object.entries(timerSet).forEach(([k, v]) => { hariKerjaMap[k] = [...v].sort() })
+  }
+
+  return { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap }
 }
 
 // ================= LOGIC INTI SATU HARI (FASE 1/2/3) - TIDAK BERUBAH DARI VERSI CRON =================
 // Dipanggil sekali per pasangan (hariSumber,hariTarget) - baik dari loop catch-up multi-hari
 // maupun dari mode debug/backfill satu-hari-spesifik.
 const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: string, dryRun: boolean, ctx: Ctx) => {
-  const { panelMap, woTargetOfPanel, getCap, getMenitPcs } = ctx
+  const { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap } = ctx
   const rawRows = await fetchAll(supabase, 'raw_schedule', '*')
+  const rowById: Record<number, any> = {}
+  rawRows.forEach((r: any) => { rowById[r.id] = r })
 
   // rowOps: rowId -> tanggal -> {add:[{wp,kode,asalTanggal}], remove:[{wp,kode}], jejak:[{wp,kode,tujuan}]}
   const rowOps: Record<number, Record<string, { add: { wp: string; kode: string; asalTanggal: string }[]; remove: { wp: string; kode: string }[]; jejak: { wp: string; kode: string; tujuan: string }[] }>> = {}
@@ -586,8 +646,13 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // unit-nya otomatis gak kebentuk (baris di bawah).
         const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100)
         if (realKode.length === 0) return
-        const m = token?.match(/^__wiring_(\d+)org_/)
-        const orang = m ? parseInt(m[1], 10) : 1
+        // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN (bobot dari
+        // raw_schedule.bobot_komponen level row + hari kerja aktual dari fcs_timer_kerja),
+        // dijumlah buat seluruh tim - ganti angka tetap dari token __wiring_{orang}org_.
+        const orang = realKode.reduce((s: number, kode: string) => {
+          const hariKeN = hariKeNFromMap(hariKerjaMap, String(row.panel_id), kode, proses, hariTarget)
+          return s + kebutuhanOrangWiring(row.bobot_komponen?.[kode], hariKeN)
+        }, 0)
         const sortKode = realKode.slice().sort(naturalKodeSort)[0]
         existingUnits.push({ id: `ex_${row.id}_${e.wp}`, rowId: row.id, wp: e.wp, kodeList: realKode, kodeKasus2: realKode, tokenValue: token, demand: orang, woTarget: woTargetOfPanel(panel), sortKode, isExisting: true })
       })
@@ -603,8 +668,13 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         k.kodeKasus2.forEach((kode) => dedupedKasus2Orang.push({ rowId: k.rowId, wp: k.wp, kode, existingId: `ex_${k.rowId}_${k.wp}` }))
         return
       }
-      const m = k.tokenValue?.match(/^__wiring_(\d+)org_/)
-      const orang = m ? parseInt(m[1], 10) : 1
+      // REVISI TOTAL (12 Agu 2026): sama seperti existingUnits - kebutuhan orang per komponen
+      // dari bobot_komponen (row asal, dicari via rowById) + hari kerja aktual.
+      const rowAsalKandidat = rowById[k.rowId]
+      const orang = k.kodeList.reduce((s: number, kode: string) => {
+        const hariKeN = hariKeNFromMap(hariKerjaMap, String(rowAsalKandidat?.panel_id), kode, proses, hariTarget)
+        return s + kebutuhanOrangWiring(rowAsalKandidat?.bobot_komponen?.[kode], hariKeN)
+      }, 0)
       const sortKode = k.kodeList.slice().sort(naturalKodeSort)[0]
       candUnits.push({ id: `cd_${k.rowId}_${k.wp}`, rowId: k.rowId, wp: k.wp, kodeList: k.kodeList, kodeKasus2: k.kodeKasus2, tokenValue: k.tokenValue, demand: orang, woTarget: k.woTarget, sortKode, isExisting: false })
     })

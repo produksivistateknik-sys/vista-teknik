@@ -3685,6 +3685,7 @@ export type Database = {
       }
       raw_schedule: {
         Row: {
+          bobot_komponen: Json | null
           busbar_jejak: Json
           busbar_schedule: Json | null
           created_at: string | null
@@ -3702,6 +3703,7 @@ export type Database = {
           wo_id: number | null
         }
         Insert: {
+          bobot_komponen?: Json | null
           busbar_jejak?: Json
           busbar_schedule?: Json | null
           created_at?: string | null
@@ -3719,6 +3721,7 @@ export type Database = {
           wo_id?: number | null
         }
         Update: {
+          bobot_komponen?: Json | null
           busbar_jejak?: Json
           busbar_schedule?: Json | null
           created_at?: string | null
@@ -4566,6 +4569,60 @@ export type Database = {
         }
         Relationships: []
       }
+      raw_schedule_backup_20260808_qtysync: {
+        Row: {
+          busbar_jejak: Json | null
+          busbar_schedule: Json | null
+          created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          id: number | null
+          panel: string | null
+          panel_id: number | null
+          prioritas: string | null
+          proses: string | null
+          proyek: string | null
+          schedule: Json | null
+          updated_at: string | null
+          updated_by: string | null
+          wo_id: number | null
+        }
+        Insert: {
+          busbar_jejak?: Json | null
+          busbar_schedule?: Json | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: number | null
+          panel?: string | null
+          panel_id?: number | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          schedule?: Json | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+        }
+        Update: {
+          busbar_jejak?: Json | null
+          busbar_schedule?: Json | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          id?: number | null
+          panel?: string | null
+          panel_id?: number | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          schedule?: Json | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+        }
+        Relationships: []
+      }
       raw_schedule_backup_arsipfeat_20260729: {
         Row: {
           busbar_schedule: Json | null
@@ -5292,6 +5349,156 @@ export type Database = {
         Relationships: []
       }
       renhar_backup_20260805_siblingfix: {
+        Row: {
+          carry_over: boolean | null
+          catatan: string | null
+          created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          divisi: string | null
+          id: number | null
+          komponen: Json | null
+          komponen_released: string[] | null
+          panel: string | null
+          panel_id: number | null
+          pekerja: Json | null
+          pekerja_per_komponen: Json | null
+          prioritas: string | null
+          proses: string | null
+          proyek: string | null
+          raw_id: number | null
+          tanggal: string | null
+          updated_at: string | null
+          updated_by: string | null
+          wo_id: number | null
+          wp: string | null
+        }
+        Insert: {
+          carry_over?: boolean | null
+          catatan?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          divisi?: string | null
+          id?: number | null
+          komponen?: Json | null
+          komponen_released?: string[] | null
+          panel?: string | null
+          panel_id?: number | null
+          pekerja?: Json | null
+          pekerja_per_komponen?: Json | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          raw_id?: number | null
+          tanggal?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+          wp?: string | null
+        }
+        Update: {
+          carry_over?: boolean | null
+          catatan?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          divisi?: string | null
+          id?: number | null
+          komponen?: Json | null
+          komponen_released?: string[] | null
+          panel?: string | null
+          panel_id?: number | null
+          pekerja?: Json | null
+          pekerja_per_komponen?: Json | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          raw_id?: number | null
+          tanggal?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+          wp?: string | null
+        }
+        Relationships: []
+      }
+      renhar_backup_20260806_komponen_sync: {
+        Row: {
+          carry_over: boolean | null
+          catatan: string | null
+          created_at: string | null
+          deleted_at: string | null
+          deleted_by: string | null
+          divisi: string | null
+          id: number | null
+          komponen: Json | null
+          komponen_released: string[] | null
+          panel: string | null
+          panel_id: number | null
+          pekerja: Json | null
+          pekerja_per_komponen: Json | null
+          prioritas: string | null
+          proses: string | null
+          proyek: string | null
+          raw_id: number | null
+          tanggal: string | null
+          updated_at: string | null
+          updated_by: string | null
+          wo_id: number | null
+          wp: string | null
+        }
+        Insert: {
+          carry_over?: boolean | null
+          catatan?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          divisi?: string | null
+          id?: number | null
+          komponen?: Json | null
+          komponen_released?: string[] | null
+          panel?: string | null
+          panel_id?: number | null
+          pekerja?: Json | null
+          pekerja_per_komponen?: Json | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          raw_id?: number | null
+          tanggal?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+          wp?: string | null
+        }
+        Update: {
+          carry_over?: boolean | null
+          catatan?: string | null
+          created_at?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
+          divisi?: string | null
+          id?: number | null
+          komponen?: Json | null
+          komponen_released?: string[] | null
+          panel?: string | null
+          panel_id?: number | null
+          pekerja?: Json | null
+          pekerja_per_komponen?: Json | null
+          prioritas?: string | null
+          proses?: string | null
+          proyek?: string | null
+          raw_id?: number | null
+          tanggal?: string | null
+          updated_at?: string | null
+          updated_by?: string | null
+          wo_id?: number | null
+          wp?: string | null
+        }
+        Relationships: []
+      }
+      renhar_backup_20260806_raw_sync: {
         Row: {
           carry_over: boolean | null
           catatan: string | null

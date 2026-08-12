@@ -5,6 +5,36 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
   return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
 };
 
+// ================= WIRING CONTROL/POWER: kapasitas orang-per-hari-kerja berbasis bobot =================
+// REVISI TOTAL (12 Agu 2026) - ganti model lama (token __wiring_{orang}org_{bobot}, satu angka
+// TETAP per tim/WP dipilih manual planner) yang terbukti beberapa kali salah baca kapasitas
+// (lihat bug double-count di fcsService.ts sebelum revisi ini - token itu sendiri ikut kehitung
+// sebagai "kode" terpisah di beberapa fungsi). Model baru: PER KOMPONEN (bukan per tim), bobot
+// disimpan di kolom raw_schedule.bobot_komponen (Record<kode,bobot>, level ROW - satu kali isi,
+// otomatis berlaku di semua tanggal komponen itu dijadwalkan, gak perlu "dibawa" manual tiap
+// pindah tanggal). Kebutuhan orang per hari TURUN seiring hari kerja AKTUAL (bukan hari kalender)
+// - lihat kebutuhanOrangWiring() & hariKeNFromMap() (fcsService.ts) buat detail penuh.
+// Array = kebutuhan orang tiap hari kerja aktual ke-1,2,3,... Elemen TERAKHIR dipakai berulang
+// buat hari kelebihan (semua tier kebetulan berakhir di 0.5, jadi "kelebihan durasi standar =
+// 0.5 orang terus sampai selesai" otomatis kepenuhi lewat clamping index, gak perlu logic terpisah).
+export const WIRING_BOBOT_TABLE: Record<string, number[]> = {
+  EASY: [0.5],
+  MEDIUM: [1, 0.5],
+  HARD: [1, 1, 0.5],
+  VERY_HARD: [1, 1, 1, 0.5],
+};
+export const WIRING_BOBOT_LIST = ["EASY", "MEDIUM", "HARD", "VERY_HARD"] as const;
+export const WIRING_BOBOT_LABEL: Record<string, string> = { EASY: "Easy", MEDIUM: "Medium", HARD: "Hard", VERY_HARD: "Very Hard" };
+export const WIRING_BOBOT_COLOR: Record<string, string> = { EASY: "#16a34a", MEDIUM: "#d97706", HARD: "#dc2626", VERY_HARD: "#7c3aed" };
+// Kode yang belum sempat diisi bobotnya (raw_schedule.bobot_komponen belum ada entrinya) default
+// MEDIUM - biar gak ada komponen yang "hilang" dari perhitungan kapasitas cuma karena belum
+// sempat diisi planner (fallback aman, bisa dikoreksi belakangan tanpa memblokir jadwal).
+export function kebutuhanOrangWiring(bobot: string | null | undefined, hariKeN: number): number {
+  const table = WIRING_BOBOT_TABLE[bobot || "MEDIUM"] || WIRING_BOBOT_TABLE.MEDIUM;
+  const idx = Math.min(Math.max(hariKeN, 1) - 1, table.length - 1);
+  return table[Math.max(0, idx)];
+}
+
 // QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - jangan
 // digantungkan ke mapping bom_proses_relevan/KOMPONEN_PROSES_MAP per kode komponen. Kalau
 // digantungkan ke situ, komponen/tipe_panel baru yang belum di-setup lewat wizard proses-relevan

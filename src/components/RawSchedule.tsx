@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance } from '../services/fcsService'
+import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, fetchWiringHariKerjaMap, hariKeNFromMap } from '../services/fcsService'
 import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PRIORITAS, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR,
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
-import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate } from '../lib/panelHelpers'
+import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -100,13 +100,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [addForm,setAddForm]=useState<{woId:string;panelIds:number[];prioritas:string}>({woId:"",panelIds:[],prioritas:"Sedang"});
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
-  const [modalOrangPerKomponen,setModalOrangPerKomponen]=useState<Record<string,number>>({});
-  const [bobotCepat,setBobotCepat]=useState<string>("");
-  const [jumlahOrangBobot,setJumlahOrangBobot]=useState(1);
-  const BOBOT_HARI_MAP:Record<string,number>={EASY:1,MEDIUM:2,HARD:4,VERY_HARD:6};
-  const BOBOT_LABEL_MAP:Record<string,string>={EASY:"Easy",MEDIUM:"Medium",HARD:"Hard",VERY_HARD:"Very Hard"};
-  const BOBOT_COLOR_MAP:Record<string,string>={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
-  const totalHariBobot=bobotCepat?Math.ceil((BOBOT_HARI_MAP[bobotCepat]||1)/(jumlahOrangBobot||1)):0;
+  // REVISI TOTAL (12 Agu 2026): ganti modalOrangPerKomponen (jumlah orang tetap, dipilih manual)
+  // dan bobotCepat/jumlahOrangBobot (batch-assign N hari sekaligus) - bobot sekarang dipilih SEKALI
+  // per komponen (bukan per batch/tim), disimpan row-level (raw_schedule.bobot_komponen), kebutuhan
+  // orang per hari dihitung otomatis (kebutuhanOrangWiring, lihat panelHelpers.ts). Planner gak perlu
+  // lagi nebak "berapa hari"/jumlah orang - cascading engine (auto-geser) yang urus spread-nya.
+  const [modalBobotPerKomponen,setModalBobotPerKomponen]=useState<Record<string,string>>({});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
@@ -213,6 +212,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
   const [notifAvailable,setNotifAvailable]=useState<any[]>([]);
+  // REVISI TOTAL (12 Agu 2026) kapasitas WIRING: "hari kerja ke-N" per komponen dari histori
+  // fcs_timer_kerja (bukan hari kalender) - dipakai bareng kebutuhanOrangWiring() buat hitung
+  // kebutuhan orang dinamis. Lihat panelHelpers.ts WIRING_BOBOT_TABLE buat penjelasan lengkap.
+  const [wiringHariKerjaMap,setWiringHariKerjaMap]=useState<Record<string,string[]>>({});
+  const wiringPanelIds=useMemo(()=>[...new Set(rawData.filter((r:any)=>PROSES_ORANG_RAW.includes(r.proses)).map((r:any)=>Number(r.panel_id||r.panelId)))],[rawData]);
+  useEffect(()=>{
+    let cancelled=false;
+    const load=async()=>{
+      const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
+      if(!cancelled)setWiringHariKerjaMap(map);
+    };
+    load();
+    const ch=supabase.channel("realtime-fcs-timer-kerja-rawschedule")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},load)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[JSON.stringify(wiringPanelIds)]);
 
   const fetchNotifAvailable=async()=>{
     const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).eq("tipe","available").order("created_at",{ascending:false});
@@ -666,45 +683,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     });
   };
 
-  const previewTanggalBobot=(()=>{
-    if(!bobotCepat||!cellModal)return[] as string[];
-    const dates:string[]=[];
-    let cur=cellModal.date;
-    let attempts=0;
-    while(dates.length<totalHariBobot&&attempts<30){
-      dates.push(cur);
-      const next=new Date(cur);next.setDate(next.getDate()+1);
-      cur=next.toISOString().slice(0,10);
-      attempts++;
-    }
-    return dates;
-  })();
-  const simpanDenganBobot=async()=>{
-    if(!bobotCepat||!modalWp||modalKomponen.length===0||!cellModal)return;
-    const dates=previewTanggalBobot;
-    if(dates.length===0)return;
-    const row=rawData.find((r:any)=>r.id===cellModal.rawId);
-    if(!row)return;
-    const schedule={...(row.schedule||{})};
-    const token=`__wiring_${jumlahOrangBobot}org_${bobotCepat}`;
-    for(const tgl of dates){
-      const existing=schedule[tgl]||[];
-      const wpEntry=existing.find((e:any)=>e.wp===modalWp);
-      const newKomp=[token,...modalKomponen];
-      if(wpEntry){
-        schedule[tgl]=existing.map((e:any)=>e.wp===modalWp?{...e,komponen:Array.from(new Set([...e.komponen,...newKomp]))}:e);
-      } else {
-        schedule[tgl]=[...existing,{wp:modalWp,komponen:newKomp}];
-      }
-    }
-    markRawDirty(cellModal.rawId);
-    setRawData((prev:any[])=>prev.map((r:any)=>r.id===cellModal.rawId?{...r,schedule}:r));
-    await supabase.from("raw_schedule").update({schedule}).eq("id",cellModal.rawId);
-    setCellModal(null);
-    setModalWp("");setModalKomponen([]);setBobotCepat("");setJumlahOrangBobot(1);setModalOrangPerKomponen({});
-    alert(`Berhasil! Jadwal masuk ke ${dates.length} hari: ${dates.join(", ")}`);
-  };
-
   const ESTAFET_LOCK_AKTIF=false; // ganti ke true buat nyalain lock estafet lagi
   const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
     if(!ESTAFET_LOCK_AKTIF)return{ok:true};
@@ -737,9 +715,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
     }
 
-    // Validasi kuota ORANG (khusus WIRING POWER/CONTROL)
+    // Validasi kuota ORANG (khusus WIRING POWER/CONTROL) - kebutuhan orang dinamis per komponen
+    // dari bobot (dipilih di modal ini/sudah tersimpan di row) + hari kerja aktual komponen itu.
     if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
-      const orangDibutuhkan=modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0);
+      const orangDibutuhkan=modalKomponen.reduce((s,k)=>{
+        const bobot=modalBobotPerKomponen[k]??rawRow?.bobot_komponen?.[k];
+        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,livePanelForCell?.id,k,prosesCek,cellModal.date);
+        return s+kebutuhanOrangWiring(bobot,hariKeN);
+      },0);
       const cekOrang=await checkKuotaOrangDanKomponenSwap({
         tanggal:cellModal.date,
         jenisPekerjaan:prosesCek,
@@ -794,6 +777,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     let oldKomp:string[]=[];
     let isEdit=false;
     const isProsesOrangRow=prosesCek&&PROSES_ORANG_RAW.includes(prosesCek);
+    // Bobot baru yang dipilih di modal ini digabung ke bobot_komponen level ROW (bukan per entry
+    // - lihat panelHelpers.ts) - kode yang udah punya bobot tersimpan sebelumnya TETAP dipakai
+    // (gak ke-timpa) kecuali sengaja diganti di picker.
+    const newBobotKomponen=isProsesOrangRow?{...(rawRow?.bobot_komponen||{}),...modalBobotPerKomponen}:null;
     markRawDirty(cellModal.rawId);
     setRawData(prev=>prev.map(r=>{
       if(r.id!==cellModal.rawId)return r;
@@ -804,9 +791,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       if(wpEntry){
         oldKomp=wpEntry.komponen;isEdit=true;
         if(isProsesOrangRow){
-          // Token __wiring_ (badge bobot) dipisah dari komponen asli - direkonstruksi belakangan,
-          // JANGAN ikut kesaring "progress<100" (dia gak punya progress, defaultnya 0<100=true,
-          // jadi selalu ke-anggap "belum selesai" dan bisa nyangkut sendirian tanpa komponen asli
+          // Token __wiring_ lama (data existing, kalau ada) dipisah dari komponen asli, JANGAN
+          // ikut kesaring "progress<100" (dia gak punya progress, defaultnya 0<100=true, jadi
+          // selalu ke-anggap "belum selesai" dan bisa nyangkut sendirian tanpa komponen asli
           // begitu semua komponen aslinya udah 100% - itu akar bug "rilis tapi gak nongol di operator").
           const tokenLama=(wpEntry.komponen||[]).filter((kode:string)=>kode.startsWith("__wiring_"));
           const komponenLamaBelumSelesai=(wpEntry.komponen||[]).filter((kode:string)=>{
@@ -821,21 +808,20 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         } else {
           finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
         }
-        const newOrangMap=isProsesOrangRow?{...(wpEntry.orangPerKomponen||{}),...modalOrangPerKomponen}:wpEntry.orangPerKomponen;
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(isProsesOrangRow?{orangPerKomponen:newOrangMap}:{})});
+        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,...(isProsesOrangRow?{orangPerKomponen:modalOrangPerKomponen}:{}),createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
+        updated=[...existing,{wp:modalWp,komponen:modalKomponen,createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
       }
       newSch[cellModal.date]=updated;
-      updatedRow={...r,schedule:newSch};
+      updatedRow={...r,schedule:newSch,...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
       return updatedRow;
     }));
     syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
-    setModalWp('');setModalKomponen([]);setModalOrangPerKomponen({});
+    setModalWp('');setModalKomponen([]);setModalBobotPerKomponen({});
     const isBusbarRow=rawRow?.proses==="BUSBAR";
     if(updatedRow){
-      const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin'};
+      const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin',...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
       if(isBusbarRow&&busbarSel!==undefined){
         const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
         updatePayload.busbar_schedule=newBusbarSch;
@@ -1315,7 +1301,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         return progress<100;
                       });
                       setModalKomponen([...new Set([...komponenLamaBelumSelesai,k.kode])]);
-                      setModalOrangPerKomponen((prev:any)=>({...prev,[k.kode]:prev[k.kode]||1}));
+                      setModalBobotPerKomponen((prev:any)=>({...prev,[k.kode]:prev[k.kode]??rowTarget?.bobot_komponen?.[k.kode]??"MEDIUM"}));
                     }}
                     style={{textAlign:"left" as const,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:"#fff"}}>
                     <div>
@@ -1382,21 +1368,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   const entries=r.schedule?.[d]||[];
                   entries.forEach((e:any)=>{
                     if(isOrangPr){
-                      // Jejak (digeserKe) itu histori read-only, gak boleh ikut kehitung kapasitas
-                      // (sama rule dgn checkKuotaOrangDanKomponenSwap) - tim WIRING dianggap masih
-                      // "live"/makan kuota di tanggal ini kalau MASIH ADA minimal 1 kode real yang
-                      // belum di-jejak (gak semua kode dalam tim ini otomatis jejak bareng).
-                      const realKode=(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'));
-                      if(realKode.length>0&&realKode.every((k:string)=>e.digeserKe?.[k]))return;
-                      const orangMap:Record<string,number>=e.orangPerKomponen||{};
+                      // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN, dari bobot_komponen
+                      // (row-level) + hari kerja aktual (fcs_timer_kerja) - lihat panelHelpers.ts
+                      // WIRING_BOBOT_TABLE. Jejak (digeserKe) tetap dikecualikan seperti proses lain.
                       (e.komponen||[]).forEach((kode:string)=>{
-                        if(!kode.startsWith('__wiring_'))return;
-                        if(orangMap[kode]!==undefined){
-                          terpakaiPr+=orangMap[kode];
-                        } else {
-                          const m=kode.match(/^__wiring_(\d+)org_/);
-                          terpakaiPr+=m?parseInt(m[1],10):1;
-                        }
+                        if(kode.startsWith('__wiring_'))return;
+                        if(e.digeserKe?.[kode])return;
+                        const bobot=r.bobot_komponen?.[kode];
+                        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,panelId,kode,pr,d);
+                        terpakaiPr+=kebutuhanOrangWiring(bobot,hariKeN);
                       });
                     } else {
                       (e.komponen||[]).forEach((kode:string)=>{
@@ -1644,9 +1624,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:"grab"}}>
                                 {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
                                     if(kode.startsWith("__wiring_"))return null;
-                                    const jmlOrang=entry.orangPerKomponen?.[kode]||1;
+                                  const panelIdKomp=row.panel_id||row.panelId;
+                                  // REVISI TOTAL (12 Agu 2026): kebutuhan orang dinamis per komponen -
+                                  // lihat panelHelpers.ts WIRING_BOBOT_TABLE.
+                                  const bobotKode=row.bobot_komponen?.[kode];
+                                  const hariKeNKode=hariKeNFromMap(wiringHariKerjaMap,panelIdKomp,kode,row.proses,d);
+                                  const jmlOrang=kebutuhanOrangWiring(bobotKode,hariKeNKode);
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
-                                  const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
+                                  const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(panelIdKomp));
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
                                   const sudahSelesaiKomp=progressUntukTelat>=100;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
@@ -1658,13 +1643,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   // Fallback ke heuristik lama (peek jadwal besok) buat entry lama yang
                                   // dibuat sebelum marker ini ada.
                                   const digeserKeTgl=entry.digeserKe?.[kode]||(kodeDigeserKeBesok.has(kode)?addDays(d,1):null);
+                                  const titleInfo=(entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":"")
+                                    +` · Bobot ${WIRING_BOBOT_LABEL[bobotKode||"MEDIUM"]}, hari kerja ke-${hariKeNKode}, butuh ${jmlOrang} orang`;
                                   return(
-                                    <div key={entry.wp+kode} title={entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":""} style={{display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
+                                    <div key={entry.wp+kode} title={titleInfo} style={{display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
                                       {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
                                       {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {digeserKeTgl&&<span style={{fontSize:9}}>➡️</span>}
                                       {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
-                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
+                                      <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(panelIdKomp,kode)}{entry.qtyPerKomponen?.[kode]!==undefined?` (${entry.qtyPerKomponen[kode]})`:""}</span>
+                                      <span style={{fontSize:7,fontWeight:700,color:"#94a3b8"}}>H{hariKeNKode}</span>
                                       <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{jmlOrang}</span>
                                 </div>
                                   );
@@ -1896,6 +1884,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               return progress<100;
                             });
                             setModalKomponen(belumSelesai);
+                            setModalBobotPerKomponen(Object.fromEntries(belumSelesai.map((kode:string)=>[kode,rawRow?.bobot_komponen?.[kode]||"MEDIUM"])));
                           } else {
                             setModalKomponen([...e.komponen]);
                           }
@@ -1935,8 +1924,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                           return <span key={k} title={"Jejak/histori (read-only) - "+labelQtyPct+" saat digeser ke "+digeserKeTgl+", gak bisa dikerjakan/dipindah lagi dari sini"}
                             style={{background:"#f1f5f9",color:"#94a3b8",border:"1px solid #e2e8f0",borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"default"}}>🕓 {item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct} ➡️ {digeserKeTgl}</span>;
                         }
+                        const bobotLabelKomp=isWiringProsesLabel?` · ${WIRING_BOBOT_LABEL[rawRow?.bobot_komponen?.[k]||"MEDIUM"]}`:"";
                         return <span key={k} onClick={()=>toggleSelectForMove(e.wp,k)} title={isKompDone?"Sudah selesai · Klik buat pilih/batal pilih buat dipindah":"Klik buat pilih/batal pilih buat dipindah"}
-                          style={{background:isSelMove?pc:pc+"18",color:isSelMove?"#fff":pc,border:`1px solid ${isSelMove?pc:pc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{statusIconKomp}{item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct}</span>;
+                          style={{background:isSelMove?pc:pc+"18",color:isSelMove?"#fff":pc,border:`1px solid ${isSelMove?pc:pc+"33"}`,borderRadius:4,padding:"2px 8px",fontSize:10,fontWeight:600,cursor:"pointer"}}>{statusIconKomp}{item?.nama?`${k} - ${item.nama}`:k} {labelQtyPct}{bobotLabelKomp}</span>;
                       })}
                     </div>
                   </div>
@@ -1963,40 +1953,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             {modalWp&&wpItems.length>0&&(
               <>
                 <Lbl>Pilih Komponen {modalWp}</Lbl>
-                {PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(
-                  <div style={{background:"#faf5ff",border:"1px solid #e9d5ff",borderRadius:8,padding:10,marginBottom:10}}>
-                    <div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:6}}>🎚 Bobot Cepat (opsional - otomatis distribusi ke beberapa hari)</div>
-                    <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:6,marginBottom:8}}>
-                      {Object.keys(BOBOT_HARI_MAP).map(b=>{
-                        const sel=bobotCepat===b;const bc=BOBOT_COLOR_MAP[b];
-                        return(
-                          <button key={b} type="button" onClick={()=>setBobotCepat(sel?"":b)}
-                            style={{padding:"6px 4px",borderRadius:7,border:`2px solid ${sel?bc:"#e2e8f0"}`,background:sel?bc+"18":"#fff",color:sel?bc:"#64748b",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
-                            {BOBOT_LABEL_MAP[b]}
-                          </button>
-                        );
-                      })}
-                    </div>
-                    {bobotCepat&&(
-                      <div>
-                        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                          <span style={{fontSize:11,color:"#64748b"}}>Jumlah orang:</span>
-                          <input type="number" min="1" step="1" value={jumlahOrangBobot}
-                            onChange={e=>setJumlahOrangBobot(parseInt(e.target.value)||1)}
-                            style={{width:50,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #e9d5ff",fontSize:12}}/>
-                          <span style={{fontSize:11,color:"#7c3aed",fontWeight:600}}>= {totalHariBobot} hari</span>
-                        </div>
-                        {previewTanggalBobot.length>0&&(
-                          <div style={{fontSize:10,color:"#64748b",marginBottom:8}}>Jadwal akan masuk ke {previewTanggalBobot.length} hari: {previewTanggalBobot.join(", ")}</div>
-                        )}
-                        <button type="button" onClick={simpanDenganBobot} disabled={!modalWp||modalKomponen.length===0}
-                          style={{width:"100%",padding:"8px",borderRadius:7,border:"none",background:modalKomponen.length>0?"#7c3aed":"#e2e8f0",color:"#fff",fontSize:12,fontWeight:700,cursor:modalKomponen.length>0?"pointer":"not-allowed",fontFamily:"inherit"}}>
-                          Simpan dengan Distribusi Bobot →
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                )}
                 {PROSES_ORANG_RAW.includes(rawRow?.proses||"")?(
                   <div style={{display:"flex",flexDirection:"column" as const,gap:6,marginBottom:14}}>
                     {wpItems.map(it=>{
@@ -2004,6 +1960,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const kl=livePanelForCell?.checklist?.[it.kode];
                       const progress=kl?.progress?.[rawRow?.proses||""]||0;
                       const sudahSelesai=progress>=100;
+                      const bobotTerpilih=modalBobotPerKomponen[it.kode]??rawRow?.bobot_komponen?.[it.kode]??"MEDIUM";
                       return(
                         <div key={it.kode} style={{border:`1px solid ${sudahSelesai?"#bbf7d0":sel?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"8px 12px",background:sudahSelesai?"#f0fdf4":sel?"#eff6ff":"#fff",opacity:sudahSelesai?0.7:1}}>
                           <label style={{display:"flex",alignItems:"center",gap:10,cursor:sudahSelesai?"not-allowed":"pointer"}}>
@@ -2012,20 +1969,25 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               if(sel){setModalKomponen(prev=>prev.filter(k=>k!==it.kode));}
                               else{
                                 setModalKomponen(prev=>[...prev,it.kode]);
-                                setModalOrangPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]||1}));
+                                setModalBobotPerKomponen(prev=>({...prev,[it.kode]:prev[it.kode]??rawRow?.bobot_komponen?.[it.kode]??"MEDIUM"}));
                               }
                             }}/>
                             <span style={{flex:1,fontSize:12,color:sudahSelesai?"#16a34a":"#1e293b"}}>{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span></span>
                             <span style={{fontSize:10,color:sudahSelesai?"#16a34a":"#94a3b8",fontWeight:sudahSelesai?700:400}}>{sudahSelesai?"✓ Selesai":`progress ${progress}%`}</span>
-                            {sel&&!sudahSelesai&&(
-                              <div style={{display:"flex",alignItems:"center",gap:4}}>
-                                <i className="ti ti-users" style={{fontSize:13,color:"#1d4ed8"}}/>
-                                <input type="number" min="1" step="1" value={modalOrangPerKomponen[it.kode]||1}
-                                  onChange={e=>setModalOrangPerKomponen(prev=>({...prev,[it.kode]:parseInt(e.target.value)||1}))}
-                                  style={{width:48,textAlign:"center" as const,padding:"4px",borderRadius:6,border:"1px solid #93c5fd",fontSize:12}}/>
-                              </div>
-                            )}
                           </label>
+                          {sel&&!sudahSelesai&&(
+                            <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:4,marginTop:8}}>
+                              {WIRING_BOBOT_LIST.map(b=>{
+                                const bsel=bobotTerpilih===b;const bc=WIRING_BOBOT_COLOR[b];
+                                return(
+                                  <button key={b} type="button" onClick={()=>setModalBobotPerKomponen(prev=>({...prev,[it.kode]:b}))}
+                                    style={{padding:"5px 2px",borderRadius:6,border:`1.5px solid ${bsel?bc:"#e2e8f0"}`,background:bsel?bc+"18":"#fff",color:bsel?bc:"#64748b",fontSize:9,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+                                    {WIRING_BOBOT_LABEL[b]}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -2060,7 +2022,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 </>)}
                 <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
                   {PROSES_ORANG_RAW.includes(rawRow?.proses||"")
-                    ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>s+(modalOrangPerKomponen[k]||1),0)+" orang)"
+                    ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>{
+                        const bobot=modalBobotPerKomponen[k]??rawRow?.bobot_komponen?.[k];
+                        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,livePanelForCell?.id,k,rawRow?.proses||"",cellModal?.date||"");
+                        return s+kebutuhanOrangWiring(bobot,hariKeN);
+                      },0)+" orang)"
                     :"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen)"}
                 </Btn>
               </>

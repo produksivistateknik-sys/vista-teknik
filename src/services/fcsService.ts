@@ -1,5 +1,42 @@
 import { supabase } from '../lib/supabase'
 import { KOMPONEN_PROSES_MAP, ALL_PROSES } from '../constants/panelTypes'
+import { kebutuhanOrangWiring } from '../lib/panelHelpers'
+
+// ================= WIRING CONTROL/POWER: "hari kerja ke-N" dari histori fcs_timer_kerja =================
+// Sinyal "hari kerja aktual" (BUKAN hari kalender) - dipakai bareng kebutuhanOrangWiring() buat
+// tau kebutuhan orang komponen wiring di tanggal manapun. Di-fetch BATCHED (satu query per
+// panelIds, bukan N+1 per kode) - fcs_timer_kerja tumbuh terus tiap hari, jangan query per-kode.
+export async function fetchWiringHariKerjaMap(panelIds: number[]): Promise<Record<string, string[]>> {
+  if (panelIds.length === 0) return {}
+  const map: Record<string, Set<string>> = {}
+  let from = 0
+  while (true) {
+    const { data, error } = await supabase.from('fcs_timer_kerja')
+      .select('panel_id,kode_komponen,proses,tanggal')
+      .in('panel_id', panelIds)
+      .in('proses', ['WIRING CONTROL', 'WIRING POWER'])
+      .range(from, from + 999)
+    if (error) throw new Error(error.message)
+    ;(data || []).forEach((r: any) => {
+      const key = `${r.panel_id}|${r.kode_komponen}|${r.proses}`
+      if (!map[key]) map[key] = new Set()
+      map[key].add(r.tanggal)
+    })
+    if (!data || data.length < 1000) break
+    from += 1000
+  }
+  const out: Record<string, string[]> = {}
+  Object.entries(map).forEach(([k, v]) => { out[k] = [...v].sort() })
+  return out
+}
+// hariKeN(tanggal) = jumlah hari kerja aktual SEBELUM tanggal ini (dari histori) + 1 - dipakai
+// SAMA baik buat tanggal yang sudah kejadian maupun tanggal kandidat yang belum kejadian (proyeksi
+// cascading), sengaja gak ada percabangan "kalau sudah lewat vs belum" (lihat catatan di
+// panelHelpers.ts WIRING_BOBOT_TABLE).
+export function hariKeNFromMap(map: Record<string, string[]>, panelId: number, kode: string, proses: string, tanggal: string): number {
+  const dates = map[`${panelId}|${kode}|${proses}`] || []
+  return dates.filter((t) => t < tanggal).length + 1
+}
 
 interface FCSProcessTime {
   kode_komponen: string
@@ -1040,7 +1077,7 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
 
   const { data: rawRows } = await supabase
     .from('raw_schedule')
-    .select('id, wo_id, panel_id, schedule')
+    .select('id, wo_id, panel_id, schedule, bobot_komponen')
     .eq('proses', jenisPekerjaan)
 
   const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
@@ -1068,6 +1105,11 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
   const ptNamaMap: Record<string, string> = {}
   ;(ptData || []).forEach((pt: any) => { ptNamaMap[`${pt.tipe_panel}|${pt.kode_komponen}`] = pt.nama_komponen })
 
+  // REVISI (12 Agu 2026): kebutuhan orang wiring sekarang PER KOMPONEN, dinamis dari bobot
+  // (raw_schedule.bobot_komponen, level row) + hari kerja aktual (histori fcs_timer_kerja) -
+  // bukan lagi angka tetap dari orangPerKomponen/token. Lihat panelHelpers.ts WIRING_BOBOT_TABLE.
+  const hariKerjaMap = await fetchWiringHariKerjaMap(panelIds)
+
   let terpakaiSaatIni = 0
   const opsiSwap: KomponenSwapOptionOrang[] = []
 
@@ -1078,15 +1120,18 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
 
     for (const entry of entries) {
       if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
-      const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
+        // Token lama __wiring_{orang}org_{bobot} (data lama) bukan komponen asli - dilewati.
+        if (kode.startsWith('__wiring_')) continue
         // Jejak (entry.digeserKe[kode] keisi) itu histori read-only - GAK dihitung kuota (kode
         // itu udah dipindah aksinya ke tanggal lain) dan gak ditawarkan buat kandidat swap.
         if (entry.digeserKe && entry.digeserKe[kode]) continue
-        const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
         const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
         // Komponen yang sudah 100% selesai TIDAK lagi memakai kuota orang
         if (progress >= 100) continue
+        const bobot = (row as any).bobot_komponen?.[kode]
+        const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
+        const orang = kebutuhanOrangWiring(bobot, hariKeN)
         terpakaiSaatIni += orang
 
         opsiSwap.push({
@@ -1124,18 +1169,23 @@ export async function checkKuotaOrangDanKomponenSwap(params: {
 async function hitungTerpakaiOrangRawSchedule(tanggal: string, jenisPekerjaan: string): Promise<number> {
   const { data: rawRows } = await supabase
     .from('raw_schedule')
-    .select('schedule')
+    .select('panel_id, schedule, bobot_komponen')
     .eq('proses', jenisPekerjaan)
+
+  const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
+  const hariKerjaMap = await fetchWiringHariKerjaMap(panelIds)
 
   let total = 0
   for (const row of rawRows || []) {
     const entries = row.schedule?.[tanggal] || []
     for (const entry of entries) {
-      const orangMap: Record<string, number> = entry.orangPerKomponen || {}
       for (const kode of (entry.komponen || [])) {
+        if (kode.startsWith('__wiring_')) continue
         // Jejak (digeserKe) itu histori read-only - gak dihitung kuota.
         if (entry.digeserKe && entry.digeserKe[kode]) continue
-        total += (orangMap[kode] !== undefined ? orangMap[kode] : 1)
+        const bobot = (row as any).bobot_komponen?.[kode]
+        const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
+        total += kebutuhanOrangWiring(bobot, hariKeN)
       }
     }
   }
@@ -1312,7 +1362,7 @@ export async function setOverrideAndRebalance(params: {
     kapasitasMap[tanggal] = kapasitasBaru
 
     const { data: rawRows } = await supabase.from('raw_schedule')
-      .select('id, wo_id, panel_id, panel, proyek, proses, schedule')
+      .select('id, wo_id, panel_id, panel, proyek, proses, schedule, bobot_komponen')
       .eq('proses', jenisPekerjaan)
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
@@ -1320,6 +1370,9 @@ export async function setOverrideAndRebalance(params: {
       .select('id, nama, tipe, checklist').in('id', panelIds.length > 0 ? panelIds : [-1])
     const panelMap: Record<number, any> = {}
     ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
+    // REVISI (12 Agu 2026): kebutuhan orang wiring dinamis per komponen (bobot row-level + hari
+    // kerja aktual) - lihat panelHelpers.ts WIRING_BOBOT_TABLE.
+    const hariKerjaMap = isOrang ? await fetchWiringHariKerjaMap(panelIds) : {}
 
     const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
     const { data: woRows } = await supabase.from('work_orders').select('id, wo, target').in('id', woIds.length > 0 ? woIds : [-1])
@@ -1346,14 +1399,16 @@ export async function setOverrideAndRebalance(params: {
       const woInfo = woMap[row.wo_id] || { wo: '', target: '' }
       for (const entry of entries) {
         if (isOrang) {
-          const orangMap: Record<string, number> = entry.orangPerKomponen || {}
           for (const kode of (entry.komponen || [])) {
+            if (kode.startsWith('__wiring_')) continue
             // Jejak (digeserKe) itu histori read-only - gak dihitung beban dan gak boleh ikut
             // digeser lagi lewat rebalance ini.
             if (entry.digeserKe && entry.digeserKe[kode]) continue
-            const orang = orangMap[kode] !== undefined ? orangMap[kode] : 1
             const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
             if (progress >= 100) continue
+            const bobot = (row as any).bobot_komponen?.[kode]
+            const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
+            const orang = kebutuhanOrangWiring(bobot, hariKeN)
             bebanTotal += orang
             itemsHariIni.push({
               rawId: row.id, wp: entry.wp, kode, beban: orang,
@@ -1406,11 +1461,13 @@ export async function setOverrideAndRebalance(params: {
         if (!panel) continue
         for (const entry of entries) {
           if (isOrang) {
-            const orangMap: Record<string, number> = entry.orangPerKomponen || {}
             for (const kode of (entry.komponen || [])) {
+              if (kode.startsWith('__wiring_')) continue
               // Jejak (digeserKe) itu histori read-only - gak dihitung beban.
               if (entry.digeserKe && entry.digeserKe[kode]) continue
-              total += orangMap[kode] !== undefined ? orangMap[kode] : 1
+              const bobot = (row as any).bobot_komponen?.[kode]
+              const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tgl)
+              total += kebutuhanOrangWiring(bobot, hariKeN)
             }
           } else {
             for (const kode of (entry.komponen || [])) {
@@ -1897,32 +1954,14 @@ export async function generateAndSaveToRawSchedule(
       }
     }
 
-    const terpakaiOrangTracker: Record<string, number> = {}
-    ;(existingRaw || []).forEach((row: any) => {
-      if (!WIRING_LIST.includes(row.proses)) return
-      const schedule = row.schedule || {}
-      Object.entries(schedule).forEach(([tgl, entries]: any) => {
-        ;(entries as any[]).forEach((e: any) => {
-          const token = (e.komponen || []).find((k: string) => k.startsWith('__wiring_'))
-          if (token) {
-            // Jejak (digeserKe) itu histori read-only - tim ini dianggap masih "live"/makan
-            // kuota kalau MASIH ADA minimal 1 kode real yang belum di-jejak.
-            const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
-            if (realKode.length > 0 && realKode.every((k: string) => e.digeserKe && e.digeserKe[k])) return
-            const m = token.match(/^__wiring_(\d+)org_/)
-            const orang = m ? parseInt(m[1], 10) : 0
-            const key = tgl + '|' + row.proses
-            terpakaiOrangTracker[key] = (terpakaiOrangTracker[key] || 0) + orang
-          }
-        })
-      })
-    })
-
-    const getKapOrang = (tgl: string, proses: string) => {
-      const k = kapMap[tgl + '|' + proses]
-      return k ? Number(k.jumlah_orang) || 0 : 0
-    }
-
+    // REVISI TOTAL (12 Agu 2026): WIRING CONTROL/POWER sekarang ikut model cascading standar
+    // sama seperti proses lain (kebutuhan orang dihitung dinamis per komponen dari bobot +
+    // hari kerja aktual, lihat panelHelpers.ts WIRING_BOBOT_TABLE) - jadi di sini gak perlu lagi
+    // nebak "berapa hari"/token bobot/tracking kapasitas manual. Cukup taruh komponen yang BELUM
+    // pernah muncul di jadwal manapun buat panel+proses ini langsung di tanggalMulai; auto-geser
+    // (cascading engine) yang urus spread ke hari berikutnya kalau kapasitas hari itu gak cukup.
+    // bobot_komponen dibiarkan kosong (default MEDIUM saat dibaca) - planner isi belakangan lewat
+    // UI Raw Schedule kalau perlu dikoreksi.
     for (const panel of panels as any[]) {
       const checklist = panel.checklist || {}
       const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
@@ -1943,54 +1982,22 @@ export async function generateAndSaveToRawSchedule(
           wpGroups[wp].push(kode)
         })
 
-        for (const [wp, kodes] of Object.entries(wpGroups)) {
-          const jumlahOrang = 1
-          const bobotHariDefault = 2
-          const totalHari = Math.ceil(bobotHariDefault / jumlahOrang)
-
-          // Anti-duplikat WIRING: hitung berapa hari yg SUDAH ada entry wp+kodes IDENTIK ini
-          // di raw_schedule existing (row panel+proses ini) - WIRING gak punya pelacak qty
-          // kayak proses lain, jadi generate ulang sebelumnya SELALU nambah hari baru lagi di
-          // atas yg udah ada (duplikat multi-hari). Sekarang cuma isi kekurangannya.
-          const rowWiringExisting = (existingRaw || []).find((r: any) => r.panel_id === panel.id && r.proses === proses)
-          let hariSudahAda = 0
-          if (rowWiringExisting) {
-            Object.values(rowWiringExisting.schedule || {}).forEach((entries: any) => {
-              ;(entries as any[]).forEach((e: any) => {
-                if (e.wp !== wp) return
-                const kodeNonToken = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
-                const sameKodes = kodes.length === kodeNonToken.length && kodes.every((k) => kodeNonToken.includes(k))
-                if (sameKodes) hariSudahAda++
-              })
+        const rowWiringExisting = (existingRaw || []).find((r: any) => r.panel_id === panel.id && r.proses === proses)
+        const kodeSudahAda = new Set<string>()
+        if (rowWiringExisting) {
+          Object.values(rowWiringExisting.schedule || {}).forEach((entries: any) => {
+            ;(entries as any[]).forEach((e: any) => {
+              ;(e.komponen || []).forEach((k: string) => { if (!k.startsWith('__wiring_')) kodeSudahAda.add(k) })
             })
-          }
-          const sisaHariPerlu = totalHari - hariSudahAda
-          if (sisaHariPerlu <= 0) continue
+          })
+        }
 
-          let cur = tanggalMulai
-          let attempts = 0
-          while (attempts < 21) {
-            const sisaAwal = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
-            if (sisaAwal >= jumlahOrang) break
-            cur = addDaysStr(cur, 1)
-            attempts++
-          }
-
-          let hariTerisi = 0
-          let dayAttempts = 0
-          while (hariTerisi < sisaHariPerlu && dayAttempts < 21) {
-            const sisa = getKapOrang(cur, proses) - (terpakaiOrangTracker[cur + '|' + proses] || 0)
-            if (sisa >= jumlahOrang) {
-              const token = `__wiring_${jumlahOrang}org_MEDIUM`
-              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, [token, ...kodes], undefined, generatedBy)
-              terpakaiOrangTracker[cur + '|' + proses] = (terpakaiOrangTracker[cur + '|' + proses] || 0) + jumlahOrang
-              kodes.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
-              hariTerisi++
-              count++
-            }
-            cur = addDaysStr(cur, 1)
-            dayAttempts++
-          }
+        for (const [wp, kodes] of Object.entries(wpGroups)) {
+          const kodeBaru = kodes.filter((k) => !kodeSudahAda.has(k))
+          if (kodeBaru.length === 0) continue
+          await upsertRawScheduleEntry(wo, panel, proses, tanggalMulai, wp, kodeBaru, undefined, generatedBy)
+          kodeBaru.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
+          count++
         }
       }
     }
