@@ -1942,7 +1942,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       {cellModal&&rawRow&&(
         <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} · {rawRow.panel}</div>
-          {cellEntries.length>0&&(
+          {rawRow.proses!=="BUSBAR"&&cellEntries.length>0&&(
             <div style={{marginBottom:16}}>
               <Lbl>WP & Komponen Terjadwal</Lbl>
               {selectedForMove.length>0&&(

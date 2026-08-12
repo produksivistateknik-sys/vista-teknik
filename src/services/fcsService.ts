@@ -1851,7 +1851,15 @@ export async function generateAndSaveToRawSchedule(
       }
 
       for (const proses of ALL_PROSES) {
-        if (WIRING_LIST.includes(proses)) continue
+        // BUSBAR gak pernah dijadwalin lewat mekanisme WP generik ini - modelnya beda total
+        // (lihat busbar_schedule/BUSBAR_KOMPONEN, list tetap H-BUS/INCOMING/OUTGOING/NETRAL/
+        // GROUND/COUPLER, gak ada WP). bom_proses_relevan sering nandain komponen macam
+        // Groundplate/Tulangan Support Busbar "relevan" ke BUSBAR (bener secara fisik, part
+        // busbar emang dipasang bareng), tapi kalau lolos ke sini bikin schedule[d] row BUSBAR
+        // keisi entry ber-wp yang gak pernah dipahami di manapun - nyasar/bocor sebagai badge WP
+        // di Rencana Harian & modal detail Raw Schedule. Kode ini SUDAH kejadwal lewat proses
+        // aslinya masing2 (WIRING CONTROL/POWER, POTONG, dst) - BUSBAR gak perlu jadwal WP sendiri.
+        if (WIRING_LIST.includes(proses) || proses === 'BUSBAR') continue
 
         const relevantKodes = (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses) ? activeKodes : activeKodes.filter((kode) => {
           const mapKey = kode + '|' + panel.tipe
