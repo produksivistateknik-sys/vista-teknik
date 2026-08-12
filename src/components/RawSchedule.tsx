@@ -6,7 +6,7 @@ import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PRIORITAS, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR,
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
-import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, kebutuhanOrangWiring } from '../lib/panelHelpers'
+import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -1489,6 +1489,43 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 const rowSpanCount=panelRowCount[String(curPanelId)]||1;
                 const subBarisKomponen=getSemuaKomponenSebagaiSubBaris(row);
 
+                // TAMBAHAN (12 Agu 2026) - proyeksi tampilan MURNI (gak nyentuh raw_schedule sama
+                // sekali): komponen wiring yang lagi LIVE (belum jejak, belum 100%) di suatu
+                // tanggal diproyeksikan tampil juga di tanggal-tanggal SETELAHNYA sepanjang sisa
+                // durasi standar bobotnya (H{n+1}, H{n+2}, dst), biar planner langsung lihat
+                // komitmen kapasitas ke depan tanpa nunggu komponennya beneran digeser hari demi
+                // hari. Dihitung dari POSISI LIVE + hariKeN AKTUAL (reuse hariKeNFromMap yang sama
+                // dipakai kalkulasi kapasitas asli) tiap render - jadi kalau posisi live-nya
+                // berubah (kena geser/skip/selesai lebih cepat), proyeksi otomatis ikut geser,
+                // BUKAN snapshot beku dari saat assign.
+                const wiringForwardMap:Record<string,{kode:string;wp:string;hariKeN:number;orang:number}[]>=(()=>{
+                  if(!PROSES_ORANG_RAW.includes(row.proses))return{};
+                  const map:Record<string,{kode:string;wp:string;hariKeN:number;orang:number}[]>={};
+                  const panelIdRow=row.panel_id||row.panelId;
+                  const panelDataRow=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelIdRow));
+                  Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
+                    (liveEntries||[]).forEach((e:any)=>{
+                      (e.komponen||[]).forEach((kode:string)=>{
+                        if(kode.startsWith("__wiring_"))return;
+                        if(e.digeserKe?.[kode])return; // jejak - bukan posisi live
+                        const progress=panelDataRow?.checklist?.[kode]?.progress?.[row.proses]||0;
+                        if(progress>=100)return;
+                        const bobot=row.bobot_komponen?.[kode];
+                        const tableLen=(WIRING_BOBOT_TABLE[bobot||"MEDIUM"]||WIRING_BOBOT_TABLE.MEDIUM).length;
+                        const hariKeNLive=hariKeNFromMap(wiringHariKerjaMap,panelIdRow,kode,row.proses,liveDate);
+                        const sisaHari=Math.max(1,tableLen-hariKeNLive+1);
+                        for(let off=1;off<sisaHari;off++){
+                          const projDate=addDays(liveDate,off);
+                          const hariKeNProj=hariKeNLive+off;
+                          if(!map[projDate])map[projDate]=[];
+                          map[projDate].push({kode,wp:e.wp,hariKeN:hariKeNProj,orang:kebutuhanOrangWiring(bobot,hariKeNProj)});
+                        }
+                      });
+                    });
+                  });
+                  return map;
+                })();
+
                 if(false&&subBarisKomponen&&subBarisKomponen.length>0){
                   return(
                     <Fragment key={row.id}>
@@ -1548,6 +1585,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         colSpanCount=days.filter(dd=>dd>=rentangInfo.mulai&&dd<=rentangInfo.selesai).length;
                       }
                       const entries=row.schedule?.[d]||[];
+                      const projectedHariIni=wiringForwardMap[d]||[];
                       const busbarEntries:string[]=row.busbar_schedule?.[d]||[];
                       // Kode yang dari TANGGAL INI (d) udah digeser otomatis ke besok (belum
                       // sempat dikerjakan) - dipakai buat nampilin indikator "→ digeser" di sisi
@@ -1616,12 +1654,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 })}
                               </div>
                             );
-                          })():entries.length>0?(
+                          })():(entries.length>0||projectedHariIni.length>0)?(
                             PROSES_ORANG_RAW.includes(row.proses)?(
                               <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
                                 onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
-                                draggable={true} onDragStart={e=>onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries))} onDragEnd={onDragEnd}
-                                style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:"grab"}}>
+                                draggable={entries.length>0} onDragStart={e=>{if(entries.length>0)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
+                                style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:entries.length>0?"grab":"default"}}>
                                 {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
                                     if(kode.startsWith("__wiring_"))return null;
                                   const panelIdKomp=row.panel_id||row.panelId;
@@ -1657,6 +1695,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 </div>
                                   );
                                 }))}
+                                {projectedHariIni.map((p)=>(
+                                  <div key={"proj-"+p.wp+p.kode} title={`Proyeksi (belum posisi live sebenarnya) - hari kerja ke-${p.hariKeN}, bobot ${WIRING_BOBOT_LABEL[row.bobot_komponen?.[p.kode]||"MEDIUM"]}, butuh ${p.orang} orang. Posisi aktual masih di tanggal sebelumnya sampai beneran dikerjakan/digeser ke sini.`}
+                                    style={{display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":"#fff",color:isPast?"#94a3b8":(WP_COLOR[p.wp]||"#64748b"),border:`1px dashed ${isPast?"#e2e8f0":(WP_COLOR[p.wp]||"#64748b")+"66"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:0.6}}>
+                                    <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:55}}>{getNamaKomponenDariKode(row.panel_id||row.panelId,p.kode)}</span>
+                                    <span style={{fontSize:7,fontWeight:700,color:"#94a3b8"}}>H{p.hariKeN}</span>
+                                    <span style={{fontSize:7,display:"flex",alignItems:"center",gap:1}}><i className="ti ti-users" style={{fontSize:7}}/>{p.orang}</span>
+                                  </div>
+                                ))}
                               </div>
                             ):(
                             <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
@@ -1992,7 +2038,45 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       );
                     })}
                   </div>
-                ):(
+                ):null}
+                {PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(()=>{
+                  // Preview MURNI tampilan - reuse kebutuhanOrangWiring/hariKeNFromMap yang sama
+                  // dipakai buat kalkulasi kapasitas real, gak ada angka hardcode. mulaiHariKeN
+                  // dihitung dari histori aktual (bukan selalu 1) biar akurat kalau komponen ini
+                  // udah pernah dikerjakan sebelumnya.
+                  const selectedBelumSelesai=modalKomponen.filter(k=>{
+                    const kl=livePanelForCell?.checklist?.[k];
+                    return (kl?.progress?.[rawRow?.proses||""]||0)<100;
+                  });
+                  if(selectedBelumSelesai.length===0)return null;
+                  const perKode=selectedBelumSelesai.map(k=>{
+                    const bobot=modalBobotPerKomponen[k]??rawRow?.bobot_komponen?.[k]??"MEDIUM";
+                    const mulaiHariKeN=hariKeNFromMap(wiringHariKerjaMap,livePanelForCell?.id,k,rawRow?.proses||"",cellModal?.date||"");
+                    const tableLen=(WIRING_BOBOT_TABLE[bobot]||WIRING_BOBOT_TABLE.MEDIUM).length;
+                    return{bobot,mulaiHariKeN,sisaHari:Math.max(1,tableLen-mulaiHariKeN+1)};
+                  });
+                  const maxDays=Math.max(...perKode.map(p=>p.sisaHari));
+                  const relLabel=(off:number)=>off===0?"Hari ini":off===1?"Besok":off===2?"Lusa":`H+${off}`;
+                  const kurva=Array.from({length:maxDays},(_,off)=>({
+                    label:relLabel(off),
+                    total:perKode.reduce((s,p)=>s+kebutuhanOrangWiring(p.bobot,p.mulaiHariKeN+off),0),
+                  }));
+                  return(
+                    <div style={{background:"#faf5ff",border:"1px solid #e9d5ff",borderRadius:8,padding:10,marginBottom:12}}>
+                      <div style={{fontSize:11,fontWeight:700,color:"#7c3aed",marginBottom:6}}>📊 Preview Kebutuhan Orang per Hari</div>
+                      <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
+                        {kurva.map((row,i)=>(
+                          <div key={i} style={{textAlign:"center" as const,minWidth:52}}>
+                            <div style={{fontSize:9,color:"#64748b",marginBottom:2}}>{row.label}</div>
+                            <div style={{fontSize:13,fontWeight:800,color:"#7c3aed"}}>{row.total}</div>
+                            <div style={{fontSize:8,color:"#94a3b8"}}>orang</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+                {!PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(
                   <>
                   {wpItems.length>0&&(
                     <button onClick={()=>{
