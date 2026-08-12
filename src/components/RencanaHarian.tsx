@@ -607,7 +607,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
                             <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
                             <td style={{...td,fontWeight:600,color:"#1e293b"}}>{t.panel}</td>
-                            <td style={{...td,textAlign:"center"}}>{t.wp!=="BUSBAR"&&<span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span>}</td>
+                            <td style={{...td,textAlign:"center"}}>{t.proses!=="BUSBAR"&&<span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span>}</td>
                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
                             <td style={{...td}}>
                               <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${kode} - ${item.nama}`:kode}</span>
