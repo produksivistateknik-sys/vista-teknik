@@ -1,6 +1,7 @@
 import { supabase } from '../lib/supabase'
 import { KOMPONEN_PROSES_MAP, ALL_PROSES } from '../constants/panelTypes'
 import { kebutuhanOrangWiring } from '../lib/panelHelpers'
+import { activityLogService } from './activityLogService'
 
 // ================= WIRING CONTROL/POWER: "hari kerja ke-N" dari histori fcs_timer_kerja =================
 // Sinyal "hari kerja aktual" (BUKAN hari kalender) - dipakai bareng kebutuhanOrangWiring() buat
@@ -1552,6 +1553,24 @@ export async function setOverrideAndRebalance(params: {
     for (const rawIdStr of Object.keys(mutasi)) {
       const rawId = Number(rawIdStr)
       await supabase.from('raw_schedule').update({ schedule: mutasi[rawId] }).eq('id', rawId)
+    }
+
+    // FIX (12 Agu 2026): overflow (gak ketemu slot kapasitas dalam 60 hari, dibuang ke
+    // tanggal+60) SEBELUMNYA cuma ditampilkan sekali di modal saat itu juga - begitu modal
+    // ditutup, gak ada jejak lagi di manapun (beda dari auto-geser-harian yang overbook
+    // warning-nya ditulis ke activity_log, jadi masih ketemu belakangan). Insiden nyata: FS.13
+    // (Pintu) LVMDP-FINNS RESORT ke-dump ke tanggal+60 hari lewat jalur ini, gak ketauan sampai
+    // digali manual jauh setelahnya. Sekarang overflow ditulis ke activity_log juga, sama pola
+    // dengan auto-geser-harian, biar bisa ketemu belakangan lewat halaman Activity Log.
+    const overflowItems = shifted.filter((s) => s.overflow)
+    if (overflowItems.length > 0) {
+      await activityLogService.insert({
+        user_name: createdBy || 'System',
+        action: 'REBALANCE KAPASITAS: PERLU REVIEW MANUAL',
+        description: `Set kapasitas ${jenisPekerjaan} (${tanggal}) gak nemu slot kosong dalam 60 hari buat ${overflowItems.length} komponen - dibuang sementara ke tanggal+60 hari (overbook): ` +
+          overflowItems.map((s) => `${s.namaKomponen} (${s.panelNama}/${s.proyek}) ${s.dariTanggal}→${s.keTanggal}`).join(', '),
+        module: 'raw', halaman: 'Raw Schedule',
+      })
     }
 
     return { success: true, shifted }
