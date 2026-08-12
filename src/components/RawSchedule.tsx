@@ -11,6 +11,29 @@ import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 
+// Proyeksi hari-hari kerja BERIKUTNYA (H+1, H+2, ...) untuk SATU komponen wiring yang lagi
+// live di `liveDate`, sepanjang sisa durasi standar bobotnya - SATU sumber kebenaran dipakai
+// BARENG oleh kartu proyeksi di grid (wiringForwardMap) dan badge Capacity Utilization, biar
+// formulanya gak pernah bisa "kesplit"/beda antara dua tempat itu. Gak termasuk liveDate itu
+// sendiri (offset mulai dari 1) - liveDate direpresentasikan oleh entry ASLI (real), bukan
+// proyeksi. hariKeNLive dihitung SEKALI dari histori kerja AKTUAL (fcs_timer_kerja, lewat
+// hariKeNFromMap) - offset berikutnya cuma proyeksi optimis "kalau lanjut mulus", BUKAN dihitung
+// ulang per tanggal proyeksi (soalnya tanggal-tanggal itu belum kejadian, belum ada histori).
+const hitungProyeksiWiring=(
+  panelIdRow:any,kode:string,proses:string,wp:string,liveDate:string,bobot:string|undefined,
+  wiringHariKerjaMap:Record<string,string[]>,
+):{tanggal:string;kode:string;wp:string;hariKeN:number;orang:number}[]=>{
+  const tableLen=(WIRING_BOBOT_TABLE[bobot||"MEDIUM"]||WIRING_BOBOT_TABLE.MEDIUM).length;
+  const hariKeNLive=hariKeNFromMap(wiringHariKerjaMap,panelIdRow,kode,proses,liveDate);
+  const sisaHari=Math.max(1,tableLen-hariKeNLive+1);
+  const hasil:{tanggal:string;kode:string;wp:string;hariKeN:number;orang:number}[]=[];
+  for(let off=1;off<sisaHari;off++){
+    const hariKeNProj=hariKeNLive+off;
+    hasil.push({tanggal:addDays(liveDate,off),kode,wp,hariKeN:hariKeNProj,orang:kebutuhanOrangWiring(bobot,hariKeNProj)});
+  }
+  return hasil;
+};
+
 export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [weekStart,setWeekStart]=useState(TODAY);
@@ -1366,6 +1389,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
                   if(!panelData)return;
                   const entries=r.schedule?.[d]||[];
+                  // Kode wiring yang UDAH punya entry REAL di tanggal d - dipakai buat dedup
+                  // proyeksi di bawah (real selalu menang, gak boleh dobel-hitung).
+                  const kodeRealHariIni=new Set<string>(isOrangPr?entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'))):[]);
                   entries.forEach((e:any)=>{
                     if(isOrangPr){
                       // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN, dari bobot_komponen
@@ -1389,6 +1415,29 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       });
                     }
                   });
+                  // TAMBAHAN (12 Agu 2026): kartu proyeksi (wiringForwardMap di grid) sekarang ikut
+                  // kehitung badge juga - reuse hitungProyeksiWiring yang SAMA dipakai kartu, biar
+                  // planner lain gak overbook di hari yang "keliatan" udah terisi kartu proyeksi
+                  // (mis. komponen VERY_HARD 4 hari yang cuma punya 1 entry real). Kode yang UDAH
+                  // ada entry real di tanggal d (kodeRealHariIni) di-skip - real selalu menang.
+                  if(isOrangPr){
+                    Object.entries(r.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
+                      if(liveDate===d)return;
+                      (liveEntries||[]).forEach((e:any)=>{
+                        (e.komponen||[]).forEach((kode:string)=>{
+                          if(kode.startsWith('__wiring_'))return;
+                          if(e.digeserKe?.[kode])return;
+                          if(kodeRealHariIni.has(kode))return;
+                          const progress=panelData?.checklist?.[kode]?.progress?.[pr]||0;
+                          if(progress>=100)return;
+                          const bobot=r.bobot_komponen?.[kode];
+                          hitungProyeksiWiring(panelId,kode,pr,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
+                            if(p.tanggal===d)terpakaiPr+=p.orang;
+                          });
+                        });
+                      });
+                    });
+                  }
                 });
                 return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov,satuan:isOrangPr?"orang":"mnt"};
               });
@@ -1511,15 +1560,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         const progress=panelDataRow?.checklist?.[kode]?.progress?.[row.proses]||0;
                         if(progress>=100)return;
                         const bobot=row.bobot_komponen?.[kode];
-                        const tableLen=(WIRING_BOBOT_TABLE[bobot||"MEDIUM"]||WIRING_BOBOT_TABLE.MEDIUM).length;
-                        const hariKeNLive=hariKeNFromMap(wiringHariKerjaMap,panelIdRow,kode,row.proses,liveDate);
-                        const sisaHari=Math.max(1,tableLen-hariKeNLive+1);
-                        for(let off=1;off<sisaHari;off++){
-                          const projDate=addDays(liveDate,off);
-                          const hariKeNProj=hariKeNLive+off;
-                          if(!map[projDate])map[projDate]=[];
-                          map[projDate].push({kode,wp:e.wp,hariKeN:hariKeNProj,orang:kebutuhanOrangWiring(bobot,hariKeNProj)});
-                        }
+                        hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(({tanggal,...proj})=>{
+                          if(!map[tanggal])map[tanggal]=[];
+                          map[tanggal].push(proj);
+                        });
                       });
                     });
                   });
