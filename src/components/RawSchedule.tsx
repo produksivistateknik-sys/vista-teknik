@@ -1467,7 +1467,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             style={{cursor:"pointer"}} title="Klik buat edit kapasitas">
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",fontSize:9,marginBottom:2}}>
                               <span style={{color:"#64748b"}}>{pp.nama} ✎</span>
-                              <span style={{fontWeight:700,color:"#1e293b"}}>{Math.round(pp.terpakai)}/{pp.kapasitas} {pp.satuan}</span>
+                              <span style={{fontWeight:700,color:"#1e293b"}}>{pp.satuan==="orang"?Number(pp.terpakai.toFixed(1)):Math.round(pp.terpakai)}/{pp.kapasitas} {pp.satuan}</span>
                             </div>
                             <div style={{width:"100%",height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
                               <div style={{width:pctPr+"%",height:"100%",background:colorPr,borderRadius:99}}/>
@@ -2384,7 +2384,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <Modal title={"Kuota Orang Penuh — "+swapOrangModal.tanggal} onClose={()=>{setSwapOrangModal(null);setSwapOrangSelected([]);}} width={540}>
           <div style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#991b1b",display:"flex",gap:8,alignItems:"flex-start"}}>
             <span>⚠️</span>
-            <span>Kuota {swapOrangModal.proses} tanggal {fmtDate(swapOrangModal.tanggal)}: {Math.round(swapOrangModal.terpakaiSaatIni)}/{Math.round(swapOrangModal.kuotaHari)} orang sudah terisi. Komponen baru butuh {Math.round(swapOrangModal.orangDibutuhkan)} orang lagi (total jadi {Math.round(swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan)}). Pilih salah satu:</span>
+            <span>Kuota {swapOrangModal.proses} tanggal {fmtDate(swapOrangModal.tanggal)}: {Number(swapOrangModal.terpakaiSaatIni.toFixed(1))}/{Number(swapOrangModal.kuotaHari.toFixed(1))} orang sudah terisi. Komponen baru butuh {Number(swapOrangModal.orangDibutuhkan.toFixed(1))} orang lagi (total jadi {Number((swapOrangModal.terpakaiSaatIni+swapOrangModal.orangDibutuhkan).toFixed(1))}). Pilih salah satu:</span>
           </div>
 
           <div>
