@@ -2029,6 +2029,7 @@ export type Database = {
       }
       permintaan: {
         Row: {
+          catatan: string | null
           created_at: string
           divisi: string
           id: number
@@ -2037,11 +2038,13 @@ export type Database = {
           panel_id: number | null
           panel_nama: string | null
           proyek: string | null
+          status: string | null
           sub_bagian: string | null
           wo_id: number | null
           wo_number: string | null
         }
         Insert: {
+          catatan?: string | null
           created_at?: string
           divisi: string
           id?: number
@@ -2050,11 +2053,13 @@ export type Database = {
           panel_id?: number | null
           panel_nama?: string | null
           proyek?: string | null
+          status?: string | null
           sub_bagian?: string | null
           wo_id?: number | null
           wo_number?: string | null
         }
         Update: {
+          catatan?: string | null
           created_at?: string
           divisi?: string
           id?: number
@@ -2063,6 +2068,7 @@ export type Database = {
           panel_id?: number | null
           panel_nama?: string | null
           proyek?: string | null
+          status?: string | null
           sub_bagian?: string | null
           wo_id?: number | null
           wo_number?: string | null
@@ -2093,6 +2099,7 @@ export type Database = {
           nama_komponen: string
           permintaan_id: number
           qty: number
+          satuan: string | null
           status: string
           sudah_diambil: boolean
           updated_at: string | null
@@ -2106,6 +2113,7 @@ export type Database = {
           nama_komponen: string
           permintaan_id: number
           qty?: number
+          satuan?: string | null
           status?: string
           sudah_diambil?: boolean
           updated_at?: string | null
@@ -2119,6 +2127,7 @@ export type Database = {
           nama_komponen?: string
           permintaan_id?: number
           qty?: number
+          satuan?: string | null
           status?: string
           sudah_diambil?: boolean
           updated_at?: string | null

@@ -284,7 +284,7 @@ function BBMBPermintaanMasuk({ adminName }: { adminName: string }) {
                     {items.map((it: any) => (
                       <div key={it.id}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px' }}>
-                          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{it.nama_komponen} <span style={{ color: '#64748b', fontWeight: 500 }}>×{it.qty}</span></span>
+                          <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{it.nama_komponen} <span style={{ color: '#64748b', fontWeight: 500 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
                           {it.status === 'pending' ? (
                             <div style={{ display: 'flex', gap: 6 }}>
                               <button onClick={() => setItemStatus(it.id, 'submit')}
@@ -373,7 +373,7 @@ function BBMBRiwayatHarian() {
                 {p.items.map((it: any) => (
                   <div key={it.id}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px' }}>
-                      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{it.nama_komponen} <span style={{ color: '#64748b', fontWeight: 500 }}>×{it.qty}</span></span>
+                      <span style={{ flex: 1, fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{it.nama_komponen} <span style={{ color: '#64748b', fontWeight: 500 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
                       <span style={{ background: STATUS_COLOR_BBMB[it.status] + '18', color: STATUS_COLOR_BBMB[it.status], borderRadius: 20, padding: '2px 10px', fontSize: 10, fontWeight: 700, whiteSpace: 'nowrap' }}>
                         {STATUS_LABEL_BBMB[it.status] || it.status}
                       </span>
@@ -397,34 +397,30 @@ const BBMU_SUBTABS = [
 ] as const
 
 function BBMUSection({ adminName }: { adminName: string }) {
+  void adminName // permintaan (header BBMU) gak punya kolom updated_by/updated_at
   const [subTab, setSubTab] = useState<typeof BBMU_SUBTABS[number]['key']>('wiring_ctrl')
   const [loading, setLoading] = useState(true)
   const [perms, setPerms] = useState<any[]>([])
-  const [itemsByPerm, setItemsByPerm] = useState<Record<number, any[]>>({})
 
   const fetchData = async () => {
     setLoading(true)
     const rows = await fetchAllPaged((from, to) =>
       supabase.from('permintaan').select('*').eq('jenis', 'BBMU').order('created_at', { ascending: false }).range(from, to))
-    const ids = rows.map((p: any) => p.id)
-    const items = await fetchItemsByPermintaanIds(ids)
     setPerms(rows)
-    setItemsByPerm(groupItemsByPermintaan(items))
     setLoading(false)
   }
 
   useEffect(() => {
     fetchData()
     const ch = supabase.channel('realtime-permintaan-bbmu')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan_item' }, fetchData)
-      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'permintaan' }, fetchData)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan' }, fetchData)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  const setItemStatus = async (itemId: number, status: string) => {
-    await supabase.from('permintaan_item').update({ status, updated_by: adminName, updated_at: new Date().toISOString() }).eq('id', itemId)
+  const setStatus = async (permId: number, status: string) => {
+    await supabase.from('permintaan').update({ status }).eq('id', permId)
     fetchData()
   }
 
@@ -458,26 +454,20 @@ function BBMUSection({ adminName }: { adminName: string }) {
                 </div>
                 <div style={{ fontSize: 10.5, color: '#94a3b8' }}>{fmtDateTime(p.created_at)}</div>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {(itemsByPerm[p.id] || []).map((it: any) => (
-                  <div key={it.id} style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px', flexWrap: 'wrap' }}>
-                    <span style={{ flex: 1, minWidth: 140, fontSize: 12.5, fontWeight: 600, color: '#334155' }}>{it.nama_komponen} <span style={{ color: '#64748b', fontWeight: 500 }}>×{it.qty}</span></span>
-                    <div style={{ display: 'flex', gap: 4 }}>
-                      {(['tersedia', 'belum_lengkap', 'belum_datang'] as const).map(s => {
-                        const active = it.status === s
-                        return (
-                          <button key={s} onClick={() => setItemStatus(it.id, s)}
-                            style={{ padding: '4px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit',
-                              border: active ? 'none' : `1px solid ${STATUS_COLOR_BBMU[s]}44`,
-                              background: active ? STATUS_COLOR_BBMU[s] : STATUS_COLOR_BBMU[s] + '10',
-                              color: active ? '#fff' : STATUS_COLOR_BBMU[s] }}>
-                            {STATUS_LABEL_BBMU[s]}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
+              {p.catatan && <div style={{ fontSize: 12.5, fontWeight: 600, color: '#334155', background: '#f8fafc', borderRadius: 8, padding: '8px 10px', marginBottom: 10 }}>{p.catatan}</div>}
+              <div style={{ display: 'flex', gap: 4 }}>
+                {(['tersedia', 'belum_lengkap', 'belum_datang'] as const).map(s => {
+                  const active = (p.status || 'pending') === s
+                  return (
+                    <button key={s} onClick={() => setStatus(p.id, s)}
+                      style={{ padding: '4px 10px', borderRadius: 20, cursor: 'pointer', fontSize: 10.5, fontWeight: 700, fontFamily: 'inherit',
+                        border: active ? 'none' : `1px solid ${STATUS_COLOR_BBMU[s]}44`,
+                        background: active ? STATUS_COLOR_BBMU[s] : STATUS_COLOR_BBMU[s] + '10',
+                        color: active ? '#fff' : STATUS_COLOR_BBMU[s] }}>
+                      {STATUS_LABEL_BBMU[s]}
+                    </button>
+                  )
+                })}
               </div>
             </Card>
           ))}
