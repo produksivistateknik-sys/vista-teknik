@@ -16,7 +16,6 @@ import {
   DIVISI_PROSES, DIVISI_PROSES_MAP, QTY_DIVISI,
   KOMPONEN_PROSES_MAP, BUSBAR_KOMPONEN, BUSBAR_COLORS,
   DIVISI_CONFIG, OPERATOR_ROLES, PROSES_ORANG_RAW_GLOBAL,
-  WO_SEED, RAW_SEED, RENHAR_SEED,
 } from './constants/panelTypes'
 import {
   getBusbarKomponen, isKomponenRelevant, getRelevantProsesForKode, getEffCfgGlobal,
@@ -603,28 +602,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </div>
         </div>
       )}
-      {isOp?(
-        <div style={{display:"flex",flexDirection:"column",minHeight:"100vh",background:"#f8fafc"}}>
-          <div style={{background:"#fff",borderBottom:"1px solid #eaecf0",padding:"0 16px",height:46,display:"flex",alignItems:"center",justifyContent:"space-between",position:"sticky",top:0,zIndex:100}}>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <div className="erp-logo">V</div>
-              <span style={{fontWeight:700,fontSize:13,color:"#0f172a"}}>Vista Teknik</span>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:8}}>
-              <span style={{background:cfg.bg,color:cfg.color,borderRadius:5,padding:"2px 10px",fontSize:10,fontWeight:600}}>{cfg.label}</span>
-              <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",borderRadius:5,padding:"4px 10px",cursor:"pointer",fontSize:11,fontFamily:"inherit"}}>Keluar</button>
-            </div>
-          </div>
-          <div style={{flex:1,overflowY:"auto"}}>
-            {/* Cabang ini dijamin gak pernah kejalan - isOp===true selalu ke-tangkap duluan sama
-                early return "Redirect operator ke vista-pekerja" di atas (baris ~413). Sengaja
-                gak dihapus strukturnya malam ini (restrukturisasi ternary besar ini beresiko
-                salah pasang kurung di return statement raksasa) - OperatorView sendiri gak pernah
-                ada di vista-teknik (itu komponen vista-pekerja), makanya bikin TS error. */}
-            {null}
-          </div>
-        </div>
-      ):(
         <div className="erp-wrap">
           <div className={"erp-sb"+(sidebarCollapsed?" col":"")}>
             <div className="erp-sb-head">
@@ -854,7 +831,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             </div>
           </div>
         </div>
-      )}
     </>
   );
 }

@@ -203,10 +203,3 @@ export const DIVISI_CONFIG = {
 export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc","nameplate","komponen"];
 
 export const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
-
-// ─────────────────────────────────────────────────────────────────────────────
-// SEED DATA
-// ─────────────────────────────────────────────────────────────────────────────
-export const WO_SEED=[];
-export const RAW_SEED=[];
-export const RENHAR_SEED=[];
