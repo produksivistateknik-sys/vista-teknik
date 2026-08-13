@@ -2094,6 +2094,7 @@ export type Database = {
           permintaan_id: number
           qty: number
           status: string
+          sudah_diambil: boolean
           updated_at: string | null
           updated_by: string | null
         }
@@ -2106,6 +2107,7 @@ export type Database = {
           permintaan_id: number
           qty?: number
           status?: string
+          sudah_diambil?: boolean
           updated_at?: string | null
           updated_by?: string | null
         }
@@ -2118,6 +2120,7 @@ export type Database = {
           permintaan_id?: number
           qty?: number
           status?: string
+          sudah_diambil?: boolean
           updated_at?: string | null
           updated_by?: string | null
         }
