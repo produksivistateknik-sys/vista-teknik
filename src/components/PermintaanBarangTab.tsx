@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
+import * as XLSX from 'xlsx'
 import { supabase } from '../lib/supabase'
-import { Card, Btn } from './ui/Primitives'
+import { Card, Btn, Modal } from './ui/Primitives'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sisi warehouse/admin. Independen total
@@ -76,20 +77,133 @@ export function PermintaanBarangTab({ user }: { user: any }) {
 // ================= BBMB =================
 function BBMBSection({ adminName }: { adminName: string }) {
   const [view, setView] = useState<'masuk' | 'riwayat'>('masuk')
+  const [uploadOpen, setUploadOpen] = useState(false)
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
-        {[{ k: 'masuk', l: '📥 Permintaan Masuk' }, { k: 'riwayat', l: '🕒 Riwayat Harian' }].map(t => (
-          <button key={t.k} onClick={() => setView(t.k as any)}
-            style={{ height: 30, padding: '0 16px', borderRadius: 7, cursor: 'pointer', fontWeight: 600, fontSize: 12, fontFamily: 'inherit',
-              border: view === t.k ? '1.5px solid #1d4ed8' : '1px solid #e2e8f0',
-              background: view === t.k ? '#eff6ff' : '#fff', color: view === t.k ? '#1d4ed8' : '#64748b' }}>
-            {t.l}
-          </button>
-        ))}
+      <div style={{ display: 'flex', gap: 8, marginBottom: 14, justifyContent: 'space-between', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', gap: 8 }}>
+          {[{ k: 'masuk', l: '📥 Permintaan Masuk' }, { k: 'riwayat', l: '🕒 Riwayat Harian' }].map(t => (
+            <button key={t.k} onClick={() => setView(t.k as any)}
+              style={{ height: 30, padding: '0 16px', borderRadius: 7, cursor: 'pointer', fontWeight: 600, fontSize: 12, fontFamily: 'inherit',
+                border: view === t.k ? '1.5px solid #1d4ed8' : '1px solid #e2e8f0',
+                background: view === t.k ? '#eff6ff' : '#fff', color: view === t.k ? '#1d4ed8' : '#64748b' }}>
+              {t.l}
+            </button>
+          ))}
+        </div>
+        <button onClick={() => setUploadOpen(true)}
+          style={{ height: 30, padding: '0 16px', borderRadius: 7, cursor: 'pointer', fontWeight: 600, fontSize: 12, fontFamily: 'inherit',
+            border: '1px solid #bbf7d0', background: '#f0fdf4', color: '#16a34a' }}>
+          📤 Upload Master Komponen
+        </button>
       </div>
       {view === 'masuk' ? <BBMBPermintaanMasuk adminName={adminName} /> : <BBMBRiwayatHarian />}
+      {uploadOpen && <UploadMasterKomponenModal onClose={() => setUploadOpen(false)} />}
     </div>
+  )
+}
+
+// ================= Upload Master Komponen (Excel/CSV) =================
+type ParsedRow = { nama: string; satuan: string }
+type UploadResult = { berhasil: number; skipDuplikat: number; skipKosong: number }
+
+const parseFileRows = async (file: File): Promise<ParsedRow[]> => {
+  const buf = await file.arrayBuffer()
+  const wb = XLSX.read(buf, { type: 'array' })
+  const sheet = wb.Sheets[wb.SheetNames[0]]
+  const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
+  return rawRows.map(row => {
+    // Cocokkan header case-insensitive ("Nama"/"NAMA"/"nama" dst) - Excel gak konsisten.
+    const keys = Object.keys(row)
+    const namaKey = keys.find(k => k.trim().toLowerCase() === 'nama')
+    const satuanKey = keys.find(k => k.trim().toLowerCase() === 'satuan')
+    return {
+      nama: String(namaKey ? row[namaKey] : '').trim(),
+      satuan: String(satuanKey ? row[satuanKey] : '').trim(),
+    }
+  })
+}
+
+function UploadMasterKomponenModal({ onClose }: { onClose: () => void }) {
+  const [fileName, setFileName] = useState('')
+  const [parsed, setParsed] = useState<ParsedRow[] | null>(null)
+  const [uploading, setUploading] = useState(false)
+  const [result, setResult] = useState<UploadResult | null>(null)
+  const [error, setError] = useState('')
+
+  const onFile = async (file: File | null) => {
+    if (!file) return
+    setFileName(file.name)
+    setResult(null)
+    setError('')
+    try {
+      const rows = await parseFileRows(file)
+      setParsed(rows)
+    } catch (e: any) {
+      setError('Gagal membaca file: ' + (e?.message || 'format tidak dikenali'))
+      setParsed(null)
+    }
+  }
+
+  const kosongCount = (parsed || []).filter(r => !r.nama).length
+  const isiCount = (parsed || []).length - kosongCount
+
+  const doUpload = async () => {
+    if (!parsed) return
+    setUploading(true)
+    // Ambil semua nama existing dulu (paginated) buat cek duplikat - lebih murah daripada
+    // insert satu-satu dan nangkep error unique constraint per baris.
+    const existing = await fetchAllPaged((from, to) => supabase.from('komponen_bbmb_master').select('nama').range(from, to))
+    const existingSet = new Set(existing.map((r: any) => r.nama.trim().toLowerCase()))
+    const seenInFile = new Set<string>()
+    const toInsert: { nama: string; satuan: string | null }[] = []
+    let skipDuplikat = 0
+    let skipKosong = 0
+    for (const row of parsed) {
+      if (!row.nama) { skipKosong++; continue }
+      const key = row.nama.toLowerCase()
+      if (existingSet.has(key) || seenInFile.has(key)) { skipDuplikat++; continue }
+      seenInFile.add(key)
+      toInsert.push({ nama: row.nama, satuan: row.satuan || null })
+    }
+    if (toInsert.length > 0) {
+      const { error: insErr } = await supabase.from('komponen_bbmb_master').insert(toInsert)
+      if (insErr) { setError('Gagal upload: ' + insErr.message); setUploading(false); return }
+    }
+    setResult({ berhasil: toInsert.length, skipDuplikat, skipKosong })
+    setUploading(false)
+  }
+
+  return (
+    <Modal title="📤 Upload Master Komponen BBMB" onClose={onClose} width={480}>
+      <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
+        File Excel (.xlsx) atau CSV dengan kolom <strong>nama</strong> (wajib) dan <strong>satuan</strong> (opsional, mis. "pcs"/"meter"). Baris dengan nama yang sudah ada di master (atau duplikat dalam file) otomatis dilewati - data lama TIDAK dihapus/diganti.
+      </div>
+      <input type="file" accept=".xlsx,.xls,.csv" onChange={(e: any) => onFile(e.target.files?.[0] || null)}
+        style={{ width: '100%', padding: '8px 0', fontSize: 12, marginBottom: 12 }} />
+      {error && <div style={{ background: '#fef2f2', border: '1px solid #fecaca', color: '#dc2626', borderRadius: 8, padding: '8px 12px', fontSize: 12, marginBottom: 12 }}>{error}</div>}
+      {parsed && !result && (
+        <div style={{ background: '#f8fafc', borderRadius: 8, padding: '10px 12px', fontSize: 12, color: '#475569', marginBottom: 14 }}>
+          <strong>{fileName}</strong> — {parsed.length} baris terdeteksi ({isiCount} ada nama{kosongCount > 0 ? `, ${kosongCount} kosong (akan dilewati)` : ''}).
+        </div>
+      )}
+      {result && (
+        <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 8, padding: '10px 12px', fontSize: 12.5, color: '#166534', marginBottom: 14, lineHeight: 1.8 }}>
+          ✅ <strong>{result.berhasil}</strong> komponen berhasil ditambahkan.<br />
+          {result.skipDuplikat > 0 && <>⏭ {result.skipDuplikat} baris dilewati (nama sudah ada / duplikat).<br /></>}
+          {result.skipKosong > 0 && <>⏭ {result.skipKosong} baris dilewati (kolom nama kosong).<br /></>}
+        </div>
+      )}
+      <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <Btn outline color="#64748b" onClick={onClose}>{result ? 'Tutup' : 'Batal'}</Btn>
+        {!result && (
+          <Btn color="#16a34a" onClick={doUpload} disabled={!parsed || uploading || isiCount === 0}
+            style={{ opacity: !parsed || uploading || isiCount === 0 ? 0.6 : 1 }}>
+            {uploading ? 'Mengunggah...' : `Upload ${isiCount > 0 ? `(${isiCount} baris)` : ''}`}
+          </Btn>
+        )}
+      </div>
+    </Modal>
   )
 }
 
