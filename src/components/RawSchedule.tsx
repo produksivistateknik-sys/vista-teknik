@@ -2603,7 +2603,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         <div style={{fontWeight:700,color:"#1e293b"}}>{s.namaKomponen} — {s.panelNama}</div>
                         <div style={{color:"#64748b"}}>WO {s.woNumber} · {s.proyek}</div>
                         <div style={{color:s.overflow?"#dc2626":"#92400e",fontWeight:600,marginTop:2}}>
-                          {fmtDate(s.dariTanggal)} → {fmtDate(s.keTanggal)}{s.overflow?" (overflow, tetep kelebihan)":""}
+                          {s.overflow
+                            ?`${fmtDate(s.dariTanggal)} — TIDAK dipindah (gak ketemu slot kosong 60 hari, tetap overbook di sini)`
+                            :`${fmtDate(s.dariTanggal)} → ${fmtDate(s.keTanggal)}`}
                         </div>
                       </div>
                     ))}

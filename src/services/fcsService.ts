@@ -1498,7 +1498,6 @@ export async function setOverrideAndRebalance(params: {
       let tujuan: string | null = null
       let cur = addDays(tanggal, 1)
       let attempts = 0
-      let overflow = false
       while (attempts < 60) {
         const kap = kapasitasMap[cur]
         if (kap !== undefined && kap > 0) {
@@ -1511,9 +1510,27 @@ export async function setOverrideAndRebalance(params: {
         cur = addDays(cur, 1)
         attempts++
       }
+
       if (!tujuan) {
-        tujuan = addDays(tanggal, 60)
-        overflow = true
+        // FIX (13 Agu 2026): SEBELUMNYA di sini maksa tujuan=addDays(tanggal,60) - komponen
+        // "hilang" diam-diam ke 2 bulan ke depan tanpa jejak jelas begitu 60 hari ke depan
+        // gak ada kapasitas terkonfigurasi sama sekali (insiden nyata: WM_SS.2/P-SWP 04
+        // GODREJ BOROBUDUR loncat ke Oktober, akar sama dengan kasus FS.13/STEL sebelumnya).
+        // Sekarang disamakan dengan prinsip no-displacement WIRING di auto-geser-harian: kalau
+        // gak ketemu slot kosong dalam 60 hari, JANGAN dipindah sama sekali - biarin di
+        // tanggal asal (overbook di situ, kelihatan jelas), cuma dicatat overflow buat
+        // direview manual (activity_log di bawah).
+        shifted.push({
+          kodeKomponen: item.kode,
+          namaKomponen: item.namaKomponen,
+          panelNama: item.panelNama,
+          proyek: item.proyek,
+          woNumber: item.woNumber,
+          dariTanggal: tanggal,
+          keTanggal: tanggal,
+          overflow: true,
+        })
+        continue
       }
 
       bebanTerpakaiTujuan[tujuan] = (bebanTerpakaiTujuan[tujuan] || 0) + item.beban
@@ -1546,7 +1563,7 @@ export async function setOverrideAndRebalance(params: {
         woNumber: item.woNumber,
         dariTanggal: tanggal,
         keTanggal: tujuan,
-        overflow,
+        overflow: false,
       })
     }
 
@@ -1555,20 +1572,21 @@ export async function setOverrideAndRebalance(params: {
       await supabase.from('raw_schedule').update({ schedule: mutasi[rawId] }).eq('id', rawId)
     }
 
-    // FIX (12 Agu 2026): overflow (gak ketemu slot kapasitas dalam 60 hari, dibuang ke
-    // tanggal+60) SEBELUMNYA cuma ditampilkan sekali di modal saat itu juga - begitu modal
-    // ditutup, gak ada jejak lagi di manapun (beda dari auto-geser-harian yang overbook
-    // warning-nya ditulis ke activity_log, jadi masih ketemu belakangan). Insiden nyata: FS.13
-    // (Pintu) LVMDP-FINNS RESORT ke-dump ke tanggal+60 hari lewat jalur ini, gak ketauan sampai
-    // digali manual jauh setelahnya. Sekarang overflow ditulis ke activity_log juga, sama pola
-    // dengan auto-geser-harian, biar bisa ketemu belakangan lewat halaman Activity Log.
+    // FIX (12-13 Agu 2026): overflow (gak ketemu slot kapasitas dalam 60 hari) SEBELUMNYA
+    // ditampilkan sekali di modal saat itu juga lalu komponennya di-dump ke tanggal+60 (silent
+    // overbook 2 bulan ke depan) - begitu modal ditutup, gak ada jejak lagi di manapun. Insiden
+    // nyata: FS.13 (Pintu) LVMDP-FINNS RESORT dan WM_SS.2 (Groundplate) P-SWP 04-GODREJ
+    // BOROBUDUR sama-sama ke-dump lewat jalur ini, gak ketauan sampai digali manual jauh
+    // setelahnya. Sekarang (13 Agu) komponen overflow TIDAK dipindah sama sekali (tetap di
+    // tanggal asal, overbook di situ - bukan hilang ke tanggal acak), dan overflow-nya ditulis
+    // ke activity_log, sama pola dengan overbook warning auto-geser-harian.
     const overflowItems = shifted.filter((s) => s.overflow)
     if (overflowItems.length > 0) {
       await activityLogService.insert({
         user_name: createdBy || 'System',
         action: 'REBALANCE KAPASITAS: PERLU REVIEW MANUAL',
-        description: `Set kapasitas ${jenisPekerjaan} (${tanggal}) gak nemu slot kosong dalam 60 hari buat ${overflowItems.length} komponen - dibuang sementara ke tanggal+60 hari (overbook): ` +
-          overflowItems.map((s) => `${s.namaKomponen} (${s.panelNama}/${s.proyek}) ${s.dariTanggal}→${s.keTanggal}`).join(', '),
+        description: `Set kapasitas ${jenisPekerjaan} (${tanggal}) gak nemu slot kosong dalam 60 hari buat ${overflowItems.length} komponen - TIDAK dipindah (tetap overbook di tanggal asal, isi kapasitas ke depan buat proses ini): ` +
+          overflowItems.map((s) => `${s.namaKomponen} (${s.panelNama}/${s.proyek}) @ ${s.dariTanggal}`).join(', '),
         module: 'raw', halaman: 'Raw Schedule',
       })
     }
