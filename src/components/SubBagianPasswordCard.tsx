@@ -16,11 +16,15 @@ export function SubBagianPasswordCard(){
 
   // Rendam+Painting digabung jadi 1 sub-bagian login "Painting" di Vista Pekerja - "Rendam"
   // sengaja gak ada lagi di sini (dulu 2 field password terpisah, sekarang cuma 1).
+  // "Warehouse" dihapus dari grup Tracking Komponen (14 Agu 2026) - login-nya sudah ditutup di
+  // Vista Pekerja (subBagianPassword.komponen gak punya key ini lagi), fungsinya pindah ke tab
+  // "Progress" login "Gudang" (password sendiri, gak lewat sistem sub-bagian ini). Row lama di
+  // fcs_sub_bagian_password DIBIARKAN (gak di-DROP), cuma gak ditampilkan di sini lagi.
   const SUBBAGIAN_GROUPS:{label:string,icon:string,color:string,members:string[]}[]=[
     {label:"Mekanik",icon:"🔧",color:"#d97706",members:["Potong","Bending","Stel","Finishing"]},
     {label:"Painting",icon:"🎨",color:"#7c3aed",members:["Painting"]},
     {label:"Assembling",icon:"⚙️",color:"#059669",members:["Assembling Luar","Assembling Dalam"]},
-    {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Warehouse","Assembling","QS","QC"]},
+    {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Assembling","QS","QC"]},
   ];
 
   const fetchPwList=async()=>{

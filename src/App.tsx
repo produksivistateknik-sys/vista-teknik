@@ -56,7 +56,6 @@ const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').
 const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
-const PermintaanBarangTab = lazy(() => import('./components/PermintaanBarangTab').then(m => ({ default: m.PermintaanBarangTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
@@ -477,7 +476,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
-      {id:"permintaan",label:"Permintaan Barang",icon:"ti ti-clipboard-check"},
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
@@ -842,7 +840,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
-              {visitedTabs.includes("permintaan")&&<div style={{display:tab==="permintaan"?"block":"none"}}><Suspense fallback={TabFallback}><PermintaanBarangTab user={user}/></Suspense></div>}
             </div>
           </div>
         </div>
