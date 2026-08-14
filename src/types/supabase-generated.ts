@@ -2031,6 +2031,7 @@ export type Database = {
         Row: {
           catatan: string | null
           created_at: string
+          dilihat_operator: boolean
           divisi: string
           id: number
           jenis: string
@@ -2046,6 +2047,7 @@ export type Database = {
         Insert: {
           catatan?: string | null
           created_at?: string
+          dilihat_operator?: boolean
           divisi: string
           id?: number
           jenis: string
@@ -2061,6 +2063,7 @@ export type Database = {
         Update: {
           catatan?: string | null
           created_at?: string
+          dilihat_operator?: boolean
           divisi?: string
           id?: number
           jenis?: string
@@ -2093,6 +2096,7 @@ export type Database = {
       permintaan_item: {
         Row: {
           catatan_reject: string | null
+          dilihat_operator: boolean
           id: number
           kode_komponen: string | null
           komponen_bbmb_master_id: number | null
@@ -2107,6 +2111,7 @@ export type Database = {
         }
         Insert: {
           catatan_reject?: string | null
+          dilihat_operator?: boolean
           id?: number
           kode_komponen?: string | null
           komponen_bbmb_master_id?: number | null
@@ -2121,6 +2126,7 @@ export type Database = {
         }
         Update: {
           catatan_reject?: string | null
+          dilihat_operator?: boolean
           id?: number
           kode_komponen?: string | null
           komponen_bbmb_master_id?: number | null
