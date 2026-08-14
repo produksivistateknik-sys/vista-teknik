@@ -104,24 +104,31 @@ function BBMBSection({ adminName }: { adminName: string }) {
 }
 
 // ================= Upload Master Komponen (Excel/CSV) =================
-type ParsedRow = { nama: string; satuan: string }
+type ParsedRow = { nama: string; tipe: string }
 type UploadResult = { berhasil: number; skipDuplikat: number; skipKosong: number }
+
+// Kolom A = nama (wajib), kolom B = tipe/spesifikasi (opsional, mis. "SEGI 6" buat
+// "BAUT 10X100 KUNCI"). File sumber (database barang.xlsx) TANPA header - baris
+// pertama LANGSUNG data. Tetap deteksi header kalau suatu saat ada file YANG PAKAI
+// header (baris pertama isinya literal "nama"/"tipe"/dst) - baris itu dilewati,
+// selain itu semua baris (termasuk baris pertama) dianggap data.
+const HEADER_WORDS = new Set(['nama', 'tipe', 'satuan', 'name', 'type'])
+const isHeaderRow = (row: any[]) => {
+  const a = String(row[0] ?? '').trim().toLowerCase()
+  const b = String(row[1] ?? '').trim().toLowerCase()
+  return HEADER_WORDS.has(a) || HEADER_WORDS.has(b)
+}
 
 const parseFileRows = async (file: File): Promise<ParsedRow[]> => {
   const buf = await file.arrayBuffer()
   const wb = XLSX.read(buf, { type: 'array' })
   const sheet = wb.Sheets[wb.SheetNames[0]]
-  const rawRows: any[] = XLSX.utils.sheet_to_json(sheet, { defval: '' })
-  return rawRows.map(row => {
-    // Cocokkan header case-insensitive ("Nama"/"NAMA"/"nama" dst) - Excel gak konsisten.
-    const keys = Object.keys(row)
-    const namaKey = keys.find(k => k.trim().toLowerCase() === 'nama')
-    const satuanKey = keys.find(k => k.trim().toLowerCase() === 'satuan')
-    return {
-      nama: String(namaKey ? row[namaKey] : '').trim(),
-      satuan: String(satuanKey ? row[satuanKey] : '').trim(),
-    }
-  })
+  const rawRows: any[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '', blankrows: false })
+  const dataRows = rawRows.length > 0 && isHeaderRow(rawRows[0]) ? rawRows.slice(1) : rawRows
+  return dataRows.map(row => ({
+    nama: String(row[0] ?? '').trim(),
+    tipe: String(row[1] ?? '').trim(),
+  }))
 }
 
 function UploadMasterKomponenModal({ onClose }: { onClose: () => void }) {
@@ -156,7 +163,7 @@ function UploadMasterKomponenModal({ onClose }: { onClose: () => void }) {
     const existing = await fetchAllPaged((from, to) => supabase.from('komponen_bbmb_master').select('nama').range(from, to))
     const existingSet = new Set(existing.map((r: any) => r.nama.trim().toLowerCase()))
     const seenInFile = new Set<string>()
-    const toInsert: { nama: string; satuan: string | null }[] = []
+    const toInsert: { nama: string; tipe: string | null }[] = []
     let skipDuplikat = 0
     let skipKosong = 0
     for (const row of parsed) {
@@ -164,7 +171,7 @@ function UploadMasterKomponenModal({ onClose }: { onClose: () => void }) {
       const key = row.nama.toLowerCase()
       if (existingSet.has(key) || seenInFile.has(key)) { skipDuplikat++; continue }
       seenInFile.add(key)
-      toInsert.push({ nama: row.nama, satuan: row.satuan || null })
+      toInsert.push({ nama: row.nama, tipe: row.tipe || null })
     }
     if (toInsert.length > 0) {
       const { error: insErr } = await supabase.from('komponen_bbmb_master').insert(toInsert)
@@ -177,7 +184,7 @@ function UploadMasterKomponenModal({ onClose }: { onClose: () => void }) {
   return (
     <Modal title="📤 Upload Master Komponen BBMB" onClose={onClose} width={480}>
       <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>
-        File Excel (.xlsx) atau CSV dengan kolom <strong>nama</strong> (wajib) dan <strong>satuan</strong> (opsional, mis. "pcs"/"meter"). Baris dengan nama yang sudah ada di master (atau duplikat dalam file) otomatis dilewati - data lama TIDAK dihapus/diganti.
+        File Excel (.xlsx) atau CSV, TANPA header - kolom A: <strong>nama</strong> (wajib), kolom B: <strong>tipe</strong>/spesifikasi (opsional, mis. "SEGI 6"). Baris dengan nama yang sudah ada di master (atau duplikat dalam file) otomatis dilewati - data lama TIDAK dihapus/diganti.
       </div>
       <input type="file" accept=".xlsx,.xls,.csv" onChange={(e: any) => onFile(e.target.files?.[0] || null)}
         style={{ width: '100%', padding: '8px 0', fontSize: 12, marginBottom: 12 }} />

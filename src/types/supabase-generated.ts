@@ -1086,18 +1086,21 @@ export type Database = {
           id: number
           nama: string
           satuan: string | null
+          tipe: string | null
         }
         Insert: {
           created_at?: string
           id?: number
           nama: string
           satuan?: string | null
+          tipe?: string | null
         }
         Update: {
           created_at?: string
           id?: number
           nama?: string
           satuan?: string | null
+          tipe?: string | null
         }
         Relationships: []
       }
