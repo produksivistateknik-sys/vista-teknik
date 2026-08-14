@@ -427,11 +427,17 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         hariTanpaKonfigBerturut++
         if (hariTanpaKonfigBerturut >= MAX_HARI_TANPA_KONFIG) {
           // Kapasitas belum dikonfigurasi MAX_HARI_TANPA_KONFIG hari berturut-turut - STOP di sini
-          // (jangan lanjut nebak-nebak sampai 90 hari), tempatkan paksa + catat warning jelas biar
-          // ketauan ini beda kasus dari "kapasitas emang lagi penuh".
+          // (jangan lanjut nebak-nebak sampai 90 hari). FIX (14 Agu 2026, insiden FS.13/LVMDP-
+          // FINNS RESORT & WM_SS.2/P-SWP 04-GODREJ BOROBUDUR): SEBELUMNYA di sini tempatkan PAKSA
+          // sisa pool di `tanggal` (hasil.set) - kalau proses ini jarang disentuh manual, unit bisa
+          // numpuk berhari-hari lalu ke-cascade jauh sekali jalan sampai jatuh ke hari yang
+          // kapasitasnya juga belum dikonfigurasi, force-place di situ (bisa lompat berbulan-bulan
+          // dari tanggal asal). Sekarang disamakan dengan prinsip no-displacement WIRING
+          // (cascadePlaceNoDisplacement di bawah): kalau gak ketemu slot kosong, JANGAN dipindah
+          // sama sekali - biarin di tanggal/entry asal (gak disentuh forEach di caller, lihat
+          // `if (!p) return`), cuma dicatat overbookWarnings buat direview manual.
           const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
-          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit ditempatkan sementara di ${tanggal}. PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
-          pool.forEach((u) => hasil.set(u.id, { finalDate: tanggal }))
+          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit TIDAK dipindah (tetap di tanggal/entry asal, gak dipaksa masuk kemanapun). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
           pool = []
           break
         }
@@ -462,8 +468,9 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       tanggal = addDaysStr(tanggal, 1); hari++
     }
     if (pool.length > 0) {
-      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${mulaiTanggal} - ${pool.length} unit tetap ditempatkan (overbook) di ${tanggal}: ${pool.map((u) => u.sortKode).join(',')}`)
-      pool.forEach((u) => hasil.set(u.id, { finalDate: tanggal }))
+      // FIX (14 Agu 2026): sama seperti branch tanpa-konfigurasi di atas - dulu force-place di
+      // `tanggal` (hari terakhir walk), sekarang TIDAK dipindah sama sekali (no-displacement).
+      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${mulaiTanggal} - ${pool.length} unit TIDAK dipindah (tetap di tanggal/entry asal, dibiarin overbook di situ, gak dipaksa masuk kemanapun): ${pool.map((u) => u.sortKode).join(',')}`)
     }
     return { hasil, hops }
   }

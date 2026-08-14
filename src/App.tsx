@@ -33,6 +33,7 @@ import {
   markRenharDirty, markRawDirty,
 } from './lib/globalState'
 import { GCss } from './styles/globalCss'
+import { useVersionCheck } from './lib/versionCheck'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
 import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
@@ -60,6 +61,7 @@ const PermintaanBarangTab = lazy(() => import('./components/PermintaanBarangTab'
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
 export default function App(){
+  const hasNewVersion=useVersionCheck();
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
@@ -520,6 +522,16 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   return(
     <>
       <style>{GCss}</style>
+      {hasNewVersion&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#1e293b",color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:12,padding:"8px 16px",fontSize:12.5}}>
+          <span>🔄 Ada versi baru aplikasi ini - halaman kamu masih pakai versi lama, muat ulang biar gak kejadian bug lama muncul lagi.</span>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"5px 14px",borderRadius:7,border:"none",background:"#fff",color:"#1e293b",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+            Muat Ulang
+          </button>
+        </div>
+      )}
       {ctxMenu&&(
         <div
           onClick={(e:any)=>e.stopPropagation()}
