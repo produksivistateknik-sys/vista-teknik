@@ -2099,6 +2099,8 @@ export type Database = {
       permintaan_item: {
         Row: {
           catatan_reject: string | null
+          diambil_at: string | null
+          diambil_oleh: string | null
           dilihat_operator: boolean
           id: number
           kode_komponen: string | null
@@ -2114,6 +2116,8 @@ export type Database = {
         }
         Insert: {
           catatan_reject?: string | null
+          diambil_at?: string | null
+          diambil_oleh?: string | null
           dilihat_operator?: boolean
           id?: number
           kode_komponen?: string | null
@@ -2129,6 +2133,8 @@ export type Database = {
         }
         Update: {
           catatan_reject?: string | null
+          diambil_at?: string | null
+          diambil_oleh?: string | null
           dilihat_operator?: boolean
           id?: number
           kode_komponen?: string | null
