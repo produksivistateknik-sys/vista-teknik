@@ -41,9 +41,15 @@ const panelPipelineStatusPk=(panel:any,komponenList:{kode:string,nama:string,pct
 // Pemasangan, biar konsisten di semua tempat. Progress di sini diambil dari rata-rata
 // checklist per-komponen (calcPanelProgress) - Pasang Komponen TETAP proses qty-per-komponen
 // biasa, cuma dilihat di sini sebagai satu angka gabungan per panel.
-const statusPasangKomponen=(pct:number,jumlahFoto:number)=>{
-  if(pct>=100&&jumlahFoto>=1)return"selesai"
-  if(pct>0||jumlahFoto>0)return"proses"
+// BUG FIX (14 Agu 2026): "ada foto" sebelumnya cuma dicek dari pasang_komponen_photos
+// (galeri panel-wide) - panel yang fotonya cuma ada di checklist[kode].fotoPemasangan
+// (galeri per-komponen) salah ke-flag "belum selesai" walau progress 100% dan sudah ada
+// dokumentasi foto (dikonfirmasi lewat data live: 4 dari 50 panel kena kasus ini).
+// Boolean, bukan angka gabungan - jumlahFoto cuma pernah dipakai buat cek >=1/>0 di sini,
+// gak ada tempat lain di laporan ini yang butuh hitungan foto presisi dari nilai ini.
+const statusPasangKomponen=(pct:number,adaFoto:boolean)=>{
+  if(pct>=100&&adaFoto)return"selesai"
+  if(pct>0||adaFoto)return"proses"
   return"belum"
 }
 
@@ -114,8 +120,8 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
 
   const withStatus=useMemo(()=>allPanels.map((p:any)=>{
     const pct=calcPanelProgress(p)["PASANG KOMPONEN"]||0
-    const foto=p.pasang_komponen_photos||[]
-    const pkStatus=statusPasangKomponen(pct,foto.length)
+    const adaFoto=(p.pasang_komponen_photos||[]).length>0||Object.values(p.checklist||{}).some((cl:any)=>(cl?.fotoPemasangan||[]).length>0)
+    const pkStatus=statusPasangKomponen(pct,adaFoto)
     const pipelineStatus=pkStatus==="selesai"?"DONE":panelPipelineStatusPk(p,komponenPanel(p),KOMPONEN_TAHAP_NAMA)
     return{...p,_pkPct:pct,_pkStatus:pkStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels])

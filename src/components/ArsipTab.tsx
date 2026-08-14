@@ -218,7 +218,19 @@ export function ArsipTab({user,refetchWO}:any){
         const sb=QC_STATUS_LABEL[status]||QC_STATUS_LABEL.to_do;
         const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"";
         const wiringItems=komponenWiringPanel(qcDetailPanel);
-        const pasangKomponenFoto=qcDetailPanel.pasang_komponen_photos||[];
+        // BUG FIX (14 Agu 2026): section ini sebelumnya cuma nampilin pasang_komponen_photos
+        // (galeri panel-wide) - foto per-komponen (checklist[kode].fotoPemasangan) gak pernah
+        // ikut nongol di sini, padahal itu sumber foto utama sejak 8 Agu 2026. Digabung, pola
+        // sama kayak totalFotoQualityCenter di atas yang sudah benar gabungin keduanya -
+        // dedupe by url biar foto yang kebetulan ada di dua tempat gak dobel ditampilkan.
+        const pasangKomponenFoto=(()=>{
+          const seen=new Set<string>();
+          const out:any[]=[];
+          [...(qcDetailPanel.pasang_komponen_photos||[]),...Object.values(qcDetailPanel.checklist||{}).flatMap((c:any)=>c?.fotoPemasangan||[])].forEach((f:any)=>{
+            if(f?.url&&!seen.has(f.url)){seen.add(f.url);out.push(f);}
+          });
+          return out;
+        })();
         const pasangKomponenPct=(()=>{try{return calcPanelProgress(qcDetailPanel)["PASANG KOMPONEN"]||0;}catch{return 0;}})();
 
         const sectionCard=(label:string,icon:string,pct:number|null,fotoList:any[])=>(
