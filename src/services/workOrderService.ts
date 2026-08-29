@@ -223,7 +223,7 @@ export const workOrderService = {
       // raw_schedule pas split berantai 2x dalam 44 detik). Sekarang cuma hapus baris yang
       // panel_id-nya BENERAN gak ada lagi di tabel panels (yatim piatu murni, panelnya sendiri
       // udah kehapus dari jalur idsToDelete di atas).
-      const cekYatimPiatu = async (table: string) => {
+      const cekYatimPiatu = async (table: string, beforeDelete?: (ids: number[]) => Promise<void>) => {
         const { data: candidates } = await supabase.from(table as any).select('id,panel_id').eq('wo_id', editWoId)
         if (!candidates || candidates.length === 0) return
         const panelIds = [...new Set(candidates.map((r: any) => r.panel_id).filter(Boolean))]
@@ -234,6 +234,7 @@ export const workOrderService = {
         }
         const idsAmanDihapus = candidates.filter((r: any) => !r.panel_id || !masihHidup.has(r.panel_id)).map((r: any) => r.id)
         if (idsAmanDihapus.length > 0) {
+          if (beforeDelete) await beforeDelete(idsAmanDihapus)
           const { error: cleanupErr } = await supabase.from(table as any).delete().in('id', idsAmanDihapus)
           if (cleanupErr) throw new Error('Gagal cleanup ' + table + ' yatim piatu WO ' + editWoId + ': ' + cleanupErr.message)
         }
@@ -241,7 +242,30 @@ export const workOrderService = {
       await cekYatimPiatu('renhar')
       await cekYatimPiatu('raw_schedule')
       await cekYatimPiatu('fcs_schedule')
-      await supabase.from('work_orders').delete().eq('id', editWoId)
+      // BUG FIX (29 Agu 2026): fcs_tracking_komponen & permintaan punya FK constraint ASLI ke
+      // work_orders.id (beda dari fcs_schedule yang cuma konvensi kolom tanpa FK sungguhan) tapi
+      // dulu SAMA SEKALI gak pernah dibersihkan di sini - itu akar kenapa delete work_orders di
+      // bawah bisa 409 diam-diam (kasus nyata: WO id=139/permintaan). Pakai cekYatimPiatu yang
+      // SAMA (bukan delete polos by wo_id) - alasannya SAMA PERSIS kenapa renhar/raw_schedule/
+      // fcs_schedule pakai orphan-check: panel yang cuma PINDAH ke WO sibling (bukan dihapus)
+      // harus tetap punya row permintaan/fcs_tracking_komponen-nya utuh, jangan ikut kehapus
+      // cuma karena wo_id-nya masih nyantol ke editWoId (kelas bug yang sama persis dengan
+      // insiden CIMORY CITEUREUP yang dijelaskan di komentar atas).
+      await cekYatimPiatu('fcs_tracking_komponen')
+      await cekYatimPiatu('permintaan', async (permIds) => {
+        const { error: piErr } = await supabase.from('permintaan_item').delete().in('permintaan_id', permIds)
+        if (piErr) throw new Error('Gagal cleanup permintaan_item yatim piatu WO ' + editWoId + ': ' + piErr.message)
+      })
+      const { error: delWoErr } = await supabase.from('work_orders').delete().eq('id', editWoId)
+      if (delWoErr) {
+        // BUG FIX (29 Agu 2026): dulu hasil delete ini gak pernah dicek - kalau gagal (masih ada
+        // FK dari tabel yang belum ke-cover cleanup di atas), WO kosong itu diam-diam tetap hidup
+        // dengan 0 panel (akar Bug "WO deadline lama masih muncul"). Sekarang minimal ke-log jelas
+        // ke console biar ketauan ada gap baru yang perlu ditambahkan ke cleanup di atas - TIDAK
+        // throw di sini supaya sisa proses save panel (yang sudah berhasil semua di atas) tetap
+        // dianggap sukses, cuma auto-delete WO kosongnya yang gagal.
+        console.error('[saveWOWithSplit] Gagal auto-delete WO kosong id=' + editWoId + ': ' + delWoErr.message + ' - kemungkinan masih ada tabel lain yang FK ke work_orders belum ke-cover cleanup di atas.')
+      }
     }
   }
 }
