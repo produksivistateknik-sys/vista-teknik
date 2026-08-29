@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { uploadToR2 } from '../lib/r2Client'
 import { activityLogService } from '../services/activityLogService'
 import { fmtShort } from '../lib/dateHelpers'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
@@ -43,11 +44,11 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
     try{
       const fotoBaru:any[]=[];
       for(const s of stagedFoto){
-        const path=`${form.mesin_id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const{error:upErr}=await supabase.storage.from("maintenance-photos").upload(path,s.file,{contentType:s.file.type||"image/jpeg"});
-        if(upErr)continue;
-        const{data:urlData}=supabase.storage.from("maintenance-photos").getPublicUrl(path);
-        fotoBaru.push({url:urlData.publicUrl,uploaded_at:new Date().toISOString()});
+        const key=`maintenance/${form.mesin_id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        try{
+          const publicUrl=await uploadToR2(s.file,key,s.file.type||"image/jpeg");
+          fotoBaru.push({url:publicUrl,uploaded_at:new Date().toISOString()});
+        }catch{continue;}
       }
       const payload:any={mesin_id:Number(form.mesin_id),judul:form.judul.trim(),kendala:form.kendala,perbaikan:form.perbaikan,tgl_kendala:form.tgl_kendala||null,tgl_perbaikan:form.tgl_perbaikan||null,teknisi:form.teknisi,status:form.status};
       if(editId){
