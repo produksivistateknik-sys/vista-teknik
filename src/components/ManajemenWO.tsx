@@ -5,24 +5,17 @@ import { workOrderService } from '../services/workOrderService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { generateFCSSchedule, generateFCSWiring, generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { buildPanelTypesFromBom, initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
+import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
-export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId}:any){
-  const [bomPanelTypesCache,setBomPanelTypesCache]=useState<any>(null);
-  useEffect(()=>{
-    Promise.all([
-      supabase.from("bom_master").select("*"),
-      supabase.from("panel_type_meta").select("*"),
-      supabase.from("panel_wp_meta").select("*"),
-    ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
-      if(bomRes.data&&bomRes.data.length>0){
-        setBomPanelTypesCache(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
-      }
-    });
-  },[]);
+export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
+  // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
+  // panel_type_meta/panel_wp_meta sendiri (duplikat App.tsx yang udah nge-compute livePanelTypes
+  // persis sama dan nge-pass ke TaskMonitoring/DetailProgress/RawSchedule/dll), sekarang reuse
+  // prop yang sama biar gak double-fetch 3 tabel tiap ManajemenWO ke-mount.
+  const bomPanelTypesCache=livePanelTypes;
   const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
   const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);

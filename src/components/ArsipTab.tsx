@@ -73,8 +73,19 @@ export function ArsipTab({user,refetchWO}:any){
 
   const fetchPanelArsip=async()=>{
     setLoading(true);
-    const{data}=await supabase.from("panels_archived").select("*").order("diarsipkan_pada",{ascending:false});
-    setPanelList(data??[]);
+    // Paginasi eksplisit by .range() (audit egress Agu 2026) - tanpa ini query diam-diam capped
+    // 1000 baris (bug class yang sama kayak saga renhar dulu), padahal arsip cuma nambah terus.
+    let all:any[]=[];
+    let from=0;
+    const pageSize=1000;
+    for(;;){
+      const{data,error}=await supabase.from("panels_archived").select("*").order("diarsipkan_pada",{ascending:false}).range(from,from+pageSize-1);
+      if(error||!data)break;
+      all=all.concat(data);
+      if(data.length<pageSize)break;
+      from+=pageSize;
+    }
+    setPanelList(all);
     setLoading(false);
   };
   useEffect(()=>{fetchPanelArsip();},[]);
