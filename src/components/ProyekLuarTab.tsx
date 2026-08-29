@@ -1,0 +1,152 @@
+import { useState, useEffect, useMemo } from "react";
+import { supabase } from "../lib/supabase";
+import { DIVISI_CONFIG } from "../constants/panelTypes";
+import { FotoZoomViewer, type FotoViewer } from "./FotoZoomViewer";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PROYEK LUAR (30 Agu 2026) - sidebar tab sendiri, READ-ONLY (admin cuma lihat, gak
+// edit/hapus di sini) - laporan/dokumentasi pekerjaan operator di proyek eksternal, input
+// dari Vista Pekerja (ProyekLuarView.tsx), tabel `proyek_luar` (migration
+// 20260830010000_create_proyek_luar.sql).
+//
+// Search-first: daftar baru muncul setelah user mengetik nama proyek/operator (biar gak
+// nge-dump seluruh laporan tiap kali tab dibuka), filter divisi/status baru aktif bareng
+// pencarian.
+//
+// Tabel BELUM masuk src/types/supabase-generated.ts - pakai (table as any), pola yang
+// sudah ada di codebase ini buat tabel baru yang belum di-generate types-nya.
+// ─────────────────────────────────────────────────────────────────────────────
+export function ProyekLuarTab(){
+  const[loading,setLoading]=useState(true);
+  const[list,setList]=useState<any[]>([]);
+  const[filterDivisi,setFilterDivisi]=useState("ALL");
+  const[filterStatus,setFilterStatus]=useState("ALL");
+  const[search,setSearch]=useState("");
+  const[expandedId,setExpandedId]=useState<number|null>(null);
+  const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
+
+  const fetchList=async()=>{
+    setLoading(true);
+    // Paginasi eksplisit by .range() - konsisten sama pola tabel lain yang bisa gede
+    // (renhar/panels/dll pernah kena bug 1000-row cap tanpa ini).
+    let all:any[]=[];
+    let from=0;
+    const pageSize=1000;
+    for(;;){
+      const{data,error}=await supabase.from("proyek_luar" as any).select("*").order("created_at",{ascending:false}).range(from,from+pageSize-1);
+      if(error||!data)break;
+      all=all.concat(data);
+      if(data.length<pageSize)break;
+      from+=pageSize;
+    }
+    setList(all);
+    setLoading(false);
+  };
+  useEffect(()=>{
+    fetchList();
+    const ch=supabase.channel("realtime-proyek-luar-admin")
+      .on("postgres_changes",{event:"*",schema:"public",table:"proyek_luar"},fetchList)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const divisiList=useMemo(()=>[...new Set(list.map(l=>l.divisi))],[list]);
+
+  const q=search.trim().toLowerCase();
+  const filtered=useMemo(()=>{
+    if(!q)return[];
+    return list.filter(l=>{
+      if(filterDivisi!=="ALL"&&l.divisi!==filterDivisi)return false;
+      if(filterStatus!=="ALL"&&l.status!==filterStatus)return false;
+      if(!(l.nama_lokasi||"").toLowerCase().includes(q)&&!(l.operator_nama||"").toLowerCase().includes(q))return false;
+      return true;
+    });
+  },[list,filterDivisi,filterStatus,q]);
+
+  const statusStyle:any={
+    berlangsung:{bg:"#fffbeb",color:"#d97706",label:"Berlangsung"},
+    selesai:{bg:"#f0fdf4",color:"#16a34a",label:"Selesai"},
+  };
+
+  return(
+    <div className="fi">
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama proyek / operator..."
+          style={{flex:2,minWidth:200,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
+            fontSize:13,background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)"}}/>
+        <select value={filterDivisi} onChange={e=>setFilterDivisi(e.target.value)} disabled={!q}
+          style={{padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,
+            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:q?1:.5,cursor:q?"pointer":"not-allowed"}}>
+          <option value="ALL">Semua Divisi</option>
+          {divisiList.map(d=>(<option key={d} value={d}>{(DIVISI_CONFIG as any)[d]?.label||d}</option>))}
+        </select>
+        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} disabled={!q}
+          style={{padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,
+            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:q?1:.5,cursor:q?"pointer":"not-allowed"}}>
+          <option value="ALL">Semua Status</option>
+          <option value="berlangsung">Berlangsung</option>
+          <option value="selesai">Selesai</option>
+        </select>
+      </div>
+
+      {!q?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <i className="ti ti-search" style={{fontSize:28,display:"block",marginBottom:8}}/>
+          Ketik nama proyek atau nama operator untuk menampilkan daftar laporan.
+        </div>
+      ):loading?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
+      ):filtered.length===0?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Tidak ada laporan yang cocok.</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          {filtered.map(l=>{
+            const isExp=expandedId===l.id;
+            const st=statusStyle[l.status]||statusStyle.berlangsung;
+            const fotoList:any[]=l.foto||[];
+            const dc=(DIVISI_CONFIG as any)[l.divisi];
+            return(
+              <div key={l.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",
+                borderRadius:10,overflow:"hidden"}}>
+                <div onClick={()=>setExpandedId(isExp?null:l.id)} style={{padding:"14px 16px",cursor:"pointer",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                  <div style={{minWidth:0,flex:1}}>
+                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                      <span style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)"}}>{l.nama_lokasi}</span>
+                      <span style={{fontSize:11,color:dc?.color||"#64748b",background:dc?.bg||"#f1f5f9",borderRadius:20,padding:"2px 9px",fontWeight:700}}>
+                        {dc?.icon} {dc?.label||l.divisi}
+                      </span>
+                    </div>
+                    <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>
+                      👤 {l.operator_nama} · 📅 {l.tanggal} · {fotoList.length} foto
+                    </div>
+                  </div>
+                  <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 12px",fontSize:11.5,fontWeight:700}}>{st.label}</span>
+                </div>
+                {isExp&&(
+                  <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
+                    {l.catatan&&<div style={{fontSize:13,color:"var(--text-secondary,#475569)",marginBottom:14,lineHeight:1.6}}>{l.catatan}</div>}
+                    {fotoList.length===0?(
+                      <div style={{fontSize:12,color:"#94a3b8"}}>Belum ada foto dokumentasi.</div>
+                    ):(
+                      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
+                        {fotoList.map((f:any,fi:number)=>(
+                          <div key={fi} onClick={()=>setFotoViewer({fotos:fotoList,startIndex:fi,label:l.nama_lokasi})}
+                            style={{aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
+                            <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
+    </div>
+  );
+}

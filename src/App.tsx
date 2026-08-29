@@ -56,6 +56,7 @@ const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').
 const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
+const ProyekLuarTab = lazy(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
@@ -483,6 +484,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
         {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+        {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2"},
         {id:"masteruser",label:"System",icon:"ti ti-settings"},
       ]:[]),
     ]},
@@ -839,6 +841,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
+              {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>
