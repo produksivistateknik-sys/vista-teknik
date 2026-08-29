@@ -851,7 +851,22 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
             <div><Lbl>No WO</Lbl><Inp placeholder="016" value={form.wo} onChange={e=>setForm({...form,wo:e.target.value})}/></div>
             <div><Lbl>Nama Proyek</Lbl><Inp placeholder="Bali Tennis Court" value={form.proyek} onChange={e=>setForm({...form,proyek:e.target.value})}/></div>
-            <div><Lbl>Target Tanggal</Lbl><Inp type="date" value={form.target} onChange={e=>setForm({...form,target:e.target.value})}/></div>
+            <div><Lbl>Target Tanggal</Lbl><Inp type="date" value={form.target} onChange={e=>{
+              const newTarget=e.target.value;
+              const oldTarget=form.target;
+              // BUG FIX (29 Agu 2026): dulu ubah field ini doang gak nyentuh tanggal per-panel
+              // (di-init = target LAMA pas modal dibuka, lihat setPanels di baris pembuka edit) -
+              // pas Simpan, saveWOWithSplit ngeliat SEMUA panel "beda tanggal" dari target BARU
+              // (karena masih nyangkut di tanggal lama) terus di-split ke WO sibling BARU dengan
+              // TARGET LAMA, WO asli jadi 0 panel & ke-auto-delete - net effect: ubah deadline
+              // malah bikin panel-panelnya nyangkut di deadline lama. Sekarang panel yang tanggal-
+              // nya MASIH ikut default (== target lama, belum di-override manual lewat field per-
+              // panel di bawah) ikut ke-update ke target baru. Panel yang SUDAH sengaja di-override
+              // manual (tanggal beda dari target lama) TIDAK disentuh - fitur split-per-panel yang
+              // sudah ada tetap jalan persis seperti sebelumnya.
+              setPanels(panels.map(p=>((p as any).tanggal===oldTarget)?{...p,tanggal:newTarget}:p));
+              setForm({...form,target:newTarget});
+            }}/></div>
           </div>
           <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #e2e8f0",paddingTop:16}}>Panel</div>
           {panels.map((p,i)=>(
