@@ -90,6 +90,19 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     let sukses=0;
     for(const p of panelsToArsip){
       const progress=panelOverall(p);
+      // BUG FIX (30 Agu 2026): arsip_panel() RPC hard-delete row panels - kena FK constraint
+      // permintaan_panel_id_fkey kalau masih ada row permintaan yang nyantol ke panel ini (pola
+      // SAMA PERSIS kayak bug WO-delete/cekYatimPiatu di workOrderService.ts). Beda dari kasus WO
+      // (yang punya skenario "panel pindah ke WO sibling", jadi perlu cek "panel masih hidup?"),
+      // di sini panelnya SENDIRI yang mau dihapus - jadi SEMUA permintaan/fcs_tracking_komponen
+      // yang nunjuk ke panel ini otomatis yatim piatu begitu delete berhasil, gak perlu cek status.
+      const{data:permRows}=await supabase.from("permintaan").select("id").eq("panel_id",p.id);
+      const permIds=(permRows||[]).map((r:any)=>r.id);
+      if(permIds.length>0){
+        await supabase.from("permintaan_item").delete().in("permintaan_id",permIds);
+        await supabase.from("permintaan").delete().in("id",permIds);
+      }
+      await supabase.from("fcs_tracking_komponen").delete().eq("panel_id",p.id);
       const{error}=await supabase.rpc("arsip_panel",{p_panel_id:p.id,p_user:uname,p_progress:progress});
       if(error){gagal.push(p.nama+": "+error.message);}
       else{
