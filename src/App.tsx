@@ -61,6 +61,18 @@ const MomFatTab = lazy(() => import('./components/MomFatTab').then(m => ({ defau
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
+// Peta child->parent accordion sidebar "Report Produksi" (30 Agu 2026) - statis, gak
+// tergantung `user`/permission (itu cuma nentuin item MANA yang keliatan, bukan struktur
+// parent-child-nya). Sengaja konstanta MODULE-LEVEL (bukan dalam SIDEBAR_MENUS yang
+// dihitung di dalam komponen SETELAH early-return landing/login) - dipakai di useEffect
+// auto-expand yang HARUS ada di posisi awal (sebelum early-return) biar urutan hook
+// konsisten tiap render (react error #310 kalau enggak).
+const NAV_PARENT_OF_CHILD:Record<string,string>={
+  tracking_report:"report_produksi",
+  momfat:"report_produksi",
+  proyekluar:"report_produksi",
+};
+
 export default function App(){
   const hasNewVersion=useVersionCheck();
   const [page,setPage]=useState("landing");
@@ -77,8 +89,12 @@ export default function App(){
     });
     // Auto-expand accordion parent kalau tab aktif adalah salah satu child-nya (misal deep-link
     // notif lama ?tab=proyekluar, atau restore dari localStorage) - biar gak "hilang" ke-tutup.
-    const parent=SIDEBAR_MENUS.flatMap(g=>g.items).find((i:any)=>i.children?.some((c:any)=>c.id===tab));
-    if(parent)setExpandedNav(prev=>({...prev,[parent.id]:true}));
+    // Pakai NAV_PARENT_OF_CHILD (konstanta module-level), BUKAN SIDEBAR_MENUS - SIDEBAR_MENUS
+    // dihitung SETELAH early-return landing/login di bawah, jadi belum ke-inisialisasi sama
+    // sekali kalau effect ini (WAJIB tetap di posisi awal, sebelum early-return, biar urutan
+    // hook konsisten tiap render) sempat jalan sebelum user login.
+    const parentId=NAV_PARENT_OF_CHILD[tab];
+    if(parentId)setExpandedNav(prev=>({...prev,[parentId]:true}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tab]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
