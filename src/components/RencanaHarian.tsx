@@ -118,8 +118,27 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       if(!cancelled)setFallbackOperatorData(all);
     };
     fetchFallback();
+    // Targeted refresh (audit egress Agu 2026) - dulu SETIAP event fcs_timer_kerja di seluruh
+    // pabrik nge-trigger fetchFallback() ulang (scan seluruh WO/panel via RPC). Sekarang re-query
+    // RPC yang sama tapi di-filter (via PostgREST .eq(), didukung utk RPC yang return table) ke
+    // kombinasi panel+kode+proses yang berubah aja, lalu merge ke hasil yang sudah ada.
+    const refreshFallbackKey=async(panelId:any,kode:string,proses:string)=>{
+      if(!panelId||!kode||!proses)return;
+      const{data,error}:any=await supabase.rpc("latest_operator_per_komponen",{as_of_date:selDate})
+        .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses);
+      if(error)return;
+      if(cancelled)return;
+      setFallbackOperatorData(prev=>{
+        const rest=prev.filter((t:any)=>!(String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses));
+        return[...rest,...(data||[])];
+      });
+    };
     const ch=supabase.channel("realtime-fallback-operator-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchFallback)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},(payload:any)=>{
+        const row=payload.new||payload.old;
+        if(row?.panel_id)refreshFallbackKey(row.panel_id,row.kode_komponen,row.proses);
+        else fetchFallback();
+      })
       .subscribe();
     return()=>{cancelled=true;supabase.removeChannel(ch);};
   },[selDate]);
@@ -151,8 +170,25 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       if(!cancelled)setCheckpointOperatorData(all);
     };
     fetchCheckpoint();
+    // Targeted refresh (audit egress Agu 2026) - sama pola kayak refreshFallbackKey di atas,
+    // cuma re-query kombinasi panel+kode+proses yang berubah, bukan seluruh histori checkpoint.
+    const refreshCheckpointKey=async(panelId:any,kode:string,proses:string)=>{
+      if(!panelId||!kode||!proses)return;
+      const{data,error}=await supabase.from("progress_checkpoint_log")
+        .select("panel_id,kode_komponen,proses,pekerja_nama,tanggal")
+        .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).lte("tanggal",selDate);
+      if(error||cancelled)return;
+      setCheckpointOperatorData(prev=>{
+        const rest=prev.filter((t:any)=>!(String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses));
+        return[...rest,...(data||[])];
+      });
+    };
     const ch=supabase.channel("realtime-checkpoint-operator-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},fetchCheckpoint)
+      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},(payload:any)=>{
+        const row=payload.new||payload.old;
+        if(row?.panel_id)refreshCheckpointKey(row.panel_id,row.kode_komponen,row.proses);
+        else fetchCheckpoint();
+      })
       .subscribe();
     return()=>{cancelled=true;supabase.removeChannel(ch);};
   },[selDate]);

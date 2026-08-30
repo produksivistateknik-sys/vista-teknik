@@ -34,24 +34,35 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     return all;
   };
 
+  // Merge 1 row (bukan refetch SELURUH tabel) tiap ada event realtime (audit egress Agu 2026) -
+  // dulu SETIAP timer/checkpoint di seluruh pabrik nge-trigger fetchAllRows() ulang (ribuan baris)
+  // buat tiap admin yang buka tab Tracking Pekerja. Row awal tetap full-load sekali di mount.
+  const mergeRow=(setter:React.Dispatch<React.SetStateAction<any[]>>,payload:any)=>{
+    if(payload.eventType==="DELETE"){
+      const oldId=payload.old?.id;
+      if(oldId!=null)setter(prev=>prev.filter((r:any)=>r.id!==oldId));
+      return;
+    }
+    const row=payload.new;
+    if(!row)return;
+    setter(prev=>{
+      const exists=prev.some((r:any)=>r.id===row.id);
+      return exists?prev.map((r:any)=>r.id===row.id?row:r):[...prev,row];
+    });
+  };
+
   useEffect(()=>{
-    const fetchCheckpointLog=()=>{
-      fetchAllRows("progress_checkpoint_log","*").then(setCheckpointLogData);
-    };
-    fetchCheckpointLog();
+    fetchAllRows("progress_checkpoint_log","*").then(setCheckpointLogData);
     const ch=supabase.channel("realtime-checkpoint-log-tracking")
-      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},fetchCheckpointLog)
+      .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},(payload:any)=>mergeRow(setCheckpointLogData,payload))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
   useEffect(()=>{
-    const fetchTimer=()=>{
-      fetchAllRows("fcs_timer_kerja","*").then(setTimerData);
-    };
-    fetchTimer();
+    fetchAllRows("fcs_timer_kerja","*").then(setTimerData);
     const ch=supabase.channel("realtime-timer-kerja-tracking")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimer)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},(payload:any)=>mergeRow(setTimerData,payload))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
