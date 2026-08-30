@@ -215,6 +215,7 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-nav-label{overflow:hidden;flex:1;opacity:1;transition:opacity .12s;font-size:12px}
 .erp-sb.col .erp-nav-label{opacity:0;width:0}
 .erp-nav-badge{background:#e53e3e22;color:#fc8181;border-radius:4px;padding:1px 6px;font-size:9.5px;font-weight:600;flex-shrink:0;transition:opacity .12s;line-height:1.5}
+.erp-nav-sub{padding-left:30px;font-size:11.5px}
 .erp-sb.col .erp-nav-badge{opacity:0}
 .erp-sb-foot{padding:10px 12px;border-top:1px solid #2d4ba0;display:flex;align-items:center;gap:10px;overflow:hidden;flex-shrink:0;background:#1a3278}
 .erp-sb.col .erp-sb-foot{justify-content:center;padding:10px 0;gap:0}

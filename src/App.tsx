@@ -57,6 +57,7 @@ const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').th
 const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
 const ProyekLuarTab = lazy(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
+const MomFatTab = lazy(() => import('./components/MomFatTab').then(m => ({ default: m.MomFatTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
@@ -74,8 +75,15 @@ export default function App(){
       const next=[...without,tab];
       return next.length>MAX_MOUNTED_TABS?next.slice(next.length-MAX_MOUNTED_TABS):next;
     });
+    // Auto-expand accordion parent kalau tab aktif adalah salah satu child-nya (misal deep-link
+    // notif lama ?tab=proyekluar, atau restore dari localStorage) - biar gak "hilang" ke-tutup.
+    const parent=SIDEBAR_MENUS.flatMap(g=>g.items).find((i:any)=>i.children?.some((c:any)=>c.id===tab));
+    if(parent)setExpandedNav(prev=>({...prev,[parent.id]:true}));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tab]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+  // Accordion sidebar (30 Agu 2026, "Report Produksi") - key=id parent, value=expanded/tidak.
+  const [expandedNav,setExpandedNav]=useState<Record<string,boolean>>({});
   const [showNotif,setShowNotif]=useState(false);
   const [notifQcGagal,setNotifQcGagal]=useState<any[]>([]);
   // Deep-link dari notifikasi push (mis. "WO Baru Ditambahkan", url=/?tab=wo&wo_id=X) - baca
@@ -475,7 +483,18 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       {id:"taskmonitoring",label:"Task Monitoring",icon:"ti ti-list-check"},
       {id:"detail",label:"Detail Progress",icon:"ti ti-zoom-in"},
       {id:"stok",label:"Stok Komponen",icon:"ti ti-package"},
-      {id:"tracking_report",label:"Quality Center",icon:"ti ti-list-search"},
+      // Report Produksi (30 Agu 2026) - accordion gabungan Quality Center + MOM FAT + Proyek
+      // Luar. Visibility PER CHILD (bukan seragam per-parent) sengaja dipertahankan sama
+      // persis kayak sebelum digabung: Quality Center selalu tampil ke semua user, MOM FAT &
+      // Proyek Luar tetap admin-only (dulu ada di dalam blok ["admin"].includes(user?.divisi)
+      // di grup SYSTEM) - biar gak ada regresi hak akses cuma gara-gara direstruktur.
+      {id:"report_produksi",label:"Report Produksi",icon:"ti ti-report",children:[
+        {id:"tracking_report",label:"Quality Center",icon:"ti ti-list-search"},
+        ...(["admin"].includes(user?.divisi)?[
+          {id:"momfat",label:"MOM FAT",icon:"ti ti-file-text"},
+          {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2"},
+        ]:[]),
+      ]},
     ]},
     {group:"PRODUKSI",items:[
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
@@ -490,8 +509,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
         {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceOverdueCount>0?maintenanceOverdueCount:null},
-        {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2"},
-        {id:"masteruser",label:"System",icon:"ti ti-settings"},
+        {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
   ];
@@ -513,7 +531,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
 
   // Kendala belum selesai
   const kendalaNotif=kendalaLog.filter((k:any)=>k.status!=="selesai").slice(0,5);
-  const activeLabel=SIDEBAR_MENUS.flatMap(g=>g.items).find(i=>i.id===tab)?.label||"Dashboard";
+  const allNavItemsFlat=SIDEBAR_MENUS.flatMap(g=>g.items).flatMap((i:any)=>i.children?i.children:[i]);
+  const activeLabel=allNavItemsFlat.find((i:any)=>i.id===tab)?.label||"Dashboard";
 
   const showTooltip=(e:any,label:string)=>{
     if(!sidebarCollapsed)return;
@@ -635,7 +654,29 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {SIDEBAR_MENUS.map(group=>(
                 <div key={group.group}>
                   <div className="erp-nav-grp">{group.group}</div>
-                  {group.items.map((item:any)=>(
+                  {group.items.map((item:any)=>item.children?(
+                    <div key={item.id}>
+                      <button
+                        className={"erp-nav-item"+(item.children.some((c:any)=>c.id===tab)&&!expandedNav[item.id]?" active":"")}
+                        onClick={()=>setExpandedNav(prev=>({...prev,[item.id]:!prev[item.id]}))}
+                        onMouseEnter={(e:any)=>showTooltip(e,item.label)}
+                        onMouseLeave={hideTooltip}>
+                        <i className={item.icon} style={{fontSize:18,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
+                        <span className="erp-nav-label">{item.label}</span>
+                        <i className={"ti "+(expandedNav[item.id]?"ti-chevron-up":"ti-chevron-down")} style={{fontSize:13,flexShrink:0,marginLeft:"auto"}}/>
+                      </button>
+                      {expandedNav[item.id]&&!sidebarCollapsed&&item.children.map((child:any)=>(
+                        <button key={child.id}
+                          className={"erp-nav-item erp-nav-sub"+(tab===child.id?" active":"")}
+                          onClick={()=>setTab(child.id)}
+                          onMouseEnter={(e:any)=>showTooltip(e,child.label)}
+                          onMouseLeave={hideTooltip}>
+                          <i className={child.icon} style={{fontSize:16,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
+                          <span className="erp-nav-label">{child.label}</span>
+                        </button>
+                      ))}
+                    </div>
+                  ):(
                     <button key={item.id}
                       className={"erp-nav-item"+(tab===item.id?" active":"")}
                       onClick={()=>setTab(item.id)}
@@ -848,6 +889,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
+              {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>

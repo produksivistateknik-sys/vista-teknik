@@ -12,7 +12,6 @@ import { KapasitasPekerjaanTab } from './KapasitasPekerjaanTab'
 import { RecycleBinTab } from './RecycleBinTab'
 import { TimerAktifTab } from './TimerAktifTab'
 import { AppDocumentationTab } from './AppDocumentationTab'
-import { MomFatTab } from './MomFatTab'
 
 export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
   const [subTab,setSubTab]=useState("masteruser");
@@ -74,7 +73,6 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
     {id:"recycle",label:"🗑 Recycle Bin"},
     {id:"timeraktif",label:"⏱ Timer Aktif"},
     {id:"appdocs",label:"📄 Dokumentasi App"},
-    {id:"momfat",label:"📝 MOM FAT"},
   ];
 
   return(
@@ -180,7 +178,6 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
           {subTab==="timeraktif"&&<TimerAktifTab user={user}/>}
           {subTab==="appdocs"&&<AppDocumentationTab/>}
-          {subTab==="momfat"&&<MomFatTab/>}
         </>
       )}
     </div>
