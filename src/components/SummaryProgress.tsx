@@ -189,6 +189,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
                       <th style={{...thSL,minWidth:130}}>Nama Panel</th>
                       <th style={{...thS,minWidth:45}}>Tipe</th>
                       <th style={{...thS,minWidth:35}}>Qty</th>
+                      <th style={{...thS,minWidth:40}}>Cell</th>
                       <th style={{...thS,minWidth:60}}>Overall</th>
                       <th style={{...thS,minWidth:65}}>Status</th>
                       {prosesAda.map(pr=>(
@@ -222,6 +223,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
                             {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
                           </td>
                           <td style={tdS}>{p.qty||1}</td>
+                          <td style={tdS}>{p.jumlah_cell??"-"}</td>
                           <td style={tdS}>
                             <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
                               <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
@@ -250,7 +252,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
                     })}
                     {/* Rata-rata row */}
                     <tr style={{background:"#f8fafc"}}>
-                      <td colSpan={6} style={{...tdSL,color:"#94a3b8",fontSize:10,fontStyle:"italic" as const}}>Rata-rata ({panels.length} panel)</td>
+                      <td colSpan={7} style={{...tdSL,color:"#94a3b8",fontSize:10,fontStyle:"italic" as const}}>Rata-rata ({panels.length} panel)</td>
                       <td style={tdS}>
                         <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
                           <div style={{width:44,height:4,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>

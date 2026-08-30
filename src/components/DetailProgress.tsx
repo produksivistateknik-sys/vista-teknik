@@ -209,6 +209,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
               <span style={{color:"#94a3b8",fontSize:11}}>|</span>
               <span style={{fontWeight:600,color:"var(--text-primary,#1e293b)",fontSize:12}}>{p.nama||"Panel "+(pi+1)}</span>
               {p.tipe&&<span style={{background:"#eff6ff",color:"#2563eb",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:600}}>{p.tipe}</span>}
+              {p.jumlah_cell!=null&&<span style={{background:"#f5f3ff",color:"#7c3aed",borderRadius:20,padding:"1px 8px",fontSize:9,fontWeight:600}}>Cell: {p.jumlah_cell}</span>}
               <span style={{fontSize:11,color:"#94a3b8"}}>📅 {p.target}</span>
               {!done&&<span style={{fontSize:11,fontWeight:600,color:late?"#dc2626":urg?"#d97706":"#16a34a"}}>
                 {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
