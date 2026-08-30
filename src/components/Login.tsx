@@ -105,7 +105,7 @@ export function Login({onLogin}){
       <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:56,position:"relative",zIndex:1}}>
-          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:60,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
+          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:88,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
           <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
         </div>
 
