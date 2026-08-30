@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { Card, Badge, PBar } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOM FAT (30 Agu 2026) - System > MOM FAT, READ-ONLY (admin cuma lihat progress checklist
@@ -90,36 +91,48 @@ export function MomFatTab(){
       ):filtered.length===0?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Tidak ada dokumen MOM FAT.</div>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {filtered.map(m=>{
             const isExp=expandedId===m.id;
             const st=statusStyle[m.status]||statusStyle.processing;
             const prog=progressMap[m.id]||{done:0,total:0};
             const pct=prog.total>0?Math.round((prog.done/prog.total)*100):0;
+            const accent=m.status==="error"?"#dc2626":m.status==="processing"?"#d97706":(pct>=100?"#16a34a":"#3b82f6");
             return(
-              <div key={m.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",
-                borderRadius:10,overflow:"hidden"}}>
-                <div onClick={()=>toggleExpand(m)} style={{padding:"14px 16px",cursor:"pointer",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)"}}>{m.judul}</div>
-                    <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>
-                      👤 {m.operator_nama} · {new Date(m.created_at).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
-                      {m.status==="ready"&&` · ${prog.done}/${prog.total} poin`}
+              <Card key={m.id} style={{padding:0,overflow:"hidden",borderLeft:`3px solid ${accent}`}}>
+                <div className="erp-clickable-row" onClick={()=>toggleExpand(m)} style={{padding:"14px 16px",cursor:"pointer",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",
+                  background:isExp?"#f8faff":"transparent"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                    <div style={{width:38,height:38,borderRadius:10,background:accent+"18",display:"flex",
+                      alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <i className="ti ti-file-text" style={{fontSize:18,color:accent}}/>
                     </div>
-                    {m.status==="ready"&&prog.total>0&&(
-                      <div style={{height:6,background:"#e2e8f0",borderRadius:99,marginTop:8,maxWidth:280,overflow:"hidden"}}>
-                        <div style={{height:"100%",width:`${pct}%`,background:pct>=100?"#16a34a":"#3b82f6",borderRadius:99}}/>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.judul}</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>
+                        👤 {m.operator_nama} · {new Date(m.created_at).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}
+                        {m.status==="ready"&&` · ${prog.done}/${prog.total} poin`}
                       </div>
-                    )}
+                      {m.status==="ready"&&prog.total>0&&(
+                        <div style={{marginTop:8,maxWidth:280}}><PBar pct={pct} h={6}/></div>
+                      )}
+                    </div>
                   </div>
-                  <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 12px",fontSize:11.5,fontWeight:700}}>{st.label}</span>
+                  <Badge label={st.label} color={st.color} bg={st.bg}/>
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
-                    <a href={m.file_url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"#2563eb",textDecoration:"none",display:"inline-block",marginBottom:12}}>
-                      📄 Lihat dokumen asli
-                    </a>
+                    <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg-secondary,#f8fafc)",
+                      borderRadius:10,padding:"10px 12px",marginBottom:14}}>
+                      <i className="ti ti-file-description" style={{fontSize:20,color:"#64748b",flexShrink:0}}/>
+                      <div style={{flex:1,minWidth:0}}>
+                        <div style={{fontSize:11,color:"#94a3b8"}}>Dokumen asli · diupload {m.operator_nama}</div>
+                        <a href={m.file_url} target="_blank" rel="noreferrer" style={{fontSize:12.5,fontWeight:700,color:"#2563eb",textDecoration:"none"}}>
+                          Lihat/Download dokumen →
+                        </a>
+                      </div>
+                    </div>
                     {!poinMap[m.id]?(
                       <div style={{fontSize:12,color:"#94a3b8"}}>Memuat checklist...</div>
                     ):poinMap[m.id].length===0?(
@@ -127,9 +140,10 @@ export function MomFatTab(){
                     ):(
                       <div style={{display:"flex",flexDirection:"column",gap:6}}>
                         {poinMap[m.id].map(p=>(
-                          <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:8,padding:"8px 10px",
-                            background:p.selesai?"#f0fdf4":"var(--bg-secondary,#f8fafc)",borderRadius:8}}>
-                            <input type="checkbox" checked={p.selesai} disabled readOnly style={{marginTop:2,cursor:"not-allowed"}}/>
+                          <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:9,padding:"10px 12px",
+                            background:p.selesai?"#f0fdf4":"var(--bg-secondary,#f8fafc)",
+                            border:`1px solid ${p.selesai?"#bbf7d0":"var(--border-color,#e2e8f0)"}`,borderRadius:8}}>
+                            <i className={"ti "+(p.selesai?"ti-square-check":"ti-square")} style={{fontSize:16,color:p.selesai?"#16a34a":"#cbd5e1",marginTop:1,flexShrink:0}}/>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:12.5,color:p.selesai?"#16a34a":"var(--text-primary,#1e293b)",textDecoration:p.selesai?"line-through":"none"}}>{p.teks}</div>
                               {p.dicentang_oleh&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>✓ {p.dicentang_oleh}{p.dicentang_at&&" · "+new Date(p.dicentang_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>}
@@ -140,7 +154,7 @@ export function MomFatTab(){
                     )}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>

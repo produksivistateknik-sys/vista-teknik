@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { DIVISI_CONFIG } from "../constants/panelTypes";
 import { FotoZoomViewer, type FotoViewer } from "./FotoZoomViewer";
+import { Card, Badge } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - sidebar tab sendiri, READ-ONLY (admin cuma lihat, gak
@@ -99,40 +100,47 @@ export function ProyekLuarTab(){
       ):filtered.length===0?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Tidak ada laporan yang cocok.</div>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {filtered.map(l=>{
             const isExp=expandedId===l.id;
             const st=statusStyle[l.status]||statusStyle.berlangsung;
             const fotoList:any[]=l.foto||[];
             const dc=(DIVISI_CONFIG as any)[l.divisi];
+            const accent=l.status==="selesai"?"#16a34a":"#d97706";
             return(
-              <div key={l.id} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",
-                borderRadius:10,overflow:"hidden"}}>
-                <div onClick={()=>setExpandedId(isExp?null:l.id)} style={{padding:"14px 16px",cursor:"pointer",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                  <div style={{minWidth:0,flex:1}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <span style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)"}}>{l.nama_lokasi}</span>
-                      <span style={{fontSize:11,color:dc?.color||"#64748b",background:dc?.bg||"#f1f5f9",borderRadius:20,padding:"2px 9px",fontWeight:700}}>
-                        {dc?.icon} {dc?.label||l.divisi}
-                      </span>
+              <Card key={l.id} style={{padding:0,overflow:"hidden",borderLeft:`3px solid ${accent}`}}>
+                <div className="erp-clickable-row" onClick={()=>setExpandedId(isExp?null:l.id)} style={{padding:"14px 16px",cursor:"pointer",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",
+                  background:isExp?"#f8faff":"transparent"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                    <div style={{width:38,height:38,borderRadius:10,background:(dc?.color||accent)+"18",display:"flex",
+                      alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17}}>
+                      {dc?.icon||"🏗"}
                     </div>
-                    <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>
-                      👤 {l.operator_nama} · 📅 {l.tanggal} · {fotoList.length} foto
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{l.nama_lokasi}</span>
+                        <Badge label={dc?.label||l.divisi} color={dc?.color||"#64748b"} bg={dc?.bg}/>
+                      </div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>
+                        👤 {l.operator_nama} · 📅 {l.tanggal} · <i className="ti ti-photo" style={{fontSize:11}}/> {fotoList.length} foto
+                      </div>
                     </div>
                   </div>
-                  <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 12px",fontSize:11.5,fontWeight:700}}>{st.label}</span>
+                  <Badge label={st.label} color={st.color} bg={st.bg}/>
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
-                    {l.catatan&&<div style={{fontSize:13,color:"var(--text-secondary,#475569)",marginBottom:14,lineHeight:1.6}}>{l.catatan}</div>}
+                    {l.catatan&&<div style={{fontSize:13,color:"var(--text-secondary,#475569)",marginBottom:14,lineHeight:1.6,
+                      background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>{l.catatan}</div>}
                     {fotoList.length===0?(
                       <div style={{fontSize:12,color:"#94a3b8"}}>Belum ada foto dokumentasi.</div>
                     ):(
                       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(100px,1fr))",gap:8}}>
                         {fotoList.map((f:any,fi:number)=>(
                           <div key={fi} onClick={()=>setFotoViewer({fotos:fotoList,startIndex:fi,label:l.nama_lokasi})}
-                            style={{aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
+                            style={{aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9",
+                              border:"1px solid var(--border-color,#e2e8f0)"}}>
                             <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
                           </div>
                         ))}
@@ -140,7 +148,7 @@ export function ProyekLuarTab(){
                     )}
                   </div>
                 )}
-              </div>
+              </Card>
             );
           })}
         </div>
