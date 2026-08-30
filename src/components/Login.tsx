@@ -102,7 +102,7 @@ export function Login({onLogin}){
       )}
 
       {/* LEFT */}
-      <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
+      <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"20px 48px 44px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:56,position:"relative",zIndex:1}}>
           <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:88,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
