@@ -81,13 +81,15 @@ export function Login({onLogin}){
     .lg-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;padding:4px;display:flex;align-items:center}
     .lg-success-overlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px)}
     .lg-success-icon{font-size:64px;animation:lgSuccess .5s cubic-bezier(.22,1,.36,1) forwards}
-    @media(max-width:700px){.lg-left{display:none!important}.lg-right{width:100%!important;padding:24px!important}}
+    @media(max-width:700px){.lg-left{display:none!important}.lg-right{width:100%!important;padding:24px!important}.lg-overlay{background:rgba(8,15,34,.72)!important}}
   `;
 
   return(
-    <div style={{minHeight:"100vh",width:"100%",display:"flex",background:"#f1f5f9"}}>
+    <div style={{minHeight:"100vh",width:"100%",display:"flex",position:"relative",background:"#0f172a",backgroundImage:"url(/login-bg.jpg)",backgroundSize:"cover",backgroundPosition:"center"}}>
       <style>{GCss}</style>
       <style>{css}</style>
+
+      <div className="lg-overlay" style={{position:"absolute",inset:0,background:"linear-gradient(100deg, rgba(8,15,34,.45) 0%, rgba(8,15,34,.62) 45%, rgba(8,15,34,.88) 100%)",zIndex:0}}/>
 
       {success&&(
         <div className="lg-success-overlay">
@@ -99,12 +101,7 @@ export function Login({onLogin}){
       )}
 
       {/* LEFT */}
-      <div className="lg-left" style={{width:"45%",background:"linear-gradient(145deg,#0f172a 0%,#1e3a8a 45%,#1d4ed8 100%)",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",overflow:"hidden",flexShrink:0}}>
-        {/* BG circles */}
-        <div style={{position:"absolute",top:-80,right:-80,width:320,height:320,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
-        <div style={{position:"absolute",bottom:-60,left:-60,width:240,height:240,borderRadius:"50%",background:"rgba(255,255,255,.03)"}}/>
-        <div style={{position:"absolute",top:"40%",left:"60%",width:160,height:160,borderRadius:"50%",background:"rgba(37,99,235,.15)"}}/>
-
+      <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:56,position:"relative",zIndex:1}}>
           <div style={{width:42,height:42,background:"rgba(255,255,255,.15)",borderRadius:11,border:"1px solid rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
@@ -116,67 +113,11 @@ export function Login({onLogin}){
           </div>
         </div>
 
-        {/* SVG Panel Illustration */}
-        <div style={{position:"relative",zIndex:1,marginBottom:28}}>
-          <svg width="100%" height="130" viewBox="0 0 340 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-            {/* Panel 1 */}
-            <rect x="8" y="15" width="88" height="108" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.2)" strokeWidth="1.5"/>
-            <rect x="16" y="23" width="72" height="92" rx="3" fill="rgba(255,255,255,.04)"/>
-            <rect x="20" y="27" width="32" height="9" rx="2" fill="rgba(255,255,255,.25)"/>
-            <rect x="56" y="27" width="28" height="9" rx="2" fill="rgba(255,255,255,.2)"/>
-            <rect x="20" y="40" width="64" height="16" rx="2" fill="rgba(29,78,216,.6)"/>
-            <rect x="25" y="45" width="5" height="6" rx="1" fill="#f59e0b"/>
-            <rect x="34" y="45" width="5" height="6" rx="1" fill="#f59e0b"/>
-            <rect x="43" y="45" width="5" height="6" rx="1" fill="#ef4444"/>
-            <rect x="52" y="45" width="5" height="6" rx="1" fill="#22c55e"/>
-            <circle cx="74" cy="48" r="5" fill="rgba(255,255,255,.2)" stroke="rgba(255,255,255,.3)" strokeWidth="1"/>
-            <rect x="20" y="60" width="64" height="48" rx="2" fill="rgba(255,255,255,.04)"/>
-            <rect x="24" y="64" width="36" height="4" rx="1" fill="rgba(255,255,255,.2)"/>
-            <rect x="24" y="72" width="24" height="3" rx="1" fill="rgba(255,255,255,.13)"/>
-            <circle cx="66" cy="68" r="6" fill="rgba(220,38,38,.5)"/>
-            <circle cx="78" cy="68" r="6" fill="rgba(245,158,11,.5)"/>
-            <circle cx="66" cy="82" r="6" fill="rgba(34,197,94,.5)"/>
-            <circle cx="78" cy="82" r="6" fill="rgba(59,130,246,.5)"/>
-            {/* Panel 2 - center, bigger */}
-            <rect x="114" y="5" width="112" height="122" rx="5" fill="rgba(255,255,255,.09)" stroke="rgba(255,255,255,.28)" strokeWidth="2"/>
-            <rect x="122" y="13" width="96" height="106" rx="3" fill="rgba(255,255,255,.05)"/>
-            <rect x="126" y="17" width="44" height="10" rx="2" fill="rgba(255,255,255,.3)"/>
-            <rect x="174" y="17" width="40" height="10" rx="2" fill="rgba(255,255,255,.22)"/>
-            <rect x="126" y="31" width="88" height="20" rx="3" fill="rgba(29,78,216,.65)"/>
-            <rect x="131" y="37" width="6" height="8" rx="1" fill="#f59e0b"/>
-            <rect x="141" y="37" width="6" height="8" rx="1" fill="#f59e0b"/>
-            <rect x="151" y="37" width="6" height="8" rx="1" fill="#ef4444"/>
-            <rect x="161" y="37" width="6" height="8" rx="1" fill="#22c55e"/>
-            <circle cx="195" cy="41" r="6" fill="rgba(255,255,255,.22)" stroke="rgba(255,255,255,.35)" strokeWidth="1"/>
-            <rect x="126" y="55" width="88" height="58" rx="3" fill="rgba(255,255,255,.04)"/>
-            <rect x="130" y="60" width="50" height="5" rx="1" fill="rgba(255,255,255,.22)"/>
-            <rect x="130" y="70" width="36" height="4" rx="1" fill="rgba(255,255,255,.15)"/>
-            <rect x="130" y="78" width="80" height="1.5" rx=".75" fill="rgba(255,255,255,.1)"/>
-            <rect x="130" y="83" width="80" height="1.5" rx=".75" fill="rgba(255,255,255,.1)"/>
-            <rect x="130" y="88" width="80" height="1.5" rx=".75" fill="rgba(255,255,255,.1)"/>
-            <rect x="130" y="93" width="80" height="1.5" rx=".75" fill="rgba(255,255,255,.1)"/>
-            <polygon points="170,100 178,114 162,114" fill="rgba(245,158,11,.75)"/>
-            <text x="170" y="112" textAnchor="middle" fontSize="8" fill="#fff" fontWeight="bold">!</text>
-            {/* Panel 3 */}
-            <rect x="244" y="22" width="88" height="100" rx="5" fill="rgba(255,255,255,.06)" stroke="rgba(255,255,255,.18)" strokeWidth="1.5"/>
-            <rect x="252" y="30" width="72" height="84" rx="3" fill="rgba(255,255,255,.04)"/>
-            <rect x="256" y="34" width="30" height="8" rx="2" fill="rgba(255,255,255,.22)"/>
-            <rect x="290" y="34" width="28" height="8" rx="2" fill="rgba(255,255,255,.18)"/>
-            <rect x="256" y="46" width="60" height="15" rx="2" fill="rgba(29,78,216,.55)"/>
-            <rect x="261" y="51" width="5" height="5" rx="1" fill="#f59e0b"/>
-            <rect x="270" y="51" width="5" height="5" rx="1" fill="#ef4444"/>
-            <rect x="279" y="51" width="5" height="5" rx="1" fill="#22c55e"/>
-            <rect x="256" y="65" width="60" height="44" rx="2" fill="rgba(255,255,255,.04)"/>
-            <rect x="260" y="69" width="32" height="4" rx="1" fill="rgba(255,255,255,.18)"/>
-            <rect x="260" y="77" width="22" height="3" rx="1" fill="rgba(255,255,255,.12)"/>
-          </svg>
-        </div>
-
-        <div style={{position:"relative",zIndex:1}}>
-          <div style={{fontSize:26,fontWeight:800,lineHeight:1.3,marginBottom:12}}>
+        <div style={{position:"relative",zIndex:1,marginTop:8}}>
+          <div style={{fontSize:26,fontWeight:800,lineHeight:1.3,marginBottom:12,textShadow:"0 2px 12px rgba(0,0,0,.35)"}}>
             Monitoring produksi<br/>panel listrik
           </div>
-          <div style={{fontSize:13,color:"rgba(255,255,255,.7)",lineHeight:1.8,marginBottom:28,maxWidth:300}}>
+          <div style={{fontSize:13,color:"rgba(255,255,255,.7)",lineHeight:1.8,marginBottom:28,maxWidth:300,textShadow:"0 1px 8px rgba(0,0,0,.35)"}}>
             Platform terintegrasi untuk kelola jadwal, distribusi, dan progress produksi secara real-time.
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
@@ -200,7 +141,7 @@ export function Login({onLogin}){
       </div>
 
       {/* RIGHT */}
-      <div className="lg-right" style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 64px"}}>
+      <div className="lg-right" style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 64px",position:"relative",zIndex:1}}>
         <div className="lg-card" style={{width:"100%",maxWidth:440,background:"#fff",borderRadius:20,padding:"36px 40px",boxShadow:"0 4px 6px rgba(0,0,0,.04),0 24px 60px rgba(0,0,0,.08)"}}>
 
           <div style={{marginBottom:6}}>
