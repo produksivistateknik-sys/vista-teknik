@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { GCss } from '../styles/globalCss'
+import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
 export function Login({onLogin}){
   const [mode,setMode]=useState("admin");
@@ -103,14 +104,9 @@ export function Login({onLogin}){
       {/* LEFT */}
       <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:56,position:"relative",zIndex:1}}>
-          <div style={{width:42,height:42,background:"rgba(255,255,255,.15)",borderRadius:11,border:"1px solid rgba(255,255,255,.25)",display:"flex",alignItems:"center",justifyContent:"center",backdropFilter:"blur(8px)"}}>
-            <span style={{color:"#fff",fontWeight:900,fontSize:19,letterSpacing:-1}}>V</span>
-          </div>
-          <div>
-            <div style={{fontWeight:800,fontSize:15,letterSpacing:.3,lineHeight:1.2}}>Vista Teknik</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500,marginTop:2}}>Electrical Switchboard Manufacturing</div>
-          </div>
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:56,position:"relative",zIndex:1}}>
+          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:40,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
         </div>
 
         <div style={{position:"relative",zIndex:1,marginTop:8}}>
@@ -142,7 +138,7 @@ export function Login({onLogin}){
 
       {/* RIGHT */}
       <div className="lg-right" style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 64px",position:"relative",zIndex:1}}>
-        <div className="lg-card" style={{width:"100%",maxWidth:440,background:"#fff",borderRadius:20,padding:"36px 40px",boxShadow:"0 4px 6px rgba(0,0,0,.04),0 24px 60px rgba(0,0,0,.08)"}}>
+        <div className="lg-card" style={{width:"100%",maxWidth:440,background:"rgba(255,255,255,.92)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",borderRadius:20,padding:"36px 40px",boxShadow:"0 4px 6px rgba(0,0,0,.04),0 24px 60px rgba(0,0,0,.08)"}}>
 
           <div style={{marginBottom:6}}>
             <div style={{fontSize:24,fontWeight:700,color:"#0f172a",marginBottom:5}}>Selamat datang</div>
