@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { FotoZoomViewer, type FotoViewer } from "./FotoZoomViewer";
 import { Card, Badge, PBar } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,6 +18,7 @@ export function MomFatTab(){
   const[search,setSearch]=useState("");
   const[expandedId,setExpandedId]=useState<number|null>(null);
   const[poinMap,setPoinMap]=useState<Record<number,any[]>>({});
+  const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
 
   const fetchList=async()=>{
     setLoading(true);
@@ -147,6 +149,16 @@ export function MomFatTab(){
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{fontSize:12.5,color:p.selesai?"#16a34a":"var(--text-primary,#1e293b)",textDecoration:p.selesai?"line-through":"none"}}>{p.teks}</div>
                               {p.dicentang_oleh&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>✓ {p.dicentang_oleh}{p.dicentang_at&&" · "+new Date(p.dicentang_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>}
+                              {(p.foto||[]).length>0&&(
+                                <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(56px,1fr))",gap:5,marginTop:6,maxWidth:280}}>
+                                  {p.foto.map((f:any,fi:number)=>(
+                                    <div key={fi} onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}
+                                      style={{aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
+                                      <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
                           </div>
                         ))}
@@ -159,6 +171,8 @@ export function MomFatTab(){
           })}
         </div>
       )}
+
+      {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
     </div>
   );
 }
