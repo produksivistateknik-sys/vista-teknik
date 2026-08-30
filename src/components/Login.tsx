@@ -105,7 +105,7 @@ export function Login({onLogin}){
       <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:56,position:"relative",zIndex:1}}>
-          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:40,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
+          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:60,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
           <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
         </div>
 
@@ -138,7 +138,7 @@ export function Login({onLogin}){
 
       {/* RIGHT */}
       <div className="lg-right" style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",padding:"48px 64px",position:"relative",zIndex:1}}>
-        <div className="lg-card" style={{width:"100%",maxWidth:440,background:"rgba(255,255,255,.92)",backdropFilter:"blur(12px)",WebkitBackdropFilter:"blur(12px)",borderRadius:20,padding:"36px 40px",boxShadow:"0 4px 6px rgba(0,0,0,.04),0 24px 60px rgba(0,0,0,.08)"}}>
+        <div className="lg-card" style={{width:"100%",maxWidth:440,background:"rgba(255,255,255,.75)",backdropFilter:"blur(18px)",WebkitBackdropFilter:"blur(18px)",borderRadius:20,padding:"36px 40px",boxShadow:"0 4px 6px rgba(0,0,0,.04),0 24px 60px rgba(0,0,0,.08)"}}>
 
           <div style={{marginBottom:6}}>
             <div style={{fontSize:24,fontWeight:700,color:"#0f172a",marginBottom:5}}>Selamat datang</div>
