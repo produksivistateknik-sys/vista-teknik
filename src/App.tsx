@@ -267,6 +267,12 @@ useEffect(()=>{
 // aja terjadi, heartbeat ini cuma nutup celah SETELAH window itu abis kalau realtime gak nyusul.
 useEffect(()=>{
   const iv=setInterval(()=>{
+    // Skip kalau tab browser lagi di-background (audit egress Agu 2026) - AMAN, gak ngurangin
+    // jaminan "basi maks ~1 menit" di atas, karena begitu tab aktif lagi, visibilitychange
+    // handler di atas LANGSUNG force-refetch tanpa nunggu interval ini. Yang dihindari cuma
+    // heartbeat sia-sia tiap 60 detik selama tab ditinggal di background (admin pindah ke
+    // aplikasi lain/window lain), yang sebelumnya tetep jalan terus tanpa ada yang lihat.
+    if(document.visibilityState!=="visible")return;
     refetchRenhar?.();
     refetchRaw?.();
     refetchWO?.();
