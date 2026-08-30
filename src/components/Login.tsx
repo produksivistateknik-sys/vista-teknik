@@ -1,29 +1,16 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { GCss } from '../styles/globalCss'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
 export function Login({onLogin}){
-  const [mode,setMode]=useState("admin");
-  const [div,setDiv]=useState("mekanik");
-  const [namaList,setNamaList]=useState([]);
-  const [selNama,setSelNama]=useState("");
   const [username,setUsername]=useState("");
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
   const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false);
   const [success,setSuccess]=useState(false);
-
-  useEffect(()=>{
-    if(mode==="divisi"&&div){
-      supabase.from("pekerja").select("id,nama").eq("divisi",div).then(({data})=>{
-        setNamaList(data??[]);setSelNama("");
-      });
-    }
-  },[div,mode]);
 
   const goAdmin=async()=>{
     if(!username.trim()){setErr("Masukkan username!");return;}
@@ -42,18 +29,7 @@ export function Login({onLogin}){
     setLoading(false);
   };
 
-  const goDivisi=async()=>{
-    if(!selNama){setErr("Pilih nama!");return;}
-    if(pwd!==DIVISI_CONFIG[div].password){setErr("Password salah!");return;}
-    setLoading(true);
-    const found=namaList.find(p=>p.nama===selNama);
-    if(!found){setErr("Nama tidak ditemukan!");setLoading(false);return;}
-    setSuccess(true);
-    setTimeout(()=>onLogin({...found,divisi:div,name:found.nama}),800);
-    setLoading(false);
-  };
-
-  const go=mode==="admin"?goAdmin:goDivisi;
+  const go=goAdmin;
 
   const css=`
     @keyframes lgFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
@@ -147,74 +123,29 @@ export function Login({onLogin}){
 
           <div style={{height:1,background:"#f1f5f9",margin:"20px 0"}}/>
 
-          {/* Segment */}
-          <div className="lg-seg" style={{marginBottom:24}}>
-            <button className={"lg-seg-btn"+(mode==="admin"?" on":"")} onClick={()=>{setMode("admin");setErr("");}}>
-              ⚙️ Admin
-            </button>
-            <button className={"lg-seg-btn"+(mode==="divisi"?" on":"")} onClick={()=>{setMode("divisi");setErr("");}}>
-              👷 Operator
-            </button>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div>
+              <div className="lg-label">Username</div>
+              <div style={{position:"relative"}}>
+                <span className="lg-icon">👤</span>
+                <input className={"lg-inp"+(err?" err":"")} value={username}
+                  onChange={e=>{setUsername(e.target.value);setErr("");}}
+                  onKeyDown={e=>e.key==="Enter"&&go()}
+                  placeholder="Masukkan username..."/>
+              </div>
+            </div>
+            <div>
+              <div className="lg-label">Password</div>
+              <div style={{position:"relative"}}>
+                <span className="lg-icon">🔒</span>
+                <input className={"lg-inp"+(err?" err":"")} type={show?"text":"password"} value={pwd}
+                  onChange={e=>{setPwd(e.target.value);setErr("");}}
+                  onKeyDown={e=>e.key==="Enter"&&go()}
+                  placeholder="Masukkan password..." style={{paddingRight:44}}/>
+                <button className="lg-eye" onClick={()=>setShow(!show)}>{show?"🙈":"👁"}</button>
+              </div>
+            </div>
           </div>
-
-          {mode==="admin"?(
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <div>
-                <div className="lg-label">Username</div>
-                <div style={{position:"relative"}}>
-                  <span className="lg-icon">👤</span>
-                  <input className={"lg-inp"+(err?" err":"")} value={username}
-                    onChange={e=>{setUsername(e.target.value);setErr("");}}
-                    onKeyDown={e=>e.key==="Enter"&&go()}
-                    placeholder="Masukkan username..."/>
-                </div>
-              </div>
-              <div>
-                <div className="lg-label">Password</div>
-                <div style={{position:"relative"}}>
-                  <span className="lg-icon">🔒</span>
-                  <input className={"lg-inp"+(err?" err":"")} type={show?"text":"password"} value={pwd}
-                    onChange={e=>{setPwd(e.target.value);setErr("");}}
-                    onKeyDown={e=>e.key==="Enter"&&go()}
-                    placeholder="Masukkan password..." style={{paddingRight:44}}/>
-                  <button className="lg-eye" onClick={()=>setShow(!show)}>{show?"🙈":"👁"}</button>
-                </div>
-              </div>
-            </div>
-          ):(
-            <div style={{display:"flex",flexDirection:"column",gap:16}}>
-              <div>
-                <div className="lg-label">Divisi</div>
-                <div style={{position:"relative"}}>
-                  <select className="lg-sel" value={div} onChange={e=>{setDiv(e.target.value);setErr("");}}>
-                    {Object.entries(DIVISI_CONFIG).filter(([k])=>k!=="admin").map(([k,v])=><option key={k} value={k}>{v.icon} {v.label}</option>)}
-                  </select>
-                  <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
-                </div>
-              </div>
-              <div>
-                <div className="lg-label">Nama</div>
-                <div style={{position:"relative"}}>
-                  <select className="lg-sel" value={selNama} onChange={e=>setSelNama(e.target.value)}>
-                    <option value="">-- Pilih Nama --</option>
-                    {namaList.map(p=><option key={p.id} value={p.nama}>{p.nama}</option>)}
-                  </select>
-                  <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:12,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
-                </div>
-              </div>
-              <div>
-                <div className="lg-label">Password Divisi</div>
-                <div style={{position:"relative"}}>
-                  <span className="lg-icon">🔒</span>
-                  <input className={"lg-inp"+(err?" err":"")} type={show?"text":"password"} value={pwd}
-                    onChange={e=>{setPwd(e.target.value);setErr("");}}
-                    onKeyDown={e=>e.key==="Enter"&&go()}
-                    placeholder="Masukkan password divisi..." style={{paddingRight:44}}/>
-                  <button className="lg-eye" onClick={()=>setShow(!show)}>{show?"🙈":"👁"}</button>
-                </div>
-              </div>
-            </div>
-          )}
 
           {err&&(
             <div className="lg-err" style={{marginTop:16}}>
@@ -227,13 +158,6 @@ export function Login({onLogin}){
              :success?<><span>✓</span><span>Berhasil!</span></>
              :<><span>Masuk</span><span style={{fontSize:16}}>→</span></>}
           </button>
-
-          <div style={{marginTop:16,textAlign:"center",fontSize:12,color:"#94a3b8"}}>
-            {mode==="admin"
-              ?<>Operator? <span style={{color:"#2563eb",fontWeight:600,cursor:"pointer"}} onClick={()=>setMode("divisi")}>Gunakan tab Operator</span></>
-              :<>Admin? <span style={{color:"#2563eb",fontWeight:600,cursor:"pointer"}} onClick={()=>setMode("admin")}>Gunakan tab Admin</span></>
-            }
-          </div>
 
           <div style={{marginTop:20,paddingTop:16,borderTop:"1px solid #f1f5f9",textAlign:"center",fontSize:11,color:"#cbd5e1"}}>
             © 2026 Vista Teknik · Electrical Switchboard Manufacturing
