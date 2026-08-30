@@ -1689,6 +1689,7 @@ export type Database = {
           deleted_at: string | null
           deleted_by: string | null
           id: number
+          jumlah_cell: number | null
           komponen_status: Json | null
           nama: string
           nameplate_history: Json | null
@@ -1734,6 +1735,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           id?: never
+          jumlah_cell?: number | null
           komponen_status?: Json | null
           nama: string
           nameplate_history?: Json | null
@@ -1779,6 +1781,7 @@ export type Database = {
           deleted_at?: string | null
           deleted_by?: string | null
           id?: never
+          jumlah_cell?: number | null
           komponen_status?: Json | null
           nama?: string
           nameplate_history?: Json | null

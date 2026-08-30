@@ -21,7 +21,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
   const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
   const blank={wo:"",proyek:"",target:""};
-  const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,tingkatKesulitan:"EASY"};
+  const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,jumlahCell:0};
   const [fcsModal,setFcsModal]=useState<any>(null);
   const [quickGenModal,setQuickGenModal]=useState<any>(null);
   const [quickGenTanggal,setQuickGenTanggal]=useState(new Date().toISOString().slice(0,10));
@@ -232,13 +232,13 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         id:(p as any).id,noPnl:Number((p as any).no_pnl??p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:newQty,
         checklist:finalChecklist,
         catatan:(p as any).catatan||"",
-        tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
+        jumlahCell:Number((p as any).jumlahCell)||0,
       };
     }
     return{
       noPnl:Number((p as any).no_pnl??p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
       checklist:initChecklist(p.tipe,Number(p.qty)||1,bomPanelTypesCache),catatan:"",
-      tingkatKesulitan:(p as any).tingkatKesulitan||"EASY",
+      jumlahCell:Number((p as any).jumlahCell)||0,
     };
   });
 
@@ -598,7 +598,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,tingkatKesulitan:(p as any).tingkatKesulitan||(p as any).tingkat_kesulitan||"EASY",tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:(p as any).jumlahCell??(p as any).jumlah_cell??0,tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
@@ -886,13 +886,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   </Sel>
                 </div>
                 <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={e=>{const n=[...panels];n[i]={...n[i],qty:e.target.value};setPanels(n);}}/></div>
-                <div><Lbl>Kesulitan</Lbl>
-                  <Sel value={(p as any).tingkatKesulitan||"EASY"} onChange={e=>{const n=[...panels];n[i]={...n[i],tingkatKesulitan:e.target.value} as any;setPanels(n);}}>
-                    <option value="EASY">Easy</option>
-                    <option value="MEDIUM">Medium</option>
-                    <option value="HARD">Hard</option>
-                    <option value="VERY_HARD">Very Hard</option>
-                  </Sel>
+                <div><Lbl>Jumlah Cell</Lbl>
+                  <Inp type="number" min="0" value={(p as any).jumlahCell??0} onChange={e=>{const n=[...panels];n[i]={...n[i],jumlahCell:e.target.value} as any;setPanels(n);}}/>
                 </div>
                 <div><Lbl>Tanggal</Lbl>
                   <Inp type="date" value={(p as any).tanggal||form.target||""} onChange={e=>{const n=[...panels];n[i]={...n[i],tanggal:e.target.value} as any;setPanels(n);}}/>

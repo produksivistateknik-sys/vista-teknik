@@ -86,6 +86,7 @@ export const workOrderService = {
         checklist: p.checklist || {},
         catatan: p.catatan || "",
         tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
+        jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
       }).eq('id', p.id)
       if (error) throw new Error(error.message)
     }
@@ -100,6 +101,7 @@ export const workOrderService = {
         checklist: p.checklist || {},
         catatan: p.catatan || "",
         tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
+        jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
       }))
       const { error } = await supabase.from('panels').insert(rows)
       if (error) throw new Error(error.message)
@@ -173,6 +175,7 @@ export const workOrderService = {
           checklist: p.checklist || {},
           catatan: p.catatan || "",
           tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
+          jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
         }
         if (p.id) {
           const { error } = await supabase.from('panels').update(row).eq('id', p.id)
