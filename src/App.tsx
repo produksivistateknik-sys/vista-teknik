@@ -34,6 +34,7 @@ import {
 } from './lib/globalState'
 import { GCss } from './styles/globalCss'
 import { useVersionCheck } from './lib/versionCheck'
+import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
 import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
@@ -660,11 +661,11 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         <div className="erp-wrap">
           <div className={"erp-sb"+(sidebarCollapsed?" col":"")}>
             <div className="erp-sb-head">
-              <div className="erp-logo">V</div>
-              <div className="erp-brand">
-                <div className="erp-brand-name">Vista Teknik</div>
-                <div className="erp-brand-sub">Electrical Switchboard Manufacturing</div>
-              </div>
+              {sidebarCollapsed?(
+                <div className="erp-logo">V</div>
+              ):(
+                <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:34,width:"auto"}}/>
+              )}
             </div>
             <div className="erp-nav">
               {SIDEBAR_MENUS.map(group=>(
