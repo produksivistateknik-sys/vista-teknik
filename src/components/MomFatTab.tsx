@@ -70,7 +70,7 @@ export function MomFatTab(){
 
   const filtered=list.filter(m=>{
     const q=search.trim().toLowerCase();
-    if(!q)return true;
+    if(!q)return!m.is_archived;
     return(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
   });
 
@@ -121,7 +121,10 @@ export function MomFatTab(){
                       )}
                     </div>
                   </div>
-                  <Badge label={st.label} color={st.color} bg={st.bg}/>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    {m.is_archived&&<Badge label="Arsip" color="#64748b" bg="#f1f5f9"/>}
+                    <Badge label={st.label} color={st.color} bg={st.bg}/>
+                  </div>
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>

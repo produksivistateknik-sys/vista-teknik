@@ -127,7 +127,10 @@ export function ProyekLuarTab(){
                       </div>
                     </div>
                   </div>
-                  <Badge label={st.label} color={st.color} bg={st.bg}/>
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    {l.is_archived&&<Badge label="Arsip" color="#64748b" bg="#f1f5f9"/>}
+                    <Badge label={st.label} color={st.color} bg={st.bg}/>
+                  </div>
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
