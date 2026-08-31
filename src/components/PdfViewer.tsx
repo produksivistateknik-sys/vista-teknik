@@ -24,6 +24,7 @@ export function PdfViewer({url,title,subtitle,onClose}:{url:string,title:string,
   const containerRef=useRef<HTMLDivElement|null>(null);
   const pdfDocRef=useRef<any>(null);
   const renderTaskRef=useRef<any>(null);
+  const firstPaintDoneRef=useRef(false);
   const[numPages,setNumPages]=useState(0);
   const[pageIndex,setPageIndex]=useState(0);
   const[loading,setLoading]=useState(true);
@@ -33,12 +34,12 @@ export function PdfViewer({url,title,subtitle,onClose}:{url:string,title:string,
 
   useEffect(()=>{
     let cancelled=false;
+    firstPaintDoneRef.current=false;
     setLoading(true);setError(null);setPageIndex(0);setNumPages(0);
     pdfjsLib.getDocument({url}).promise.then((pdf:any)=>{
       if(cancelled)return;
       pdfDocRef.current=pdf;
       setNumPages(pdf.numPages);
-      setLoading(false);
     }).catch(()=>{
       if(cancelled)return;
       setError("Gagal memuat PDF. Coba lagi atau buka di tab baru.");
@@ -54,6 +55,11 @@ export function PdfViewer({url,title,subtitle,onClose}:{url:string,title:string,
     return()=>{window.removeEventListener("resize",onResize);window.removeEventListener("orientationchange",onResize);};
   },[]);
 
+  // Render 2 tahap (31 Agu 2026, fix "loading lama") - dulu langsung render skala tinggi
+  // (fitScale sampai 2.5x dikali devicePixelRatio, bisa jadi ~7-8x di HP layar rapat), jadi
+  // ada jeda kosong lama sebelum apa pun kelihatan meski file PDF-nya sudah selesai di-fetch.
+  // Sekarang: render CEPAT skala rendah dulu (langsung tampil, nutup spinner), baru upgrade ke
+  // kualitas penuh di background dan ganti isi canvas begitu siap - user gak nunggu kosong.
   useEffect(()=>{
     if(!pdfDocRef.current||!canvasRef.current||numPages===0)return;
     let cancelled=false;
@@ -61,24 +67,39 @@ export function PdfViewer({url,title,subtitle,onClose}:{url:string,title:string,
       try{
         const page=await pdfDocRef.current.getPage(pageIndex+1);
         if(cancelled)return;
-        const containerWidth=containerRef.current?.clientWidth||800;
-        const baseViewport=page.getViewport({scale:1});
-        const fitScale=Math.min((containerWidth-32)/baseViewport.width,2.5);
-        const dpr=window.devicePixelRatio||1;
-        const viewport=page.getViewport({scale:fitScale*dpr});
         const canvas=canvasRef.current;
         if(!canvas)return;
-        canvas.width=viewport.width;
-        canvas.height=viewport.height;
-        canvas.style.width=(viewport.width/dpr)+"px";
-        canvas.style.height=(viewport.height/dpr)+"px";
         const ctx=canvas.getContext("2d");
         if(!ctx)return;
-        if(renderTaskRef.current)renderTaskRef.current.cancel();
-        const task=page.render({canvasContext:ctx,canvas,viewport});
-        renderTaskRef.current=task;
-        await task.promise;
-      }catch{/* render dibatalkan (ganti halaman cepat) - abaikan */}
+        const containerWidth=containerRef.current?.clientWidth||800;
+        const baseViewport=page.getViewport({scale:1});
+        // Ukuran CSS (tampilan) TETAP sama di kedua tahap render - cuma resolusi internal
+        // canvas (backing store) yang beda, biar gak "lompat" ukuran pas upgrade kualitas.
+        const cssScale=Math.min((containerWidth-32)/baseViewport.width,2);
+        const cssWidth=baseViewport.width*cssScale;
+        const cssHeight=baseViewport.height*cssScale;
+        canvas.style.width=cssWidth+"px";
+        canvas.style.height=cssHeight+"px";
+
+        const paint=async(backingScale:number)=>{
+          const viewport=page.getViewport({scale:backingScale});
+          canvas.width=viewport.width;
+          canvas.height=viewport.height;
+          if(renderTaskRef.current)renderTaskRef.current.cancel();
+          const task=page.render({canvasContext:ctx,canvas,viewport});
+          renderTaskRef.current=task;
+          await task.promise;
+        };
+
+        // Tahap 1: cepat, resolusi rendah (langsung muncul, di-upscale CSS - agak blur tapi instan).
+        await paint(Math.min(cssScale,1));
+        if(cancelled)return;
+        if(!firstPaintDoneRef.current){firstPaintDoneRef.current=true;setLoading(false);}
+
+        // Tahap 2: kualitas penuh di background (dpr dibatasi 2x, bukan sampai 3-4x di HP).
+        const dpr=Math.min(window.devicePixelRatio||1,2);
+        await paint(cssScale*dpr);
+      }catch{/* render dibatalkan (ganti halaman/ukuran cepat) - abaikan */}
     })();
     return()=>{cancelled=true;};
   },[pageIndex,numPages,resizeTick]);
