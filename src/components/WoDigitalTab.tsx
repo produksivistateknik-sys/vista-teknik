@@ -58,7 +58,9 @@ export function WoDigitalTab(){
 
   const q=search.trim().toLowerCase();
   const filteredWo=useMemo(()=>{
-    if(viewMode==="aktif"&&!q)return[];
+    // Aktif langsung tampil semua (search cuma mempersempit) - Arsip tetap search-first
+    // (jumlahnya historis, bisa banyak, sama alasan ArsipQCView.tsx).
+    if(viewMode==="arsip"&&!q)return[];
     return woList.filter(w=>{
       if(viewMode==="arsip"?!w.is_archived:!!w.is_archived)return false;
       if(q&&!(w.wo||"").toLowerCase().includes(q)&&!(w.proyek||"").toLowerCase().includes(q))return false;
@@ -70,6 +72,14 @@ export function WoDigitalTab(){
   const wiOf=(woId:number,panelId:number|null)=>wiList.find((w:any)=>w.wo_id===woId&&(w.panel_id||null)===(panelId||null));
   const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
   const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
+
+  const statsOfWo=(woId:number)=>{
+    const wiIds=new Set(wiList.filter((w:any)=>w.wo_id===woId).map((w:any)=>w.id));
+    const currents=revList.filter((r:any)=>wiIds.has(r.work_instruction_id)&&r.is_current);
+    const totalPages=currents.reduce((s:number,r:any)=>s+(r.page_count||0),0);
+    const lastUpload=currents.reduce((latest:string,r:any)=>r.uploaded_at>latest?r.uploaded_at:latest,"");
+    return{docCount:currents.length,totalPages,lastUpload};
+  };
 
   // ── Upload modal ──
   const[uploadTarget,setUploadTarget]=useState<{woId:number,woLabel:string,panelId:number|null,panelNama:string|null}|null>(null);
@@ -155,7 +165,7 @@ export function WoDigitalTab(){
         </div>
       </div>
 
-      {viewMode==="aktif"&&!q?(
+      {viewMode==="arsip"&&!q?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
           <i className="ti ti-search" style={{fontSize:28,display:"block",marginBottom:8}}/>
           Ketik nomor WO atau nama proyek untuk menampilkan daftar.
@@ -163,29 +173,38 @@ export function WoDigitalTab(){
       ):loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
       ):filteredWo.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada WO diarsipkan.":"Tidak ada WO yang cocok."}</div>
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada WO diarsipkan.":"Belum ada WO aktif."}</div>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+        <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
             const isExp=expandedWoId===w.id;
             const panels=panelsOfWo(w.id);
             const woWi=wiOf(w.id,null);
+            const stats=statsOfWo(w.id);
             return(
-              <Card key={w.id} style={{padding:0,overflow:"hidden",borderLeft:"3px solid #0ea5e9"}}>
-                <div className="erp-clickable-row" onClick={()=>setExpandedWoId(isExp?null:w.id)} style={{padding:"14px 16px",cursor:"pointer",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",
-                  background:isExp?"#f8faff":"transparent"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
-                    <div style={{width:38,height:38,borderRadius:10,background:"#0ea5e918",display:"flex",
+              <Card key={w.id} style={{padding:0,overflow:"hidden",border:"1px solid var(--border-color,#e2e8f0)"}}>
+                <div className="erp-clickable-row" onClick={()=>setExpandedWoId(isExp?null:w.id)} style={{padding:"16px 18px",cursor:"pointer",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap",
+                  background:isExp?"var(--bg-secondary,#f8fafc)":"transparent"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:14,flex:1,minWidth:0}}>
+                    <div style={{width:42,height:42,borderRadius:9,background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",display:"flex",
                       alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-file-type-pdf" style={{fontSize:18,color:"#0ea5e9"}}/>
+                      <i className="ti ti-folder" style={{fontSize:19,color:"#475569"}}/>
                     </div>
                     <div style={{minWidth:0,flex:1}}>
-                      <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)"}}>WO {w.wo} — {w.proyek}</div>
-                      <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>{panels.length} panel · {panels.filter(p=>wiOf(w.id,p.id)).length} sudah ada gambar</div>
+                      <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.5}}>WO {w.wo}</div>
+                      <div style={{fontWeight:800,fontSize:15,color:"var(--text-primary,#0f172a)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
+                      <div style={{fontSize:11.5,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                        <span><i className="ti ti-files" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.docCount} dokumen</span>
+                        {stats.totalPages>0&&<span><i className="ti ti-copy" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.totalPages} halaman</span>}
+                        {stats.lastUpload&&<span><i className="ti ti-clock" style={{fontSize:12,verticalAlign:"-2px"}}/> {fmtTgl(stats.lastUpload)}</span>}
+                      </div>
                     </div>
                   </div>
-                  {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="#f1f5f9"/>}
+                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
+                    {stats.docCount>0?<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
+                    {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="var(--bg-secondary,#f1f5f9)"/>}
+                  </div>
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",display:"flex",flexDirection:"column",gap:10}}>
