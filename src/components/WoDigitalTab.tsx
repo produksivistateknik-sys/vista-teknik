@@ -1,9 +1,11 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { uploadToR2 } from "../lib/r2Client";
 import { watermarkPdf } from "../lib/pdfWatermark";
 import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
+
+const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - digitalisasi gambar teknik (construction drawing CAD, PDF dari
@@ -275,6 +277,7 @@ export function WoDigitalTab({user}:{user?:any}={}){
 
 function WiCard({wi,revisions,current,expanded,onToggleRiwayat,fmtTgl}:{wi:any,revisions:any[],current:any,expanded:boolean,onToggleRiwayat:()=>void,fmtTgl:(s:string)=>string}){
   const lainnya=revisions.filter(r=>!r.is_current);
+  const[viewerTarget,setViewerTarget]=useState<{url:string,title:string,subtitle?:string}|null>(null);
   return(
     <div style={{background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
       {current?(
@@ -287,7 +290,9 @@ function WiCard({wi,revisions,current,expanded,onToggleRiwayat,fmtTgl}:{wi:any,r
             </div>
             <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>oleh {current.uploaded_by} · {fmtTgl(current.uploaded_at)}</div>
           </div>
-          <a href={current.file_url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"#2563eb",textDecoration:"none",whiteSpace:"nowrap"}}>Lihat PDF →</a>
+          <button onClick={()=>setViewerTarget({url:current.file_url,title:wi.judul||"Gambar Teknik",
+            subtitle:`${current.rev_mark?current.rev_mark+" · ":""}oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`})}
+            style={{background:"none",border:"none",fontSize:12,fontWeight:700,color:"#2563eb",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat PDF →</button>
         </div>
       ):<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada revisi berlaku.</div>}
       {lainnya.length>0&&(
@@ -306,12 +311,19 @@ function WiCard({wi,revisions,current,expanded,onToggleRiwayat,fmtTgl}:{wi:any,r
                     </div>
                     <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
                   </div>
-                  <a href={r.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:600,color:"#94a3b8",textDecoration:"none",whiteSpace:"nowrap"}}>Lihat →</a>
+                  <button onClick={()=>setViewerTarget({url:r.file_url,title:wi.judul||"Gambar Teknik",
+                    subtitle:`${r.rev_mark?r.rev_mark+" · ":""}oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
+                    style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
                 </div>
               ))}
             </div>
           )}
         </div>
+      )}
+      {viewerTarget&&(
+        <Suspense fallback={null}>
+          <PdfViewer url={viewerTarget.url} title={viewerTarget.title} subtitle={viewerTarget.subtitle} onClose={()=>setViewerTarget(null)}/>
+        </Suspense>
       )}
     </div>
   );
