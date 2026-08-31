@@ -25,6 +25,7 @@ import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
 export function WoDigitalTab(){
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
+  const[panelsAll,setPanelsAll]=useState<any[]>([]);
   const[wiList,setWiList]=useState<any[]>([]);
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
@@ -34,12 +35,14 @@ export function WoDigitalTab(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const[{data:wo},{data:wi},{data:rev}]=await Promise.all([
+    const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
       supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
+      supabase.from("panels").select("id,wo_id,nama"),
       supabase.from("work_instructions" as any).select("*"),
       supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
     ]);
     setWoList(wo||[]);
+    setPanelsAll(panels||[]);
     setWiList(wi||[]);
     setRevList(rev||[]);
     setLoading(false);
@@ -70,6 +73,7 @@ export function WoDigitalTab(){
   // lagi upload per-panel (31 Agu 2026) - panel_id di work_instructions TETAP nullable
   // (skema gak berubah), cuma UI-nya yang disederhanakan jadi 1 slot per WO (panel_id selalu
   // null dari jalur upload ini).
+  const panelNamesOf=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId).map(p=>p.nama);
   const wiOf=(woId:number)=>wiList.find((w:any)=>w.wo_id===woId&&!w.panel_id);
   const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
   const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
@@ -206,6 +210,16 @@ export function WoDigitalTab(){
                 </div>
                 {isExp&&(
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",display:"flex",flexDirection:"column",gap:10}}>
+                    {(()=>{const panelNames=panelNamesOf(w.id);return panelNames.length>0?(
+                      <div>
+                        <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.4,marginBottom:6}}>Panel di WO ini ({panelNames.length})</div>
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
+                          {panelNames.map(n=>(
+                            <span key={n} style={{fontSize:11,color:"#475569",background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:6,padding:"3px 9px"}}>{n}</span>
+                          ))}
+                        </div>
+                      </div>
+                    ):null;})()}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
                       <div>
                         <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar Teknik WO</div>
