@@ -25,7 +25,6 @@ import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
 export function WoDigitalTab(){
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
-  const[panelsAll,setPanelsAll]=useState<any[]>([]);
   const[wiList,setWiList]=useState<any[]>([]);
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
@@ -35,14 +34,12 @@ export function WoDigitalTab(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
+    const[{data:wo},{data:wi},{data:rev}]=await Promise.all([
       supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
-      supabase.from("panels").select("id,wo_id,nama"),
       supabase.from("work_instructions" as any).select("*"),
       supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
     ]);
     setWoList(wo||[]);
-    setPanelsAll(panels||[]);
     setWiList(wi||[]);
     setRevList(rev||[]);
     setLoading(false);
@@ -68,32 +65,34 @@ export function WoDigitalTab(){
     });
   },[woList,q,viewMode]);
 
-  const panelsOfWo=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId);
-  const wiOf=(woId:number,panelId:number|null)=>wiList.find((w:any)=>w.wo_id===woId&&(w.panel_id||null)===(panelId||null));
+  // WO Digital = 1 dokumen construction drawing per WO (mencakup SEMUA panel di WO itu
+  // sekaligus, sama seperti PDF asli dari CAD - multi-halaman berisi semua view). Gak ada
+  // lagi upload per-panel (31 Agu 2026) - panel_id di work_instructions TETAP nullable
+  // (skema gak berubah), cuma UI-nya yang disederhanakan jadi 1 slot per WO (panel_id selalu
+  // null dari jalur upload ini).
+  const wiOf=(woId:number)=>wiList.find((w:any)=>w.wo_id===woId&&!w.panel_id);
   const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
   const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
 
   const statsOfWo=(woId:number)=>{
-    const wiIds=new Set(wiList.filter((w:any)=>w.wo_id===woId).map((w:any)=>w.id));
-    const currents=revList.filter((r:any)=>wiIds.has(r.work_instruction_id)&&r.is_current);
-    const totalPages=currents.reduce((s:number,r:any)=>s+(r.page_count||0),0);
-    const lastUpload=currents.reduce((latest:string,r:any)=>r.uploaded_at>latest?r.uploaded_at:latest,"");
-    return{docCount:currents.length,totalPages,lastUpload};
+    const wi=wiOf(woId);
+    const current=wi?currentRevOf(wi.id):null;
+    return{docCount:current?1:0,totalPages:current?.page_count||0,lastUpload:current?.uploaded_at||""};
   };
 
   // ── Upload modal ──
-  const[uploadTarget,setUploadTarget]=useState<{woId:number,woLabel:string,panelId:number|null,panelNama:string|null}|null>(null);
+  const[uploadTarget,setUploadTarget]=useState<{woId:number,woLabel:string}|null>(null);
   const[uploadFile,setUploadFile]=useState<File|null>(null);
   const[uploadJudul,setUploadJudul]=useState("");
   const[uploadRevMark,setUploadRevMark]=useState("");
   const[uploading,setUploading]=useState(false);
   const[uploadStage,setUploadStage]=useState("");
 
-  const openUpload=(woId:number,woLabel:string,panelId:number|null,panelNama:string|null)=>{
-    const existing=wiOf(woId,panelId);
-    setUploadTarget({woId,woLabel,panelId,panelNama});
+  const openUpload=(woId:number,woLabel:string)=>{
+    const existing=wiOf(woId);
+    setUploadTarget({woId,woLabel});
     setUploadFile(null);
-    setUploadJudul(existing?.judul||(panelNama?`Gambar Teknik - ${panelNama}`:`Gambar Teknik - WO ${woLabel}`));
+    setUploadJudul(existing?.judul||`Gambar Teknik - WO ${woLabel}`);
     setUploadRevMark("");
   };
 
@@ -107,14 +106,14 @@ export function WoDigitalTab(){
       const{blob,pageCount}=await watermarkPdf(fileBytes);
 
       setUploadStage("Mengupload...");
-      const key=`wo-digital/${uploadTarget.woId}/${uploadTarget.panelId||"wo"}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
+      const key=`wo-digital/${uploadTarget.woId}/wo/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
       const fileUrl=await uploadToR2(blob,key,"application/pdf");
 
       setUploadStage("Menyimpan...");
-      let wi=wiOf(uploadTarget.woId,uploadTarget.panelId);
+      let wi=wiOf(uploadTarget.woId);
       if(!wi){
         const{data,error}=await supabase.from("work_instructions" as any).insert({
-          wo_id:uploadTarget.woId,panel_id:uploadTarget.panelId,judul:uploadJudul.trim()||"Gambar Teknik",
+          wo_id:uploadTarget.woId,panel_id:null,judul:uploadJudul.trim()||"Gambar Teknik",
         }).select().single();
         if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setUploading(false);setUploadStage("");return;}
         wi=data;
@@ -133,7 +132,7 @@ export function WoDigitalTab(){
 
       await activityLogService.insert({
         user_name:uname,action:"UPLOAD WO DIGITAL",
-        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - WO ${uploadTarget.woLabel}${uploadTarget.panelNama?" / "+uploadTarget.panelNama:""}`,
+        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - WO ${uploadTarget.woLabel}`,
         module:"wo_digital",halaman:"WO Digital",
       });
 
@@ -178,8 +177,7 @@ export function WoDigitalTab(){
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
             const isExp=expandedWoId===w.id;
-            const panels=panelsOfWo(w.id);
-            const woWi=wiOf(w.id,null);
+            const woWi=wiOf(w.id);
             const stats=statsOfWo(w.id);
             return(
               <Card key={w.id} style={{padding:0,overflow:"hidden",border:"1px solid var(--border-color,#e2e8f0)"}}>
@@ -210,26 +208,12 @@ export function WoDigitalTab(){
                   <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
                       <div>
-                        <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar level WO (seluruh panel)</div>
+                        <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar Teknik WO</div>
                         {woWi?<div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{woWi.judul}</div>:<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada gambar</div>}
                       </div>
-                      <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo,null,null)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
+                      <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
                     </div>
                     {woWi&&<WiCard wi={woWi} revisions={revisionsOf(woWi.id)} current={currentRevOf(woWi.id)} expanded={!!expandedRiwayat[woWi.id]} onToggleRiwayat={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))} fmtTgl={fmtTgl}/>}
-
-                    {panels.length>0&&<div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.3,marginTop:6}}>Per Panel</div>}
-                    {panels.map(p=>{
-                      const wi=wiOf(w.id,p.id);
-                      return(
-                        <div key={p.id} style={{border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,padding:"10px 12px"}}>
-                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
-                            <div style={{fontSize:13,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>{p.nama}</div>
-                            <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo,p.id,p.nama)}>{wi?"Upload Revisi":"+ Upload"}</Btn>
-                          </div>
-                          {wi&&<div style={{marginTop:8}}><WiCard wi={wi} revisions={revisionsOf(wi.id)} current={currentRevOf(wi.id)} expanded={!!expandedRiwayat[wi.id]} onToggleRiwayat={()=>setExpandedRiwayat(pr=>({...pr,[wi.id]:!pr[wi.id]}))} fmtTgl={fmtTgl}/></div>}
-                        </div>
-                      );
-                    })}
                   </div>
                 )}
               </Card>
@@ -242,7 +226,7 @@ export function WoDigitalTab(){
         <Modal title={"Upload Gambar Teknik"} onClose={()=>{if(!uploading)setUploadTarget(null);}} width={460}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontSize:12,color:"#64748b"}}>
-              WO {uploadTarget.woLabel}{uploadTarget.panelNama?" / "+uploadTarget.panelNama:" (seluruh panel)"}
+              WO {uploadTarget.woLabel} (seluruh panel)
             </div>
             <div>
               <Lbl>Judul Dokumen</Lbl>
