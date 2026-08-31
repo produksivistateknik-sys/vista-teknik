@@ -59,6 +59,7 @@ const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
 const ProyekLuarTab = lazy(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
 const MomFatTab = lazy(() => import('./components/MomFatTab').then(m => ({ default: m.MomFatTab })))
+const WoDigitalTab = lazy(() => import('./components/WoDigitalTab').then(m => ({ default: m.WoDigitalTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 
@@ -519,6 +520,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
+      ...(canWO?[{id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf"}]:[]),
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
@@ -910,6 +912,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab/></Suspense></div>}
+              {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>

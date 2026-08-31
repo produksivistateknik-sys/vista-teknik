@@ -1,0 +1,298 @@
+import { useState, useEffect, useMemo } from "react";
+import { supabase } from "../lib/supabase";
+import { activityLogService } from "../services/activityLogService";
+import { uploadToR2 } from "../lib/r2Client";
+import { watermarkPdf } from "../lib/pdfWatermark";
+import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO DIGITAL (31 Agu 2026) - digitalisasi gambar teknik (construction drawing CAD, PDF dari
+// software eksternal) yang biasanya dicetak fisik jadi panduan kerja operator. Admin upload
+// PDF di sini, sistem tempel watermark logo Vista (pdfWatermark.ts, pdf-lib) sebelum simpan ke
+// R2, operator akses/download versi digital dari Vista Pekerja (WoDigitalView.tsx).
+//
+// Search-first (pola sama persis ProyekLuarTab.tsx) - daftar WO baru muncul setelah ketik
+// nomor WO/proyek, biar gak nge-dump seluruh WO tiap kali tab dibuka.
+//
+// Revisi: 1 work_instruction (slot drawing per WO/panel) bisa punya banyak wi_revisions -
+// cuma SATU yang is_current=true ("Berlaku", badge hijau), sisanya "Tidak Berlaku" (badge abu)
+// tapi tetap tersimpan buat riwayat. Dijamin di level DB lewat unique partial index
+// (wi_revisions_one_current, migration 20260831030000).
+//
+// Tabel BELUM masuk src/types/supabase-generated.ts - pakai (table as any), pola yang sudah
+// ada di codebase ini buat tabel baru yang belum di-generate types-nya.
+// ─────────────────────────────────────────────────────────────────────────────
+export function WoDigitalTab(){
+  const[loading,setLoading]=useState(true);
+  const[woList,setWoList]=useState<any[]>([]);
+  const[panelsAll,setPanelsAll]=useState<any[]>([]);
+  const[wiList,setWiList]=useState<any[]>([]);
+  const[revList,setRevList]=useState<any[]>([]);
+  const[search,setSearch]=useState("");
+  const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
+  const[expandedWoId,setExpandedWoId]=useState<number|null>(null);
+  const[expandedRiwayat,setExpandedRiwayat]=useState<Record<number,boolean>>({});
+
+  const fetchAll=async()=>{
+    setLoading(true);
+    const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
+      supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
+      supabase.from("panels").select("id,wo_id,nama"),
+      supabase.from("work_instructions" as any).select("*"),
+      supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
+    ]);
+    setWoList(wo||[]);
+    setPanelsAll(panels||[]);
+    setWiList(wi||[]);
+    setRevList(rev||[]);
+    setLoading(false);
+  };
+  useEffect(()=>{
+    fetchAll();
+    const ch=supabase.channel("realtime-wo-digital-admin")
+      .on("postgres_changes",{event:"*",schema:"public",table:"work_instructions"},fetchAll)
+      .on("postgres_changes",{event:"*",schema:"public",table:"wi_revisions"},fetchAll)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const q=search.trim().toLowerCase();
+  const filteredWo=useMemo(()=>{
+    if(viewMode==="aktif"&&!q)return[];
+    return woList.filter(w=>{
+      if(viewMode==="arsip"?!w.is_archived:!!w.is_archived)return false;
+      if(q&&!(w.wo||"").toLowerCase().includes(q)&&!(w.proyek||"").toLowerCase().includes(q))return false;
+      return true;
+    });
+  },[woList,q,viewMode]);
+
+  const panelsOfWo=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId);
+  const wiOf=(woId:number,panelId:number|null)=>wiList.find((w:any)=>w.wo_id===woId&&(w.panel_id||null)===(panelId||null));
+  const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
+  const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
+
+  // ── Upload modal ──
+  const[uploadTarget,setUploadTarget]=useState<{woId:number,woLabel:string,panelId:number|null,panelNama:string|null}|null>(null);
+  const[uploadFile,setUploadFile]=useState<File|null>(null);
+  const[uploadJudul,setUploadJudul]=useState("");
+  const[uploadRevMark,setUploadRevMark]=useState("");
+  const[uploading,setUploading]=useState(false);
+  const[uploadStage,setUploadStage]=useState("");
+
+  const openUpload=(woId:number,woLabel:string,panelId:number|null,panelNama:string|null)=>{
+    const existing=wiOf(woId,panelId);
+    setUploadTarget({woId,woLabel,panelId,panelNama});
+    setUploadFile(null);
+    setUploadJudul(existing?.judul||(panelNama?`Gambar Teknik - ${panelNama}`:`Gambar Teknik - WO ${woLabel}`));
+    setUploadRevMark("");
+  };
+
+  const doUpload=async()=>{
+    if(!uploadTarget||!uploadFile)return;
+    if(!uploadFile.type.includes("pdf")){alert("File harus berupa PDF.");return;}
+    setUploading(true);
+    try{
+      setUploadStage("Menempel watermark...");
+      const fileBytes=await uploadFile.arrayBuffer();
+      const{blob,pageCount}=await watermarkPdf(fileBytes);
+
+      setUploadStage("Mengupload...");
+      const key=`wo-digital/${uploadTarget.woId}/${uploadTarget.panelId||"wo"}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
+      const fileUrl=await uploadToR2(blob,key,"application/pdf");
+
+      setUploadStage("Menyimpan...");
+      let wi=wiOf(uploadTarget.woId,uploadTarget.panelId);
+      if(!wi){
+        const{data,error}=await supabase.from("work_instructions" as any).insert({
+          wo_id:uploadTarget.woId,panel_id:uploadTarget.panelId,judul:uploadJudul.trim()||"Gambar Teknik",
+        }).select().single();
+        if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setUploading(false);setUploadStage("");return;}
+        wi=data;
+      }
+      // Revisi lama di-set tidak berlaku dulu, BARU insert revisi baru berlaku - urutan ini
+      // penting biar gak pernah tabrakan sama unique partial index (cuma 1 is_current=true).
+      await supabase.from("wi_revisions" as any).update({is_current:false}).eq("work_instruction_id",wi.id).eq("is_current",true);
+      const maxRev=Math.max(0,...revisionsOf(wi.id).map((r:any)=>r.revision_number));
+      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+      const uname=sess?.nama||sess?.name||"Admin";
+      const{error:revErr}=await supabase.from("wi_revisions" as any).insert({
+        work_instruction_id:wi.id,revision_number:maxRev+1,rev_mark:uploadRevMark.trim()||null,
+        file_url:fileUrl,page_count:pageCount,is_current:true,uploaded_by:uname,
+      });
+      if(revErr){alert("Gagal simpan revisi: "+revErr.message);setUploading(false);setUploadStage("");return;}
+
+      await activityLogService.insert({
+        user_name:uname,action:"UPLOAD WO DIGITAL",
+        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - WO ${uploadTarget.woLabel}${uploadTarget.panelNama?" / "+uploadTarget.panelNama:""}`,
+        module:"wo_digital",halaman:"WO Digital",
+      });
+
+      setUploadTarget(null);setUploadFile(null);setUploadJudul("");setUploadRevMark("");
+      fetchAll();
+    }catch(err:any){
+      alert("Gagal upload: "+(err?.message||"unknown error"));
+    }
+    setUploading(false);setUploadStage("");
+  };
+
+  const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
+
+  return(
+    <div className="fi">
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nomor WO / proyek..."
+          style={{flex:2,minWidth:200,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
+            fontSize:13,background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)"}}/>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setViewMode("aktif")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="aktif"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="aktif"?"#fff":"#64748b"}}>
+            Aktif
+          </button>
+          <button onClick={()=>setViewMode("arsip")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="arsip"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="arsip"?"#fff":"#64748b"}}>
+            🗄️ Arsip
+          </button>
+        </div>
+      </div>
+
+      {viewMode==="aktif"&&!q?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <i className="ti ti-search" style={{fontSize:28,display:"block",marginBottom:8}}/>
+          Ketik nomor WO atau nama proyek untuk menampilkan daftar.
+        </div>
+      ):loading?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
+      ):filteredWo.length===0?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada WO diarsipkan.":"Tidak ada WO yang cocok."}</div>
+      ):(
+        <div style={{display:"flex",flexDirection:"column",gap:12}}>
+          {filteredWo.map(w=>{
+            const isExp=expandedWoId===w.id;
+            const panels=panelsOfWo(w.id);
+            const woWi=wiOf(w.id,null);
+            return(
+              <Card key={w.id} style={{padding:0,overflow:"hidden",borderLeft:"3px solid #0ea5e9"}}>
+                <div className="erp-clickable-row" onClick={()=>setExpandedWoId(isExp?null:w.id)} style={{padding:"14px 16px",cursor:"pointer",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:12,flexWrap:"wrap",
+                  background:isExp?"#f8faff":"transparent"}}>
+                  <div style={{display:"flex",alignItems:"center",gap:12,flex:1,minWidth:0}}>
+                    <div style={{width:38,height:38,borderRadius:10,background:"#0ea5e918",display:"flex",
+                      alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <i className="ti ti-file-type-pdf" style={{fontSize:18,color:"#0ea5e9"}}/>
+                    </div>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontWeight:800,fontSize:14,color:"var(--text-primary,#1e293b)"}}>WO {w.wo} — {w.proyek}</div>
+                      <div style={{fontSize:12,color:"#94a3b8",marginTop:3}}>{panels.length} panel · {panels.filter(p=>wiOf(w.id,p.id)).length} sudah ada gambar</div>
+                    </div>
+                  </div>
+                  {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="#f1f5f9"/>}
+                </div>
+                {isExp&&(
+                  <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",display:"flex",flexDirection:"column",gap:10}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
+                      <div>
+                        <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar level WO (seluruh panel)</div>
+                        {woWi?<div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{woWi.judul}</div>:<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada gambar</div>}
+                      </div>
+                      <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo,null,null)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
+                    </div>
+                    {woWi&&<WiCard wi={woWi} revisions={revisionsOf(woWi.id)} current={currentRevOf(woWi.id)} expanded={!!expandedRiwayat[woWi.id]} onToggleRiwayat={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))} fmtTgl={fmtTgl}/>}
+
+                    {panels.length>0&&<div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.3,marginTop:6}}>Per Panel</div>}
+                    {panels.map(p=>{
+                      const wi=wiOf(w.id,p.id);
+                      return(
+                        <div key={p.id} style={{border:"1px solid var(--border-color,#e2e8f0)",borderRadius:10,padding:"10px 12px"}}>
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8}}>
+                            <div style={{fontSize:13,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>{p.nama}</div>
+                            <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo,p.id,p.nama)}>{wi?"Upload Revisi":"+ Upload"}</Btn>
+                          </div>
+                          {wi&&<div style={{marginTop:8}}><WiCard wi={wi} revisions={revisionsOf(wi.id)} current={currentRevOf(wi.id)} expanded={!!expandedRiwayat[wi.id]} onToggleRiwayat={()=>setExpandedRiwayat(pr=>({...pr,[wi.id]:!pr[wi.id]}))} fmtTgl={fmtTgl}/></div>}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {uploadTarget&&(
+        <Modal title={"Upload Gambar Teknik"} onClose={()=>{if(!uploading)setUploadTarget(null);}} width={460}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{fontSize:12,color:"#64748b"}}>
+              WO {uploadTarget.woLabel}{uploadTarget.panelNama?" / "+uploadTarget.panelNama:" (seluruh panel)"}
+            </div>
+            <div>
+              <Lbl>Judul Dokumen</Lbl>
+              <Inp value={uploadJudul} onChange={(e:any)=>setUploadJudul(e.target.value)} disabled={uploading} placeholder="mis. Construction Drawing LVMDP"/>
+            </div>
+            <div>
+              <Lbl>Kode Revisi (opsional, dari title block PDF)</Lbl>
+              <Inp value={uploadRevMark} onChange={(e:any)=>setUploadRevMark(e.target.value)} disabled={uploading} placeholder="mis. REV. A"/>
+            </div>
+            <div>
+              <Lbl>File PDF</Lbl>
+              <label style={{display:"flex",alignItems:"center",gap:8,padding:"14px",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"var(--bg-secondary,#f8fafc)",cursor:uploading?"default":"pointer"}}>
+                <input type="file" accept="application/pdf" disabled={uploading} style={{display:"none"}}
+                  onChange={e=>setUploadFile(e.target.files?.[0]||null)}/>
+                <i className="ti ti-upload" style={{fontSize:18,color:"#64748b"}}/>
+                <span style={{fontSize:12.5,color:"#64748b",fontWeight:600}}>{uploadFile?uploadFile.name:"Pilih file PDF (construction drawing)..."}</span>
+              </label>
+            </div>
+            {uploading&&(
+              <div style={{textAlign:"center",padding:12,background:"#eff6ff",borderRadius:10,fontSize:12.5,fontWeight:700,color:"#1d4ed8"}}>{uploadStage}</div>
+            )}
+            <Btn color="#1d4ed8" onClick={doUpload} disabled={uploading||!uploadFile}>{uploading?"Memproses...":"Upload & Tempel Watermark"}</Btn>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function WiCard({wi,revisions,current,expanded,onToggleRiwayat,fmtTgl}:{wi:any,revisions:any[],current:any,expanded:boolean,onToggleRiwayat:()=>void,fmtTgl:(s:string)=>string}){
+  const lainnya=revisions.filter(r=>!r.is_current);
+  return(
+    <div style={{background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
+      {current?(
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
+          <div style={{minWidth:0,flex:1}}>
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+              <Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>
+              {current.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{current.rev_mark}</span>}
+              <span style={{fontSize:10,color:"#94a3b8"}}>{current.page_count?current.page_count+" hal.":""}</span>
+            </div>
+            <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>oleh {current.uploaded_by} · {fmtTgl(current.uploaded_at)}</div>
+          </div>
+          <a href={current.file_url} target="_blank" rel="noreferrer" style={{fontSize:12,fontWeight:700,color:"#2563eb",textDecoration:"none",whiteSpace:"nowrap"}}>Lihat PDF →</a>
+        </div>
+      ):<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada revisi berlaku.</div>}
+      {lainnya.length>0&&(
+        <div style={{marginTop:8}}>
+          <button onClick={onToggleRiwayat} style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
+            {expanded?"▼":"▶"} Riwayat revisi ({lainnya.length})
+          </button>
+          {expanded&&(
+            <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+              {lainnya.map(r=>(
+                <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                      <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                      {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                    </div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                  </div>
+                  <a href={r.file_url} target="_blank" rel="noreferrer" style={{fontSize:11,fontWeight:600,color:"#94a3b8",textDecoration:"none",whiteSpace:"nowrap"}}>Lihat →</a>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
