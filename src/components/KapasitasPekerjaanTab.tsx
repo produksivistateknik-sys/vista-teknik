@@ -360,6 +360,19 @@ export function KapasitasPekerjaanTab(){
     };
     if(editBom){
       // kode_komponen sengaja TIDAK ikut di-update - begitu dibuat, kode itu identitas permanen.
+      // Tapi nama_komponen SEBELUMNYA masih bisa diedit bebas walau kode itu sudah dipakai -
+      // itu akar bug "qty komponen hilang" (31 Agu 2026): kode yang sama tiba-tiba berarti lain,
+      // checklist panel lama (disimpan per-kode) jadi salah label diam-diam. Sekarang kalau kode
+      // ini sudah ada qty>0 di panel manapun, nama-nya dikunci - harus tambah komponen baru,
+      // bukan rename yang lama.
+      if(bomForm.nama_komponen!==editBom.nama_komponen){
+        const{data:panelsTipeIni}=await supabase.from("panels").select("checklist").eq("tipe",editBom.tipe_panel);
+        const dipakai=(panelsTipeIni||[]).some((p:any)=>(p.checklist?.[editBom.kode_komponen]?.qty||0)>0);
+        if(dipakai){
+          alert(`Nama komponen "${editBom.nama_komponen}" (kode ${editBom.kode_komponen}) tidak bisa diubah - kode ini sudah punya qty terisi di panel yang sudah ada.\n\nKalau maksudnya komponen ini beda dari "${editBom.nama_komponen}", tambahkan sebagai komponen BARU (tombol Tambah Komponen), jangan rename yang ini - supaya data qty panel lama gak jadi salah label.`);
+          return;
+        }
+      }
       // urutan cuma di-hitung-ulang kalau tipe_panel/WP-nya beneran diubah (pindah ke akhir grup
       // baru) - kalau WP-nya sama persis, posisi aslinya dipertahankan apa adanya.
       const wpBerubah=bomForm.tipe_panel!==editBom.tipe_panel||bomForm.wp!==editBom.wp;
