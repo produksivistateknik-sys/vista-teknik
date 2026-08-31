@@ -58,7 +58,7 @@ export function Login({onLogin}){
     .lg-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;padding:4px;display:flex;align-items:center}
     .lg-success-overlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:9999;backdrop-filter:blur(4px)}
     .lg-success-icon{font-size:64px;animation:lgSuccess .5s cubic-bezier(.22,1,.36,1) forwards}
-    @media(max-width:700px){.lg-left{display:none!important}.lg-right{width:100%!important;padding:24px!important}.lg-overlay{background:rgba(8,15,34,.72)!important}}
+    @media(max-width:900px){.lg-left{display:none!important}.lg-right{width:100%!important;padding:24px!important}.lg-overlay{background:rgba(8,15,34,.72)!important}}
   `;
 
   return(
