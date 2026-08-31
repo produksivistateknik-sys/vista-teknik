@@ -16,6 +16,7 @@ export function MomFatTab(){
   const[list,setList]=useState<any[]>([]);
   const[progressMap,setProgressMap]=useState<Record<number,{done:number,total:number}>>({});
   const[search,setSearch]=useState("");
+  const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[expandedId,setExpandedId]=useState<number|null>(null);
   const[poinMap,setPoinMap]=useState<Record<number,any[]>>({});
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
@@ -70,8 +71,9 @@ export function MomFatTab(){
 
   const filtered=list.filter(m=>{
     const q=search.trim().toLowerCase();
-    if(!q)return!m.is_archived;
-    return(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
+    const matchQ=!q||(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
+    if(!matchQ)return false;
+    return viewMode==="arsip"?m.is_archived:(q?true:!m.is_archived);
   });
 
   const statusStyle:any={
@@ -82,16 +84,26 @@ export function MomFatTab(){
 
   return(
     <div className="fi">
-      <div style={{marginBottom:16}}>
+      <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari judul dokumen / operator..."
-          style={{width:"100%",maxWidth:400,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
+          style={{flex:1,minWidth:200,maxWidth:400,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
             fontSize:13,background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)"}}/>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setViewMode("aktif")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="aktif"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="aktif"?"#fff":"#64748b"}}>
+            Aktif
+          </button>
+          <button onClick={()=>setViewMode("arsip")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="arsip"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="arsip"?"#fff":"#64748b"}}>
+            🗄️ Arsip
+          </button>
+        </div>
       </div>
 
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
       ):filtered.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Tidak ada dokumen MOM FAT.</div>
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada dokumen diarsip.":"Tidak ada dokumen MOM FAT."}</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {filtered.map(m=>{

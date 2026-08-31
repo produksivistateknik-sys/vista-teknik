@@ -23,6 +23,7 @@ export function ProyekLuarTab(){
   const[filterDivisi,setFilterDivisi]=useState("ALL");
   const[filterStatus,setFilterStatus]=useState("ALL");
   const[search,setSearch]=useState("");
+  const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[expandedId,setExpandedId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
 
@@ -55,14 +56,15 @@ export function ProyekLuarTab(){
 
   const q=search.trim().toLowerCase();
   const filtered=useMemo(()=>{
-    if(!q)return[];
+    if(viewMode==="aktif"&&!q)return[];
     return list.filter(l=>{
+      if(viewMode==="arsip"?!l.is_archived:false)return false;
       if(filterDivisi!=="ALL"&&l.divisi!==filterDivisi)return false;
       if(filterStatus!=="ALL"&&l.status!==filterStatus)return false;
-      if(!(l.nama_lokasi||"").toLowerCase().includes(q)&&!(l.operator_nama||"").toLowerCase().includes(q))return false;
+      if(q&&!(l.nama_lokasi||"").toLowerCase().includes(q)&&!(l.operator_nama||"").toLowerCase().includes(q))return false;
       return true;
     });
-  },[list,filterDivisi,filterStatus,q]);
+  },[list,filterDivisi,filterStatus,q,viewMode]);
 
   const statusStyle:any={
     berlangsung:{bg:"#fffbeb",color:"#d97706",label:"Berlangsung"},
@@ -75,22 +77,32 @@ export function ProyekLuarTab(){
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama proyek / operator..."
           style={{flex:2,minWidth:200,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
             fontSize:13,background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)"}}/>
-        <select value={filterDivisi} onChange={e=>setFilterDivisi(e.target.value)} disabled={!q}
+        <select value={filterDivisi} onChange={e=>setFilterDivisi(e.target.value)} disabled={viewMode==="aktif"&&!q}
           style={{padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,
-            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:q?1:.5,cursor:q?"pointer":"not-allowed"}}>
+            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:(viewMode==="aktif"&&!q)?.5:1,cursor:(viewMode==="aktif"&&!q)?"not-allowed":"pointer"}}>
           <option value="ALL">Semua Divisi</option>
           {divisiList.map(d=>(<option key={d} value={d}>{(DIVISI_CONFIG as any)[d]?.label||d}</option>))}
         </select>
-        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} disabled={!q}
+        <select value={filterStatus} onChange={e=>setFilterStatus(e.target.value)} disabled={viewMode==="aktif"&&!q}
           style={{padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,
-            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:q?1:.5,cursor:q?"pointer":"not-allowed"}}>
+            background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)",opacity:(viewMode==="aktif"&&!q)?.5:1,cursor:(viewMode==="aktif"&&!q)?"not-allowed":"pointer"}}>
           <option value="ALL">Semua Status</option>
           <option value="berlangsung">Berlangsung</option>
           <option value="selesai">Selesai</option>
         </select>
+        <div style={{display:"flex",gap:6}}>
+          <button onClick={()=>setViewMode("aktif")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="aktif"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="aktif"?"#fff":"#64748b"}}>
+            Aktif
+          </button>
+          <button onClick={()=>setViewMode("arsip")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
+            fontSize:12.5,fontWeight:700,background:viewMode==="arsip"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="arsip"?"#fff":"#64748b"}}>
+            🗄️ Arsip
+          </button>
+        </div>
       </div>
 
-      {!q?(
+      {viewMode==="aktif"&&!q?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
           <i className="ti ti-search" style={{fontSize:28,display:"block",marginBottom:8}}/>
           Ketik nama proyek atau nama operator untuk menampilkan daftar laporan.
@@ -98,7 +110,7 @@ export function ProyekLuarTab(){
       ):loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
       ):filtered.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Tidak ada laporan yang cocok.</div>
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada laporan diarsip.":"Tidak ada laporan yang cocok."}</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:12}}>
           {filtered.map(l=>{
