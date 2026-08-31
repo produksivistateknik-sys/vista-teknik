@@ -192,6 +192,7 @@ export const BUSBAR_COLORS:Record<string,string>={
 
 export const DIVISI_CONFIG = {
   admin:      {label:"Admin",         icon:"⚙️", color:"#dc2626",bg:"#fef2f2",   proses:null},
+  engineering:{label:"Engineering",   icon:"📐", color:"#4338ca",bg:"#eef2ff",   proses:null},
   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb", proses:["POTONG","BENDING","STEL","FINISHING"]},
   painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:["PAINTING"]},
   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},

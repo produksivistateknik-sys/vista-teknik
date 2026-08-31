@@ -22,7 +22,10 @@ import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
 // Tabel BELUM masuk src/types/supabase-generated.ts - pakai (table as any), pola yang sudah
 // ada di codebase ini buat tabel baru yang belum di-generate types-nya.
 // ─────────────────────────────────────────────────────────────────────────────
-export function WoDigitalTab(){
+export function WoDigitalTab({user}:{user?:any}={}){
+  // Role Engineering (31 Agu 2026) - cuma Engineering yang boleh upload/upload-revisi gambar
+  // teknik. Admin (dan siapa pun selain engineering) VIEW-ONLY - tombol Upload disembunyikan.
+  const canUpload=user?.divisi==="engineering";
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
   const[panelsAll,setPanelsAll]=useState<any[]>([]);
@@ -225,7 +228,7 @@ export function WoDigitalTab(){
                         <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar Teknik WO</div>
                         {woWi?<div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{woWi.judul}</div>:<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada gambar</div>}
                       </div>
-                      <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
+                      {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>}
                     </div>
                     {woWi&&<WiCard wi={woWi} revisions={revisionsOf(woWi.id)} current={currentRevOf(woWi.id)} expanded={!!expandedRiwayat[woWi.id]} onToggleRiwayat={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))} fmtTgl={fmtTgl}/>}
                   </div>

@@ -1,12 +1,14 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { Card, Lbl, Inp, Btn, Modal } from './ui/Primitives'
+import { Card, Lbl, Inp, Sel, Btn, Modal } from './ui/Primitives'
 import { MasterPekerjaInline } from './MasterPekerjaInline'
 import { SubBagianPasswordCard } from './SubBagianPasswordCard'
 
+const ROLE_LABEL: Record<string,string> = { admin: "Admin", engineering: "Engineering" };
+
 export function MasterUserTab({ admins, setAdmins, user, pekerja }){
-  const [form, setForm] = useState({ nama: "", username: "", password: "", is_active: true });
+  const [form, setForm] = useState({ nama: "", username: "", password: "", divisi: "admin", is_active: true });
   const [editId, setEditId] = useState(null);
   const [delId, setDelId] = useState(null);
   const [showPwd, setShowPwd] = useState({});
@@ -18,22 +20,22 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
     if (editId) {
       const { data, error } = await supabase
         .from("admins")
-        .update({ nama: form.nama, username: form.username, is_active: form.is_active })
+        .update({ nama: form.nama, username: form.username, divisi: form.divisi, is_active: form.is_active })
         .eq("id", editId).select().single();
       if (!error) {
         setAdmins(prev => prev.map(a => a.id === editId ? data : a));
         setEditId(null);
-        setForm({ nama: "", username: "", password: "", is_active: true });
+        setForm({ nama: "", username: "", password: "", divisi: "admin", is_active: true });
       }
     } else {
       if (!form.password.trim()) return;
       const { data, error } = await supabase
         .from("admins")
-        .insert({ nama: form.nama, username: form.username, password: form.password, is_active: form.is_active })
+        .insert({ nama: form.nama, username: form.username, password: form.password, divisi: form.divisi, is_active: form.is_active })
         .select().single();
       if (!error) {
         setAdmins(prev => [...prev, data]);
-        setForm({ nama: "", username: "", password: "", is_active: true });
+        setForm({ nama: "", username: "", password: "", divisi: "admin", is_active: true });
       }
     }
   };
@@ -94,16 +96,20 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
         </div>
         <Card style={{ marginBottom: 16 }}>
           <div style={{ fontWeight: 800, fontSize: 14, color: "#1e293b", marginBottom: 14 }}>{editId ? "Edit Admin" : "Tambah Admin Baru"}</div>
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
+          <div style={{ display: "grid", gridTemplateColumns: editId ? "1fr 1fr 1fr auto" : "1fr 1fr 1fr 1fr auto", gap: 12, alignItems: "flex-end" }}>
             <div><Lbl>Nama Lengkap</Lbl><Inp value={form.nama} onChange={e => setForm({ ...form, nama: e.target.value })} placeholder="Nama admin..." /></div>
             <div><Lbl>Username</Lbl><Inp value={form.username} onChange={e => setForm({ ...form, username: e.target.value })} placeholder="username_admin" /></div>
             {!editId && (<div><Lbl>Password</Lbl><Inp type="password" value={form.password} onChange={e => setForm({ ...form, password: e.target.value })} placeholder="Password awal..." /></div>)}
+            <div><Lbl>Role</Lbl><Sel value={form.divisi} onChange={e => setForm({ ...form, divisi: e.target.value })}>
+              <option value="admin">Admin</option>
+              <option value="engineering">Engineering</option>
+            </Sel></div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 2 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
                 <input type="checkbox" checked={form.is_active} onChange={e => setForm({ ...form, is_active: e.target.checked })} />Aktif
               </label>
               <Btn color="#1d4ed8" onClick={save}>{editId ? "Simpan" : "+ Tambah"}</Btn>
-              {editId && (<Btn outline color="#64748b" onClick={() => { setEditId(null); setForm({ nama: "", username: "", password: "", is_active: true }); }}>Batal</Btn>)}
+              {editId && (<Btn outline color="#64748b" onClick={() => { setEditId(null); setForm({ nama: "", username: "", password: "", divisi: "admin", is_active: true }); }}>Batal</Btn>)}
             </div>
           </div>
         </Card>
@@ -113,6 +119,7 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
               <th style={thS}>NAMA</th>
               <th style={thS}>USERNAME</th>
               <th style={thS}>PASSWORD</th>
+              <th style={thS}>ROLE</th>
               <th style={{ ...thS, textAlign: "center" as const }}>STATUS</th>
               <th style={thS}>LAST LOGIN</th>
               <th style={thS}>DIBUAT</th>
@@ -139,6 +146,13 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
                         <button onClick={() => setShowPwd(prev => ({ ...prev, [a.id]: !prev[a.id] }))} style={{ background: "none", border: "none", cursor: "pointer", color: "#94a3b8", fontSize: 13, padding: 0 }}>{showPwd[a.id] ? "hide" : "show"}</button>
                       </div>
                     </td>
+                    <td style={td}>
+                      <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "2px 10px",
+                        background: a.divisi === "engineering" ? "#eef2ff" : "#f1f5f9",
+                        color: a.divisi === "engineering" ? "#4338ca" : "#64748b" }}>
+                        {ROLE_LABEL[a.divisi] || "Admin"}
+                      </span>
+                    </td>
                     <td style={{ ...td, textAlign: "center" as const }}>
                       <button onClick={() => !isSelf && toggleActive(a.id, !a.is_active)}
                         style={{ background: a.is_active ? "#f0fdf4" : "#fef2f2", border: "1px solid "+(a.is_active ? "#bbf7d0" : "#fecaca"), color: a.is_active ? "#16a34a" : "#dc2626", borderRadius: 20, padding: "2px 12px", fontSize: 11, fontWeight: 700, cursor: isSelf ? "not-allowed" : "pointer" }}>
@@ -149,7 +163,7 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
                     <td style={{ ...td, fontSize: 11, color: "#94a3b8" }}>{fmtTime(a.created_at)}</td>
                     <td style={{ ...td, textAlign: "center" as const }}>
                       <div style={{ display: "flex", gap: 5, justifyContent: "center" }}>
-                        <button onClick={() => { setEditId(a.id); setForm({ nama: a.nama, username: a.username, password: a.password, is_active: a.is_active }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#475569" }}>Edit</button>
+                        <button onClick={() => { setEditId(a.id); setForm({ nama: a.nama, username: a.username, password: a.password, divisi: a.divisi || "admin", is_active: a.is_active }); }} style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#475569" }}>Edit</button>
                         <button onClick={() => { setResetId(a.id); setNewPwd(""); }} style={{ background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#92400e" }}>Reset Pwd</button>
                         {!isSelf && (<button onClick={() => setDelId(a.id)} style={{ background: "#fef2f2", border: "1px solid #fecaca", borderRadius: 6, padding: "4px 8px", cursor: "pointer", fontSize: 11, color: "#dc2626" }}>Hapus</button>)}
                       </div>
@@ -157,7 +171,7 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
                   </tr>
                 );
               })}
-              {admins.length === 0 && (<tr><td colSpan={7} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Belum ada admin</td></tr>)}
+              {admins.length === 0 && (<tr><td colSpan={8} style={{ textAlign: "center", padding: "32px", color: "#94a3b8" }}>Belum ada admin</td></tr>)}
             </tbody>
           </table>
         </div>

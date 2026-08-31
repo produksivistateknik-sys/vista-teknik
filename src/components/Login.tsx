@@ -23,9 +23,12 @@ export function Login({onLogin}){
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
     await activityLogService.insert({user_name:data.nama,action:"LOGIN",description:"Login ke sistem",module:"auth",halaman:"Login"});
     const{password:_pw,...safeData}=data;
-    localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi:"admin"}));
+    // FIX (31 Agu 2026): dulu divisi dipaksa "admin" di sini, jadi role Engineering
+    // (admins.divisi) gak pernah kebaca. Sekarang pakai nilai asli dari DB.
+    const divisi=safeData.divisi||"admin";
+    localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi}));
     setSuccess(true);
-    setTimeout(()=>onLogin({...safeData,divisi:"admin",name:data.nama}),800);
+    setTimeout(()=>onLogin({...safeData,divisi,name:data.nama}),800);
     setLoading(false);
   };
 

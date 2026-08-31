@@ -447,7 +447,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login onLogin={u=>{
     setUser(u);
     setPage("app");
-    setTab("redirect");
+    // Engineering cuma punya 1 menu (WO Digital) - langsung arahkan ke situ, gak lewat
+    // "redirect" (yang default-nya ke dashboard, menu yang gak ada di sidebar Engineering).
+    setTab(u.divisi==="engineering"?"wodigital":"redirect");
   }}/>;
 
   const isOp=OPERATOR_ROLES.includes(user?.divisi);
@@ -482,6 +484,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     </div>
   );
   const cfg=DIVISI_CONFIG[user.divisi];
+  const isEngineering=user.divisi==="engineering";
   const canWO=["admin"].includes(user.divisi);
   const canRaw=["admin"].includes(user.divisi);
 
@@ -492,8 +495,17 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const canRencana=["admin"].includes(user.divisi);
 
 
-  
-  const SIDEBAR_MENUS=[
+
+  // Role Engineering (31 Agu 2026) - login sama kayak Admin (akun individual, admins.divisi),
+  // tapi sidebar-nya SENGAJA array baru terpisah (bukan SIDEBAR_MENUS admin yang di-hide
+  // item-per-item) - cuma 1 menu: WO Digital, tempat mereka upload gambar teknik. Admin
+  // tetap lihat WO Digital juga (buat VIEW/download), cuma tombol Upload-nya yang disembunyikan
+  // di WoDigitalTab sendiri lewat prop `user` (canUpload=divisi==="engineering").
+  const SIDEBAR_MENUS=isEngineering?[
+    {group:"PRODUKSI",items:[
+      {id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf"},
+    ]},
+  ]:[
     {group:"MONITORING",items:[
       {id:"dashboard",label:"Dashboard",icon:"ti ti-layout-dashboard"},
       {id:"ai_assistant",label:"AI Assistant",icon:"ti ti-sparkles"},
@@ -912,7 +924,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab/></Suspense></div>}
-              {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab/></Suspense></div>}
+              {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab user={user}/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>
