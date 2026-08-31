@@ -2058,7 +2058,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         const progressKomp=getProgressAsOfDate(clForCell,rawRow?.proses||"",cellModal.date);
                         const isWiringProsesLabel=PROSES_ORANG_RAW.includes(rawRow?.proses||"");
                         const qtyDoneKomp=getQtyProsesAsOfDate(clForCell,rawRow?.proses||"",cellModal.date);
-                        const qtyTotalKomp=Number(clForCell?.qty)||0;
+                        // qtyPerKomponen (qty dipecah ke tanggal ini doang, lihat fitur pecah qty
+                        // kapasitas) diutamakan drpd qty total panel - kalau gak ada override,
+                        // baru fallback ke qty total (kartu emang nunjuk semua qty di tanggal itu).
+                        const qtyTotalKomp=e.qtyPerKomponen?.[k]??(Number(clForCell?.qty)||0);
                         const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(${qtyDoneKomp}/${qtyTotalKomp})`;
                         const isKompDone=progressKomp>=100;
                         // Warna chip SELALU ikut warna proses (gak berubah karena status) - status
