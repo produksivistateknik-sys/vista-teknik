@@ -7,6 +7,7 @@ import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 export function Login({onLogin}){
   const [username,setUsername]=useState("");
   const [pwd,setPwd]=useState("");
+  const [posisi,setPosisi]=useState("admin");
   const [err,setErr]=useState("");
   const [show,setShow]=useState(false);
   const [loading,setLoading]=useState(false);
@@ -20,12 +21,15 @@ export function Login({onLogin}){
     // bukan compare plaintext di WHERE client-side kayak sebelumnya.
     const{data,error}=await supabase.rpc("verify_admin_login",{p_username:username.trim(),p_password:pwd}).single();
     if(error||!data){setErr("Username atau password salah!");setLoading(false);return;}
+    // FIX (31 Agu 2026): dulu divisi dipaksa "admin" di sini, jadi role Engineering
+    // (admins.divisi) gak pernah kebaca. Sekarang pakai nilai asli dari DB.
+    const divisi=data.divisi||"admin";
+    // Posisi yang dipilih di dropdown WAJIB cocok sama role akun di DB - dropdown ini
+    // konfirmasi, bukan sumber kebenaran (biar gak balik ke bug lama "divisi dari UI").
+    if(divisi!==posisi){setErr("Posisi yang dipilih tidak sesuai dengan akun ini.");setLoading(false);return;}
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
     await activityLogService.insert({user_name:data.nama,action:"LOGIN",description:"Login ke sistem",module:"auth",halaman:"Login"});
     const{password:_pw,...safeData}=data;
-    // FIX (31 Agu 2026): dulu divisi dipaksa "admin" di sini, jadi role Engineering
-    // (admins.divisi) gak pernah kebaca. Sekarang pakai nilai asli dari DB.
-    const divisi=safeData.divisi||"admin";
     localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi}));
     setSuccess(true);
     setTimeout(()=>onLogin({...safeData,divisi,name:data.nama}),800);
@@ -127,6 +131,16 @@ export function Login({onLogin}){
           <div style={{height:1,background:"#f1f5f9",margin:"20px 0"}}/>
 
           <div style={{display:"flex",flexDirection:"column",gap:16}}>
+            <div>
+              <div className="lg-label">Posisi</div>
+              <div style={{position:"relative"}}>
+                <select className="lg-sel" value={posisi} onChange={e=>{setPosisi(e.target.value);setErr("");}} style={{paddingRight:36}}>
+                  <option value="admin">Admin</option>
+                  <option value="engineering">Engineering</option>
+                </select>
+                <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
+              </div>
+            </div>
             <div>
               <div className="lg-label">Username</div>
               <div style={{position:"relative"}}>
