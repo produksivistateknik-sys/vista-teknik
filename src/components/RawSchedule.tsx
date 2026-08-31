@@ -725,6 +725,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
     const tipePanelCek=livePanelForCell?.tipe;
     const prosesCek=rawRow?.proses;
+    // qtyOverride: diisi kalau qty komponen dipecah sebagian ke hari ini (sisanya ditunda ke
+    // tanggal lain) - lihat blok validasi kapasitas MENIT di bawah. null = gak ada pemecahan,
+    // semua komponen ditambah dengan qty penuh seperti biasa.
+    let qtyOverride:Record<string,number>|null=null;
+    let kodeDitunda:string[]=[];
 
     if(tipePanelCek&&prosesCek){
       const panelIdCek=livePanelForCell?.id;
@@ -766,14 +771,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
     // Validasi kapasitas MENIT (proses lain selain wiring, hanya jika data FCS process time tersedia)
     if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"&&!PROSES_ORANG_RAW.includes(prosesCek)){
-      let menitDibutuhkan=0;
-      let adaDataProcessTime=false;
-      for(const kode of modalKomponen){
-        const qty=hitungSisaQty(kode).sisa;
-        const menitPcs=getMenitPerPcs(tipePanelCek,prosesCek,kode);
-        if(menitPcs>0)adaDataProcessTime=true;
-        menitDibutuhkan+=qty*menitPcs;
-      }
+      const perKode=modalKomponen.map(kode=>({
+        kode,qty:hitungSisaQty(kode).sisa,menitPcs:getMenitPerPcs(tipePanelCek,prosesCek,kode),
+      }));
+      const adaDataProcessTime=perKode.some(p=>p.menitPcs>0);
+      const menitDibutuhkan=perKode.reduce((s,p)=>s+p.qty*p.menitPcs,0);
       if(adaDataProcessTime&&menitDibutuhkan>0){
         const cek=await checkKapasitasDanKomponenSwapV2({
           tanggal:cellModal.date,
@@ -787,15 +789,66 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             setSwapModal({tanggal:cellModal.date,proses:prosesCek,menitDibutuhkan,...cek});
             setSwapSelected([]);
             return;
-          } else {
+          }
+          // Gak ada yang bisa digeser (hari itu kosong/gak cukup dari komponen lain) - buat
+          // komponen yang gak muat penuh, TANYA admin mau isi berapa pcs hari ini (bukan otomatis
+          // dipaksa maksimal) - default disaranin batas maksimal yang muat, admin boleh ketik
+          // lebih kecil. Sisanya (kalau ada) ditunda ke tanggal lain (qtyPerKomponen, pola yang
+          // sama dipakai Generate FCS Schedule).
+          let sisaKap=cek.sisaKapasitas;
+          const override:Record<string,number>={};
+          const ditundaInfo:{nama:string,qtySisa:number}[]=[];
+          const excluded=new Set<string>();
+          let dibatalkan=false;
+          const terkonstrain=perKode.filter(p=>p.menitPcs>0&&p.qty>0).sort((a,b)=>(a.qty*a.menitPcs)-(b.qty*b.menitPcs));
+          for(const{kode,qty,menitPcs} of terkonstrain){
+            if(dibatalkan)break;
+            const fullMenit=qty*menitPcs;
+            if(fullMenit<=sisaKap){sisaKap-=fullMenit;continue;}
+            const nama=getNamaKomponenDariKode(livePanelForCell?.id,kode);
+            const maxMuat=Math.floor(sisaKap/menitPcs);
+            if(maxMuat<=0){
+              excluded.add(kode);
+              ditundaInfo.push({nama,qtySisa:qty});
+              continue;
+            }
+            const input=window.prompt(
+              `Kapasitas ${prosesCek} tanggal ini cuma cukup maksimal ${maxMuat} dari ${qty} pcs "${nama}".\n\nMau isi berapa pcs sekarang? (1-${maxMuat}, sisanya bisa dijadwalkan lagi di tanggal lain)`,
+              String(maxMuat)
+            );
+            if(input===null){dibatalkan=true;break;}
+            let chosen=Math.floor(Number(input));
+            if(!isFinite(chosen)||chosen<=0){excluded.add(kode);ditundaInfo.push({nama,qtySisa:qty});continue;}
+            chosen=Math.min(chosen,maxMuat);
+            override[kode]=chosen;
+            sisaKap-=chosen*menitPcs;
+            if(chosen<qty)ditundaInfo.push({nama,qtySisa:qty-chosen});
+          }
+          if(dibatalkan)return;
+          const bisaDipecah=Object.keys(override).length>0||excluded.size<modalKomponen.length;
+          if(!bisaDipecah){
             alert("Kapasitas "+prosesCek+" tanggal ini sudah penuh dan tidak ada komponen lain yang bisa dipindah.\n"+(cek.error||""));
             return;
           }
+          if(ditundaInfo.length>0){
+            const lanjutPecah=window.confirm(
+              "Ringkasan sebelum disimpan - komponen berikut TIDAK ditambahkan penuh hari ini:\n\n"+
+              ditundaInfo.map(d=>`- ${d.nama}: sisa ${d.qtySisa} pcs ditunda`).join("\n")+
+              "\n\nSisanya bisa dijadwalkan lagi di tanggal lain lewat langkah yang sama. Lanjut simpan?"
+            );
+            if(!lanjutPecah)return;
+          }
+          qtyOverride=override;
+          kodeDitunda=[...excluded];
         }
       }
     }
 
-    let finalKomp=modalKomponen;
+    // Komponen yang qty-nya ditunda penuh (kodeDitunda, gak ada satu pcs pun yang muat) gak ikut
+    // ditambahkan ke jadwal sama sekali di aksi ini - operator ulangi "Tambah Komponen" di
+    // tanggal lain buat komponen itu.
+    const komponenDitambah=kodeDitunda.length>0?modalKomponen.filter(k=>!kodeDitunda.includes(k)):modalKomponen;
+    let finalKomp=komponenDitambah;
     let updatedRow=null;
     let oldKomp:string[]=[];
     let isEdit=false;
@@ -829,12 +882,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           // aslinya udah beres/dihapus, buang tokennya juga (jangan biarin entri jadi token-doang).
           finalKomp=realBaru.length>0?[...new Set([...tokenLama,...realBaru])]:realBaru;
         } else {
-          finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+          finalKomp=[...new Set([...wpEntry.komponen,...komponenDitambah])];
         }
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
+        const newQtyPerKomponen=qtyOverride?{...(wpEntry.qtyPerKomponen||{}),...qtyOverride}:wpEntry.qtyPerKomponen;
+        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp,...(newQtyPerKomponen?{qtyPerKomponen:newQtyPerKomponen}:{})});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
+        updated=[...existing,{wp:modalWp,komponen:komponenDitambah,...(qtyOverride?{qtyPerKomponen:qtyOverride}:{}),createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
       }
       newSch[cellModal.date]=updated;
       updatedRow={...r,schedule:newSch,...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
@@ -859,16 +913,18 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
     const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
     if(isEdit){
-      const added=modalKomponen.filter(k=>!oldKomp.includes(k)).map(getName);
-      const removed=oldKomp.filter(k=>!modalKomponen.includes(k)).map(getName);
+      const added=komponenDitambah.filter(k=>!oldKomp.includes(k)).map(getName);
+      const removed=oldKomp.filter(k=>!komponenDitambah.includes(k)).map(getName);
       const parts=[];
       if(added.length) parts.push('Tambah: '+added.join(', '));
       if(removed.length) parts.push('Hapus: '+removed.join(', '));
+      if(kodeDitunda.length) parts.push('Ditunda (kapasitas gak cukup): '+kodeDitunda.map(getName).join(', '));
       const desc=parts.length?parts.join(' | '):'Tidak ada perubahan';
       await activityLogService.insert({user_name:uname,action:'EDIT WP RAW SCHEDULE',description:'Edit '+modalWp+' '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+'): '+desc,module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
     } else {
       const kompNames=finalKomp.map(getName).join(', ');
-      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+      const ditundaNote=kodeDitunda.length?' | Ditunda (kapasitas gak cukup): '+kodeDitunda.map(getName).join(', '):'';
+      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')'+ditundaNote,module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
     }
   };
   const removeEntry=async(wp)=>{
