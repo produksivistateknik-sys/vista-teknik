@@ -7,7 +7,10 @@ import { supabase } from './supabase'
 export const uploadToR2 = async (file: Blob, key: string, contentType: string): Promise<string> => {
   const { data, error } = await supabase.functions.invoke('r2-storage', { body: { action: 'presign-upload', key, contentType } })
   if (error || !data?.uploadUrl || !data?.publicUrl) throw new Error(error?.message || 'Gagal mendapatkan signed URL R2')
-  const putRes = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file })
+  // Cache-Control WAJIB dikirim persis sama kayak yang di-sign di presign-upload (r2-storage
+  // edge function) - signature presigned URL S3/R2 gagal (403) kalau header yang disign gak
+  // dikirim balik pas PUT beneran.
+  const putRes = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable' }, body: file })
   if (!putRes.ok) throw new Error(`Upload ke R2 gagal (status ${putRes.status})`)
   return data.publicUrl as string
 }

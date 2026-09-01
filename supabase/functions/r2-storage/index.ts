@@ -73,7 +73,12 @@ Deno.serve(async (req) => {
       if (!isValidKey(key)) return jsonResponse({ error: 'key tidak valid.' }, 400)
       if (typeof contentType !== 'string' || !contentType) return jsonResponse({ error: 'contentType wajib diisi.' }, 400)
 
-      const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: contentType })
+      // Cache-Control 1 tahun + immutable (1 Sep 2026, fix "loading lambat" WO Digital) - aman
+      // karena key selalu unik per upload (timestamp+random di nama file), jadi 1 URL = 1 versi
+      // file yang gak pernah berubah isinya. Sebelumnya gak di-set sama sekali -> R2 fallback ke
+      // default 4 jam, file besar (construction drawing PDF, 2+MB) ke-fetch ulang tiap kali TTL
+      // itu abis padahal isinya gak pernah ganti.
+      const command = new PutObjectCommand({ Bucket: bucketName, Key: key, ContentType: contentType, CacheControl: 'public, max-age=31536000, immutable' })
       const uploadUrl = await getSignedUrl(client, command, { expiresIn: PRESIGN_EXPIRY_SECONDS })
       const publicUrl = `${publicBaseUrl.replace(/\/+$/, '')}/${key}`
       return jsonResponse({ uploadUrl, publicUrl })
