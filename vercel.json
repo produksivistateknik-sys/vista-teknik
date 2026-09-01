@@ -1,5 +1,6 @@
 {
   "rewrites": [
+    { "source": "/pdf-proxy/:path*", "destination": "https://photo.vistaproduksi.com/:path*" },
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "headers": [
