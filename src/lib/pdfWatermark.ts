@@ -32,14 +32,25 @@ export async function watermarkPdf(fileBytes: ArrayBuffer): Promise<{ blob: Blob
   const logoImage = await pdfDoc.embedPng(logoBytes)
   const logoRatio = logoImage.height / logoImage.width
 
+  // Geser watermark sedikit ke ATAS dari tengah (1 Sep 2026, permintaan setelah posisi tengah
+  // pas dikonfirmasi) - "atas" di sini relatif ke arah TAMPIL (displayed), bukan koordinat
+  // mentah, karena halaman-halaman ini punya rotasi. Diubah jadi vektor (0, shiftUp) lalu
+  // diputar pakai rumus rotasi yang SAMA kayak yang udah diverifikasi buat centering.
+  const rotateVec = (x: number, y: number, rad: number) => ({
+    x: x * Math.cos(rad) - y * Math.sin(rad),
+    y: x * Math.sin(rad) + y * Math.cos(rad),
+  })
+
   const pages = pdfDoc.getPages()
   pages.forEach((page) => {
     const { width, height } = page.getSize() // dimensi MENTAH (sebelum /Rotate halaman)
     const pageRotation = ((page.getRotation().angle % 360) + 360) % 360 // normalisasi ke 0-359
     const displayWidth = (pageRotation === 90 || pageRotation === 270) ? height : width
+    const displayHeight = (pageRotation === 90 || pageRotation === 270) ? width : height
 
     const wmWidth = displayWidth * 0.6
     const wmHeight = wmWidth * logoRatio
+    const shiftUp = displayHeight * 0.08 // "sedikit lebih ke atas" - ~8% tinggi halaman tampil
 
     // Rotasi konten yang MENIADAKAN rotasi halaman (net 0 = tegak normal pas ditampilkan) -
     // content-rotation yang bener = pageRotation itu sendiri (BUKAN 360-pageRotation, sempat
@@ -48,15 +59,13 @@ export async function watermarkPdf(fileBytes: ArrayBuffer): Promise<{ blob: Blob
     const rad = (contentRotationDeg * Math.PI) / 180
     // Offset dari titik anchor (x,y, sudut kiri-bawah gambar sebelum rotasi) ke titik TENGAH
     // gambar, diputar ikut arah rotasi konten - biar titik tengah watermark mendarat pas di
-    // titik tengah halaman (yang invarian kena rotasi apapun).
-    const halfW = wmWidth / 2
-    const halfH = wmHeight / 2
-    const offsetX = halfW * Math.cos(rad) - halfH * Math.sin(rad)
-    const offsetY = halfW * Math.sin(rad) + halfH * Math.cos(rad)
+    // titik tengah halaman (yang invarian kena rotasi apapun), lalu digeser naik.
+    const center = rotateVec(wmWidth / 2, wmHeight / 2, rad)
+    const upShift = rotateVec(0, shiftUp, rad)
 
     page.drawImage(logoImage, {
-      x: width / 2 - offsetX,
-      y: height / 2 - offsetY,
+      x: width / 2 - center.x + upShift.x,
+      y: height / 2 - center.y + upShift.y,
       width: wmWidth,
       height: wmHeight,
       opacity: 0.15,
