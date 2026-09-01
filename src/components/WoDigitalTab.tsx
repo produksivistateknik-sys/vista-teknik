@@ -9,9 +9,10 @@ const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})))
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - digitalisasi gambar teknik (construction drawing CAD, PDF dari
-// software eksternal) yang biasanya dicetak fisik jadi panduan kerja operator. Admin upload
-// PDF di sini, sistem tempel watermark logo Vista (pdfWatermark.ts, pdf-lib) sebelum simpan ke
-// R2, operator akses/download versi digital dari Vista Pekerja (WoDigitalView.tsx).
+// software eksternal) yang biasanya dicetak fisik jadi panduan kerja operator. Engineering
+// upload PDF di sini, sistem tempel watermark logo Vista (pdfWatermark.ts, pdf-lib) sebelum
+// simpan ke R2, Admin (view-only) & operator akses/download versi digital dari Vista Pekerja
+// (WoDigitalView.tsx).
 //
 // Search-first (pola sama persis ProyekLuarTab.tsx) - daftar WO baru muncul setelah ketik
 // nomor WO/proyek, biar gak nge-dump seluruh WO tiap kali tab dibuka.
@@ -23,6 +24,13 @@ const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})))
 //
 // Tabel BELUM masuk src/types/supabase-generated.ts - pakai (table as any), pola yang sudah
 // ada di codebase ini buat tabel baru yang belum di-generate types-nya.
+//
+// REDESIGN (1 Sep 2026) - klik card WO (yang sudah ada dokumen) SWAP seluruh tampilan list
+// jadi halaman viewer full (bukan modal overlay lagi) - state `viewing` di level WoDigitalTab
+// + early-return, pola sama kayak LaporanQCView.tsx (list->detail->list, tombol "‹ Kembali").
+// Panel chip sekarang SELALU tampil di card (dulu baru muncul kalau expand). Upload/Riwayat
+// revisi (khusus Engineering/admin) jadi baris terpisah di bawah header card, event-nya
+// stopPropagation biar gak ke-trigger navigasi ke viewer pas diklik.
 // ─────────────────────────────────────────────────────────────────────────────
 export function WoDigitalTab({user}:{user?:any}={}){
   // Role Engineering (31 Agu 2026) - cuma Engineering yang boleh upload/upload-revisi gambar
@@ -35,8 +43,8 @@ export function WoDigitalTab({user}:{user?:any}={}){
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
-  const[expandedWoId,setExpandedWoId]=useState<number|null>(null);
   const[expandedRiwayat,setExpandedRiwayat]=useState<Record<number,boolean>>({});
+  const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
   const fetchAll=async()=>{
     setLoading(true);
@@ -155,6 +163,14 @@ export function WoDigitalTab({user}:{user?:any}={}){
 
   const fmtTgl=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
 
+  if(viewing){
+    return(
+      <Suspense fallback={<div style={{textAlign:"center",padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>}>
+        <PdfViewer url={viewing.url} title={viewing.title} subtitle={viewing.subtitle} onBack={()=>setViewing(null)}/>
+      </Suspense>
+    );
+  }
+
   return(
     <div className="fi">
       <div style={{display:"flex",gap:10,marginBottom:16,flexWrap:"wrap"}}>
@@ -185,14 +201,18 @@ export function WoDigitalTab({user}:{user?:any}={}){
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
-            const isExp=expandedWoId===w.id;
             const woWi=wiOf(w.id);
             const stats=statsOfWo(w.id);
+            const panelNames=panelNamesOf(w.id);
+            const current=woWi?currentRevOf(woWi.id):null;
+            const revisions=woWi?revisionsOf(woWi.id):[];
+            const lainnya=revisions.filter((r:any)=>!r.is_current);
+            const openViewer=(rev:any)=>setViewing({url:rev.file_url,title:woWi?.judul||`Gambar Teknik - WO ${w.wo}`,
+              subtitle:`WO ${w.wo} - ${w.proyek}${rev.rev_mark?` · ${rev.rev_mark}`:""} · oleh ${rev.uploaded_by} · ${fmtTgl(rev.uploaded_at)}`});
             return(
               <Card key={w.id} style={{padding:0,overflow:"hidden",border:"1px solid var(--border-color,#e2e8f0)"}}>
-                <div className="erp-clickable-row" onClick={()=>setExpandedWoId(isExp?null:w.id)} style={{padding:"16px 18px",cursor:"pointer",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap",
-                  background:isExp?"var(--bg-secondary,#f8fafc)":"transparent"}}>
+                <div className="erp-clickable-row" onClick={()=>current&&openViewer(current)} style={{padding:"16px 18px",cursor:current?"pointer":"default",
+                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
                   <div style={{display:"flex",alignItems:"center",gap:14,flex:1,minWidth:0}}>
                     <div style={{width:42,height:42,borderRadius:9,background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",display:"flex",
                       alignItems:"center",justifyContent:"center",flexShrink:0}}>
@@ -201,7 +221,14 @@ export function WoDigitalTab({user}:{user?:any}={}){
                     <div style={{minWidth:0,flex:1}}>
                       <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.5}}>WO {w.wo}</div>
                       <div style={{fontWeight:800,fontSize:15,color:"var(--text-primary,#0f172a)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
-                      <div style={{fontSize:11.5,color:"#94a3b8",marginTop:4,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+                      {panelNames.length>0&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
+                          {panelNames.map(n=>(
+                            <span key={n} style={{fontSize:11,color:"#475569",background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:6,padding:"3px 9px"}}>{n}</span>
+                          ))}
+                        </div>
+                      )}
+                      <div style={{fontSize:11.5,color:"#94a3b8",marginTop:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
                         <span><i className="ti ti-files" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.docCount} dokumen</span>
                         {stats.totalPages>0&&<span><i className="ti ti-copy" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.totalPages} halaman</span>}
                         {stats.lastUpload&&<span><i className="ti ti-clock" style={{fontSize:12,verticalAlign:"-2px"}}/> {fmtTgl(stats.lastUpload)}</span>}
@@ -211,28 +238,43 @@ export function WoDigitalTab({user}:{user?:any}={}){
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     {stats.docCount>0?<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
                     {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="var(--bg-secondary,#f1f5f9)"/>}
+                    {current&&<i className="ti ti-chevron-right" style={{fontSize:16,color:"#cbd5e1"}}/>}
                   </div>
                 </div>
-                {isExp&&(
-                  <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",display:"flex",flexDirection:"column",gap:10}}>
-                    {(()=>{const panelNames=panelNamesOf(w.id);return panelNames.length>0?(
-                      <div>
-                        <div style={{fontSize:11,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.4,marginBottom:6}}>Panel di WO ini ({panelNames.length})</div>
-                        <div style={{display:"flex",flexWrap:"wrap",gap:5}}>
-                          {panelNames.map(n=>(
-                            <span key={n} style={{fontSize:11,color:"#475569",background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:6,padding:"3px 9px"}}>{n}</span>
-                          ))}
-                        </div>
+                {(canUpload||lainnya.length>0)&&(
+                  <div onClick={e=>e.stopPropagation()} style={{padding:"10px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",
+                    display:"flex",flexDirection:"column",gap:8,background:"var(--bg-secondary,#f8fafc)"}}>
+                    {canUpload&&(
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+                        <span style={{fontSize:11.5,color:"#64748b"}}>{woWi?"Ada dokumen aktif":"Belum ada dokumen"}</span>
+                        <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
                       </div>
-                    ):null;})()}
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
+                    )}
+                    {lainnya.length>0&&(
                       <div>
-                        <div style={{fontSize:12.5,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>Gambar Teknik WO</div>
-                        {woWi?<div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>{woWi.judul}</div>:<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada gambar</div>}
+                        <button onClick={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))}
+                          style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
+                          {expandedRiwayat[woWi.id]?"▼":"▶"} Riwayat revisi ({lainnya.length})
+                        </button>
+                        {expandedRiwayat[woWi.id]&&(
+                          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+                            {lainnya.map((r:any)=>(
+                              <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                                <div style={{minWidth:0}}>
+                                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                    <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                    {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                  </div>
+                                  <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                                </div>
+                                <button onClick={()=>openViewer(r)}
+                                  style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
                       </div>
-                      {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>}
-                    </div>
-                    {woWi&&<WiCard wi={woWi} revisions={revisionsOf(woWi.id)} current={currentRevOf(woWi.id)} expanded={!!expandedRiwayat[woWi.id]} onToggleRiwayat={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))} fmtTgl={fmtTgl}/>}
+                    )}
                   </div>
                 )}
               </Card>
@@ -270,60 +312,6 @@ export function WoDigitalTab({user}:{user?:any}={}){
             <Btn color="#1d4ed8" onClick={doUpload} disabled={uploading||!uploadFile}>{uploading?"Memproses...":"Upload & Tempel Watermark"}</Btn>
           </div>
         </Modal>
-      )}
-    </div>
-  );
-}
-
-function WiCard({wi,revisions,current,expanded,onToggleRiwayat,fmtTgl}:{wi:any,revisions:any[],current:any,expanded:boolean,onToggleRiwayat:()=>void,fmtTgl:(s:string)=>string}){
-  const lainnya=revisions.filter(r=>!r.is_current);
-  const[viewerTarget,setViewerTarget]=useState<{url:string,title:string,subtitle?:string}|null>(null);
-  return(
-    <div style={{background:"var(--bg-secondary,#f8fafc)",borderRadius:10,padding:"10px 12px"}}>
-      {current?(
-        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
-          <div style={{minWidth:0,flex:1}}>
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-              <Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>
-              {current.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{current.rev_mark}</span>}
-              <span style={{fontSize:10,color:"#94a3b8"}}>{current.page_count?current.page_count+" hal.":""}</span>
-            </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>oleh {current.uploaded_by} · {fmtTgl(current.uploaded_at)}</div>
-          </div>
-          <button onClick={()=>setViewerTarget({url:current.file_url,title:wi.judul||"Gambar Teknik",
-            subtitle:`${current.rev_mark?current.rev_mark+" · ":""}oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`})}
-            style={{background:"none",border:"none",fontSize:12,fontWeight:700,color:"#2563eb",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat PDF →</button>
-        </div>
-      ):<div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum ada revisi berlaku.</div>}
-      {lainnya.length>0&&(
-        <div style={{marginTop:8}}>
-          <button onClick={onToggleRiwayat} style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
-            {expanded?"▼":"▶"} Riwayat revisi ({lainnya.length})
-          </button>
-          {expanded&&(
-            <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
-              {lainnya.map(r=>(
-                <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                  <div style={{minWidth:0}}>
-                    <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                      <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                      {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
-                    </div>
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
-                  </div>
-                  <button onClick={()=>setViewerTarget({url:r.file_url,title:wi.judul||"Gambar Teknik",
-                    subtitle:`${r.rev_mark?r.rev_mark+" · ":""}oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
-                    style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-      {viewerTarget&&(
-        <Suspense fallback={null}>
-          <PdfViewer url={viewerTarget.url} title={viewerTarget.title} subtitle={viewerTarget.subtitle} onClose={()=>setViewerTarget(null)}/>
-        </Suspense>
       )}
     </div>
   );
