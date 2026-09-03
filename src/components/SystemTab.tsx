@@ -68,7 +68,7 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
     {id:"masteruser",label:"👤 Master User"},
     {id:"mesin",label:"⚙️ Master Mesin"},
     {id:"pekerja",label:"👥 Master Pekerja"},
-    {id:"stok",label:"📦 Inventaris"},
+    {id:"stok",label:"📦 Stok"},
     {id:"kapasitas",label:"🗄 Database"},
     {id:"recycle",label:"🗑 Recycle Bin"},
     {id:"timeraktif",label:"⏱ Timer Aktif"},

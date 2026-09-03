@@ -17,6 +17,8 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const [keluarForm,setKeluarForm]=useState({jumlah:1,proyek:"",panel:"",keterangan:""});
   const [masukForm,setMasukForm]=useState({jumlah:1,tanggal:new Date().toISOString().slice(0,10),keterangan:""});
   const [delId,setDelId]=useState<any>(null);
+  const [qtySort,setQtySort]=useState<"none"|"asc"|"desc">("none");
+  const toggleQtySort=()=>setQtySort(prev=>prev==="none"?"asc":prev==="asc"?"desc":"none");
 
   const getUname=()=>{
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
@@ -167,6 +169,10 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     (filterKode==="ALL"||s.kode===filterKode)&&
     s.nama.toLowerCase().includes(search.toLowerCase())
   );
+  // Sort QTY Total (3 Sep 2026) - klik header toggle none->asc->desc->none, "none" balik ke
+  // urutan asli (alfabetis nama, dari .order("nama") pas fetch).
+  const sortedFiltered=qtySort==="none"?filtered
+    :[...filtered].sort((a,b)=>qtySort==="asc"?a.stok-b.stok:b.stok-a.stok);
 
   // Riwayat gabungan masuk + keluar dari activity log
   const riwayatMasuk=masuklist.map((m:any)=>({
@@ -274,7 +280,12 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
               <th style={{...thS,width:36,textAlign:"center" as const}}>No</th>
               <th style={thS}>Kode</th>
               <th style={thS}>Nama Komponen</th>
-              <th style={{...thS,textAlign:"center" as const}}>QTY Total</th>
+              <th style={{...thS,textAlign:"center" as const,cursor:"pointer",userSelect:"none" as const}}
+                onClick={toggleQtySort} title="Klik untuk urutkan">
+                QTY Total{" "}
+                <i className={`ti ti-${qtySort==="asc"?"arrow-up":qtySort==="desc"?"arrow-down":"arrows-sort"}`}
+                  style={{fontSize:11,verticalAlign:"middle" as const,opacity:qtySort==="none"?.6:1}}/>
+              </th>
               <th style={{...thS,textAlign:"center" as const}}>Tgl Masuk</th>
               <th style={{...thS,textAlign:"center" as const}}>Jml Masuk</th>
               <th style={{...thS,textAlign:"center" as const}}>Tgl Keluar</th>
@@ -286,7 +297,7 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
                 <tr><td colSpan={9} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>
                   Belum ada komponen
                 </td></tr>
-              ):filtered.map((s:any,i:number)=>{
+              ):sortedFiltered.map((s:any,i:number)=>{
                 const rBg=i%2===0?"#fff":"#f8fafc";
                 const isEdit=editId===s.id;
                 const masukTerakhir=getMasukTerakhir(s.id);
