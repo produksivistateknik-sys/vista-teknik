@@ -187,7 +187,7 @@ export function ArsipTab({user,refetchWO}:any){
                 <div onClick={()=>setExpandedWo(prev=>({...prev,[g.wo_id]:!prev[g.wo_id]}))}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"12px 16px",cursor:"pointer",background:isExp?"#f8faff":"#fff"}}>
                   <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
-                  <div style={{flex:1,minWidth:0}}>
+                  <div style={{flex:1,minWidth:0,textAlign:"left"}}>
                     <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {g.wo_number} — {g.proyek}</div>
                     <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{g.panels.length} panel diarsipkan</div>
                   </div>
