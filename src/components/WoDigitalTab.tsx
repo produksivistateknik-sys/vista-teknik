@@ -396,7 +396,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
               return(
                 <div key={p.id} style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                    <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"var(--text-primary,#1e293b)"}}>{panelLabel}</b><br/>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`:"Belum ada dokumen"}</span>
+                    <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"var(--text-primary,#1e293b)"}}>{panelLabel}</b><br/>
+                      {current?<>Berlaku: {current.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{current.rev_mark}</span>:"(tanpa keterangan)"} · oleh {current.uploaded_by} · {fmtTgl(current.uploaded_at)}</>:"Belum ada dokumen"}
+                    </span>
                     <Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,formEditId as number,form.wo,form.proyek)}>{current?"Upload Revisi":"+ Upload"}</Btn>
                   </div>
                   {lainnya.length>0&&(
@@ -406,7 +408,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                           <div style={{minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                               <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                              {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                              {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                             </div>
                             <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
                           </div>
@@ -506,7 +508,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                       {isPExp&&(
                         <div style={{padding:"10px 16px 10px 28px",background:"var(--bg-secondary,#fafbff)"}}>
                           <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",marginBottom:10,background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",flexWrap:"wrap"}}>
-                            <span style={{fontSize:12,color:"#64748b"}}>{pCurrent?`Berlaku: ${pCurrent.rev_mark||"(tanpa keterangan)"} · oleh ${pCurrent.uploaded_by} · ${fmtTgl(pCurrent.uploaded_at)}`:"Belum ada dokumen"}</span>
+                            <span style={{fontSize:12,color:"#64748b"}}>
+                              {pCurrent?<>Berlaku: {pCurrent.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{pCurrent.rev_mark}</span>:"(tanpa keterangan)"} · oleh {pCurrent.uploaded_by} · {fmtTgl(pCurrent.uploaded_at)}</>:"Belum ada dokumen"}
+                            </span>
                             <div style={{display:"flex",gap:8,flexShrink:0}}>
                               {pCurrent&&<button onClick={()=>openPanelViewer(pCurrent)}
                                 style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>Lihat</button>}
@@ -525,7 +529,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                                     <div style={{minWidth:0}}>
                                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                         <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                        {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                        {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                                       </div>
                                       <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
                                     </div>

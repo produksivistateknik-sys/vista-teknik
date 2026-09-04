@@ -398,6 +398,13 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
             </div>
             {isExp&&[...(wo.panels||[])].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map(p=>{
               const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=getEffectiveCfg(p.tipe);
+              // Gambar WO (REVISI 5 Sep 2026) - dulu CUMA ada di form Edit WO (klik "✏️ Edit"),
+              // gak muncul sama sekali di card list biasa (list->expand langsung ke qty grid,
+              // gak lewat dokumen) - ditambah di sini juga, viewer-only sama pola Edit form.
+              const pWiCard=wiOfPanelDoc(p.id);
+              const pCurrentCard=pWiCard?currentRevOfDoc(pWiCard.id):null;
+              const pRevisionsCard=pWiCard?revisionsOfDoc(pWiCard.id):[];
+              const pLainnyaCard=pRevisionsCard.filter((r:any)=>!r.is_current);
               return(
                 <div key={p.id} style={{borderBottom:"1px solid #f1f5f9"}}>
                   <div style={{padding:"10px 16px 10px 28px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",
@@ -413,10 +420,40 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         <Badge label={cfg?.label||p.tipe} color={cfg?.color||"#64748b"}/>
                         <Badge label={`Qty: ${p.qty}`} color="#0891b2"/>
                         <Badge label={`${pp}%`} color={pColor(pp)}/>
+                        {pCurrentCard?<Badge label="📄 Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="📄 Belum Ada Dokumen" color="#94a3b8" bg="#f1f5f9"/>}
                       </div>
                     </div>
                     <div style={{minWidth:120}}><PBar pct={pp} h={6}/></div>
                   </div>
+                  {isPExp&&(
+                    <div style={{padding:"12px 16px 12px 28px",background:"#fafbff"}}>
+                      <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:6}}>📄 Gambar WO</div>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",marginBottom:pLainnyaCard.length>0?8:12,background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",flexWrap:"wrap"}}>
+                        <span style={{fontSize:12,color:"#64748b"}}>
+                          {pCurrentCard?<>Berlaku: {pCurrentCard.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{pCurrentCard.rev_mark}</span>:"(tanpa keterangan)"} · oleh {pCurrentCard.uploaded_by} · {fmtTglDoc(pCurrentCard.uploaded_at)}</>:"Belum ada dokumen"}
+                        </span>
+                        {pCurrentCard&&<button onClick={()=>window.open(pCurrentCard.file_url,"_blank")}
+                          style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
+                      </div>
+                      {pLainnyaCard.length>0&&(
+                        <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:12}}>
+                          {pLainnyaCard.map((r:any)=>(
+                            <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
+                              <div style={{minWidth:0}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                  <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                  {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
+                                </div>
+                                <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
+                              </div>
+                              <button onClick={()=>window.open(r.file_url,"_blank")}
+                                style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {isPExp&&cfg&&(
                     <div style={{padding:"12px 16px 12px 28px",background:"#fafbff"}}>
                       {cfg.wps.map(wpDef=>(
@@ -665,7 +702,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   return(
                     <div key={p.id} style={{display:"flex",flexDirection:"column",gap:8}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"#fff",borderRadius:8,border:"1px solid #e2e8f0"}}>
-                        <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"#1e293b"}}>{panelLabel}</b><br/>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTglDoc(current.uploaded_at)}`:"Belum ada dokumen"}</span>
+                        <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"#1e293b"}}>{panelLabel}</b><br/>
+                          {current?<>Berlaku: {current.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{current.rev_mark}</span>:"(tanpa keterangan)"} · oleh {current.uploaded_by} · {fmtTglDoc(current.uploaded_at)}</>:"Belum ada dokumen"}
+                        </span>
                         {current&&<button onClick={()=>window.open(current.file_url,"_blank")}
                           style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
                       </div>
@@ -676,7 +715,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                               <div style={{minWidth:0}}>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                   <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                  {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                  {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                                 </div>
                                 <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
                               </div>
