@@ -5,7 +5,12 @@ export function getLocalDateStr(d=new Date()){
   return `${y}-${m}-${day}`;
 }
 export const TODAY=getLocalDateStr();
-export function daysUntil(t){ return Math.ceil((new Date(t).getTime()-new Date(TODAY).getTime())/86400000); }
+// getLocalDateStr() fresh (BUG FIX 5 Sep 2026), BUKAN TODAY const yang basi kalau tab dibiarkan
+// terbuka lewat tengah malam - badge deadline (TERLAMBAT/MENDESAK/ON TRACK, lewat isDelayed/
+// isUrgent/getStatus di bawah yang semua pakai fungsi ini) sekarang selalu akurat tanpa perlu
+// nunggu user klik banner reload (lihat useDateRollover di versionCheck.ts, buat kelas bug
+// TODAY lain yang gak bisa dibikin auto-fresh semudah ini).
+export function daysUntil(t){ return Math.ceil((new Date(t).getTime()-new Date(getLocalDateStr()).getTime())/86400000); }
 export function isDelayed(t){ return daysUntil(t)<0; }
 export function isUrgent(t){ const d=daysUntil(t); return d>=0&&d<=7; }  // H-7
 export function getStatus(t,pct){

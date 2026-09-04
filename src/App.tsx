@@ -34,7 +34,7 @@ import {
   markRenharDirty, markRawDirty,
 } from './lib/globalState'
 import { GCss } from './styles/globalCss'
-import { useVersionCheck } from './lib/versionCheck'
+import { useVersionCheck, useDateRollover } from './lib/versionCheck'
 import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
 import { LandingPage } from './components/LandingPage'
@@ -88,6 +88,7 @@ const ENGINEERING_ALLOWED_TABS=new Set(["wodigital","arsip","tracking_report","m
 
 export default function App(){
   const hasNewVersion=useVersionCheck();
+  const hasDateRolled=useDateRollover();
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
@@ -642,10 +643,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   return(
     <>
       <style>{GCss}</style>
-      {hasNewVersion&&(
+      {(hasNewVersion||hasDateRolled)&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#1e293b",color:"#fff",
           display:"flex",alignItems:"center",justifyContent:"center",gap:12,padding:"8px 16px",fontSize:12.5}}>
-          <span>🔄 Ada versi baru aplikasi ini - halaman kamu masih pakai versi lama, muat ulang biar gak kejadian bug lama muncul lagi.</span>
+          <span>{hasNewVersion?"🔄 Ada versi baru aplikasi ini - halaman kamu masih pakai versi lama, muat ulang biar gak kejadian bug lama muncul lagi.":"📅 Tanggal sudah berganti ke hari baru - halaman ini dibuka dari kemarin, muat ulang biar fitur bertanggal (deadline, riwayat progress) pakai tanggal yang benar."}</span>
           <button onClick={()=>window.location.reload()}
             style={{padding:"5px 14px",borderRadius:7,border:"none",background:"#fff",color:"#1e293b",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
             Muat Ulang

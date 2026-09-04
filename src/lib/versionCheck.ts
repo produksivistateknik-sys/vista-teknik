@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { getLocalDateStr, TODAY } from "./dateHelpers"
 
 // Deteksi versi baru sudah ter-deploy tapi tab ini masih jalanin JS lama di memori (SPA gak
 // pernah hot-swap kode yang lagi jalan - insiden nyata: 14 Agu 2026, tab yang gak pernah
@@ -36,4 +37,28 @@ export function useVersionCheck(): boolean {
   }, [])
 
   return hasUpdate
+}
+
+const DATE_CHECK_INTERVAL_MS = 60 * 1000 // 1 menit - murah (cuma Date lokal, gak ada network), aman dicek sering
+
+// Deteksi tanggal sudah berganti (BUG FIX 5 Sep 2026) - TODAY (dateHelpers.ts) dihitung SEKALI
+// pas modul JS dimuat, gak pernah di-refresh sendiri. Device kantor/dashboard yang dibiarkan
+// terbuka lewat tengah malam (tab gak pernah di-reload) bisa "nyangkut" di tanggal kemarin -
+// checkpoint riwayat progress kesimpan salah tanggal, badge deadline (TERLAMBAT/MENDESAK) gak
+// update. SENGAJA cuma DETEKSI + banner (bukan auto-reload diam-diam kayak service worker biasa)
+// - reload paksa bisa motong form/input yang lagi diketik user, jadi keputusan ada di tangan user
+// sendiri, sama persis pola useVersionCheck di atas.
+export function useDateRollover(): boolean {
+  const [rolled, setRolled] = useState(false)
+
+  useEffect(() => {
+    const check = () => { if (getLocalDateStr() !== TODAY) setRolled(true) }
+    check()
+    const iv = setInterval(check, DATE_CHECK_INTERVAL_MS)
+    const onVisible = () => { if (document.visibilityState === "visible") check() }
+    document.addEventListener("visibilitychange", onVisible)
+    return () => { clearInterval(iv); document.removeEventListener("visibilitychange", onVisible) }
+  }, [])
+
+  return rolled
 }
