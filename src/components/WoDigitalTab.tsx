@@ -3,7 +3,11 @@ import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { uploadToR2 } from "../lib/r2Client";
 import { watermarkPdf } from "../lib/pdfWatermark";
-import { Card, Badge, Modal, Lbl, Btn, Inp } from "./ui/Primitives";
+import { workOrderService } from "../services/workOrderService";
+import { PANEL_TYPES } from "../constants/panelTypes";
+import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
+import { initChecklist } from "../lib/panelHelpers";
+import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
 const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
@@ -32,10 +36,13 @@ const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})))
 // revisi (khusus Engineering/admin) jadi baris terpisah di bawah header card, event-nya
 // stopPropagation biar gak ke-trigger navigasi ke viewer pas diklik.
 // ─────────────────────────────────────────────────────────────────────────────
-export function WoDigitalTab({user}:{user?:any}={}){
+export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:any}={}){
   // Role Engineering (31 Agu 2026) - cuma Engineering yang boleh upload/upload-revisi gambar
-  // teknik. Admin (dan siapa pun selain engineering) VIEW-ONLY - tombol Upload disembunyikan.
+  // teknik, DAN (REVISI 3 Sep 2026) satu-satunya yang boleh Tambah/Edit WO+panel dari halaman
+  // ini. Admin (dan siapa pun selain engineering) VIEW-ONLY.
   const canUpload=user?.divisi==="engineering";
+  const getEffectiveCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+  const effectivePanelTypes=(livePanelTypes&&Object.keys(livePanelTypes).length>0)?livePanelTypes:PANEL_TYPES;
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
   const[panelsAll,setPanelsAll]=useState<any[]>([]);
@@ -44,13 +51,17 @@ export function WoDigitalTab({user}:{user?:any}={}){
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[expandedRiwayat,setExpandedRiwayat]=useState<Record<number,boolean>>({});
+  const[expandedPanelQty,setExpandedPanelQty]=useState<Record<number,boolean>>({});
   const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
   const fetchAll=async()=>{
     setLoading(true);
+    // Panel fetch (REVISI 3 Sep 2026) - dulu cuma "id,wo_id,nama" (buat chip nama doang), sekarang
+    // select("*") - form Tambah/Edit & qty-editor per-komponen butuh tipe/qty/checklist/jumlah_cell
+    // penuh.
     const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
       supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
-      supabase.from("panels").select("id,wo_id,nama"),
+      supabase.from("panels").select("*"),
       supabase.from("work_instructions" as any).select("*"),
       supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
     ]);
@@ -62,12 +73,91 @@ export function WoDigitalTab({user}:{user?:any}={}){
   };
   useEffect(()=>{
     fetchAll();
+    // Realtime work_orders/panels (REVISI 3 Sep 2026) - dulu cuma dengar work_instructions/
+    // wi_revisions (khusus dokumen). Sekarang WO/panel bisa dibuat/diedit dari halaman ini SENDIRI
+    // (Engineering) DAN dari Manajemen WO (admin) - keduanya harus saling kelihatan live.
     const ch=supabase.channel("realtime-wo-digital-admin")
       .on("postgres_changes",{event:"*",schema:"public",table:"work_instructions"},fetchAll)
       .on("postgres_changes",{event:"*",schema:"public",table:"wi_revisions"},fetchAll)
+      .on("postgres_changes",{event:"*",schema:"public",table:"work_orders"},fetchAll)
+      .on("postgres_changes",{event:"*",schema:"public",table:"panels"},fetchAll)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
+
+  // Qty-per-komponen editor (reuse usePanelQtyEditor.ts - SAMA PERSIS logic Manajemen WO, lihat
+  // komentar di file hook-nya). getPanel/getWoContext/applyChecklist di-bind ke panelsAll flat
+  // (beda dari ManajemenWO yang nested per-WO) - behavior tetap identik.
+  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
+    getPanel:(panelId)=>panelsAll.find((p:any)=>String(p.id)===panelId),
+    getWoContext:(panelId)=>{const p=panelsAll.find((p2:any)=>String(p2.id)===panelId);const w=p?woList.find((w2:any)=>w2.id===p.wo_id):null;return w?{id:w.id,wo:w.wo,proyek:w.proyek}:undefined;},
+    applyChecklist:(panelId,newChecklist)=>setPanelsAll(prev=>prev.map((p:any)=>String(p.id)===panelId?{...p,checklist:newChecklist}:p)),
+    getEffectiveCfg,
+    getUname:()=>user?.name||user?.nama||"Admin",
+  });
+
+  // ── Tambah/Edit WO (REVISI 3 Sep 2026) - reuse workOrderService PERSIS sama Manajemen WO,
+  // WO yang dibuat/diedit dari sini otomatis konsisten (tabel sama, gak ada jalur terpisah). ──
+  const blankForm={wo:"",proyek:"",target:""};
+  const blankPanelRow={noPnl:"1",nama:"",tipe:"FS",qty:1,jumlahCell:0};
+  const[formOpen,setFormOpen]=useState(false);
+  const[form,setForm]=useState(blankForm);
+  const[formPanels,setFormPanels]=useState<any[]>([{...blankPanelRow}]);
+  const[formEditId,setFormEditId]=useState<number|null>(null);
+  const[formSaving,setFormSaving]=useState(false);
+
+  const openTambahWo=()=>{setForm(blankForm);setFormPanels([{...blankPanelRow}]);setFormEditId(null);setFormOpen(true);};
+  const openEditWo=(w:any)=>{
+    const woPanels=panelsAll.filter((p:any)=>p.wo_id===w.id);
+    setForm({wo:w.wo,proyek:w.proyek,target:w.target});
+    setFormPanels(woPanels.map((p:any)=>({id:p.id,noPnl:p.no_pnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:p.jumlah_cell??0,tanggal:w.target})));
+    setFormEditId(w.id);
+    setFormOpen(true);
+  };
+  // Panel existing (punya id) -> checklist DIPERTAHANKAN apa adanya (gak ada auto-rescale qty
+  // panel->per-kode di sini, beda dari Manajemen WO yang punya buildNp+konfirmasi konflik sendiri -
+  // form Engineering ini SENGAJA dipangkas, sesuai task). Panel baru -> checklist di-generate fresh
+  // dari BOM (initChecklist), SAMA PERSIS cara Manajemen WO bikin panel baru.
+  const buildPanelsForSave=()=>formPanels.map((p:any)=>p.id?({
+    id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,checklist:p.checklist||{},
+    catatan:p.catatan||"",jumlahCell:Number(p.jumlahCell)||0,tanggal:p.tanggal,
+  }):({
+    noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,
+    checklist:initChecklist(p.tipe,Number(p.qty)||1,effectivePanelTypes),catatan:"",
+    jumlahCell:Number(p.jumlahCell)||0,tanggal:p.tanggal,
+  }));
+
+  const saveWoForm=async()=>{
+    if(!form.wo.trim()||!form.proyek.trim()||!form.target){alert("No WO, Nama Proyek, dan Target Tanggal wajib diisi.");return;}
+    if(formPanels.some((p:any)=>!p.nama?.trim())){alert("Nama panel wajib diisi untuk semua baris.");return;}
+    setFormSaving(true);
+    const uname=user?.name||user?.nama||"Engineering";
+    try{
+      const panelsToSave=buildPanelsForSave();
+      if(formEditId){
+        // Grouped per tanggal-per-panel (fitur split existing di saveWOWithSplit) - panel yang
+        // tanggal-nya di-override manual beda dari target utama otomatis di-split ke WO sibling,
+        // sama persis Manajemen WO.
+        const byTanggal:Record<string,any[]>={};
+        panelsToSave.forEach((p:any)=>{const t=p.tanggal||form.target;(byTanggal[t]=byTanggal[t]||[]).push(p);});
+        const groupedReal=Object.entries(byTanggal).map(([tanggal,panels])=>({tanggal,panels}));
+        await workOrderService.saveWOWithSplit(formEditId,form.wo,form.proyek,form.target,groupedReal,uname);
+      } else {
+        const{data:newWo,error}=await supabase.from("work_orders").insert({wo:form.wo.trim(),proyek:form.proyek.trim(),target:form.target}).select().single();
+        if(error||!newWo)throw new Error(error?.message||"Gagal buat WO");
+        await activityLogService.insert({user_name:uname,action:"TAMBAH WO",description:"Tambah WO "+form.wo+" - "+form.proyek,module:"wo",halaman:"WO Digital",proyek:form.proyek,wo_number:form.wo});
+        await workOrderService.savePanels(newWo.id,panelsToSave);
+        try{
+          await supabase.functions.invoke("notify-wo-baru",{body:{wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+        }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
+      }
+      setFormOpen(false);
+      fetchAll();
+    }catch(err:any){
+      alert("Gagal simpan WO: "+(err?.message||"unknown error"));
+    }
+    setFormSaving(false);
+  };
 
   const q=search.trim().toLowerCase();
   const filteredWo=useMemo(()=>{
@@ -187,7 +277,103 @@ export function WoDigitalTab({user}:{user?:any}={}){
             🗄️ Arsip
           </button>
         </div>
+        {canUpload&&<Btn color="#1d4ed8" onClick={openTambahWo}>+ Tambah WO</Btn>}
       </div>
+
+      {formOpen&&(
+        <Card style={{marginBottom:16,border:"2px solid #2563eb",background:"var(--bg-secondary,#f8faff)"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+            <div style={{fontWeight:800,fontSize:16,color:"var(--text-primary,#1e293b)"}}>{formEditId?"✏️ Edit WO":"📝 Tambah WO Baru"}</div>
+            <button onClick={()=>setFormOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12,marginBottom:20}}>
+            <div><Lbl>No WO</Lbl><Inp placeholder="016" value={form.wo} onChange={(e:any)=>setForm({...form,wo:e.target.value})}/></div>
+            <div><Lbl>Nama Proyek</Lbl><Inp placeholder="Bali Tennis Court" value={form.proyek} onChange={(e:any)=>setForm({...form,proyek:e.target.value})}/></div>
+            <div><Lbl>Target Tanggal</Lbl><Inp type="date" value={form.target} onChange={(e:any)=>{
+              const newTarget=e.target.value;const oldTarget=form.target;
+              setFormPanels(formPanels.map((p:any)=>(p.tanggal===oldTarget)?{...p,tanggal:newTarget}:p));
+              setForm({...form,target:newTarget});
+            }}/></div>
+          </div>
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid var(--border-color,#e2e8f0)",paddingTop:16}}>Panel</div>
+          {formPanels.map((p,i)=>(
+            <div key={i} style={{background:"var(--card-bg,#fff)",borderRadius:10,padding:14,marginBottom:10,border:"1px solid var(--border-color,#e2e8f0)"}}>
+              <div style={{display:"grid",gridTemplateColumns:"50px 1fr 120px 55px 100px 130px 32px",gap:8,alignItems:"end"}}>
+                <div><Lbl>No</Lbl><Inp value={p.noPnl} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],noPnl:e.target.value};setFormPanels(n);}} placeholder="1"/></div>
+                <div><Lbl>Nama Panel</Lbl><Inp value={p.nama} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],nama:e.target.value};setFormPanels(n);}} placeholder="Nama panel..."/></div>
+                <div><Lbl>Tipe</Lbl>
+                  <Sel value={p.tipe} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],tipe:e.target.value};setFormPanels(n);}}>
+                    {Object.entries(effectivePanelTypes).map(([k,v]:any)=><option key={k} value={k}>{v.label}</option>)}
+                  </Sel>
+                </div>
+                <div><Lbl>Qty</Lbl><Inp type="number" min="1" value={p.qty} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],qty:e.target.value};setFormPanels(n);}}/></div>
+                <div><Lbl>Jumlah Cell</Lbl>
+                  <Inp type="number" min="0" value={p.jumlahCell??0} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],jumlahCell:e.target.value};setFormPanels(n);}}/>
+                </div>
+                <div><Lbl>Tanggal</Lbl>
+                  <Inp type="date" value={p.tanggal||form.target||""} onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],tanggal:e.target.value};setFormPanels(n);}}/>
+                </div>
+                <div style={{paddingBottom:2}}>
+                  <button onClick={()=>setFormPanels(formPanels.filter((_,j)=>j!==i))}
+                    style={{width:32,height:36,borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:14}}>✕</button>
+                </div>
+              </div>
+            </div>
+          ))}
+          <button onClick={()=>{
+            const maxNo=formPanels.reduce((max,p)=>{const n=parseInt(p.noPnl)||0;return n>max?n:max;},0);
+            setFormPanels([...formPanels,{...blankPanelRow,noPnl:String(maxNo+1),tanggal:form.target}]);
+          }}
+            style={{width:"100%",padding:"9px",borderRadius:8,border:"1.5px dashed #cbd5e1",
+              background:"transparent",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:600,marginBottom:16}}>
+            + Tambah Panel
+          </button>
+
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid var(--border-color,#e2e8f0)",paddingTop:16}}>📄 Dokumen Gambar Teknik</div>
+          {formEditId?(
+            <div style={{marginBottom:16}}>
+              {(()=>{
+                const wi=wiOf(formEditId);
+                const current=wi?currentRevOf(wi.id):null;
+                const revisions=wi?revisionsOf(wi.id):[];
+                const lainnya=revisions.filter((r:any)=>!r.is_current);
+                return(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                      <span style={{fontSize:12,color:"#64748b"}}>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`:"Belum ada dokumen"}</span>
+                      <Btn color="#1d4ed8" onClick={()=>openUpload(formEditId,form.wo)}>{current?"Upload Revisi":"+ Upload"}</Btn>
+                    </div>
+                    {lainnya.length>0&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                        {lainnya.map((r:any)=>(
+                          <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"var(--bg-secondary,#f8fafc)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                              </div>
+                              <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                            </div>
+                            <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||`Gambar Teknik - WO ${form.wo}`,subtitle:`WO ${form.wo} - ${form.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
+                              style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+            </div>
+          ):(
+            <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>Simpan WO dulu, baru bisa upload dokumen gambar teknik.</div>
+          )}
+
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setFormOpen(false)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={saveWoForm} disabled={formSaving}>{formSaving?"Menyimpan...":(formEditId?"Simpan":"Tambah WO")}</Btn>
+          </div>
+        </Card>
+      )}
 
       {viewMode==="arsip"&&!q?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
@@ -238,41 +424,98 @@ export function WoDigitalTab({user}:{user?:any}={}){
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     {stats.docCount>0?<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
                     {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="var(--bg-secondary,#f1f5f9)"/>}
+                    {canUpload&&(
+                      <button onClick={e=>{e.stopPropagation();openEditWo(w);}}
+                        style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
+                    )}
                     {current&&<i className="ti ti-chevron-right" style={{fontSize:16,color:"#cbd5e1"}}/>}
                   </div>
                 </div>
-                {(canUpload||lainnya.length>0)&&(
-                  <div onClick={e=>e.stopPropagation()} style={{padding:"10px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",
-                    display:"flex",flexDirection:"column",gap:8,background:"var(--bg-secondary,#f8fafc)"}}>
-                    {canUpload&&(
-                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-                        <span style={{fontSize:11.5,color:"#64748b"}}>{woWi?"Ada dokumen aktif":"Belum ada dokumen"}</span>
-                        <Btn color="#1d4ed8" onClick={()=>openUpload(w.id,w.wo)}>{woWi?"Upload Revisi":"+ Upload"}</Btn>
+                {/* Qty per-komponen (REVISI 3 Sep 2026) - reuse usePanelQtyEditor.ts, TANPA FCS/
+                    progress bar (sengaja dipangkas dari versi Manajemen WO, sesuai task Engineering). */}
+                {panelsAll.filter((p:any)=>p.wo_id===w.id).map((p:any)=>{
+                  const cfg=getEffectiveCfg(p.tipe);
+                  const isPExp=expandedPanelQty[p.id];
+                  return(
+                    <div key={p.id} onClick={e=>e.stopPropagation()} style={{borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
+                      <div onClick={()=>setExpandedPanelQty(prev=>({...prev,[p.id]:!prev[p.id]}))}
+                        style={{padding:"9px 16px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",background:"var(--bg-secondary,#f8fafc)"}}>
+                        <span style={{fontSize:11,color:"#94a3b8"}}>{isPExp?"▼":"▶"}</span>
+                        <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.no_pnl}</span>
+                        <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:12.5}}>{p.nama}</span>
+                        <Badge label={cfg?.label||p.tipe} color={cfg?.color||"#64748b"}/>
+                        <Badge label={`Qty: ${p.qty}`} color="#0891b2"/>
                       </div>
-                    )}
-                    {lainnya.length>0&&(
-                      <div>
-                        <button onClick={()=>setExpandedRiwayat(p=>({...p,[woWi.id]:!p[woWi.id]}))}
-                          style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
-                          {expandedRiwayat[woWi.id]?"▼":"▶"} Riwayat revisi ({lainnya.length})
-                        </button>
-                        {expandedRiwayat[woWi.id]&&(
-                          <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
-                            {lainnya.map((r:any)=>(
-                              <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                                <div style={{minWidth:0}}>
-                                  <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                    <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                    {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
-                                  </div>
-                                  <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
-                                </div>
-                                <button onClick={()=>openViewer(r)}
-                                  style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                      {isPExp&&cfg&&(
+                        <div style={{padding:"10px 16px 10px 28px",background:"var(--bg-secondary,#fafbff)"}}>
+                          {cfg.wps.map((wpDef:any)=>(
+                            <div key={wpDef.wp} style={{marginBottom:10}}>
+                              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                                <span style={{fontWeight:800,fontSize:12,color:wpDef.color,background:wpDef.color+"18",border:`1px solid ${wpDef.color}33`,borderRadius:6,padding:"2px 10px"}}>{wpDef.wp}</span>
+                                <span style={{fontSize:11,color:"#94a3b8"}}>{wpDef.range}</span>
                               </div>
-                            ))}
+                              <div style={{background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden"}}>
+                                {wpDef.items.map((item:any,ii:number)=>{
+                                  const cl=(p.checklist||{})[item.kode]||{qty:0};
+                                  const flatKodes=cfg.wps.flatMap((ww:any)=>ww.items).map((it:any)=>it.kode);
+                                  const isSel=selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode);
+                                  return(
+                                    <div key={item.kode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
+                                      borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",background:ii%2===0?wpDef.bg+"66":"var(--card-bg,#fff)"}}>
+                                      <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8",minWidth:44}}>{item.kode}</span>
+                                      <span style={{fontSize:12,fontWeight:600,color:"var(--text-primary,#374151)",flex:1}}>{item.nama}</span>
+                                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                                        <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
+                                        <input type="number" min="0" id={`engqty_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
+                                          onChange={e=>updateItemQty(String(p.id),item.kode,e.target.value)}
+                                          onClick={e=>{e.stopPropagation();handleQtyCellClick(String(p.id),item.kode,flatKodes,e.shiftKey);}}
+                                          onCopy={e=>handleQtyCopy(String(p.id),e)}
+                                          onPaste={e=>handleQtyPasteMulti(String(p.id),e)}
+                                          style={{width:56,padding:"4px 6px",borderRadius:6,
+                                            border:isSel?"1.5px solid #2563eb":"1.5px solid var(--border-color,#e2e8f0)",
+                                            background:isSel?"#eff6ff":"var(--card-bg,#fff)",fontSize:12,textAlign:"center",
+                                            fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--text-primary,#1e293b)"}}/>
+                                      </div>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {dirtyQty[String(p.id)]&&Object.keys(dirtyQty[String(p.id)]).length>0&&(
+                        <div style={{display:"flex",gap:10,justifyContent:"flex-end",padding:"10px 16px",borderTop:"1px dashed var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8faff)"}}>
+                          <button onClick={()=>cancelQtyEdit(String(p.id))}
+                            style={{padding:"7px 16px",borderRadius:8,border:"1.5px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#64748b",cursor:"pointer",fontSize:12.5,fontWeight:700,fontFamily:"inherit"}}>Batal</button>
+                          <button onClick={()=>saveQtyEdit(String(p.id))}
+                            style={{padding:"7px 20px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",cursor:"pointer",fontSize:12.5,fontWeight:700,fontFamily:"inherit"}}>Simpan Perubahan</button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+                {lainnya.length>0&&(
+                  <div onClick={e=>e.stopPropagation()} style={{padding:"10px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",background:"var(--bg-secondary,#f8fafc)"}}>
+                    <button onClick={()=>setExpandedRiwayat(pr=>({...pr,[woWi.id]:!pr[woWi.id]}))}
+                      style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
+                      {expandedRiwayat[woWi.id]?"▼":"▶"} Riwayat revisi ({lainnya.length})
+                    </button>
+                    {expandedRiwayat[woWi.id]&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
+                        {lainnya.map((r:any)=>(
+                          <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                            <div style={{minWidth:0}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                              </div>
+                              <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                            </div>
+                            <button onClick={()=>openViewer(r)}
+                              style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
                           </div>
-                        )}
+                        ))}
                       </div>
                     )}
                   </div>
@@ -294,8 +537,8 @@ export function WoDigitalTab({user}:{user?:any}={}){
               <Inp value={uploadJudul} onChange={(e:any)=>setUploadJudul(e.target.value)} disabled={uploading} placeholder="mis. Construction Drawing LVMDP"/>
             </div>
             <div>
-              <Lbl>Kode Revisi (opsional, dari title block PDF)</Lbl>
-              <Inp value={uploadRevMark} onChange={(e:any)=>setUploadRevMark(e.target.value)} disabled={uploading} placeholder="mis. REV. A"/>
+              <Lbl>Keterangan Revisi (opsional)</Lbl>
+              <Inp value={uploadRevMark} onChange={(e:any)=>setUploadRevMark(e.target.value)} disabled={uploading} placeholder="mis. Revisi 2 - update dimensi busbar"/>
             </div>
             <div>
               <Lbl>File PDF</Lbl>

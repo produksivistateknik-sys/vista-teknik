@@ -4,10 +4,11 @@ import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { generateFCSSchedule, generateFCSWiring, generateAndSaveToRawSchedule } from '../services/fcsService'
-import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
+import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
+import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
 export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
@@ -18,8 +19,16 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const bomPanelTypesCache=livePanelTypes;
   const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
   const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
-  const [selectedQtyCells,setSelectedQtyCells]=useState<{panelId:number;kodes:string[]}|null>(null);
-  const [qtyAnchor,setQtyAnchor]=useState<{panelId:number;kode:string}|null>(null);
+  // Qty-per-komponen editor (3 Sep 2026, di-extract ke usePanelQtyEditor.ts - dipakai bareng
+  // WoDigitalTab.tsx/Engineering juga). getPanel/getWoContext/applyChecklist di-bind ke woData
+  // nested-per-WO punya komponen ini - behavior SAMA PERSIS kayak sebelum di-extract.
+  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
+    getPanel:(panelId)=>woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===panelId),
+    getWoContext:(panelId)=>{const wo=woData.find((w:any)=>(w.panels||[]).some((p:any)=>String(p.id)===panelId));return wo?{id:wo.id,wo:wo.wo,proyek:wo.proyek}:undefined;},
+    applyChecklist:(panelId,newChecklist)=>setWoData((prev:any)=>prev.map((w:any)=>({...w,panels:(w.panels||[]).map((p:any)=>String(p.id)===panelId?{...p,checklist:newChecklist}:p)}))),
+    getEffectiveCfg,
+    getUname:()=>{const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');return user?.name||user?.nama||sess?.nama||'Admin';},
+  });
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,jumlahCell:0};
   const [fcsModal,setFcsModal]=useState<any>(null);
@@ -306,256 +315,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     }
     setOpen(false);
   };
-  const [dirtyQty,setDirtyQty]=useState<Record<string,Record<string,{newQty:number,oldQty:number}>>>({});
   useEffect(()=>{
     setGlobalDirtyPanelIds(new Set(Object.keys(dirtyQty).filter(pid=>Object.keys(dirtyQty[pid]||{}).length>0)));
   },[dirtyQty]);
-  const [origChecklist,setOrigChecklist]=useState<Record<string,any>>({});
-
-  const handleQtyCellClick=(panelId:number,kode:string,flatKodes:string[],shiftKey:boolean)=>{
-    if(shiftKey&&qtyAnchor&&qtyAnchor.panelId===panelId){
-      const startIdx=flatKodes.indexOf(qtyAnchor.kode);
-      const endIdx=flatKodes.indexOf(kode);
-      if(startIdx===-1||endIdx===-1)return;
-      const lo=Math.min(startIdx,endIdx);
-      const hi=Math.max(startIdx,endIdx);
-      setSelectedQtyCells({panelId,kodes:flatKodes.slice(lo,hi+1)});
-    } else {
-      setQtyAnchor({panelId,kode});
-      setSelectedQtyCells({panelId,kodes:[kode]});
-    }
-  };
-
-  const handleQtyCopy=(woId:number,panelId:number,e:any)=>{
-    if(!selectedQtyCells||selectedQtyCells.panelId!==panelId||selectedQtyCells.kodes.length<=1)return;
-    const wo=woData.find((w:any)=>w.id===woId);
-    const panel=wo?.panels?.find((p:any)=>p.id===panelId);
-    if(!panel)return;
-    const values=selectedQtyCells.kodes.map(kode=>panel.checklist?.[kode]?.qty??0);
-    e.clipboardData.setData("text/plain",values.join("\n"));
-    e.preventDefault();
-  };
-
-  const handleQtyPasteMulti=(woId:number,panelId:number,e:any)=>{
-    if(!selectedQtyCells||selectedQtyCells.panelId!==panelId||selectedQtyCells.kodes.length<=1)return;
-    const text=e.clipboardData.getData("text");
-    const values=text.split(/\r?\n|\t/).map((v:string)=>v.trim()).filter((v:string)=>v!=="");
-    if(values.length===0)return;
-    e.preventDefault();
-    selectedQtyCells.kodes.forEach((kode,idx)=>{
-      const val=values.length===1?values[0]:values[idx];
-      if(val===undefined)return;
-      updateItemQty(woId,panelId,kode,parseFloat(val)||0);
-    });
-  };
-
-  const updateItemQty=(woId,panelId,kode,qty)=>{
-    const nq=Number(qty)||0;
-    setOrigChecklist(prev=>{
-      if(prev[String(panelId)])return prev;
-      const panel=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
-      return{...prev,[String(panelId)]:JSON.parse(JSON.stringify(panel?.checklist||{}))};
-    });
-    setDirtyQty(prev=>{
-      const panel=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
-      const oldQty=panel?.checklist?.[kode]?.qty??0;
-      return{...prev,[String(panelId)]:{...prev[String(panelId)],[kode]:{newQty:nq,oldQty}}};
-    });
-    setWoData(prev=>prev.map(wo=>wo.id!==woId?wo:{...wo,panels:wo.panels.map(p=>{
-      if(p.id!==panelId)return p;
-      const nq2=Number(qty)||0;
-      const oldQty2=p.checklist[kode]?.qty||1;
-      const nc={...p.checklist,[kode]:{...p.checklist[kode],qty:nq2}};
-      if(nq2===0){
-        // qty 0 → reset semua progress
-        nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
-        nc[kode].progressByDate=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{});
-        nc[kode].history=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:[]}),{});
-      } else if(nq2!==oldQty2 && oldQty2>0){
-        // qty berubah → recalculate progress proporsional
-        const ratio=oldQty2/nq2;
-        const newProgress:any={};
-        const newHistory:any={...(nc[kode].history||{})};
-        // FIX bug "operator kosong": progressByDate (snapshot terkunci per tanggal, dipakai buat
-        // nampilin angka histori di Rencana Harian) DULU gak ikut direcalculate di sini - jadi
-        // snapshot lama tetap nunjukin persentase SEBELUM qty diedit (mis. masih 100% padahal
-        // progress live udah turun ke 25%), bikin data keliatan gak konsisten/gak bisa dipercaya.
-        // Sekarang ikut di-scale pakai rasio yang sama biar tetap konsisten sama progress live.
-        const newProgressByDate:any={...(nc[kode].progressByDate||{})};
-        ALL_PROSES.forEach(pr=>{
-          const oldPct=nc[kode].progress?.[pr]||0;
-          const newPct=Math.min(100,Math.round(oldPct*ratio));
-          newProgress[pr]=newPct;
-          // Update entry terakhir di history jika ada
-          if(newHistory[pr]&&newHistory[pr].length>0){
-            const lastIdx=newHistory[pr].length-1;
-            newHistory[pr]=[...newHistory[pr]];
-            newHistory[pr][lastIdx]={
-              ...newHistory[pr][lastIdx],
-              pct:newPct,
-              ts:new Date().toISOString()
-            };
-          }
-          if(newProgressByDate[pr]){
-            const scaledByDate:any={};
-            Object.entries(newProgressByDate[pr]).forEach(([tgl,pctLama]:any)=>{
-              scaledByDate[tgl]=Math.min(100,Math.round((Number(pctLama)||0)*ratio));
-            });
-            newProgressByDate[pr]=scaledByDate;
-          }
-        });
-        nc[kode].progress=newProgress;
-        nc[kode].history=newHistory;
-        nc[kode].progressByDate=newProgressByDate;
-      }
-      return{...p,checklist:nc};
-    })}));
-  };
-
-  const cancelQtyEdit=(panelId)=>{
-    const orig=origChecklist[panelId];
-    if(!orig)return;
-    setWoData(prev=>prev.map(wo=>({...wo,panels:wo.panels.map(p=>p.id!==panelId?p:{...p,checklist:orig})})));
-    setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-  };
-
-  const saveQtyEdit=async(woArg,panelId)=>{
-    // ambil data terbaru dari woData state
-    const currentWo=woData.find(w=>w.panels?.some((p:any)=>String(p.id)===String(panelId)))||woArg;
-    const panel=currentWo?.panels?.find((p:any)=>String(p.id)===String(panelId));
-    if(!panel){alert('Panel tidak ditemukan!');return;}
-    const dirty=dirtyQty[String(panelId)]||{};
-    const panelQtyMultiplier=Number(panel.qty)||1;
-    // ambil checklist TERBARU dari DB (bukan state lokal) biar gak nimpa edit qty admin lain yang barusan masuk
-    const{data:freshPanelRow}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
-    const finalChecklist={...(freshPanelRow?.checklist||panel.checklist)};
-    // FIX (4 Agu 2026): dulu blok ini cuma jalan kalau panelQtyMultiplier>1 - buat panel qty=1
-    // (mayoritas panel), perubahan qty yang diketik admin gak PERNAH nempel ke finalChecklist sama
-    // sekali (cuma "ketutupan" sebelumnya karena basisnya masih state lokal yang udah kebawa
-    // perubahan lewat updateItemQty - begitu basisnya diganti fresh-fetch DB, jadi no-op total).
-    // Sekarang jalan SELALU - kali panelQtyMultiplier tetap benar dipertahankan buat panel qty>1,
-    // kali 1 otomatis gak ngefek buat panel qty=1.
-    // FIX (5 Agu 2026): dulu kode yang BELUM ADA sama sekali di checklist (BOM di-expand
-    // belakangan, atau kode sempat hilang dari insiden lain) di-skip diam-diam di sini (gate
-    // `finalChecklist[kode]`) - toast "Qty berhasil disimpan!" tetap muncul (qty_change_log/
-    // activity_log gak dikondisikan sama gate ini) padahal gak ada apapun yang benar-benar
-    // ketulis, dan retry berkali-kali gak pernah berhasil (root cause laporan "qty balik ke 0
-    // terus" - lihat docs/investigasi-qty-tersimpan.md). Sekarang kalau entry-nya belum ada,
-    // BUAT baru dulu (shape sama persis initChecklist) baru qty-nya di-apply - bukan di-skip.
-
-    // FITUR (8 Agu 2026): qty DIKURANGI di bawah qty yang udah dikerjakan (qtyProses, dari
-    // input qty-based Vista Pekerja) - JANGAN langsung timpa, warning dulu + minta konfirmasi
-    // admin. Progress yang udah ada TIDAK disentuh sama sekali di sini apapun pilihan admin -
-    // cuma qty target yang berubah kalau admin lanjut. Qty dinaikkan aman, gak kena cek ini.
-    const konflikList:string[]=[];
-    Object.keys(dirty).forEach(kode=>{
-      const dirtyEntry=(dirty as any)[kode];
-      if(dirtyEntry.newQty===dirtyEntry.oldQty)return;
-      const newQtyFinal=Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier);
-      const existingCl=finalChecklist[kode];
-      if(!existingCl)return;
-      const maxQtyProses=Math.max(0,...Object.values(existingCl.qtyProses||{}).map((v:any)=>Number(v)||0));
-      if(maxQtyProses>newQtyFinal){
-        const cfg=getEffectiveCfg(panel.tipe);
-        const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-        konflikList.push(`${nama}: progress sudah dikerjakan ${maxQtyProses}, qty baru cuma ${newQtyFinal}`);
-      }
-    });
-    if(konflikList.length>0){
-      const lanjut=window.confirm(
-        'PERINGATAN: qty baru lebih kecil dari progress yang sudah dikerjakan operator untuk:\n\n'+
-        konflikList.join('\n')+
-        '\n\nProgress yang sudah ada TIDAK akan diubah/dipotong otomatis - cuma qty target-nya yang berubah. '+
-        'Operator mungkin perlu koreksi manual di Vista Pekerja setelah ini. Lanjutkan simpan qty baru?'
-      );
-      if(!lanjut)return;
-    }
-
-    Object.keys(dirty).forEach(kode=>{
-      const dirtyEntry=(dirty as any)[kode];
-      if(dirtyEntry.newQty===dirtyEntry.oldQty)return;
-      const base=finalChecklist[kode]||{qty:0,qtyProses:{},
-        progress:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{}),
-        progressByDate:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{}),
-        stepDates:ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{})};
-      finalChecklist[kode]={...base,qty:Math.round(Number(dirtyEntry.newQty)*panelQtyMultiplier)};
-    });
-    const{error}=await supabase.from('panels').update({checklist:finalChecklist}).eq('id',panel.id);
-    if(error){alert('Gagal menyimpan: '+error.message);return;}
-    // VERIFIKASI (5 Agu 2026): baca balik dari DB, jangan percaya "sukses" cuma dari absennya
-    // error - 3 bug berbeda sebelumnya di fungsi ini (race condition snapshot basi, gate
-    // panelQtyMultiplier>1, gate kode-belum-ada-di-checklist) semuanya lolos tanpa error dari
-    // supabase padahal checklist-nya gak beneran berubah. Verifikasi ini nangkep KELAS bug yang
-    // sama ke depannya (termasuk yang belum ketemu), bukan cuma 3 yang udah di-fix satu-satu -
-    // toast "berhasil" cuma muncul kalau nilai yang BENERAN ada di database sudah dicek cocok
-    // sama yang dimaksud, dirtyQty juga SENGAJA gak dibersihkan kalau gagal biar input admin
-    // gak ilang dari layar dan bisa langsung dicoba simpan ulang.
-    // AUDIT FIX (5 Agu 2026): dulu fetch verifikasi ini gak dicek error-nya sendiri - kalau FETCH
-    // verifikasinya yang gagal (bukan simpannya), semua kode di `dirty` otomatis kebaca "gagal"
-    // (verifyRow undefined) dan muncul alert "GAGAL tersimpan" yang keliru, padahal update panels
-    // barusan (baris di atas) sukses tanpa error. Sekarang dibedakan: gagal fetch verifikasi vs
-    // beneran gak cocok pas dicek.
-    const{data:verifyRow,error:verifyError}=await supabase.from('panels').select('checklist').eq('id',panel.id).single();
-    if(verifyError){
-      alert('Qty sudah terkirim (gak ada error pas simpan), tapi verifikasi baca-balik gagal karena koneksi - BELUM YAKIN datanya beneran sesuai. Refresh halaman buat mastiin, atau simpan ulang kalau ragu.');
-      return;
-    }
-    const gagalTersimpan=Object.keys(dirty).filter(kode=>{
-      const dirtyEntry=(dirty as any)[kode];
-      if(dirtyEntry.newQty===dirtyEntry.oldQty)return false;
-      return (verifyRow?.checklist?.[kode]?.qty)!==(finalChecklist[kode]?.qty);
-    });
-    if(gagalTersimpan.length>0){
-      alert('Qty GAGAL tersimpan buat: '+gagalTersimpan.join(', ')+' - coba tekan Simpan Progress lagi. (Verifikasi baca-balik database gak cocok sama yang dimaksud disimpan)');
-      return;
-    }
-    setWoData(prev=>prev.map(w=>w.id!==currentWo.id?w:{...w,panels:w.panels.map((p:any)=>p.id===panel.id?{...p,checklist:finalChecklist}:p)}));
-    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-    const uname=user?.name||user?.nama||sess?.nama||'Admin';
-    const qtyChangeLogRows:any[]=[];
-    const changes=Object.entries(dirty)
-      .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
-      .map(([kode,v])=>{
-        const cfg=getEffectiveCfg(panel.tipe);
-        const wpFound=cfg?.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
-        const nama=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-        const finalVal=panelQtyMultiplier>1?Math.round(Number((v as any).newQty)*panelQtyMultiplier):(v as any).newQty;
-        qtyChangeLogRows.push({
-          wo_id:currentWo.id,panel_id:panel.id,proyek:currentWo.proyek||'',panel:panel.nama||'',tipe_panel:panel.tipe||'',
-          wp:wpFound?.wp||'',kode_komponen:kode,nama_komponen:nama,
-          qty_lama:(v as any).oldQty,qty_baru:finalVal,changed_by:uname,
-        });
-        return nama+': '+(v as any).oldQty+' -> '+finalVal;
-      });
-    if(qtyChangeLogRows.length>0){
-      await supabase.from('qty_change_log').insert(qtyChangeLogRows);
-    }
-    const tgl=new Date().toLocaleDateString('id-ID',{day:'numeric',month:'long',year:'numeric'});
-    await activityLogService.insert({
-      user_name:uname,
-      action:'EDIT QTY',
-      description:'['+tgl+'] Edit Qty '+panel.nama+' ('+currentWo.proyek+'): '+changes.join(', '),
-      module:'wo',
-      halaman:'Manajemen WO',
-      proyek:currentWo.proyek||'',
-      panel:panel.nama||'',
-      wo_number:currentWo.wo||'',
-    });
-    setDirtyQty(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    setOrigChecklist(prev=>{const n={...prev};delete n[String(panelId)];return n;});
-    // FITUR (8 Agu 2026): qty yang udah ke-cache di raw_schedule.schedule (qtyPerKomponen) dulu
-    // basi begitu qty komponen diedit di sini - admin cuma dikasih warning suruh cek manual.
-    // Sekarang di-sync otomatis lewat rawScheduleService.syncQtyAfterEdit - komponen yang belum
-    // pernah dijadwalkan tetap dibiarkan (gak bikin entry baru), itu tetap lewat Generate Jadwal.
-    const qtyChangesForRaw=Object.entries(dirty)
-      .filter(([,v])=>(v as any).newQty!==(v as any).oldQty)
-      .map(([kode,v])=>({kode,newQty:Math.round(Number((v as any).newQty)*panelQtyMultiplier)}));
-    if(qtyChangesForRaw.length>0){
-      await rawScheduleService.syncQtyAfterEdit(panel.id,qtyChangesForRaw);
-    }
-    alert('Qty berhasil disimpan!');
-  };
 
   return(
     <div className="fi">
@@ -651,7 +413,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
                                     <input type="number" min="0" id={`qtyinput_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
-                                      onChange={e=>updateItemQty(wo.id,p.id,item.kode,e.target.value)}
+                                      onChange={e=>updateItemQty(String(p.id),item.kode,e.target.value)}
                                       onKeyDown={e=>{
                                         if(e.key!=="Enter")return;
                                         e.preventDefault();
@@ -666,12 +428,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                       onClick={e=>{
                                         e.stopPropagation();
                                         const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
-                                        handleQtyCellClick(p.id,item.kode,flatKodes,e.shiftKey);
+                                        handleQtyCellClick(String(p.id),item.kode,flatKodes,e.shiftKey);
                                       }}
-                                      onCopy={e=>handleQtyCopy(wo.id,p.id,e)}
+                                      onCopy={e=>handleQtyCopy(String(p.id),e)}
                                       onPaste={e=>{
-                                        if(selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode)){
-                                          handleQtyPasteMulti(wo.id,p.id,e);
+                                        if(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode)){
+                                          handleQtyPasteMulti(String(p.id),e);
                                           return;
                                         }
                                         const text=e.clipboardData.getData("text");
@@ -685,12 +447,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                           const target=flatItems[startIdx2+idx];
                                           if(!target)return;
                                           const numVal=parseFloat(val)||0;
-                                          updateItemQty(wo.id,p.id,target.kode,numVal);
+                                          updateItemQty(String(p.id),target.kode,numVal);
                                         });
                                       }}
                                       style={{width:56,padding:"4px 6px",borderRadius:6,
-                                        border:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"1.5px solid #2563eb":`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
-                                        background:selectedQtyCells&&selectedQtyCells.panelId===p.id&&selectedQtyCells.kodes.includes(item.kode)?"#eff6ff":isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
+                                        border:selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode)?"1.5px solid #2563eb":`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
+                                        background:selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode)?"#eff6ff":isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
                                         fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"var(--text-primary,#1e293b)"}}/>
                                   </div>
                                 </div>
@@ -707,7 +469,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         style={{padding:"8px 20px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
                         Batal
                       </button>
-                      <button onClick={()=>saveQtyEdit(wo,String(p.id))}
+                      <button onClick={()=>saveQtyEdit(String(p.id))}
                         style={{padding:"8px 24px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",boxShadow:"0 2px 8px #2563eb33"}}>
                         Simpan Perubahan
                       </button>
