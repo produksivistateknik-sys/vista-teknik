@@ -41,7 +41,7 @@ export function useWoDigitalDocs() {
   // lama di-set false DULU baru insert revisi baru current=true (urutan penting, jangan
   // diubah - biar gak tabrakan sama unique partial index wi_revisions_one_current) -> activity
   // log -> refetch biar state lokal langsung konsisten (gak nunggu realtime round-trip).
-  const uploadDoc=async(panelId:number,panelLabel:string,woId:number,woLabel:string,file:File,judul:string,revMark:string,uname:string,onStage?:(s:string)=>void)=>{
+  const uploadDoc=async(panelId:number,panelLabel:string,woId:number,woLabel:string,proyek:string,file:File,judul:string,revMark:string,uname:string,onStage?:(s:string)=>void)=>{
     onStage?.("Menempel watermark...")
     const fileBytes=await file.arrayBuffer()
     const{blob,pageCount}=await watermarkPdf(fileBytes)
@@ -51,7 +51,11 @@ export function useWoDigitalDocs() {
     const fileUrl=await uploadToR2(blob,key,"application/pdf")
 
     onStage?.("Menyimpan...")
+    // isFirstDoc DITANGKAP SEBELUM mutasi apa pun (REVISI 5 Sep 2026, dipakai buat notifikasi
+    // "gambar direvisi" di bawah - cuma revisi yang notif, upload pertama kali TIDAK, karena
+    // event "WO baru"/"tambah panel" udah cukup mewakili momen itu).
     let wi=wiOfPanel(panelId)
+    const isFirstDoc=!wi
     if(!wi){
       const{data,error}=await supabase.from("work_instructions" as any).insert({
         wo_id:woId,panel_id:panelId,judul:judul.trim()||"Gambar Teknik",
@@ -73,6 +77,14 @@ export function useWoDigitalDocs() {
       module:"wo_digital",halaman:"WO Digital",
     })
     await fetchDocs()
+
+    // Push notif "gambar direvisi" ke admin+operator (REVISI 5 Sep 2026) - fitur tambahan,
+    // GAGAL DI SINI TIDAK BOLEH gagalin upload yang udah beres di atas, try/catch sendiri.
+    if(!isFirstDoc){
+      try{
+        await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"gambar_direvisi",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname}})
+      }catch{/* notifikasi gagal - diabaikan */}
+    }
   }
 
   return{wiList,revList,wiOfPanel,revisionsOf,currentRevOf,uploadDoc,refetchDocs:fetchDocs}

@@ -262,6 +262,13 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     if(editId){
+      // Snapshot SEBELUM update - buat deteksi "revisi WO" (field WO berubah) vs "tambah panel"
+      // (baris tanpa id ditambahkan) di bawah, notifikasi (REVISI 5 Sep 2026). Diambil dari
+      // woData (belum ke-overwrite sampai refetchWO() di bawah), bukan dari form/panels yang
+      // udah keburu mutasi state lokal pas modal dibuka.
+      const origWo=woData.find((w:any)=>w.id===editId);
+      const woFieldsChanged=origWo&&(origWo.wo!==form.wo||origWo.proyek!==form.proyek||origWo.target!==form.target);
+      const newPanelNames=panels.filter(p=>p.nama&&!(p as any).id).map(p=>p.nama);
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         // ambil checklist TERBARU dari DB biar gak nimpa edit qty admin lain yang masuk selagi modal ini kebuka
@@ -297,6 +304,18 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         }
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+        // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI
+        // SINI TIDAK BOLEH gagalin proses simpan yang udah beres di atas, try/catch sendiri.
+        if(woFieldsChanged){
+          try{
+            await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"revisi_wo",wo_id:editId,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+          }catch{/* notifikasi gagal - diabaikan */}
+        }
+        if(newPanelNames.length>0){
+          try{
+            await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"tambah_panel",wo_id:editId,wo_number:form.wo,proyek:form.proyek,admin_nama:uname,panel_names:newPanelNames}});
+          }catch{/* notifikasi gagal - diabaikan */}
+        }
       }
     } else {
       const np=buildNp(panels);
@@ -312,11 +331,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           return [...prev,newWo];
         });
         if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
-        // Push notif ke semua admin yang subscribe - fitur tambahan, GAGAL DI SINI TIDAK BOLEH
-        // gagalin proses simpan WO yang udah beres di atas, makanya dibungkus try/catch sendiri
-        // dan gak di-await sebagai bagian kondisi apapun.
+        // Push notif ke admin + SEMUA divisi operator (REVISI 5 Sep 2026, dulu admin doang) -
+        // fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin proses simpan yang udah beres di
+        // atas, makanya dibungkus try/catch sendiri dan gak di-await sebagai bagian kondisi apapun.
         try{
-          await supabase.functions.invoke("notify-wo-baru",{body:{wo_id:result.data.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+          await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"baru",wo_id:result.data.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
         }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
       }
     }

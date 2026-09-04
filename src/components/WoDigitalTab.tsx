@@ -143,6 +143,12 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     try{
       const panelsToSave=buildPanelsForSave();
       if(formEditId){
+        // Snapshot SEBELUM update - buat deteksi "revisi WO"/"tambah panel" notifikasi (REVISI
+        // 5 Sep 2026), sama pola ManajemenWO.tsx. Diambil dari woList (belum ke-overwrite
+        // sampai fetchAll() di bawah).
+        const origWo=woList.find((w:any)=>w.id===formEditId);
+        const woFieldsChanged=origWo&&(origWo.wo!==form.wo||origWo.proyek!==form.proyek||origWo.target!==form.target);
+        const newPanelNames=formPanels.filter((p:any)=>p.nama&&!p.id).map((p:any)=>p.nama);
         // Grouped per tanggal-per-panel (fitur split existing di saveWOWithSplit) - panel yang
         // tanggal-nya di-override manual beda dari target utama otomatis di-split ke WO sibling,
         // sama persis Manajemen WO.
@@ -150,13 +156,23 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         panelsToSave.forEach((p:any)=>{const t=p.tanggal||form.target;(byTanggal[t]=byTanggal[t]||[]).push(p);});
         const groupedReal=Object.entries(byTanggal).map(([tanggal,panels])=>({tanggal,panels}));
         await workOrderService.saveWOWithSplit(formEditId,form.wo,form.proyek,form.target,groupedReal,uname);
+        if(woFieldsChanged){
+          try{
+            await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"revisi_wo",wo_id:formEditId,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+          }catch{/* notifikasi gagal - diabaikan */}
+        }
+        if(newPanelNames.length>0){
+          try{
+            await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"tambah_panel",wo_id:formEditId,wo_number:form.wo,proyek:form.proyek,admin_nama:uname,panel_names:newPanelNames}});
+          }catch{/* notifikasi gagal - diabaikan */}
+        }
       } else {
         const{data:newWo,error}=await supabase.from("work_orders").insert({wo:form.wo.trim(),proyek:form.proyek.trim(),target:form.target}).select().single();
         if(error||!newWo)throw new Error(error?.message||"Gagal buat WO");
         await activityLogService.insert({user_name:uname,action:"TAMBAH WO",description:"Tambah WO "+form.wo+" - "+form.proyek,module:"wo",halaman:"WO Digital",proyek:form.proyek,wo_number:form.wo});
         await workOrderService.savePanels(newWo.id,panelsToSave);
         try{
-          await supabase.functions.invoke("notify-wo-baru",{body:{wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
+          await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"baru",wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
         }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
 
         // Upload dokumen yang ditahan pas isi form (REVISI 4 Sep 2026) - savePanels() insert
@@ -174,7 +190,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
             const panelLabel=`Panel ${pp.noPnl} - ${pp.nama}`;
             if(!match){failed.push(`${panelLabel} (panel tidak ditemukan)`);continue;}
             try{
-              await uploadDocPipeline(match.id,panelLabel,newWo.id,form.wo,pp.pendingFile,`Gambar Teknik - ${panelLabel}`,pp.pendingRevMark||"",uname);
+              await uploadDocPipeline(match.id,panelLabel,newWo.id,form.wo,form.proyek,pp.pendingFile,`Gambar Teknik - ${panelLabel}`,pp.pendingRevMark||"",uname);
             }catch(upErr:any){
               failed.push(`${panelLabel} (${upErr?.message||"gagal upload"})`);
             }
@@ -238,16 +254,16 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   };
 
   // ── Upload modal (per-panel, REVISI 4 Sep 2026) ──
-  const[uploadTarget,setUploadTarget]=useState<{panelId:number,panelLabel:string,woId:number,woLabel:string}|null>(null);
+  const[uploadTarget,setUploadTarget]=useState<{panelId:number,panelLabel:string,woId:number,woLabel:string,proyek:string}|null>(null);
   const[uploadFile,setUploadFile]=useState<File|null>(null);
   const[uploadJudul,setUploadJudul]=useState("");
   const[uploadRevMark,setUploadRevMark]=useState("");
   const[uploading,setUploading]=useState(false);
   const[uploadStage,setUploadStage]=useState("");
 
-  const openUpload=(panelId:number,panelLabel:string,woId:number,woLabel:string)=>{
+  const openUpload=(panelId:number,panelLabel:string,woId:number,woLabel:string,proyek:string)=>{
     const existing=wiOfPanel(panelId);
-    setUploadTarget({panelId,panelLabel,woId,woLabel});
+    setUploadTarget({panelId,panelLabel,woId,woLabel,proyek});
     setUploadFile(null);
     setUploadJudul(existing?.judul||`Gambar Teknik - ${panelLabel}`);
     setUploadRevMark("");
@@ -263,7 +279,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     try{
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
       const uname=sess?.nama||sess?.name||"Admin";
-      await uploadDocPipeline(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
+      await uploadDocPipeline(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadTarget.proyek,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
       setUploadTarget(null);setUploadFile(null);setUploadJudul("");setUploadRevMark("");
       fetchAll();
     }catch(err:any){
@@ -381,7 +397,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                 <div key={p.id} style={{display:"flex",flexDirection:"column",gap:8}}>
                   <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
                     <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"var(--text-primary,#1e293b)"}}>{panelLabel}</b><br/>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`:"Belum ada dokumen"}</span>
-                    <Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,formEditId as number,form.wo)}>{current?"Upload Revisi":"+ Upload"}</Btn>
+                    <Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,formEditId as number,form.wo,form.proyek)}>{current?"Upload Revisi":"+ Upload"}</Btn>
                   </div>
                   {lainnya.length>0&&(
                     <div style={{display:"flex",flexDirection:"column",gap:6,paddingLeft:12}}>
@@ -494,7 +510,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                             <div style={{display:"flex",gap:8,flexShrink:0}}>
                               {pCurrent&&<button onClick={()=>openPanelViewer(pCurrent)}
                                 style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>Lihat</button>}
-                              {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,w.id,w.wo)}>{pCurrent?"Upload Revisi":"+ Upload"}</Btn>}
+                              {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,w.id,w.wo,w.proyek)}>{pCurrent?"Upload Revisi":"+ Upload"}</Btn>}
                             </div>
                           </div>
                           {pLainnya.length>0&&(
