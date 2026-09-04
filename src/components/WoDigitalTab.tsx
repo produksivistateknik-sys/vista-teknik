@@ -159,6 +159,31 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         try{
           await supabase.functions.invoke("notify-wo-baru",{body:{wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
         }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
+
+        // Upload dokumen yang ditahan pas isi form (REVISI 4 Sep 2026) - savePanels() insert
+        // tanpa .select(), jadi id panel baru belum diketahui di sini. Query ulang panels by
+        // wo_id, match balik ke formPanels via no_pnl (unik per WO). WO+panel SUDAH tersimpan
+        // di titik ini - kegagalan upload dokumen TIDAK di-rollback, cuma dilaporkan.
+        const pendingRows=formPanels.filter((p:any)=>p.pendingFile);
+        if(pendingRows.length>0){
+          const{data:insertedPanels}=await supabase.from("panels").select("id,no_pnl").eq("wo_id",newWo.id);
+          const pool=[...(insertedPanels||[])];
+          const failed:string[]=[];
+          for(const pp of pendingRows){
+            const idx=pool.findIndex((ip:any)=>String(ip.no_pnl)===String(pp.noPnl));
+            const match=idx>=0?pool.splice(idx,1)[0]:null;
+            const panelLabel=`Panel ${pp.noPnl} - ${pp.nama}`;
+            if(!match){failed.push(`${panelLabel} (panel tidak ditemukan)`);continue;}
+            try{
+              await uploadDoc(match.id,panelLabel,newWo.id,form.wo,pp.pendingFile,`Gambar Teknik - ${panelLabel}`,pp.pendingRevMark||"",uname);
+            }catch(upErr:any){
+              failed.push(`${panelLabel} (${upErr?.message||"gagal upload"})`);
+            }
+          }
+          if(failed.length>0){
+            alert("WO berhasil tersimpan, tapi dokumen gagal terupload untuk:\n- "+failed.join("\n- ")+"\n\nUpload ulang lewat Edit WO.");
+          }
+        }
       }
       setFormOpen(false);
       fetchAll();
@@ -219,46 +244,52 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     setUploadRevMark("");
   };
 
+  // Pipeline upload dokumen (diekstrak REVISI 4 Sep 2026 - dulu cuma dipakai doUpload/modal
+  // revisi, sekarang dipakai ulang juga buat upload sekaligus pas Tambah WO Baru). Watermark
+  // -> R2 (key unik per revisi) -> find-or-create work_instructions -> is_current lama
+  // di-set false DULU baru insert revisi baru current=true (urutan penting, jangan diubah -
+  // biar gak tabrakan sama unique partial index wi_revisions_one_current) -> activity log.
+  const uploadDoc=async(panelId:number,panelLabel:string,woId:number,woLabel:string,file:File,judul:string,revMark:string,uname:string,onStage?:(s:string)=>void)=>{
+    onStage?.("Menempel watermark...");
+    const fileBytes=await file.arrayBuffer();
+    const{blob,pageCount}=await watermarkPdf(fileBytes);
+
+    onStage?.("Mengupload...");
+    const key=`wo-digital/${woId}/panel-${panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
+    const fileUrl=await uploadToR2(blob,key,"application/pdf");
+
+    onStage?.("Menyimpan...");
+    let wi=wiOfPanel(panelId);
+    if(!wi){
+      const{data,error}=await supabase.from("work_instructions" as any).insert({
+        wo_id:woId,panel_id:panelId,judul:judul.trim()||"Gambar Teknik",
+      }).select().single();
+      if(error||!data)throw new Error(error?.message||"Gagal simpan dokumen");
+      wi=data;
+    }
+    await supabase.from("wi_revisions" as any).update({is_current:false}).eq("work_instruction_id",wi.id).eq("is_current",true);
+    const maxRev=Math.max(0,...revisionsOf(wi.id).map((r:any)=>r.revision_number));
+    const{error:revErr}=await supabase.from("wi_revisions" as any).insert({
+      work_instruction_id:wi.id,revision_number:maxRev+1,rev_mark:revMark.trim()||null,
+      file_url:fileUrl,page_count:pageCount,is_current:true,uploaded_by:uname,
+    });
+    if(revErr)throw new Error(revErr.message);
+
+    await activityLogService.insert({
+      user_name:uname,action:"UPLOAD WO DIGITAL",
+      description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - ${panelLabel} (WO ${woLabel})`,
+      module:"wo_digital",halaman:"WO Digital",
+    });
+  };
+
   const doUpload=async()=>{
     if(!uploadTarget||!uploadFile)return;
     if(!uploadFile.type.includes("pdf")){alert("File harus berupa PDF.");return;}
     setUploading(true);
     try{
-      setUploadStage("Menempel watermark...");
-      const fileBytes=await uploadFile.arrayBuffer();
-      const{blob,pageCount}=await watermarkPdf(fileBytes);
-
-      setUploadStage("Mengupload...");
-      const key=`wo-digital/${uploadTarget.woId}/panel-${uploadTarget.panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
-      const fileUrl=await uploadToR2(blob,key,"application/pdf");
-
-      setUploadStage("Menyimpan...");
-      let wi=wiOfPanel(uploadTarget.panelId);
-      if(!wi){
-        const{data,error}=await supabase.from("work_instructions" as any).insert({
-          wo_id:uploadTarget.woId,panel_id:uploadTarget.panelId,judul:uploadJudul.trim()||"Gambar Teknik",
-        }).select().single();
-        if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setUploading(false);setUploadStage("");return;}
-        wi=data;
-      }
-      // Revisi lama di-set tidak berlaku dulu, BARU insert revisi baru berlaku - urutan ini
-      // penting biar gak pernah tabrakan sama unique partial index (cuma 1 is_current=true).
-      await supabase.from("wi_revisions" as any).update({is_current:false}).eq("work_instruction_id",wi.id).eq("is_current",true);
-      const maxRev=Math.max(0,...revisionsOf(wi.id).map((r:any)=>r.revision_number));
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
       const uname=sess?.nama||sess?.name||"Admin";
-      const{error:revErr}=await supabase.from("wi_revisions" as any).insert({
-        work_instruction_id:wi.id,revision_number:maxRev+1,rev_mark:uploadRevMark.trim()||null,
-        file_url:fileUrl,page_count:pageCount,is_current:true,uploaded_by:uname,
-      });
-      if(revErr){alert("Gagal simpan revisi: "+revErr.message);setUploading(false);setUploadStage("");return;}
-
-      await activityLogService.insert({
-        user_name:uname,action:"UPLOAD WO DIGITAL",
-        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - ${uploadTarget.panelLabel} (WO ${uploadTarget.woLabel})`,
-        module:"wo_digital",halaman:"WO Digital",
-      });
-
+      await uploadDoc(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
       setUploadTarget(null);setUploadFile(null);setUploadJudul("");setUploadRevMark("");
       fetchAll();
     }catch(err:any){
@@ -349,9 +380,31 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
           <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
             {formPanels.map((p:any,i:number)=>{
               if(!p.id){
+                // Edit WO existing, tambah panel baru (SENGAJA gak didukung, scope task cuma
+                // Tambah WO Baru - saveWOWithSplit lebih kompleks/berisiko buat disentuh).
+                if(formEditId){
+                  return(
+                    <div key={i} style={{fontSize:12,color:"#94a3b8",padding:"10px 12px",background:"var(--bg-secondary,#f8fafc)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                      {p.nama||`Panel #${p.noPnl}`}: simpan WO dulu, baru bisa upload dokumen.
+                    </div>
+                  );
+                }
+                // Tambah WO Baru (REVISI 4 Sep 2026) - panel belum ada id (belum ke-insert),
+                // file ditahan dulu di formPanels[i].pendingFile (belum diupload), baru
+                // benar-benar diupload di saveWoForm SETELAH panel dapat id dari DB.
                 return(
-                  <div key={i} style={{fontSize:12,color:"#94a3b8",padding:"10px 12px",background:"var(--bg-secondary,#f8fafc)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                    {p.nama||`Panel #${p.noPnl}`}: simpan WO dulu, baru bisa upload dokumen.
+                  <div key={i} style={{display:"flex",flexDirection:"column",gap:6,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                    <span style={{fontSize:12,fontWeight:700,color:"var(--text-primary,#1e293b)"}}>{p.nama||`Panel #${p.noPnl}`}</span>
+                    <label style={{display:"flex",alignItems:"center",gap:8,padding:"8px 10px",borderRadius:8,border:"1.5px dashed #cbd5e1",background:"var(--bg-secondary,#f8fafc)",cursor:"pointer"}}>
+                      <input type="file" accept="application/pdf" style={{display:"none"}}
+                        onChange={e=>{const f=e.target.files?.[0]||null;const n=[...formPanels];n[i]={...n[i],pendingFile:f};setFormPanels(n);}}/>
+                      <i className="ti ti-upload" style={{fontSize:16,color:"#64748b"}}/>
+                      <span style={{fontSize:12,color:"#64748b",fontWeight:600}}>{p.pendingFile?p.pendingFile.name:"Pilih file PDF gambar teknik (opsional)..."}</span>
+                    </label>
+                    {p.pendingFile&&(
+                      <Inp placeholder="Keterangan revisi (opsional)" value={p.pendingRevMark||""}
+                        onChange={(e:any)=>{const n=[...formPanels];n[i]={...n[i],pendingRevMark:e.target.value};setFormPanels(n);}}/>
+                    )}
                   </div>
                 );
               }
