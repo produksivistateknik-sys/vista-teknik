@@ -27,16 +27,18 @@ export function SubBagianPasswordCard(){
     {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Assembling","QS","QC"]},
   ];
 
-  const fetchPwList=async()=>{
-    setLoading(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter) biar kartu gak "berkedip" tiap ada admin lain yang ganti password sub-bagian.
+  const fetchPwList=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const{data}=await supabase.from("fcs_sub_bagian_password").select("*").order("sub_bagian");
     setPwList(data??[]);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
   useEffect(()=>{
     fetchPwList();
     const ch=supabase.channel("realtime-fcs-sub-bagian-password")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_sub_bagian_password"},fetchPwList)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_sub_bagian_password"},()=>fetchPwList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch)};
   },[]);

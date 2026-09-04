@@ -68,8 +68,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   // dipakai ulang di ManajemenWO.tsx (Admin, viewer-only).
   const{wiOfPanel,revisionsOf,currentRevOf,uploadDoc:uploadDocPipeline}=useWoDigitalDocs();
 
-  const fetchAll=async()=>{
-    setLoading(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter, dengar SEMUA work_orders/panels) biar list gak "berkedip" tiap ada perubahan
+  // WO/panel manapun, sementara aksi sendiri (simpan/hapus/upload) tetap non-silent buat feedback.
+  const fetchAll=async(silent=false)=>{
+    if(!silent)setLoading(true);
     // Panel fetch (REVISI 3 Sep 2026) - dulu cuma "id,wo_id,nama" (buat chip nama doang), sekarang
     // select("*") - form Tambah/Edit & qty-editor per-komponen butuh tipe/qty/checklist/jumlah_cell
     // penuh.
@@ -79,7 +82,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     ]);
     setWoList(wo||[]);
     setPanelsAll(panels||[]);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
   useEffect(()=>{
     fetchAll();
@@ -87,8 +90,8 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     // wi_revisions (khusus dokumen). Sekarang WO/panel bisa dibuat/diedit dari halaman ini SENDIRI
     // (Engineering) DAN dari Manajemen WO (admin) - keduanya harus saling kelihatan live.
     const ch=supabase.channel("realtime-wo-digital-admin")
-      .on("postgres_changes",{event:"*",schema:"public",table:"work_orders"},fetchAll)
-      .on("postgres_changes",{event:"*",schema:"public",table:"panels"},fetchAll)
+      .on("postgres_changes",{event:"*",schema:"public",table:"work_orders"},()=>fetchAll(true))
+      .on("postgres_changes",{event:"*",schema:"public",table:"panels"},()=>fetchAll(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);

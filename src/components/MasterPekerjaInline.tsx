@@ -18,19 +18,21 @@ export function MasterPekerjaInline({pekerja,user}:any){
   const [search, setSearch] = useState("");
 
   useEffect(() => {
-    const load = async () => {
-      setLoading(true);
+    // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di
+    // bawah (tanpa filter) biar tabel gak "berkedip" tiap ada perubahan user pekerja dari mana pun.
+    const load = async (silent = false) => {
+      if (!silent) setLoading(true);
       const { data, error } = await supabase
         .from("operator_users")
         .select("*")
         .order("divisi", { ascending: true })
         .order("nama", { ascending: true });
       if (!error) setOps(data ?? []);
-      setLoading(false);
+      if (!silent) setLoading(false);
     };
     load();
     const ch = supabase.channel("realtime-operator-users-masterpekerja")
-      .on("postgres_changes", { event: "*", schema: "public", table: "operator_users" }, load)
+      .on("postgres_changes", { event: "*", schema: "public", table: "operator_users" }, () => load(true))
       .subscribe();
     return () => { supabase.removeChannel(ch) };
   }, []);

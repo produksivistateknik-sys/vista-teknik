@@ -27,8 +27,11 @@ export function ProyekLuarTab(){
   const[expandedId,setExpandedId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
 
-  const fetchList=async()=>{
-    setLoading(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter, halaman ini READ-ONLY) biar list gak "berkedip" tiap ada laporan operator
+  // manapun yang berubah.
+  const fetchList=async(silent=false)=>{
+    if(!silent)setLoading(true);
     // Paginasi eksplisit by .range() - konsisten sama pola tabel lain yang bisa gede
     // (renhar/panels/dll pernah kena bug 1000-row cap tanpa ini).
     let all:any[]=[];
@@ -42,12 +45,12 @@ export function ProyekLuarTab(){
       from+=pageSize;
     }
     setList(all);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
   useEffect(()=>{
     fetchList();
     const ch=supabase.channel("realtime-proyek-luar-admin")
-      .on("postgres_changes",{event:"*",schema:"public",table:"proyek_luar"},fetchList)
+      .on("postgres_changes",{event:"*",schema:"public",table:"proyek_luar"},()=>fetchList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);

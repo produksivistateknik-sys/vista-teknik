@@ -21,8 +21,11 @@ export function MomFatTab(){
   const[poinMap,setPoinMap]=useState<Record<number,any[]>>({});
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
 
-  const fetchList=async()=>{
-    setLoading(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter, halaman ini READ-ONLY jadi SEMUA setLoading(true) di sini murni dipicu
+  // aktivitas QC di Vista Pekerja) biar list gak "berkedip" tiap ada QC centang/upload apa pun.
+  const fetchList=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const{data}=await supabase.from("mom_fat" as any).select("*").order("created_at",{ascending:false}).limit(200);
     setList(data||[]);
     const{data:poinAll}=await supabase.from("mom_fat_poin" as any).select("mom_fat_id,selesai");
@@ -33,13 +36,13 @@ export function MomFatTab(){
       if(p.selesai)map[p.mom_fat_id].done++;
     });
     setProgressMap(map);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
   useEffect(()=>{
     fetchList();
     const ch=supabase.channel("realtime-mom-fat-admin")
-      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat"},fetchList)
-      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat_poin"},fetchList)
+      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat"},()=>fetchList(true))
+      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat_poin"},()=>fetchList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
