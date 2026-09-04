@@ -15,7 +15,7 @@ import { ALL_PROSES } from '../constants/panelTypes'
 // flat array).
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type QtyPanel = { id: number | string; tipe: string; qty: number; nama: string; checklist: any }
+export type QtyPanel = { id: number; tipe: string; qty: number; nama: string; checklist: any }
 export type QtyWoContext = { id: number; wo: string; proyek: string }
 
 export function usePanelQtyEditor({
@@ -68,7 +68,7 @@ export function usePanelQtyEditor({
     })
   }
 
-  const updateItemQty = (panelId: string, kode: string, qty: number) => {
+  const updateItemQty = (panelId: string, kode: string, qty: number | string) => {
     const panel = getPanel(panelId)
     if (!panel) return
     setOrigChecklist(prev => {
