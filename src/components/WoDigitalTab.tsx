@@ -11,6 +11,27 @@ import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
 const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
+// Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
+// request tanpa .range(), sama kelas bug yang udah kejadian di renharService/rawScheduleService/
+// workOrderService. work_orders/panels masih kecil sekarang (puluhan baris), tapi fetchAll() di
+// bawah query keduanya polos tanpa paginasi - begitu salah satunya tembus 1000 baris, sisanya
+// ke-cut diam-diam dari daftar WO Digital. Gak pakai workOrderService.getAll() (embedded panels
+// per-WO) karena komponen ini butuh panelsAll FLAT (di-filter/dipetakan lintas WO di banyak
+// tempat) - restrukturnya lebih berisiko daripada nambah paginasi lokal biasa.
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[];
+  let from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - digitalisasi gambar teknik (construction drawing CAD, PDF dari
 // software eksternal) yang biasanya dicetak fisik jadi panduan kerja operator. Engineering
@@ -76,12 +97,12 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     // Panel fetch (REVISI 3 Sep 2026) - dulu cuma "id,wo_id,nama" (buat chip nama doang), sekarang
     // select("*") - form Tambah/Edit & qty-editor per-komponen butuh tipe/qty/checklist/jumlah_cell
     // penuh.
-    const[{data:wo},{data:panels}]=await Promise.all([
-      supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
-      supabase.from("panels").select("*"),
+    const[wo,panels]=await Promise.all([
+      fetchAllPaged((from,to)=>supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}).range(from,to)),
+      fetchAllPaged((from,to)=>supabase.from("panels").select("*").range(from,to)),
     ]);
-    setWoList(wo||[]);
-    setPanelsAll(panels||[]);
+    setWoList(wo);
+    setPanelsAll(panels);
     if(!silent)setLoading(false);
   };
   useEffect(()=>{
