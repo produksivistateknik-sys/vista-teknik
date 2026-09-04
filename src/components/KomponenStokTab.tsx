@@ -87,18 +87,32 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     const jml=Number(masukForm.jumlah)||0;
     if(jml<=0){alert("Jumlah harus lebih dari 0!");return;}
     const uname=getUname();
-    const newStok=showMasuk.stok+jml;
+    // Fresh-read stok TERBARU dari DB dulu (BUG FIX 5 Sep 2026 - race condition lost-update) -
+    // dulu newStok dihitung dari snapshot showMasuk.stok yang diambil pas modal dibuka, kalau 2
+    // staf proses stok komponen yang sama nyaris bersamaan, transaksi kedua nimpa balik transaksi
+    // pertama pakai angka basi. .eq("stok",freshStok) di update bawah jadi conditional write -
+    // kalau ternyata ada yang ubah stok LAGI persis di jendela sempit antara fresh-read ini dan
+    // update, update gak kena baris manapun (updated jadi null), ketahuan lewat cek di bawah
+    // (bukan diam-diam ke-skip kayak sebelumnya).
+    const{data:freshRow,error:freshErr}=await supabase.from("komponen_stok").select("stok").eq("id",showMasuk.id).single();
+    if(freshErr||!freshRow){alert("Gagal membaca stok terbaru: "+(freshErr?.message||"komponen tidak ditemukan")+"\n\nCoba lagi.");return;}
+    const freshStok=freshRow.stok;
+    const newStok=freshStok+jml;
     // Update stok
     const{data:updated}=await supabase.from("komponen_stok").update({
       stok:newStok,updated_at:new Date().toISOString()
-    }).eq("id",showMasuk.id).select().single();
+    }).eq("id",showMasuk.id).eq("stok",freshStok).select().single();
+    if(!updated){
+      alert("Gagal menyimpan: stok komponen ini baru saja diubah oleh transaksi lain. Silakan buka ulang dan coba lagi.");
+      return;
+    }
     // Insert riwayat masuk
     const{data:masuk}=await supabase.from("komponen_stok_masuk").insert({
       komponen_id:showMasuk.id,nama:showMasuk.nama,
       jumlah:jml,tanggal:masukForm.tanggal,
       keterangan:masukForm.keterangan,created_by:uname
     }).select().single();
-    if(updated) setStokList(prev=>prev.map(s=>s.id===showMasuk.id?updated:s));
+    setStokList(prev=>prev.map(s=>s.id===showMasuk.id?updated:s));
     if(masuk) setMasukList(prev=>[masuk,...prev]);
     await activityLogService.insert({
       user_name:uname,action:"MASUK KOMPONEN",
@@ -113,21 +127,27 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     if(!showKeluar)return;
     const jml=Number(keluarForm.jumlah)||0;
     if(jml<=0){alert("Jumlah harus lebih dari 0!");return;}
-    if(jml>showKeluar.stok){alert("Stok tidak cukup! Stok tersedia: "+showKeluar.stok);return;}
     if(!keluarForm.proyek.trim()){alert("Proyek harus diisi!");return;}
-    const newStok=showKeluar.stok-jml;
     const uname=getUname();
+    // Fresh-read + conditional update - sama pola/alasan kayak tambahMasuk() di atas.
+    const{data:freshRow,error:freshErr}=await supabase.from("komponen_stok").select("stok").eq("id",showKeluar.id).single();
+    if(freshErr||!freshRow){alert("Gagal membaca stok terbaru: "+(freshErr?.message||"komponen tidak ditemukan")+"\n\nCoba lagi.");return;}
+    const freshStok=freshRow.stok;
+    if(jml>freshStok){alert("Stok tidak cukup! Stok tersedia: "+freshStok);return;}
+    const newStok=freshStok-jml;
     const{data}=await supabase.from("komponen_stok").update({
       stok:newStok,updated_at:new Date().toISOString()
-    }).eq("id",showKeluar.id).select().single();
-    if(data){
-      setStokList(prev=>prev.map(s=>s.id===showKeluar.id?data:s));
-      await activityLogService.insert({
-        user_name:uname,action:"KELUAR KOMPONEN",
-        description:`Keluar: ${showKeluar.nama} (${showKeluar.kode||"-"}) x${jml} pcs → Proyek: ${keluarForm.proyek}, Panel: ${keluarForm.panel||"-"}, Ket: ${keluarForm.keterangan||"-"}. Sisa: ${newStok}`,
-        module:"stok",halaman:"System",proyek:keluarForm.proyek,panel:keluarForm.panel
-      });
+    }).eq("id",showKeluar.id).eq("stok",freshStok).select().single();
+    if(!data){
+      alert("Gagal menyimpan: stok komponen ini baru saja diubah oleh transaksi lain. Silakan buka ulang dan coba lagi.");
+      return;
     }
+    setStokList(prev=>prev.map(s=>s.id===showKeluar.id?data:s));
+    await activityLogService.insert({
+      user_name:uname,action:"KELUAR KOMPONEN",
+      description:`Keluar: ${showKeluar.nama} (${showKeluar.kode||"-"}) x${jml} pcs → Proyek: ${keluarForm.proyek}, Panel: ${keluarForm.panel||"-"}, Ket: ${keluarForm.keterangan||"-"}. Sisa: ${newStok}`,
+      module:"stok",halaman:"System",proyek:keluarForm.proyek,panel:keluarForm.panel
+    });
     setShowKeluar(null);
     setKeluarForm({jumlah:1,proyek:"",panel:"",keterangan:""});
   };
