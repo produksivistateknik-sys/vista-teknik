@@ -62,6 +62,9 @@ const totalFotoQualityCenter=(p:any):number=>{
 };
 
 export function ArsipTab({user,refetchWO}:any){
+  // Engineering baca-saja (REVISI 4 Sep 2026 - "WO Digital > Arsip" reuse komponen ini apa
+  // adanya) - Unarchive (kembalikan panel ke produksi aktif) tetap admin-only.
+  const canUnarsip=["admin"].includes(user?.divisi);
   const[panelList,setPanelList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
@@ -70,6 +73,23 @@ export function ArsipTab({user,refetchWO}:any){
   const[woArchivedMap,setWoArchivedMap]=useState<Record<number,boolean>>({});
   const[qcDetailPanel,setQcDetailPanel]=useState<any>(null);
   const[lightbox,setLightbox]=useState<{fotos:any[],index:number,label:string}|null>(null);
+  const[wiList,setWiList]=useState<any[]>([]);
+  const[revList,setRevList]=useState<any[]>([]);
+
+  // Dokumen Gambar Teknik (REVISI 4 Sep 2026) - work_instructions.panel_id di-set NULL kalau
+  // panelnya diarsipkan (lihat migration 20260904060000, fix cascade-delete), jadi dicari
+  // balik lewat wo_id (bukan panel_id) - SEMUA revisi ditampilkan (bukan cuma current), ini
+  // riwayat historis. Fetch independen dari panelList/panels_archived, tabel kecil, gak perlu
+  // paginasi .range() sekelas itu.
+  const fetchDokumen=async()=>{
+    const[{data:wi},{data:rev}]=await Promise.all([
+      supabase.from("work_instructions" as any).select("*"),
+      supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
+    ]);
+    setWiList(wi||[]);
+    setRevList(rev||[]);
+  };
+  useEffect(()=>{fetchDokumen();},[]);
 
   const fetchPanelArsip=async()=>{
     setLoading(true);
@@ -184,7 +204,7 @@ export function ArsipTab({user,refetchWO}:any){
                         <th style={{...thS,textAlign:"center"}}>Progress</th>
                         <th style={{...thS,textAlign:"center"}}>Quality Center</th>
                         <th style={thS}>Diarsipkan</th>
-                        <th style={{...thS,textAlign:"center"}}>Aksi</th>
+                        {canUnarsip&&<th style={{...thS,textAlign:"center"}}>Aksi</th>}
                       </tr></thead>
                       <tbody>
                         {g.panels.map((p:any,i:number)=>{
@@ -203,17 +223,53 @@ export function ArsipTab({user,refetchWO}:any){
                                 </button>
                               </td>
                               <td style={{...td,color:"#94a3b8",fontSize:11}}>{p.diarsipkan_oleh} · {p.diarsipkan_pada?new Date(p.diarsipkan_pada).toLocaleDateString("id-ID"):"—"}</td>
-                              <td style={{...td,textAlign:"center"}}>
-                                <button onClick={()=>unarsipkan(p)} disabled={unarsipLoadingId===p.id}
-                                  style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:11,fontWeight:700}}>
-                                  {unarsipLoadingId===p.id?"⏳...":"↩ Unarchive"}
-                                </button>
-                              </td>
+                              {canUnarsip&&(
+                                <td style={{...td,textAlign:"center"}}>
+                                  <button onClick={()=>unarsipkan(p)} disabled={unarsipLoadingId===p.id}
+                                    style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:11,fontWeight:700}}>
+                                    {unarsipLoadingId===p.id?"⏳...":"↩ Unarchive"}
+                                  </button>
+                                </td>
+                              )}
                             </tr>
                           );
                         })}
                       </tbody>
                     </table>
+                    {(()=>{
+                      const docs=wiList.filter((w:any)=>w.wo_id===g.wo_id);
+                      if(docs.length===0)return null;
+                      return(
+                        <div style={{padding:"12px 16px",borderTop:"1px solid #e2e8f0",background:"#fafbff"}}>
+                          <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:8}}>📄 Dokumen Gambar Teknik</div>
+                          <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                            {docs.map((wi:any)=>{
+                              const revs=revList.filter((r:any)=>r.work_instruction_id===wi.id).sort((a:any,b:any)=>b.revision_number-a.revision_number);
+                              return(
+                                <div key={wi.id} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:10,background:"#fff"}}>
+                                  <div style={{fontWeight:700,fontSize:11.5,color:"#1e293b",marginBottom:6}}>{wi.judul}</div>
+                                  <div style={{display:"flex",flexDirection:"column" as const,gap:5}}>
+                                    {revs.map((r:any)=>(
+                                      <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"5px 8px",background:r.is_current?"#f0fdf4":"#f8fafc",borderRadius:6,border:"1px solid "+(r.is_current?"#bbf7d0":"#e2e8f0")}}>
+                                        <div style={{minWidth:0}}>
+                                          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
+                                            <span style={{fontSize:9.5,fontWeight:700,color:r.is_current?"#16a34a":"#64748b",background:r.is_current?"#dcfce7":"#f1f5f9",borderRadius:20,padding:"1px 8px"}}>{r.is_current?"Berlaku":"Tidak Berlaku"}</span>
+                                            {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                          </div>
+                                          <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {r.uploaded_at?new Date(r.uploaded_at).toLocaleDateString("id-ID"):"—"}</div>
+                                        </div>
+                                        <button onClick={()=>window.open(r.file_url,"_blank")}
+                                          style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap" as const,padding:0}}>Lihat →</button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      );
+                    })()}
                   </div>
                 )}
               </div>

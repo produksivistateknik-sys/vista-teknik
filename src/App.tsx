@@ -73,6 +73,9 @@ const NAV_PARENT_OF_CHILD:Record<string,string>={
   tracking_report:"report_produksi",
   momfat:"report_produksi",
   proyekluar:"report_produksi",
+  // Engineering only (WO Digital > Arsip, REVISI 4 Sep 2026) - no-op buat admin (item "arsip"
+  // di sidebar admin gak punya parent/children, expandedNav["wodigital"] gak pernah dibaca).
+  arsip:"wodigital",
 };
 
 export default function App(){
@@ -501,9 +504,22 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   // item-per-item) - cuma 1 menu: WO Digital, tempat mereka upload gambar teknik. Admin
   // tetap lihat WO Digital juga (buat VIEW/download), cuma tombol Upload-nya yang disembunyikan
   // di WoDigitalTab sendiri lewat prop `user` (canUpload=divisi==="engineering").
+  //
+  // REVISI (4 Sep 2026) - dua tambahan: (1) "WO Digital" dapat sub-item "Arsip" - reuse tab id
+  // "arsip" yang SAMA PERSIS dipakai admin (ArsipTab.tsx, komponen di-share apa adanya, gak ada
+  // duplikat), toggle Aktif/Arsip lama di WoDigitalTab sendiri sudah dihapus, digantikan ini.
+  // (2) Grup "Report Produksi" (Quality Center/MOM FAT/Proyek Luar) - Engineering sekarang dapat
+  // akses sama persis kayak admin (request eksplisit, bukan cuma Quality Center).
   const SIDEBAR_MENUS=isEngineering?[
     {group:"PRODUKSI",items:[
-      {id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf"},
+      {id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf",navigable:true,children:[
+        {id:"arsip",label:"Arsip",icon:"ti ti-archive"},
+      ]},
+      {id:"report_produksi",label:"Report Produksi",icon:"ti ti-report",children:[
+        {id:"tracking_report",label:"Quality Center",icon:"ti ti-list-search"},
+        {id:"momfat",label:"MOM FAT",icon:"ti ti-file-text"},
+        {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2"},
+      ]},
     ]},
   ]:[
     {group:"MONITORING",items:[
@@ -691,8 +707,15 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   {group.items.map((item:any)=>item.children?(
                     <div key={item.id}>
                       <button
-                        className={"erp-nav-item"+(item.children.some((c:any)=>c.id===tab)&&!expandedNav[item.id]?" active":"")}
-                        onClick={()=>setExpandedNav(prev=>({...prev,[item.id]:!prev[item.id]}))}
+                        className={"erp-nav-item"+((tab===item.id||item.children.some((c:any)=>c.id===tab))&&!expandedNav[item.id]?" active":"")}
+                        onClick={()=>{
+                          setExpandedNav(prev=>({...prev,[item.id]:!prev[item.id]}));
+                          // item.navigable (REVISI 4 Sep 2026, WO Digital > Arsip) - parent yang
+                          // JUGA punya tab sendiri (beda dari Report Produksi yang parent-nya
+                          // murni header pengelompokan, gak navigable). Klik = expand DAN pindah
+                          // tab sekaligus.
+                          if(item.navigable)setTab(item.id);
+                        }}
                         onMouseEnter={(e:any)=>showTooltip(e,item.label)}
                         onMouseLeave={hideTooltip}>
                         <i className={item.icon} style={{fontSize:18,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>

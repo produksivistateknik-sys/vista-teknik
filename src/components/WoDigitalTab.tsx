@@ -59,7 +59,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   const[wiList,setWiList]=useState<any[]>([]);
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
-  const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[expandedPanelQty,setExpandedPanelQty]=useState<Record<number,boolean>>({});
   const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
@@ -194,16 +193,16 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   };
 
   const q=search.trim().toLowerCase();
+  // WO Digital sekarang cuma nampilin WO aktif (REVISI 4 Sep 2026) - toggle Aktif/Arsip lama
+  // dihapus, WO yang diarsip (is_archived=true) dilihat lewat sidebar "Arsip" (di bawah WO
+  // Digital) yang reuse ArsipTab.tsx, bukan lagi toggle di halaman ini.
   const filteredWo=useMemo(()=>{
-    // Aktif langsung tampil semua (search cuma mempersempit) - Arsip tetap search-first
-    // (jumlahnya historis, bisa banyak, sama alasan ArsipQCView.tsx).
-    if(viewMode==="arsip"&&!q)return[];
     return woList.filter(w=>{
-      if(viewMode==="arsip"?!w.is_archived:!!w.is_archived)return false;
+      if(!!w.is_archived)return false;
       if(q&&!(w.wo||"").toLowerCase().includes(q)&&!(w.proyek||"").toLowerCase().includes(q))return false;
       return true;
     });
-  },[woList,q,viewMode]);
+  },[woList,q]);
 
   // Dokumen per-panel (REVISI 4 Sep 2026) - 1 work_instruction per panel (panel_id di-isi,
   // bukan null lagi). wiOfPanel gantiin wiOf(woId) lama.
@@ -314,16 +313,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nomor WO / proyek..."
           style={{flex:2,minWidth:200,padding:"9px 12px",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",
             fontSize:13,background:"var(--card-bg,#fff)",color:"var(--text-primary,#1e293b)"}}/>
-        <div style={{display:"flex",gap:6}}>
-          <button onClick={()=>setViewMode("aktif")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
-            fontSize:12.5,fontWeight:700,background:viewMode==="aktif"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="aktif"?"#fff":"#64748b"}}>
-            Aktif
-          </button>
-          <button onClick={()=>setViewMode("arsip")} style={{padding:"9px 14px",borderRadius:8,border:"none",cursor:"pointer",
-            fontSize:12.5,fontWeight:700,background:viewMode==="arsip"?"#1d4ed8":"var(--bg-secondary,#f1f5f9)",color:viewMode==="arsip"?"#fff":"#64748b"}}>
-            🗄️ Arsip
-          </button>
-        </div>
         {canUpload&&<Btn color="#1d4ed8" onClick={openTambahWo}>+ Tambah WO</Btn>}
       </div>
 
@@ -448,15 +437,10 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         </Card>
       )}
 
-      {viewMode==="arsip"&&!q?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
-          <i className="ti ti-search" style={{fontSize:28,display:"block",marginBottom:8}}/>
-          Ketik nomor WO atau nama proyek untuk menampilkan daftar.
-        </div>
-      ):loading?(
+      {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data...</div>
       ):filteredWo.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>{viewMode==="arsip"?"Belum ada WO diarsipkan.":"Belum ada WO aktif."}</div>
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Belum ada WO aktif.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
@@ -473,7 +457,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                     </div>
                     <div style={{minWidth:0,flex:1}}>
                       <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.5}}>WO {w.wo}</div>
-                      <div style={{fontWeight:800,fontSize:15,color:"var(--text-primary,#0f172a)",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
+                      <div style={{fontWeight:800,fontSize:15,color:"#f47920",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
                       {panelNames.length>0&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
                           {panelNames.map(n=>(
@@ -490,7 +474,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
                     {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>)}
-                    {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="var(--bg-secondary,#f1f5f9)"/>}
                     {canUpload&&(
                       <button onClick={e=>{e.stopPropagation();openEditWo(w);}}
                         style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
@@ -519,7 +502,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                         <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:12.5}}>{p.nama}</span>
                         <Badge label={cfg?.label||p.tipe} color={cfg?.color||"#64748b"}/>
                         <Badge label={`Qty: ${p.qty}`} color="#0891b2"/>
-                        {pCurrent?<Badge label="📄 Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="📄 Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
+                        <span style={{marginLeft:"auto"}}>
+                          {pCurrent?<Badge label="📄 Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="📄 Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
+                        </span>
                       </div>
                       {isPExp&&(
                         <div style={{padding:"10px 16px 10px 28px",background:"var(--bg-secondary,#fafbff)"}}>
