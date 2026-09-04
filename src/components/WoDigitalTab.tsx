@@ -60,7 +60,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
-  const[expandedRiwayat,setExpandedRiwayat]=useState<Record<number,boolean>>({});
   const[expandedPanelQty,setExpandedPanelQty]=useState<Record<number,boolean>>({});
   const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
@@ -481,27 +480,25 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                           </div>
                           {pLainnya.length>0&&(
                             <div style={{marginBottom:10}}>
-                              <button onClick={()=>setExpandedRiwayat(pr=>({...pr,[pWi.id]:!pr[pWi.id]}))}
-                                style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0,marginBottom:6}}>
-                                {expandedRiwayat[pWi.id]?"▼":"▶"} Riwayat revisi ({pLainnya.length})
-                              </button>
-                              {expandedRiwayat[pWi.id]&&(
-                                <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                                  {pLainnya.map((r:any)=>(
-                                    <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                                      <div style={{minWidth:0}}>
-                                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                          <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                          {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
-                                        </div>
-                                        <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                              {/* Auto-terbuka (fix 4 Sep 2026) - dulu di balik toggle collapsed, bikin
+                                  keliatan kayak revisi lama "hilang" padahal cuma tersembunyi. Sekarang
+                                  konsisten sama form Tambah/Edit yang udah auto-terbuka dari awal. */}
+                              <div style={{color:"#64748b",fontSize:11,fontWeight:700,marginBottom:6}}>Riwayat revisi ({pLainnya.length})</div>
+                              <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                {pLainnya.map((r:any)=>(
+                                  <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                                    <div style={{minWidth:0}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                        <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                        {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
                                       </div>
-                                      <button onClick={()=>openPanelViewer(r)}
-                                        style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                                      <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
                                     </div>
-                                  ))}
-                                </div>
-                              )}
+                                    <button onClick={()=>openPanelViewer(r)}
+                                      style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                                  </div>
+                                ))}
+                              </div>
                             </div>
                           )}
                           {cfg&&cfg.wps.map((wpDef:any)=>(
