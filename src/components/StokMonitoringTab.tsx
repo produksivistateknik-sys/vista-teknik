@@ -123,7 +123,12 @@ export function StokMonitoringTab({user,activityLog}:any){
               const mKode=l.description?.match(/\(([^)]+)\)/);
               const jml=mJml?Number(mJml[1]):0;
               const kode=mKode?mKode[1]:"-";
-              const nama=l.description?.split(" x")?.[0]?.replace("Keluar: ","");
+              // BUG FIX (5 Sep 2026, sama pola KomponenStokTab.tsx): dulu .split(" x")[0] - patah
+              // kalau NAMA komponennya sendiri mengandung " x" (mis. "Kabel NYY 3 x 2.5mm").
+              // Sekarang split pakai kode yang sudah ditangkap di atas (" (KODE)") sebagai
+              // pembatas.
+              const strippedNama=l.description?.replace("Keluar: ","")||"";
+              const nama=mKode?strippedNama.split(` (${mKode[1]})`)[0]:strippedNama.split(" (")[0];
               const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",fontSize:11,verticalAlign:"middle" as const};
               return(
                 <tr key={i}>

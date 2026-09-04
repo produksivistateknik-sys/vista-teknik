@@ -203,10 +203,16 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const riwayatKeluar=(activityLog||[]).filter((l:any)=>l.action==="KELUAR KOMPONEN").map((l:any)=>{
     const mJml=l.description?.match(/x(\d+)\s*pcs/);
     const mKode=l.description?.match(/\(([^)]+)\)/);
+    // BUG FIX (5 Sep 2026): dulu .split(" x")[0] - patah kalau NAMA komponennya sendiri
+    // mengandung " x" (mis. "Kabel NYY 3 x 2.5mm"), berhenti di kemunculan pertama padahal
+    // itu bagian dari nama, bukan pembatas "x{jumlah} pcs". Sekarang split pakai kode yang
+    // sudah ditangkap di atas (" (KODE)") sebagai pembatas - jauh lebih spesifik/gak ambigu.
+    const stripped=l.description?.replace("Keluar: ","")||"";
+    const nama=mKode?stripped.split(` (${mKode[1]})`)[0]:stripped.split(" (")[0];
     return{
       tanggal:l.created_at?.slice(0,10),
       kode:mKode?mKode[1]:"-",
-      nama:l.description?.split(" x")?.[0]?.replace("Keluar: ",""),
+      nama,
       tipe:"keluar",jumlah:mJml?Number(mJml[1]):0,
       keterangan:l.description,panel:l.panel||"-",oleh:l.user_name
     };
