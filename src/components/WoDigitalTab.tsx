@@ -35,6 +35,16 @@ const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})))
 // Panel chip sekarang SELALU tampil di card (dulu baru muncul kalau expand). Upload/Riwayat
 // revisi (khusus Engineering/admin) jadi baris terpisah di bawah header card, event-nya
 // stopPropagation biar gak ke-trigger navigasi ke viewer pas diklik.
+//
+// REVISI (4 Sep 2026) - dokumen sekarang PER-PANEL, bukan 1 slot per WO lagi. Skema gak
+// berubah (panel_id di work_instructions sudah nullable dari awal, migration 20260831030000) -
+// cuma query/insert yang dulu selalu pakai panel_id:null sekarang di-scope ke panel_id
+// spesifik. Card header gak lagi klik-untuk-lihat (gak ada 1 dokumen tunggal per WO lagi),
+// upload/riwayat/lihat pindah ke masing-masing baris panel (gabung sama qty editor). 2
+// dokumen lama (upload sebelum revisi ini, panel_id masih null) SENGAJA dibiarkan orphan -
+// gak di-migrasi otomatis (ambigu WO 000 punya 2 panel, WO 056 sekarang 0 panel) - keputusan
+// user, upload ulang manual per-panel kalau perlu. Vista Pekerja (WoDigitalView.tsx) ikut
+// direvisi sama.
 // ─────────────────────────────────────────────────────────────────────────────
 export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:any}={}){
   // Role Engineering (31 Agu 2026) - cuma Engineering yang boleh upload/upload-revisi gambar
@@ -171,35 +181,42 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     });
   },[woList,q,viewMode]);
 
-  // WO Digital = 1 dokumen construction drawing per WO (mencakup SEMUA panel di WO itu
-  // sekaligus, sama seperti PDF asli dari CAD - multi-halaman berisi semua view). Gak ada
-  // lagi upload per-panel (31 Agu 2026) - panel_id di work_instructions TETAP nullable
-  // (skema gak berubah), cuma UI-nya yang disederhanakan jadi 1 slot per WO (panel_id selalu
-  // null dari jalur upload ini).
+  // Dokumen per-panel (REVISI 4 Sep 2026) - 1 work_instruction per panel (panel_id di-isi,
+  // bukan null lagi). wiOfPanel gantiin wiOf(woId) lama.
   const panelNamesOf=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId).map(p=>p.nama);
-  const wiOf=(woId:number)=>wiList.find((w:any)=>w.wo_id===woId&&!w.panel_id);
+  const wiOfPanel=(panelId:number)=>wiList.find((w:any)=>w.panel_id===panelId);
   const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
   const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
 
+  // Stats WO sekarang agregat dari semua panel-nya (dulu 1 dokumen = 1 WO).
   const statsOfWo=(woId:number)=>{
-    const wi=wiOf(woId);
-    const current=wi?currentRevOf(wi.id):null;
-    return{docCount:current?1:0,totalPages:current?.page_count||0,lastUpload:current?.uploaded_at||""};
+    const woPanels=panelsAll.filter(p=>p.wo_id===woId);
+    let docCount=0,totalPages=0,lastUpload="";
+    woPanels.forEach(p=>{
+      const wi=wiOfPanel(p.id);
+      const current=wi?currentRevOf(wi.id):null;
+      if(current){
+        docCount++;
+        totalPages+=current.page_count||0;
+        if(!lastUpload||current.uploaded_at>lastUpload)lastUpload=current.uploaded_at;
+      }
+    });
+    return{docCount,totalPanels:woPanels.length,totalPages,lastUpload};
   };
 
-  // ── Upload modal ──
-  const[uploadTarget,setUploadTarget]=useState<{woId:number,woLabel:string}|null>(null);
+  // ── Upload modal (per-panel, REVISI 4 Sep 2026) ──
+  const[uploadTarget,setUploadTarget]=useState<{panelId:number,panelLabel:string,woId:number,woLabel:string}|null>(null);
   const[uploadFile,setUploadFile]=useState<File|null>(null);
   const[uploadJudul,setUploadJudul]=useState("");
   const[uploadRevMark,setUploadRevMark]=useState("");
   const[uploading,setUploading]=useState(false);
   const[uploadStage,setUploadStage]=useState("");
 
-  const openUpload=(woId:number,woLabel:string)=>{
-    const existing=wiOf(woId);
-    setUploadTarget({woId,woLabel});
+  const openUpload=(panelId:number,panelLabel:string,woId:number,woLabel:string)=>{
+    const existing=wiOfPanel(panelId);
+    setUploadTarget({panelId,panelLabel,woId,woLabel});
     setUploadFile(null);
-    setUploadJudul(existing?.judul||`Gambar Teknik - WO ${woLabel}`);
+    setUploadJudul(existing?.judul||`Gambar Teknik - ${panelLabel}`);
     setUploadRevMark("");
   };
 
@@ -213,14 +230,14 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
       const{blob,pageCount}=await watermarkPdf(fileBytes);
 
       setUploadStage("Mengupload...");
-      const key=`wo-digital/${uploadTarget.woId}/wo/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
+      const key=`wo-digital/${uploadTarget.woId}/panel-${uploadTarget.panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
       const fileUrl=await uploadToR2(blob,key,"application/pdf");
 
       setUploadStage("Menyimpan...");
-      let wi=wiOf(uploadTarget.woId);
+      let wi=wiOfPanel(uploadTarget.panelId);
       if(!wi){
         const{data,error}=await supabase.from("work_instructions" as any).insert({
-          wo_id:uploadTarget.woId,panel_id:null,judul:uploadJudul.trim()||"Gambar Teknik",
+          wo_id:uploadTarget.woId,panel_id:uploadTarget.panelId,judul:uploadJudul.trim()||"Gambar Teknik",
         }).select().single();
         if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setUploading(false);setUploadStage("");return;}
         wi=data;
@@ -239,7 +256,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
 
       await activityLogService.insert({
         user_name:uname,action:"UPLOAD WO DIGITAL",
-        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - WO ${uploadTarget.woLabel}`,
+        description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - ${uploadTarget.panelLabel} (WO ${uploadTarget.woLabel})`,
         module:"wo_digital",halaman:"WO Digital",
       });
 
@@ -329,44 +346,48 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
             + Tambah Panel
           </button>
 
-          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid var(--border-color,#e2e8f0)",paddingTop:16}}>📄 Dokumen Gambar Teknik</div>
-          {formEditId?(
-            <div style={{marginBottom:16}}>
-              {(()=>{
-                const wi=wiOf(formEditId);
-                const current=wi?currentRevOf(wi.id):null;
-                const revisions=wi?revisionsOf(wi.id):[];
-                const lainnya=revisions.filter((r:any)=>!r.is_current);
+          <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid var(--border-color,#e2e8f0)",paddingTop:16}}>📄 Dokumen Gambar Teknik (per panel)</div>
+          <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+            {formPanels.map((p:any,i:number)=>{
+              if(!p.id){
                 return(
-                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                      <span style={{fontSize:12,color:"#64748b"}}>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`:"Belum ada dokumen"}</span>
-                      <Btn color="#1d4ed8" onClick={()=>openUpload(formEditId,form.wo)}>{current?"Upload Revisi":"+ Upload"}</Btn>
-                    </div>
-                    {lainnya.length>0&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                        {lainnya.map((r:any)=>(
-                          <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"var(--bg-secondary,#f8fafc)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                            <div style={{minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
-                              </div>
-                              <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
-                            </div>
-                            <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||`Gambar Teknik - WO ${form.wo}`,subtitle:`WO ${form.wo} - ${form.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
-                              style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                  <div key={i} style={{fontSize:12,color:"#94a3b8",padding:"10px 12px",background:"var(--bg-secondary,#f8fafc)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                    {p.nama||`Panel #${p.noPnl}`}: simpan WO dulu, baru bisa upload dokumen.
                   </div>
                 );
-              })()}
-            </div>
-          ):(
-            <div style={{fontSize:12,color:"#94a3b8",marginBottom:16}}>Simpan WO dulu, baru bisa upload dokumen gambar teknik.</div>
-          )}
+              }
+              const panelLabel=`Panel ${p.noPnl} - ${p.nama}`;
+              const wi=wiOfPanel(p.id);
+              const current=wi?currentRevOf(wi.id):null;
+              const revisions=wi?revisionsOf(wi.id):[];
+              const lainnya=revisions.filter((r:any)=>!r.is_current);
+              return(
+                <div key={p.id} style={{display:"flex",flexDirection:"column",gap:8}}>
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                    <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"var(--text-primary,#1e293b)"}}>{panelLabel}</b><br/>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTgl(current.uploaded_at)}`:"Belum ada dokumen"}</span>
+                    <Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,formEditId as number,form.wo)}>{current?"Upload Revisi":"+ Upload"}</Btn>
+                  </div>
+                  {lainnya.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column",gap:6,paddingLeft:12}}>
+                      {lainnya.map((r:any)=>(
+                        <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"var(--bg-secondary,#f8fafc)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                          <div style={{minWidth:0}}>
+                            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                              <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                              {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                            </div>
+                            <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                          </div>
+                          <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||panelLabel,subtitle:`${panelLabel} - WO ${form.wo}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
+                            style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>setFormOpen(false)}>Batal</Btn>
@@ -387,17 +408,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
-            const woWi=wiOf(w.id);
             const stats=statsOfWo(w.id);
             const panelNames=panelNamesOf(w.id);
-            const current=woWi?currentRevOf(woWi.id):null;
-            const revisions=woWi?revisionsOf(woWi.id):[];
-            const lainnya=revisions.filter((r:any)=>!r.is_current);
-            const openViewer=(rev:any)=>setViewing({url:rev.file_url,title:woWi?.judul||`Gambar Teknik - WO ${w.wo}`,
-              subtitle:`WO ${w.wo} - ${w.proyek}${rev.rev_mark?` · ${rev.rev_mark}`:""} · oleh ${rev.uploaded_by} · ${fmtTgl(rev.uploaded_at)}`});
             return(
               <Card key={w.id} style={{padding:0,overflow:"hidden",border:"1px solid var(--border-color,#e2e8f0)"}}>
-                <div className="erp-clickable-row" onClick={()=>current&&openViewer(current)} style={{padding:"16px 18px",cursor:current?"pointer":"default",
+                <div style={{padding:"16px 18px",
                   display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
                   <div style={{display:"flex",alignItems:"center",gap:14,flex:1,minWidth:0}}>
                     <div style={{width:42,height:42,borderRadius:9,background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",display:"flex",
@@ -415,40 +430,81 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                         </div>
                       )}
                       <div style={{fontSize:11.5,color:"#94a3b8",marginTop:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                        <span><i className="ti ti-files" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.docCount} dokumen</span>
+                        <span><i className="ti ti-files" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.docCount}/{stats.totalPanels} panel punya dokumen</span>
                         {stats.totalPages>0&&<span><i className="ti ti-copy" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.totalPages} halaman</span>}
                         {stats.lastUpload&&<span><i className="ti ti-clock" style={{fontSize:12,verticalAlign:"-2px"}}/> {fmtTgl(stats.lastUpload)}</span>}
                       </div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                    {stats.docCount>0?<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
+                    {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>)}
                     {w.is_archived&&<Badge label="Arsip WO" color="#64748b" bg="var(--bg-secondary,#f1f5f9)"/>}
                     {canUpload&&(
                       <button onClick={e=>{e.stopPropagation();openEditWo(w);}}
                         style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                     )}
-                    {current&&<i className="ti ti-chevron-right" style={{fontSize:16,color:"#cbd5e1"}}/>}
                   </div>
                 </div>
-                {/* Qty per-komponen (REVISI 3 Sep 2026) - reuse usePanelQtyEditor.ts, TANPA FCS/
+                {/* Dokumen + Qty per-komponen (REVISI 4 Sep 2026 - dokumen digabung ke sini, per
+                    panel bukan per WO lagi). Qty editor reuse usePanelQtyEditor.ts, TANPA FCS/
                     progress bar (sengaja dipangkas dari versi Manajemen WO, sesuai task Engineering). */}
                 {panelsAll.filter((p:any)=>p.wo_id===w.id).map((p:any)=>{
                   const cfg=getEffectiveCfg(p.tipe);
                   const isPExp=expandedPanelQty[p.id];
+                  const panelLabel=`Panel ${p.no_pnl} - ${p.nama}`;
+                  const pWi=wiOfPanel(p.id);
+                  const pCurrent=pWi?currentRevOf(pWi.id):null;
+                  const pRevisions=pWi?revisionsOf(pWi.id):[];
+                  const pLainnya=pRevisions.filter((r:any)=>!r.is_current);
+                  const openPanelViewer=(rev:any)=>setViewing({url:rev.file_url,title:pWi?.judul||panelLabel,
+                    subtitle:`${panelLabel} - WO ${w.wo}${rev.rev_mark?` · ${rev.rev_mark}`:""} · oleh ${rev.uploaded_by} · ${fmtTgl(rev.uploaded_at)}`});
                   return(
                     <div key={p.id} onClick={e=>e.stopPropagation()} style={{borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
                       <div onClick={()=>setExpandedPanelQty(prev=>({...prev,[p.id]:!prev[p.id]}))}
-                        style={{padding:"9px 16px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",background:"var(--bg-secondary,#f8fafc)"}}>
+                        style={{padding:"9px 16px",display:"flex",alignItems:"center",gap:8,cursor:"pointer",background:"var(--bg-secondary,#f8fafc)",flexWrap:"wrap"}}>
                         <span style={{fontSize:11,color:"#94a3b8"}}>{isPExp?"▼":"▶"}</span>
                         <span style={{fontWeight:700,color:"#475569",fontSize:12}}>#{p.no_pnl}</span>
                         <span style={{fontWeight:700,color:"var(--text-primary,#1e293b)",fontSize:12.5}}>{p.nama}</span>
                         <Badge label={cfg?.label||p.tipe} color={cfg?.color||"#64748b"}/>
                         <Badge label={`Qty: ${p.qty}`} color="#0891b2"/>
+                        {pCurrent?<Badge label="📄 Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="📄 Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>}
                       </div>
-                      {isPExp&&cfg&&(
+                      {isPExp&&(
                         <div style={{padding:"10px 16px 10px 28px",background:"var(--bg-secondary,#fafbff)"}}>
-                          {cfg.wps.map((wpDef:any)=>(
+                          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",marginBottom:10,background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",flexWrap:"wrap"}}>
+                            <span style={{fontSize:12,color:"#64748b"}}>{pCurrent?`Berlaku: ${pCurrent.rev_mark||"(tanpa keterangan)"} · oleh ${pCurrent.uploaded_by} · ${fmtTgl(pCurrent.uploaded_at)}`:"Belum ada dokumen"}</span>
+                            <div style={{display:"flex",gap:8,flexShrink:0}}>
+                              {pCurrent&&<button onClick={()=>openPanelViewer(pCurrent)}
+                                style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>Lihat</button>}
+                              {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,w.id,w.wo)}>{pCurrent?"Upload Revisi":"+ Upload"}</Btn>}
+                            </div>
+                          </div>
+                          {pLainnya.length>0&&(
+                            <div style={{marginBottom:10}}>
+                              <button onClick={()=>setExpandedRiwayat(pr=>({...pr,[pWi.id]:!pr[pWi.id]}))}
+                                style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0,marginBottom:6}}>
+                                {expandedRiwayat[pWi.id]?"▼":"▶"} Riwayat revisi ({pLainnya.length})
+                              </button>
+                              {expandedRiwayat[pWi.id]&&(
+                                <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                                  {pLainnya.map((r:any)=>(
+                                    <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
+                                      <div style={{minWidth:0}}>
+                                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                          <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                          {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                        </div>
+                                        <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                                      </div>
+                                      <button onClick={()=>openPanelViewer(r)}
+                                        style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {cfg&&cfg.wps.map((wpDef:any)=>(
                             <div key={wpDef.wp} style={{marginBottom:10}}>
                               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
                                 <span style={{fontWeight:800,fontSize:12,color:wpDef.color,background:wpDef.color+"18",border:`1px solid ${wpDef.color}33`,borderRadius:6,padding:"2px 10px"}}>{wpDef.wp}</span>
@@ -495,31 +551,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                     </div>
                   );
                 })}
-                {lainnya.length>0&&(
-                  <div onClick={e=>e.stopPropagation()} style={{padding:"10px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",background:"var(--bg-secondary,#f8fafc)"}}>
-                    <button onClick={()=>setExpandedRiwayat(pr=>({...pr,[woWi.id]:!pr[woWi.id]}))}
-                      style={{background:"none",border:"none",color:"#64748b",fontSize:11,fontWeight:700,cursor:"pointer",padding:0}}>
-                      {expandedRiwayat[woWi.id]?"▼":"▶"} Riwayat revisi ({lainnya.length})
-                    </button>
-                    {expandedRiwayat[woWi.id]&&(
-                      <div style={{display:"flex",flexDirection:"column",gap:6,marginTop:6}}>
-                        {lainnya.map((r:any)=>(
-                          <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
-                            <div style={{minWidth:0}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
-                                {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
-                              </div>
-                              <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
-                            </div>
-                            <button onClick={()=>openViewer(r)}
-                              style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                )}
               </Card>
             );
           })}
@@ -530,7 +561,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         <Modal title={"Upload Gambar Teknik"} onClose={()=>{if(!uploading)setUploadTarget(null);}} width={460}>
           <div style={{display:"flex",flexDirection:"column",gap:12}}>
             <div style={{fontSize:12,color:"#64748b"}}>
-              WO {uploadTarget.woLabel} (seluruh panel)
+              {uploadTarget.panelLabel} · WO {uploadTarget.woLabel}
             </div>
             <div>
               <Lbl>Judul Dokumen</Lbl>
