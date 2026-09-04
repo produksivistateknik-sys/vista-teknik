@@ -545,64 +545,16 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
               <Btn color="#dc2626" onClick={async()=>{
   const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
   const uname=sess?.nama||sess?.name||'Admin';
-  const woToDelete=woData.find(w=>w.id===delId);
-  // 1. Ambil panel ids
-  const panelIds=(woToDelete?.panels||[]).map((p:any)=>p.id);
-  // BUG FIX (29 Agu 2026): dulu ke-8 langkah delete di bawah TIDAK PERNAH cek {error} - kalau
-  // salah satu gagal (paling sering step 6 hapus work_orders, 409 FK constraint), kode tetap
-  // lanjut insert activity_log "berhasil dihapus" (BOHONG) dan hapus WO dari state lokal
-  // (setWoData filter) padahal row-nya MASIH HIDUP di DB - WO itu muncul lagi begitu halaman
-  // di-refresh/realtime sync ulang. Sekarang tiap step wajib lolos cek error dulu (helper `step`
-  // di bawah, throw kalau gagal) sebelum lanjut ke step berikutnya - kalau ada yang gagal,
-  // PROSES BERHENTI TOTAL (gak ada activity_log, gak ada perubahan state lokal), user dikasih
-  // tahu jelas tabel mana yang masih megang data terkait.
-  const step=async(label:string,query:PromiseLike<{error:any}>)=>{
-    const{error}=await query;
-    if(error)throw new Error(label+': '+error.message);
-  };
+  // Logic cascade delete FK-safe DIEKSTRAK (4 Sep 2026) ke workOrderService.removeWithDependencies -
+  // dipakai ulang juga oleh WoDigitalTab (Engineering). Behavior SAMA PERSIS: tiap step wajib
+  // lolos cek error dulu, kalau ada yang gagal proses berhenti total (gak ada yang keburu
+  // terhapus dianggap sukses) - lihat komentar bug fix 29 Agu 2026 di workOrderService.ts.
   try{
-    // 2. Hapus data turunan yang nempel ke panel_id (bukan wo_id langsung)
-    if(panelIds.length>0){
-      await step('fcs_timer_kerja',supabase.from('fcs_timer_kerja').delete().in('panel_id',panelIds));
-      await step('progress_checkpoint_log',supabase.from('progress_checkpoint_log').delete().in('panel_id',panelIds));
-      await step('kendala',supabase.from('kendala').delete().in('panel_id',panelIds));
-    }
-    // 3. Hapus fcs_tracking_komponen & permintaan (+ child permintaan_item) - DUA tabel ini punya
-    // FK constraint asli ke work_orders.id (fcs_tracking_komponen_wo_id_fkey,
-    // permintaan_wo_id_fkey) tapi sebelum fix ini TIDAK PERNAH dibersihkan di jalur manapun -
-    // itu akar penyebab 409 Conflict pas hapus work_orders (kasus nyata: WO id=139).
-    await step('fcs_tracking_komponen',supabase.from('fcs_tracking_komponen').delete().eq('wo_id',delId));
-    const{data:permRows,error:permSelErr}=await supabase.from('permintaan').select('id').eq('wo_id',delId);
-    if(permSelErr)throw new Error('baca permintaan: '+permSelErr.message);
-    if(permRows&&permRows.length>0){
-      await step('permintaan_item',supabase.from('permintaan_item').delete().in('permintaan_id',permRows.map((r:any)=>r.id)));
-    }
-    await step('permintaan',supabase.from('permintaan').delete().eq('wo_id',delId));
-    // 4. Hapus renhar terkait wo
-    await step('renhar',supabase.from('renhar').delete().eq('wo_id',delId));
-    // 5. Hapus raw_schedule terkait wo
-    await step('raw_schedule',supabase.from('raw_schedule').delete().eq('wo_id',delId));
-    // 5b. Hapus fcs_schedule terkait wo
-    await step('fcs_schedule',supabase.from('fcs_schedule').delete().eq('wo_id',delId));
-    // 6. Hapus panels terkait wo
-    await step('panels',supabase.from('panels').delete().eq('wo_id',delId));
-    // 7. Hapus work order
-    await step('work_orders',supabase.from('work_orders').delete().eq('id',delId));
+    await workOrderService.removeWithDependencies(delId as number,uname,{halaman:'Manajemen WO'});
   }catch(err:any){
     alert('Gagal menghapus WO: masih ada data terkait di tabel "'+err.message+'".\n\nProses dihentikan - tidak ada data yang berubah/terhapus. Cek data terkait sebelum coba lagi.');
     return;
   }
-  // 8. Activity log (cuma sampai sini kalau SEMUA step di atas sukses)
-  await activityLogService.insert({
-    user_name:uname,
-    action:'HAPUS WO',
-    description:'Hapus WO '+woToDelete?.wo+' - '+woToDelete?.proyek+' beserta semua data terkait',
-    module:'wo',
-    halaman:'Manajemen WO',
-    proyek:woToDelete?.proyek||'',
-    wo_number:woToDelete?.wo||'',
-  });
-  // 9. Update local state
   setWoData(prev=>prev.filter(w=>w.id!==delId));
   setDelId(null);
 }}>Hapus</Btn>

@@ -6,7 +6,8 @@ import { watermarkPdf } from "../lib/pdfWatermark";
 import { workOrderService } from "../services/workOrderService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
-import { initChecklist } from "../lib/panelHelpers";
+import { initChecklist, woOverall } from "../lib/panelHelpers";
+import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
 const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
@@ -59,8 +60,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   const[wiList,setWiList]=useState<any[]>([]);
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
+  const[expandedWo,setExpandedWo]=useState<Record<number,boolean>>({});
   const[expandedPanelQty,setExpandedPanelQty]=useState<Record<number,boolean>>({});
   const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
+  const[delId,setDelId]=useState<number|null>(null);
+  const[delLoading,setDelLoading]=useState(false);
 
   const fetchAll=async()=>{
     setLoading(true);
@@ -192,6 +196,23 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     setFormSaving(false);
   };
 
+  // Hapus WO (REVISI 4 Sep 2026) - reuse workOrderService.removeWithDependencies (EKSTRAK dari
+  // ManajemenWO.tsx, cascade delete FK-safe yang sama persis, SATU sumber logic gak ada
+  // duplikat/drift). Konfirmasi dulu lewat modal (delId), sama pola kayak Manajemen WO.
+  const doDeleteWo=async()=>{
+    if(!delId)return;
+    setDelLoading(true);
+    const uname=user?.name||user?.nama||"Engineering";
+    try{
+      await workOrderService.removeWithDependencies(delId,uname,{halaman:"WO Digital"});
+      setWoList(prev=>prev.filter((w:any)=>w.id!==delId));
+      setDelId(null);
+    }catch(err:any){
+      alert('Gagal menghapus WO: masih ada data terkait di tabel "'+(err?.message||"unknown error")+'".\n\nProses dihentikan - tidak ada data yang berubah/terhapus. Cek data terkait sebelum coba lagi.');
+    }
+    setDelLoading(false);
+  };
+
   const q=search.trim().toLowerCase();
   // WO Digital sekarang cuma nampilin WO aktif (REVISI 4 Sep 2026) - toggle Aktif/Arsip lama
   // dihapus, WO yang diarsip (is_archived=true) dilihat lewat sidebar "Arsip" (di bawah WO
@@ -206,7 +227,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
 
   // Dokumen per-panel (REVISI 4 Sep 2026) - 1 work_instruction per panel (panel_id di-isi,
   // bukan null lagi). wiOfPanel gantiin wiOf(woId) lama.
-  const panelNamesOf=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId).map(p=>p.nama);
   const wiOfPanel=(panelId:number)=>wiList.find((w:any)=>w.panel_id===panelId);
   const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
   const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
@@ -445,45 +465,51 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filteredWo.map(w=>{
             const stats=statsOfWo(w.id);
-            const panelNames=panelNamesOf(w.id);
+            // Restyle ikutin pola card Manajemen WO PERSIS (REVISI 4 Sep 2026) - border kiri +
+            // badge status dari getStatus (butuh pct internal buat deteksi SELESAI, tapi angka
+            // %-nya SENGAJA gak ditampilkan - task Engineering ini pangkas progress bar/persen).
+            const pct=woOverall({panels:panelsAll.filter((p:any)=>p.wo_id===w.id)});
+            const st=getStatus(w.target,pct);
+            const isExp=expandedWo[w.id];
+            const d=daysUntil(w.target);
+            const panelCount=panelsAll.filter((p:any)=>p.wo_id===w.id).length;
             return(
-              <Card key={w.id} style={{padding:0,overflow:"hidden",border:"1px solid var(--border-color,#e2e8f0)"}}>
-                <div style={{padding:"16px 18px",
-                  display:"flex",justifyContent:"space-between",alignItems:"center",gap:14,flexWrap:"wrap"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:14,flex:1,minWidth:0}}>
-                    <div style={{width:42,height:42,borderRadius:9,background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",display:"flex",
-                      alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-folder" style={{fontSize:19,color:"#475569"}}/>
-                    </div>
-                    <div style={{minWidth:0,flex:1}}>
-                      <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",textTransform:"uppercase",letterSpacing:.5}}>WO {w.wo}</div>
-                      <div style={{fontWeight:800,fontSize:15,color:"#f47920",marginTop:1,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
-                      {panelNames.length>0&&(
-                        <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:6}}>
-                          {panelNames.map(n=>(
-                            <span key={n} style={{fontSize:11,color:"#475569",background:"var(--bg-secondary,#f1f5f9)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:6,padding:"3px 9px"}}>{n}</span>
-                          ))}
-                        </div>
-                      )}
-                      <div style={{fontSize:11.5,color:"#94a3b8",marginTop:6,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
-                        <span><i className="ti ti-files" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.docCount}/{stats.totalPanels} panel punya dokumen</span>
-                        {stats.totalPages>0&&<span><i className="ti ti-copy" style={{fontSize:12,verticalAlign:"-2px"}}/> {stats.totalPages} halaman</span>}
-                        {stats.lastUpload&&<span><i className="ti ti-clock" style={{fontSize:12,verticalAlign:"-2px"}}/> {fmtTgl(stats.lastUpload)}</span>}
+              <Card key={w.id} style={{padding:0,overflow:"hidden",borderLeft:`3px solid ${st.color}`}}>
+                <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,alignItems:"center",
+                  cursor:"pointer",background:isExp?"#f8faff":"var(--card-bg,#fff)",borderBottom:isExp?"1px solid var(--border-color,#e2e8f0)":"none"}}
+                  onClick={()=>setExpandedWo(prev=>({...prev,[w.id]:!prev[w.id]}))}>
+                  <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
+                    <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
+                    <div>
+                      <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                        <span style={{fontWeight:800,fontSize:15,fontFamily:"'DM Mono',monospace",color:"#1d4ed8"}}>WO {w.wo}</span>
+                        <span style={{color:"var(--text-primary,#1e293b)",fontWeight:700}}>{w.proyek}</span>
+                        <span style={{color:"#94a3b8",fontSize:12}}>📅 {w.target}</span>
+                        {pct<100&&<span style={{fontSize:11,color:st.color,fontWeight:600}}>
+                          {isDelayed(w.target)?`⚠️ -${Math.abs(d)}hr`:`H-${d}`}
+                        </span>}
+                      </div>
+                      <div style={{marginTop:4,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                        <Badge label={st.label} color={st.color} bg={st.bg}/>
+                        {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>)}
+                        <span style={{fontSize:11,color:"#94a3b8"}}>{panelCount} panel</span>
                       </div>
                     </div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0}}>
-                    {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="var(--bg-secondary,#f1f5f9)"/>)}
-                    {canUpload&&(
-                      <button onClick={e=>{e.stopPropagation();openEditWo(w);}}
-                        style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                    )}
-                  </div>
+                  {canUpload&&(
+                    <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
+                      <button onClick={()=>openEditWo(w)}
+                        style={{padding:"5px 14px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
+                      <button onClick={()=>setDelId(w.id)}
+                        style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
+                    </div>
+                  )}
                 </div>
                 {/* Dokumen + Qty per-komponen (REVISI 4 Sep 2026 - dokumen digabung ke sini, per
-                    panel bukan per WO lagi). Qty editor reuse usePanelQtyEditor.ts, TANPA FCS/
+                    panel bukan per WO lagi, dan sekarang di balik accordion card-level `isExp`,
+                    sama pola Manajemen WO). Qty editor reuse usePanelQtyEditor.ts, TANPA FCS/
                     progress bar (sengaja dipangkas dari versi Manajemen WO, sesuai task Engineering). */}
-                {panelsAll.filter((p:any)=>p.wo_id===w.id).map((p:any)=>{
+                {isExp&&panelsAll.filter((p:any)=>p.wo_id===w.id).map((p:any)=>{
                   const cfg=getEffectiveCfg(p.tipe);
                   const isPExp=expandedPanelQty[p.id];
                   const panelLabel=`Panel ${p.no_pnl} - ${p.nama}`;
@@ -619,6 +645,19 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
               <div style={{textAlign:"center",padding:12,background:"#eff6ff",borderRadius:10,fontSize:12.5,fontWeight:700,color:"#1d4ed8"}}>{uploadStage}</div>
             )}
             <Btn color="#1d4ed8" onClick={doUpload} disabled={uploading||!uploadFile}>{uploading?"Memproses...":"Upload & Tempel Watermark"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {delId&&(
+        <Modal title="Hapus WO?" onClose={()=>{if(!delLoading)setDelId(null);}} width={360}>
+          <div style={{textAlign:"center"}}>
+            <div style={{fontSize:32,marginBottom:8}}>🗑</div>
+            <div style={{fontSize:13,color:"#64748b",marginBottom:20}}>Data tidak dapat dikembalikan.</div>
+            <div style={{display:"flex",gap:10,justifyContent:"center"}}>
+              <Btn outline color="#64748b" onClick={()=>setDelId(null)} disabled={delLoading}>Batal</Btn>
+              <Btn color="#dc2626" onClick={doDeleteWo} disabled={delLoading}>{delLoading?"Menghapus...":"Hapus"}</Btn>
+            </div>
           </div>
         </Modal>
       )}
