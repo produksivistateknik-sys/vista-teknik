@@ -66,3 +66,39 @@ export const subscribeToPush = async (adminUsername: string): Promise<{ success:
     return { success: false, error: err?.message || String(err) }
   }
 }
+
+// Unsubscribe + hapus baris push_subscriptions terkait (5 Sep 2026, DIEKSTRAK dari
+// vista-pekerja/src/lib/pushNotif.ts - implementasi identik, generik/gak bergantung
+// admin_username vs divisi, jadi disalin apa adanya).
+export const unsubscribeFromPush = async (): Promise<{ success: boolean; error?: string }> => {
+  if (!isPushSupported()) return { success: false, error: 'Browser ini tidak mendukung push notification.' }
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (subscription) {
+      const endpoint = subscription.endpoint
+      await subscription.unsubscribe()
+      await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) }
+  }
+}
+
+// Status ON/OFF TERKINI - live dari Push API browser (bukan localStorage/kolom DB), sama
+// persis pola vista-pekerja. Persisten otomatis karena browser sendiri yang inget subscription
+// lintas sesi/restart - gak butuh penyimpanan aplikasi terpisah.
+export type PushStatus = 'active' | 'denied' | 'inactive' | 'unsupported'
+export const getPushStatus = async (): Promise<PushStatus> => {
+  if (!isPushSupported()) return 'unsupported'
+  if (Notification.permission === 'denied') return 'denied'
+  if (Notification.permission !== 'granted') return 'inactive'
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    return subscription ? 'active' : 'inactive'
+  } catch {
+    return 'inactive'
+  }
+}

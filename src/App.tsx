@@ -9,6 +9,7 @@ import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
 import { useActivityLog } from './hooks/useActivityLog'
 import { activityLogService } from './services/activityLogService'
+import { isPushSupported, getPushStatus, subscribeToPush, unsubscribeFromPush, type PushStatus } from './lib/pushNotif'
 
 import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PCT_STEPS, PCT_MANUAL, PRIORITAS,
@@ -141,6 +142,27 @@ export default function App(){
   const [darkMode,setDarkMode]=useState(()=>{
     return localStorage.getItem("vista_dark_mode")==="true";
   });
+  // Toggle push notification di header (REVISI 5 Sep 2026) - dulu satu-satunya jalur subscribe
+  // cuma banner sekali-tampil di MaintenancePageTab.tsx (dismiss = gak pernah bisa aktifin lagi
+  // dari mana pun). Status LIVE dari Push API browser (pola sama persis vista-pekerja punya
+  // NotifikasiPushToggle) - gak disimpan localStorage/DB, browser sendiri yang inget lintas sesi.
+  const [pushStatus,setPushStatus]=useState<PushStatus|"checking">("checking");
+  const [pushLoading,setPushLoading]=useState(false);
+  const refreshPushStatus=async()=>{setPushStatus(isPushSupported()?await getPushStatus():"unsupported");};
+  useEffect(()=>{refreshPushStatus();},[]);
+  const togglePush=async()=>{
+    if(!(user as any)?.username)return;
+    setPushLoading(true);
+    if(pushStatus==="active"){
+      const res=await unsubscribeFromPush();
+      if(!res.success)alert("Gagal nonaktifkan notifikasi: "+(res.error||"unknown error"));
+    } else {
+      const res=await subscribeToPush((user as any).username);
+      if(!res.success)alert("Gagal aktifkan notifikasi: "+(res.error||"unknown error"));
+    }
+    await refreshPushStatus();
+    setPushLoading(false);
+  };
   const [ctxMenu,setCtxMenu]=useState<{x:number;y:number}|null>(null);
   const [showShortcutModal,setShowShortcutModal]=useState(false);
   const [showAboutModal,setShowAboutModal]=useState(false);
@@ -779,6 +801,23 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                     cursor:"pointer",color:"var(--text-secondary,#64748b)"}}>
                   <i className="ti ti-refresh" style={{fontSize:13,display:"inline-block"}}/>
                 </button>
+
+                {/* Toggle push notification (5 Sep 2026) - status live dari Push API browser,
+                    disembunyikan total kalau browser gak dukung sama sekali. Kalau diblokir user
+                    di setting browser (denied), tombol jadi non-klik dengan tooltip penjelasan -
+                    gak nawarin aksi yang pasti gagal. */}
+                {pushStatus!=="unsupported"&&(
+                  <button onClick={togglePush} disabled={pushLoading||pushStatus==="checking"||pushStatus==="denied"}
+                    title={pushStatus==="denied"?"Notifikasi diblokir di setting browser - aktifkan manual, gak bisa lewat tombol ini":pushStatus==="active"?"Notifikasi Push Aktif (klik untuk nonaktifkan)":"Notifikasi Push Nonaktif (klik untuk aktifkan)"}
+                    style={{width:26,height:26,border:`1px solid ${pushStatus==="active"?"#16a34a":"var(--border-color,#e5e8ed)"}`,
+                      borderRadius:5,background:pushStatus==="active"?"#f0fdf4":"var(--bg-secondary,#f8f9fb)",
+                      display:"flex",alignItems:"center",justifyContent:"center",
+                      cursor:pushStatus==="denied"?"not-allowed":"pointer",
+                      color:pushStatus==="active"?"#16a34a":"var(--text-secondary,#64748b)",
+                      opacity:pushStatus==="denied"?0.6:1}}>
+                    <i className={pushStatus==="active"?"ti ti-bell-ringing":"ti ti-bell-off"} style={{fontSize:13}}/>
+                  </button>
+                )}
 
                 {/* Dark mode toggle */}
                 <button onClick={()=>setDarkMode(p=>!p)}
