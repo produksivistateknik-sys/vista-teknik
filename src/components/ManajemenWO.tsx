@@ -9,6 +9,7 @@ import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall,
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
+import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
 export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
@@ -29,6 +30,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     getEffectiveCfg,
     getUname:()=>{const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');return user?.name||user?.nama||sess?.nama||'Admin';},
   });
+  // Gambar WO (REVISI 4 Sep 2026) - reuse useWoDigitalDocs.ts, SAMA PERSIS sumber data yang
+  // dipakai Engineering (WoDigitalTab.tsx) - bukan tabel/jalur terpisah. Admin VIEWER-ONLY di
+  // sini (gak ada tombol Upload) - upload tetap eksklusif Engineering, konsisten sama desain
+  // awal WO Digital.
+  const{wiOfPanel:wiOfPanelDoc,revisionsOf:revisionsOfDoc,currentRevOf:currentRevOfDoc}=useWoDigitalDocs();
+  const fmtTglDoc=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,jumlahCell:0};
   const [fcsModal,setFcsModal]=useState<any>(null);
@@ -621,6 +628,52 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
               background:"transparent",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:600,marginBottom:16}}>
             + Tambah Panel
           </button>
+
+          {editId&&(
+            <>
+              <div style={{fontWeight:700,fontSize:14,marginBottom:12,borderTop:"1px solid #e2e8f0",paddingTop:16}}>📄 Gambar WO</div>
+              <div style={{display:"flex",flexDirection:"column",gap:10,marginBottom:16}}>
+                {panels.filter((p:any)=>p.id).length===0?(
+                  <div style={{fontSize:12,color:"#94a3b8",padding:"10px 12px",background:"#f8fafc",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                    Belum ada panel tersimpan.
+                  </div>
+                ):panels.filter((p:any)=>p.id).map((p:any)=>{
+                  const panelLabel=`Panel ${p.noPnl} - ${p.nama}`;
+                  const wi=wiOfPanelDoc(p.id);
+                  const current=wi?currentRevOfDoc(wi.id):null;
+                  const revisions=wi?revisionsOfDoc(wi.id):[];
+                  const lainnya=revisions.filter((r:any)=>!r.is_current);
+                  return(
+                    <div key={p.id} style={{display:"flex",flexDirection:"column",gap:8}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",background:"#fff",borderRadius:8,border:"1px solid #e2e8f0"}}>
+                        <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"#1e293b"}}>{panelLabel}</b><br/>{current?`Berlaku: ${current.rev_mark||"(tanpa keterangan)"} · oleh ${current.uploaded_by} · ${fmtTglDoc(current.uploaded_at)}`:"Belum ada dokumen"}</span>
+                        {current&&<button onClick={()=>window.open(current.file_url,"_blank")}
+                          style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
+                      </div>
+                      {lainnya.length>0&&(
+                        <div style={{display:"flex",flexDirection:"column",gap:6,paddingLeft:12}}>
+                          {lainnya.map((r:any)=>(
+                            <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
+                              <div style={{minWidth:0}}>
+                                <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                  <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                  {r.rev_mark&&<span style={{fontSize:10,color:"#94a3b8"}}>{r.rev_mark}</span>}
+                                </div>
+                                <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
+                              </div>
+                              <button onClick={()=>window.open(r.file_url,"_blank")}
+                                style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </>
+          )}
+
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>setOpen(false)}>Batal</Btn>
             <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah WO"}</Btn>

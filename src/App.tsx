@@ -548,7 +548,11 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
-      ...(canWO?[{id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf"}]:[]),
+      // "WO Digital" DIHAPUS dari sidebar Admin (REVISI 4 Sep 2026) - digantikan section
+      // "Gambar WO" langsung di form Edit WO Manajemen WO (viewer-only, reuse
+      // useWoDigitalDocs.ts). Tab id "wodigital" TETAP dirender di App.tsx (line ~950) -
+      // Engineering (SIDEBAR_MENUS terpisah, line ~515) masih akses penuh, cuma sidebar
+      // Admin yang gak nunjukkin nav item ke sana lagi.
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[

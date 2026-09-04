@@ -1,11 +1,10 @@
 import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
-import { uploadToR2 } from "../lib/r2Client";
-import { watermarkPdf } from "../lib/pdfWatermark";
 import { workOrderService } from "../services/workOrderService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
+import { useWoDigitalDocs } from "../lib/useWoDigitalDocs";
 import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
@@ -57,8 +56,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
   const[panelsAll,setPanelsAll]=useState<any[]>([]);
-  const[wiList,setWiList]=useState<any[]>([]);
-  const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
   const[expandedWo,setExpandedWo]=useState<Record<number,boolean>>({});
   const[expandedPanelQty,setExpandedPanelQty]=useState<Record<number,boolean>>({});
@@ -66,21 +63,22 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   const[delId,setDelId]=useState<number|null>(null);
   const[delLoading,setDelLoading]=useState(false);
 
+  // Dokumen (work_instructions/wi_revisions) DIEKSTRAK (4 Sep 2026) ke useWoDigitalDocs.ts -
+  // fetch+realtime-nya sekarang independen dari fetchAll di bawah (dulu digabung 1 query),
+  // dipakai ulang di ManajemenWO.tsx (Admin, viewer-only).
+  const{wiOfPanel,revisionsOf,currentRevOf,uploadDoc:uploadDocPipeline}=useWoDigitalDocs();
+
   const fetchAll=async()=>{
     setLoading(true);
     // Panel fetch (REVISI 3 Sep 2026) - dulu cuma "id,wo_id,nama" (buat chip nama doang), sekarang
     // select("*") - form Tambah/Edit & qty-editor per-komponen butuh tipe/qty/checklist/jumlah_cell
     // penuh.
-    const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
+    const[{data:wo},{data:panels}]=await Promise.all([
       supabase.from("work_orders").select("id,wo,proyek,target,is_archived").order("created_at",{ascending:false}),
       supabase.from("panels").select("*"),
-      supabase.from("work_instructions" as any).select("*"),
-      supabase.from("wi_revisions" as any).select("*").order("revision_number",{ascending:false}),
     ]);
     setWoList(wo||[]);
     setPanelsAll(panels||[]);
-    setWiList(wi||[]);
-    setRevList(rev||[]);
     setLoading(false);
   };
   useEffect(()=>{
@@ -89,8 +87,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     // wi_revisions (khusus dokumen). Sekarang WO/panel bisa dibuat/diedit dari halaman ini SENDIRI
     // (Engineering) DAN dari Manajemen WO (admin) - keduanya harus saling kelihatan live.
     const ch=supabase.channel("realtime-wo-digital-admin")
-      .on("postgres_changes",{event:"*",schema:"public",table:"work_instructions"},fetchAll)
-      .on("postgres_changes",{event:"*",schema:"public",table:"wi_revisions"},fetchAll)
       .on("postgres_changes",{event:"*",schema:"public",table:"work_orders"},fetchAll)
       .on("postgres_changes",{event:"*",schema:"public",table:"panels"},fetchAll)
       .subscribe();
@@ -178,7 +174,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
             const panelLabel=`Panel ${pp.noPnl} - ${pp.nama}`;
             if(!match){failed.push(`${panelLabel} (panel tidak ditemukan)`);continue;}
             try{
-              await uploadDoc(match.id,panelLabel,newWo.id,form.wo,pp.pendingFile,`Gambar Teknik - ${panelLabel}`,pp.pendingRevMark||"",uname);
+              await uploadDocPipeline(match.id,panelLabel,newWo.id,form.wo,pp.pendingFile,`Gambar Teknik - ${panelLabel}`,pp.pendingRevMark||"",uname);
             }catch(upErr:any){
               failed.push(`${panelLabel} (${upErr?.message||"gagal upload"})`);
             }
@@ -225,12 +221,6 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     });
   },[woList,q]);
 
-  // Dokumen per-panel (REVISI 4 Sep 2026) - 1 work_instruction per panel (panel_id di-isi,
-  // bukan null lagi). wiOfPanel gantiin wiOf(woId) lama.
-  const wiOfPanel=(panelId:number)=>wiList.find((w:any)=>w.panel_id===panelId);
-  const revisionsOf=(wiId:number)=>revList.filter((r:any)=>r.work_instruction_id===wiId);
-  const currentRevOf=(wiId:number)=>revList.find((r:any)=>r.work_instruction_id===wiId&&r.is_current);
-
   // Stats WO sekarang agregat dari semua panel-nya (dulu 1 dokumen = 1 WO).
   const statsOfWo=(woId:number)=>{
     const woPanels=panelsAll.filter(p=>p.wo_id===woId);
@@ -263,44 +253,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     setUploadRevMark("");
   };
 
-  // Pipeline upload dokumen (diekstrak REVISI 4 Sep 2026 - dulu cuma dipakai doUpload/modal
-  // revisi, sekarang dipakai ulang juga buat upload sekaligus pas Tambah WO Baru). Watermark
-  // -> R2 (key unik per revisi) -> find-or-create work_instructions -> is_current lama
-  // di-set false DULU baru insert revisi baru current=true (urutan penting, jangan diubah -
-  // biar gak tabrakan sama unique partial index wi_revisions_one_current) -> activity log.
-  const uploadDoc=async(panelId:number,panelLabel:string,woId:number,woLabel:string,file:File,judul:string,revMark:string,uname:string,onStage?:(s:string)=>void)=>{
-    onStage?.("Menempel watermark...");
-    const fileBytes=await file.arrayBuffer();
-    const{blob,pageCount}=await watermarkPdf(fileBytes);
-
-    onStage?.("Mengupload...");
-    const key=`wo-digital/${woId}/panel-${panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.pdf`;
-    const fileUrl=await uploadToR2(blob,key,"application/pdf");
-
-    onStage?.("Menyimpan...");
-    let wi=wiOfPanel(panelId);
-    if(!wi){
-      const{data,error}=await supabase.from("work_instructions" as any).insert({
-        wo_id:woId,panel_id:panelId,judul:judul.trim()||"Gambar Teknik",
-      }).select().single();
-      if(error||!data)throw new Error(error?.message||"Gagal simpan dokumen");
-      wi=data;
-    }
-    await supabase.from("wi_revisions" as any).update({is_current:false}).eq("work_instruction_id",wi.id).eq("is_current",true);
-    const maxRev=Math.max(0,...revisionsOf(wi.id).map((r:any)=>r.revision_number));
-    const{error:revErr}=await supabase.from("wi_revisions" as any).insert({
-      work_instruction_id:wi.id,revision_number:maxRev+1,rev_mark:revMark.trim()||null,
-      file_url:fileUrl,page_count:pageCount,is_current:true,uploaded_by:uname,
-    });
-    if(revErr)throw new Error(revErr.message);
-
-    await activityLogService.insert({
-      user_name:uname,action:"UPLOAD WO DIGITAL",
-      description:`Upload gambar teknik${maxRev>0?` (revisi ${maxRev+1})`:""} - ${panelLabel} (WO ${woLabel})`,
-      module:"wo_digital",halaman:"WO Digital",
-    });
-  };
-
+  // Pipeline upload dokumen sekarang di useWoDigitalDocs.ts (diekstrak 4 Sep 2026, alias
+  // uploadDocPipeline - dipakai ulang juga di ManajemenWO.tsx viewer-only build, dan di sini
+  // buat modal revisi + upload sekaligus pas Tambah WO Baru, lihat saveWoForm di bawah).
   const doUpload=async()=>{
     if(!uploadTarget||!uploadFile)return;
     if(!uploadFile.type.includes("pdf")){alert("File harus berupa PDF.");return;}
@@ -308,7 +263,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     try{
       const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
       const uname=sess?.nama||sess?.name||"Admin";
-      await uploadDoc(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
+      await uploadDocPipeline(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
       setUploadTarget(null);setUploadFile(null);setUploadJudul("");setUploadRevMark("");
       fetchAll();
     }catch(err:any){
