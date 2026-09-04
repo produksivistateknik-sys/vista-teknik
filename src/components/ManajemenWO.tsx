@@ -421,6 +421,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         <Badge label={`Qty: ${p.qty}`} color="#0891b2"/>
                         <Badge label={`${pp}%`} color={pColor(pp)}/>
                         {pCurrentCard?<Badge label="📄 Berlaku" color="#16a34a" bg="#f0fdf4"/>:<Badge label="📄 Belum Ada Dokumen" color="#94a3b8" bg="#f1f5f9"/>}
+                        {pCurrentCard?.rev_mark&&<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{pCurrentCard.rev_mark}</span>}
                       </div>
                     </div>
                     <div style={{minWidth:120}}><PBar pct={pp} h={6}/></div>
@@ -430,7 +431,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                       <div style={{fontWeight:700,fontSize:12,color:"#1e293b",marginBottom:6}}>📄 Gambar WO</div>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,padding:"10px 12px",marginBottom:pLainnyaCard.length>0?8:12,background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",flexWrap:"wrap"}}>
                         <span style={{fontSize:12,color:"#64748b"}}>
-                          {pCurrentCard?<>Berlaku: {pCurrentCard.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{pCurrentCard.rev_mark}</span>:"(tanpa keterangan)"} · oleh {pCurrentCard.uploaded_by} · {fmtTglDoc(pCurrentCard.uploaded_at)}</>:"Belum ada dokumen"}
+                          {pCurrentCard?<>oleh {pCurrentCard.uploaded_by} · {fmtTglDoc(pCurrentCard.uploaded_at)}</>:"Belum ada dokumen"}
                         </span>
                         {pCurrentCard&&<button onClick={()=>window.open(pCurrentCard.file_url,"_blank")}
                           style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
