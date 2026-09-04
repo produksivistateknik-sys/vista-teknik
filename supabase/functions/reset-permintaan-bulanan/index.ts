@@ -13,6 +13,13 @@ menumpuk 1 bulan ekstra daripada hilang tanpa backup.
 Reuse kredensial R2 yang SAMA dengan r2-storage (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/
 R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME) - upload LANGSUNG server-side (bukan presigned URL, gak
 ada browser yang terlibat di sini, function ini yang pegang body JSON-nya).
+
+FIX (5 Sep 2026, fitur Hutang) - permintaan yang MASIH PUNYA hutang aktif (permintaan_item
+dengan is_hutang=true DAN status='pending' yang menunjuk ke permintaan itu) DIKECUALIKAN dari
+backup+delete bulan lalu, walau created_at-nya sudah lewat bulan kalender. Tanpa ini, hutang
+yang belum lunas pas cron ini jalan bakal HILANG PERMANEN dari aplikasi (cuma ada di file
+backup JSON R2, gak bisa dicicil lagi) - row itu ditunda ke siklus reset bulan berikutnya,
+diulang terus sampai hutangnya beneran lunas baru ikut ke-backup+hapus.
 */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -63,11 +70,24 @@ Deno.serve(async (req) => {
     const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
     const periode = `${prevMonthStart.getUTCFullYear()}-${String(prevMonthStart.getUTCMonth() + 1).padStart(2, '0')}`
 
-    const perms = await fetchAll(supabase, 'permintaan', '*', (q) =>
+    const allPerms = await fetchAll(supabase, 'permintaan', '*', (q) =>
       q.gte('created_at', prevMonthStart.toISOString()).lt('created_at', thisMonthStart.toISOString()))
 
-    if (perms.length === 0) {
+    if (allPerms.length === 0) {
       return jsonResponse({ periode, permintaan: 0, permintaan_item: 0, message: 'Tidak ada data bulan lalu, tidak ada yang dihapus.' })
+    }
+
+    const allPermIds = allPerms.map((p: any) => p.id)
+    // Cari permintaan yang MASIH PUNYA hutang aktif (belum lunas) - dikecualikan dari
+    // backup+delete kali ini, ditunda ke siklus reset bulan berikutnya (lihat komentar fix di atas).
+    const hutangAktifItems = await fetchAll(supabase, 'permintaan_item', 'permintaan_id', (q) =>
+      q.in('permintaan_id', allPermIds).eq('is_hutang', true).eq('status', 'pending'))
+    const permIdsHutangAktif = new Set(hutangAktifItems.map((it: any) => it.permintaan_id))
+    const perms = allPerms.filter((p: any) => !permIdsHutangAktif.has(p.id))
+    const ditunda = allPerms.length - perms.length
+
+    if (perms.length === 0) {
+      return jsonResponse({ periode, permintaan: 0, permintaan_item: 0, ditundaKarenaHutangAktif: ditunda, message: 'Semua data bulan lalu masih punya hutang aktif, ditunda ke siklus berikutnya.' })
     }
 
     const permIds = perms.map((p: any) => p.id)
@@ -93,7 +113,7 @@ Deno.serve(async (req) => {
     const { error: delPermErr } = await supabase.from('permintaan').delete().in('id', permIds)
     if (delPermErr) return jsonResponse({ error: `Backup sukses (${backupKey}), permintaan_item terhapus, tapi delete permintaan gagal: ${delPermErr.message}` }, 500)
 
-    return jsonResponse({ periode, backupKey, permintaan: perms.length, permintaan_item: items.length, message: 'Backup + hapus bulan lalu selesai.' })
+    return jsonResponse({ periode, backupKey, permintaan: perms.length, permintaan_item: items.length, ditundaKarenaHutangAktif: ditunda, message: 'Backup + hapus bulan lalu selesai.' })
   } catch (e: any) {
     return jsonResponse({ error: String(e?.message || e) }, 500)
   }
