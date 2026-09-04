@@ -79,6 +79,13 @@ const NAV_PARENT_OF_CHILD:Record<string,string>={
   arsip:"wodigital",
 };
 
+// Guard role Engineering (5 Sep 2026, BUG FIX - celah eskalasi privilese) - satu-satunya
+// sumber kebenaran tab yang boleh diakses Engineering, dipakai di useEffect tab-tracking di
+// bawah buat nutup SEMUA jalur navigasi di luar sidebar (?tab=wo di URL, klik hasil GlobalSearch,
+// klik notifikasi) sekaligus - sidebar Engineering (SIDEBAR_MENUS cabang isEngineering) HARUS
+// tetap sinkron sama daftar ini kalau nambah/kurang menu Engineering di masa depan.
+const ENGINEERING_ALLOWED_TABS=new Set(["wodigital","arsip","tracking_report","momfat","proyekluar"]);
+
 export default function App(){
   const hasNewVersion=useVersionCheck();
   const [page,setPage]=useState("landing");
@@ -87,9 +94,24 @@ export default function App(){
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[localStorage.getItem("vista_teknik_active_tab")||"dashboard"]);
   useEffect(()=>{
+    // Guard role Engineering (5 Sep 2026, BUG FIX - celah eskalasi privilese) - `visitedTabs.
+    // includes(id)` adalah SATU-SATUNYA syarat komponen admin (ManajemenWO/SystemTab/dst) ke-mount
+    // di blok render bawah; `tab===id` cuma ngatur display:block/none abis komponennya mounted.
+    // Sebelum fix ini, `tab` bisa diarahkan ke tab admin manapun lewat jalur DI LUAR sidebar
+    // (?tab=wo di URL - baca useEffect lain di atas, klik hasil WO di GlobalSearch, klik
+    // notifikasi) - semua jalur itu manggil setTab() yang sama, gak ada satu pun yang ngecek role.
+    // Nge-block DI SINI (sebelum tab keinjeksi ke visitedTabs) nutup SEMUA jalur itu sekaligus,
+    // gak peduli gimana `tab` state-nya keubah - dan aktif buang tab admin yang ke-seed duluan ke
+    // visitedTabs (initial state dari localStorage, device bersama bekas sesi Admin).
+    const engineeringGuard=user?.divisi==="engineering";
+    if(engineeringGuard&&!ENGINEERING_ALLOWED_TABS.has(tab)){
+      setTab("wodigital");
+      return;
+    }
     localStorage.setItem("vista_teknik_active_tab",tab);
     setVisitedTabs(prev=>{
-      const without=prev.filter(t=>t!==tab);
+      const allowed=engineeringGuard?prev.filter(t=>ENGINEERING_ALLOWED_TABS.has(t)):prev;
+      const without=allowed.filter(t=>t!==tab);
       const next=[...without,tab];
       return next.length>MAX_MOUNTED_TABS?next.slice(next.length-MAX_MOUNTED_TABS):next;
     });
@@ -102,7 +124,7 @@ export default function App(){
     const parentId=NAV_PARENT_OF_CHILD[tab];
     if(parentId)setExpandedNav(prev=>({...prev,[parentId]:true}));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[tab]);
+  },[tab,user?.divisi]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
   // Accordion sidebar (30 Agu 2026, "Report Produksi") - key=id parent, value=expanded/tidak.
   const [expandedNav,setExpandedNav]=useState<Record<string,boolean>>({});
