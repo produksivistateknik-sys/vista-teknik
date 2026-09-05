@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, WIRING_BOBOT_LABEL, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -71,12 +71,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
     timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
 
-  // Proyeksi WIRING CONTROL/POWER (5 Sep 2026) - biar daftar tugas di Rencana Harian gak "rancu"
-  // dibanding Raw Schedule: kartu proyeksi (kartu pudar/putus-putus yang nunjukkin kelanjutan
-  // wiring yang masih live di tanggal sebelumnya) sekarang muncul juga di sini, pakai fungsi
-  // SAMA PERSIS (hitungProyeksiWiring, fcsService.ts) yang dipakai Raw Schedule - satu sumber
-  // kebenaran, gak bisa "kesplit". wiringHariKerjaMap sumbernya histori fcs_timer_kerja, sama
-  // pola fetch kayak RawSchedule.tsx.
+  // WIRING CONTROL/POWER: "hari kerja ke-N" (dari histori fcs_timer_kerja) dipakai allTasks di
+  // bawah buat tau kelanjutan hari kerja mana yang beneran "mendarat" di selDate - fungsi SAMA
+  // PERSIS (hitungProyeksiWiring, fcsService.ts) yang dipakai Raw Schedule buat kalkulasi
+  // kapasitas, satu sumber kebenaran, gak bisa "kesplit". Sama pola fetch kayak RawSchedule.tsx.
   const [wiringHariKerjaMap,setWiringHariKerjaMap]=useState<Record<string,string[]>>({});
   const wiringPanelIds=useMemo(()=>[...new Set(rawData.filter((r:any)=>PROSES_ORANG_RAW_GLOBAL.includes(r.proses)).map((r:any)=>Number(r.panel_id||r.panelId)))],[rawData]);
   useEffect(()=>{
@@ -235,6 +233,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   },[timerAktifData]);
   const days=useMemo(()=>Array.from({length:7},(_,i)=>addDays(weekStart,i)),[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
+  const allPanelsFlat=useMemo(()=>woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>({...p,_wo:w}))),[woData]);
+  // WIRING CONTROL/POWER: kelanjutan hari kerja yang BELUM punya entri asli di row.schedule[selDate]
+  // digabung LANGSUNG ke allTasks di sini (bukan array "proyeksi" terpisah lagi, lihat commit
+  // sebelumnya) - operator yang ngerjain wiring emang beneran dialokasikan (dikonfirmasi lewat
+  // fcs_timer_kerja), jadi diperlakukan IDENTIK proses lain: dapat tombol Rilis/Tarik asli
+  // (toggleReleaseKomponen/createRenhar di bawah cuma nulis ke tabel renhar, SAMA SEKALI gak
+  // nyentuh raw_schedule/kalkulasi kapasitas bobot) - tanpa label "proyeksi" apapun. "Real selalu
+  // menang, gak boleh dobel-hitung": kode yang SUDAH ada entri asli di row.schedule[selDate]
+  // di-skip (persis pola kodeRealHariIni di RawSchedule.tsx, Capacity Utilization card - dulu
+  // pola dedup ini gak ikut kebawa pas logic proyeksi ini dipakai di Rencana Harian, jadi kode
+  // yang udah real malah dobel tampil: sekali normal, sekali lagi sebagai "hantu" proyeksi).
   const allTasks=useMemo(()=>{
     const tasks=[];
     rawData.forEach(row=>{
@@ -271,15 +280,56 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           }
         }
       }
+      if(PROSES_ORANG_RAW_GLOBAL.includes(row.proses)){
+        const panelIdRow=row.panel_id||row.panelId;
+        const panelData=allPanelsFlat.find((p:any)=>p.id===panelIdRow);
+        const kodeRealSelDate=new Set<string>(entries.flatMap((e:any)=>e.komponen||[]));
+        // Kalau satu kode punya BEBERAPA entry asli (mis. dijadwal ulang manual tanpa lewat
+        // pointer digeserKe, jadi entry lama gak ketandai "sudah pindah") - cuma entry PALING
+        // BARU per kode yang boleh diproyeksikan maju. Tanpa ini, entry lama & baru bisa
+        // dobel-proyeksi ke tanggal yang sama (kode yang sama muncul 2x).
+        const latestLiveDateByKode:Record<string,string>={};
+        Object.entries(row.schedule||{}).forEach(([ld,ents]:[string,any])=>{
+          (ents||[]).forEach((e:any)=>(e.komponen||[]).forEach((kode:string)=>{
+            if(kode.startsWith("__wiring_"))return;
+            if(!latestLiveDateByKode[kode]||ld>latestLiveDateByKode[kode])latestLiveDateByKode[kode]=ld;
+          }));
+        });
+        Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
+          if(liveDate===selDate)return;
+          (liveEntries||[]).forEach((e:any)=>{
+            const kodeLanjut:string[]=[];
+            (e.komponen||[]).forEach((kode:string)=>{
+              if(kode.startsWith("__wiring_"))return;
+              if(e.digeserKe?.[kode])return;
+              if(kodeRealSelDate.has(kode))return;
+              if(latestLiveDateByKode[kode]!==liveDate)return;
+              const progress=panelData?.checklist?.[kode]?.progress?.[row.proses]||0;
+              if(progress>=100)return;
+              const bobot=row.bobot_komponen?.[kode];
+              const mendarat=hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).some(p=>p.tanggal===selDate);
+              if(mendarat)kodeLanjut.push(kode);
+            });
+            if(kodeLanjut.length>0){
+              tasks.push({
+                rawId:row.id,woId:row.wo_id||row.woId,panelId:panelIdRow,
+                proyek:row.proyek,panel:row.panel,proses:row.proses,
+                prioritas:row.prioritas||"Sedang",
+                wp:e.wp,komponen:kodeLanjut,tanggal:selDate,
+                carriedOverFrom:liveDate,digeserKe:null,
+              });
+            }
+          });
+        });
+      }
     });
     return tasks;
-  },[rawData,selDate]);
+  },[rawData,selDate,allPanelsFlat,wiringHariKerjaMap]);
 
   // Section terpisah, gak lewat renhar/allTasks sama sekali: baca raw_schedule langsung buat
   // NAMEPLATE/YELLOWMARK (penanda "dijadwalkan hari ini"), digabung sama progress LIVE dari
   // panels.nameplate_progress/yellowmark_progress (sistem yang sudah ada, lihat NameplateView
   // di Vista Pekerja) - biar planner tahu siapa lagi kerjakan apa tanpa perlu alur Rilis/Tarik.
-  const allPanelsFlat=useMemo(()=>woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>({...p,_wo:w}))),[woData]);
   const npYmMarked=useMemo(()=>{
     const items:any[]=[];
     rawData.forEach((row:any)=>{
@@ -301,45 +351,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     if(jam<24)return`${jam} jam lalu`;
     return`${Math.floor(jam/24)} hari lalu`;
   };
-
-  // Proyeksi WIRING yang mendarat persis di selDate (5 Sep 2026) - MURNI tampilan, sama sekali
-  // gak nyentuh raw_schedule/renhar (gak ikut allTasks/distributeAll/Rilis Semua) - kartu ini
-  // belum posisi asli, cuma preview kapasitas. Sumbernya SEMUA entry live (across semua tanggal
-  // di row.schedule, bukan cuma selDate) yang progress-nya belum 100% dan belum jadi jejak
-  // (digeserKe) - persis pola wiringForwardMap di RawSchedule.tsx.
-  const proyeksiTasksForSelDate=useMemo(()=>{
-    const out:any[]=[];
-    rawData.forEach((row:any)=>{
-      if(!PROSES_ORANG_RAW_GLOBAL.includes(row.proses))return;
-      const panelIdRow=row.panel_id||row.panelId;
-      const panelData=allPanelsFlat.find((p:any)=>p.id===panelIdRow);
-      Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
-        (liveEntries||[]).forEach((e:any)=>{
-          (e.komponen||[]).forEach((kode:string)=>{
-            if(kode.startsWith("__wiring_"))return;
-            if(e.digeserKe?.[kode])return;
-            const progress=panelData?.checklist?.[kode]?.progress?.[row.proses]||0;
-            if(progress>=100)return;
-            const bobot=row.bobot_komponen?.[kode];
-            hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
-              if(p.tanggal!==selDate)return;
-              out.push({
-                rawId:row.id,panelId:panelIdRow,proyek:row.proyek,panel:row.panel,proses:row.proses,
-                prioritas:row.prioritas||"Sedang",
-                wp:p.wp,kode:p.kode,hariKeN:p.hariKeN,orang:p.orang,liveDate,bobot,
-              });
-            });
-          });
-        });
-      });
-    });
-    return out;
-  },[rawData,selDate,allPanelsFlat,wiringHariKerjaMap]);
-  const proyeksiByProses=useMemo(()=>{
-    const map:Record<string,any[]>={};
-    proyeksiTasksForSelDate.forEach(t=>{(map[t.proses]=map[t.proses]||[]).push(t);});
-    return map;
-  },[proyeksiTasksForSelDate]);
 
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
   const byProses=useMemo(()=>{
@@ -605,9 +616,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       </div>
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length+npYmMarked.length})</button>
-        {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)||proyeksiByProses[pr]?.length>0).map(pr=>{
-          const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const proyCnt=proyeksiByProses[pr]?.length||0;const isSel=selProses===pr;
-          return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt}{proyCnt>0?`+${proyCnt} proy.`:""})</button>);
+        {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{
+          const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const isSel=selProses===pr;
+          return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt})</button>);
         })}
         {["NAMEPLATE","YELLOWMARK"].filter(pr=>npYmMarked.some((t:any)=>t.proses===pr)).map(pr=>{
           const pc=PROSES_COLOR[pr]||"#64748b";const cnt=npYmMarked.filter((t:any)=>t.proses===pr).length;const isSel=selProses===pr;
@@ -628,16 +639,15 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           );
         })}
       </div>
-      {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&proyeksiTasksForSelDate.filter(t=>selProses==="ALL"||t.proses===selProses).length===0&&(
+      {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
           <div style={{fontSize:40,marginBottom:12}}>📭</div>
           <div style={{fontSize:14,fontWeight:600}}>Tidak ada pekerjaan pada tanggal ini</div>
           <div style={{fontSize:12,marginTop:4}}>Tambahkan jadwal di Raw Schedule terlebih dahulu</div>
         </div>
       )}
-      {ALL_PROSES.filter(proses=>byProses[proses]||proyeksiByProses[proses]?.length>0).map(proses=>{
+      {ALL_PROSES.filter(proses=>byProses[proses]).map(proses=>{
         const tasks=byProses[proses]||[];
-        const proyeksiList=proyeksiByProses[proses]||[];
         const pc=PROSES_COLOR[proses]||"#64748b";
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
@@ -651,11 +661,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                 <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
                 {tasks.length>0&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>}
-                {proyeksiList.length>0&&<span style={{background:"#ffffff18",color:"#ffffffcc",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,border:"1px dashed #ffffff55"}}>🔮 {proyeksiList.length} proyeksi</span>}
               </div>
               {tasks.length>0&&<span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>}
             </div>
-            {(tasks.length>0||proyeksiList.length>0)&&(
+            {tasks.length>0&&(
             <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
@@ -871,40 +880,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   }
                   return renderedRows;
                   })()}
-                  {proyeksiList.map((p,pi)=>{
-                    const panelData=allPanelsFlat.find((pp:any)=>pp.id===p.panelId);
-                    const cfg2=panelData?getEffCfg(panelData.tipe):null;
-                    const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===p.kode);
-                    const relevantProsesKode=panelData?getRelevantProsesForKode(p.kode,panelData.tipe):undefined;
-                    const pipelineStatus=computeProsesStatus(getBestProgressMap(panelData?.checklist?.[p.kode]),p.proses,relevantProsesKode);
-                    if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return null;
-                    const wc=WP_COLOR[p.wp]||"#64748b";const priColor=PRIORITAS_COLOR[p.prioritas]||"#64748b";
-                    const idxGlobal=tasks.length+pi;
-                    const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
-                    const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle" as const};
-                    return(
-                      <tr key={"proy-"+pi} title={`Hari kerja ke-${p.hariKeN}, bobot ${WIRING_BOBOT_LABEL[p.bobot||"MEDIUM"]}, butuh ${p.orang} orang. Posisi asli masih di ${fmtShort(p.liveDate)}.`}>
-                        <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{idxGlobal+1}</td>
-                        <td style={{...td,fontWeight:600,color:"#475569"}}>{p.proyek}</td>
-                        <td style={{...td,fontWeight:600,color:"#1e293b"}}>{p.panel}</td>
-                        <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{p.wp}</span></td>
-                        <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{p.prioritas}</span></td>
-                        <td style={{...td}}>
-                          <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${p.kode} - ${item.nama}`:p.kode}</span>
-                        </td>
-                        <td style={{...td}}><span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span></td>
-                        <td style={{...td,textAlign:"center"}}><span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span></td>
-                        <td style={{...td,textAlign:"center"}}>
-                          <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                            {STATUS_PIPELINE_LABEL[pipelineStatus]}
-                          </span>
-                        </td>
-                        <td style={{...td,textAlign:"center"}}>
-                          <span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>Posisi asli: {fmtShort(p.liveDate)}</span>
-                        </td>
-                      </tr>
-                    );
-                  }).filter(Boolean)}
                 </tbody>
               </table>
             </div>
