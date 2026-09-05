@@ -373,6 +373,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         } else {
           showToast("✅ Sudah ditarik, gak ada yang perlu digeser");
         }
+        // BUG FIX (5 Sep 2026) - overbookWarnings dari edge function (mis. kapasitas WIRING
+        // belum dikonfigurasi buat hari target, jadi sejumlah unit SENGAJA gak ikut ditarik -
+        // rule no-displacement biar gak keulang insiden "loncat jauh" versi lama auto-geser)
+        // dulu cuma kebaca dari activity_log lewat query manual - gak pernah ditunjukkin ke
+        // admin yang mengklik tombol ini, jadi toast sukses di atas bikin kesannya semua beres
+        // padahal ada komponen yang ketinggalan tanpa disadari. Sekarang tampil eksplisit lewat
+        // alert (bukan toast biasa yang keburu hilang 2.5 detik) - ini butuh tindakan manual
+        // (isi kapasitas kerja), jadi gak boleh kelewat.
+        if(d.overbookWarnings&&d.overbookWarnings.length>0){
+          alert("⚠️ PERLU REVIEW MANUAL - sebagian komponen TIDAK ikut ditarik:\n\n"+d.overbookWarnings.join("\n\n"));
+        }
         setCatchupInfo(null);
         await refetchRaw?.();
       } else {
