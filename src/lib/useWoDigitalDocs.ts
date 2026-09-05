@@ -103,8 +103,22 @@ export function useWoDigitalDocs() {
         const stampedUrl=await uploadToR2(stampedBlob,stampedKey,"application/pdf")
         const{error:stampErr}=await supabase.from("wi_revisions" as any).update({file_url:stampedUrl}).eq("id",oldCurrentRev.id)
         if(stampErr)throw new Error(stampErr.message)
+        // BUG FIX (6 Sep 2026) - kegagalan hapus di sini dulu di-swallow TOTAL diam-diam (gak
+        // ada log sama sekali). Ini bukan cuma "sampah storage" - kalau gagal, file LAMA TANPA
+        // STEMPEL masih tetap bisa diakses publik di URL asalnya (walau wi_revisions.file_url
+        // di DB sudah diupdate ke versi stamped di atas) - siapapun yang masih punya link/cache
+        // lama tetap bisa buka gambar yang sudah gak berlaku tanpa tanda TIDAK BERLAKU. Log
+        // (non-blocking) biar kelihatan di Riwayat Aktivitas buat dihapus manual dari R2.
         const oldKey=extractR2Key(oldCurrentRev.file_url)
-        if(oldKey)await deleteFromR2(oldKey).catch(()=>{/* file lama gak kehapus - cuma sampah storage, gak fatal */})
+        if(oldKey){
+          await deleteFromR2(oldKey).catch(async()=>{
+            await activityLogService.insert({
+              user_name:uname,action:"GAGAL HAPUS FILE LAMA R2",
+              description:`Stempel TIDAK BERLAKU berhasil, tapi file lama tanpa stempel gagal dihapus dari R2 (key: ${oldKey}) - ${panelLabel} (WO ${woLabel}). URL lama masih bisa diakses kalau ada yang masih punya link-nya.`,
+              module:"wo_digital",halaman:"WO Digital",
+            }).catch(()=>{/* logging gagal - abaikan */})
+          })
+        }
         await fetchDocs()
       }catch(err:any){
         await activityLogService.insert({

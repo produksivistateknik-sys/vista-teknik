@@ -86,9 +86,22 @@ export async function watermarkPdf(fileBytes: ArrayBuffer, revisionNote?: string
     const contentRotationDeg = pageRotation
     const rad = (contentRotationDeg * Math.PI) / 180
 
-    const text = revisionNote.trim()
-    const fontSize = Math.max(11, Math.min(16, displayWidth * 0.015))
-    const textWidth = boldFont.widthOfTextAtSize(text, fontSize)
+    // Batasi panjang teks + susutkan font kalau masih kepanjangan (BUG FIX 6 Sep 2026) - input
+    // "Keterangan Revisi" gak ada batas panjang di form-nya, teks yang kepanjangan dulu bisa
+    // menjorok jauh ke kiri halaman (nutupin gambar teknik) atau bahkan kepotong keluar batas
+    // halaman kiri (offsetX bisa negatif). Cap 80 karakter dulu, lalu kalau MASIH lebih lebar
+    // dari 55% lebar halaman (kasus font besar+karakter lebar), susutkan proporsional (floor 7pt
+    // biar tetap kebaca) - watermark dijamin gak pernah lebih lebar dari itu berapapun isinya.
+    const MAX_CHARS = 80
+    let text = revisionNote.trim()
+    if (text.length > MAX_CHARS) text = text.slice(0, MAX_CHARS - 1).trimEnd() + '…'
+    let fontSize = Math.max(11, Math.min(16, displayWidth * 0.015))
+    let textWidth = boldFont.widthOfTextAtSize(text, fontSize)
+    const maxTextWidth = displayWidth * 0.55
+    if (textWidth > maxTextWidth) {
+      fontSize = Math.max(7, fontSize * (maxTextWidth / textWidth))
+      textWidth = boldFont.widthOfTextAtSize(text, fontSize)
+    }
     const textHeight = boldFont.heightAtSize(fontSize)
     const marginRight = displayWidth * 0.04
     const marginTop = displayHeight * 0.035
