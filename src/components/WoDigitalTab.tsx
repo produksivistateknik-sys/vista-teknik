@@ -258,7 +258,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
       if(!!w.is_archived)return false;
       if(q&&!(w.wo||"").toLowerCase().includes(q)&&!(w.proyek||"").toLowerCase().includes(q))return false;
       return true;
-    });
+    // Urutkan by target tanggal (6 Sep 2026) - konsisten sama ManajemenWO.tsx (Admin) baris
+    // ~361, biar list WO Engineering & Admin gak beda urutan.
+    }).sort((a:any,b:any)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99"));
   },[woList,q]);
 
   // Stats WO sekarang agregat dari semua panel-nya (dulu 1 dokumen = 1 WO).
@@ -301,8 +303,10 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     if(!uploadFile.type.includes("pdf")){alert("File harus berupa PDF.");return;}
     setUploading(true);
     try{
-      const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-      const uname=sess?.nama||sess?.name||"Admin";
+      // FIX (6 Sep 2026) - dulu baca localStorage.vista_admin_session langsung, bisa basi
+      // (device yang sebelumnya login user lain) - sekarang pakai prop `user` yang sama
+      // persis dipakai aksi Tambah/Hapus WO lain di file ini (selalu live, ikut login aktif).
+      const uname=user?.name||user?.nama||"Engineering";
       await uploadDocPipeline(uploadTarget.panelId,uploadTarget.panelLabel,uploadTarget.woId,uploadTarget.woLabel,uploadTarget.proyek,uploadFile,uploadJudul,uploadRevMark,uname,setUploadStage);
       setUploadTarget(null);setUploadFile(null);setUploadJudul("");setUploadRevMark("");
       fetchAll();

@@ -565,7 +565,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   // akses sama persis kayak admin (request eksplisit, bukan cuma Quality Center).
   const SIDEBAR_MENUS=isEngineering?[
     {group:"PRODUKSI",items:[
-      {id:"wodigital",label:"WO Digital",icon:"ti ti-file-type-pdf",navigable:true,children:[
+      {id:"wodigital",label:"Manajemen WO",icon:"ti ti-file-type-pdf",navigable:true,children:[
         {id:"arsip",label:"Arsip",icon:"ti ti-archive"},
       ]},
       {id:"report_produksi",label:"Report Produksi",icon:"ti ti-report",children:[
