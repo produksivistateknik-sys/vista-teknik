@@ -324,7 +324,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
               if(p.tanggal!==selDate)return;
               out.push({
-                rawId:row.id,proyek:row.proyek,panel:row.panel,proses:row.proses,
+                rawId:row.id,panelId:panelIdRow,proyek:row.proyek,panel:row.panel,proses:row.proses,
+                prioritas:row.prioritas||"Sedang",
                 wp:p.wp,kode:p.kode,hariKeN:p.hariKeN,orang:p.orang,liveDate,bobot,
               });
             });
@@ -654,8 +655,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
               </div>
               {tasks.length>0&&<span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>}
             </div>
-            {tasks.length>0&&(
-            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:proyeksiList.length>0?"0":"0 0 10px 10px"}}>
+            {(tasks.length>0||proyeksiList.length>0)&&(
+            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
@@ -870,30 +871,43 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   }
                   return renderedRows;
                   })()}
+                  {proyeksiList.map((p,pi)=>{
+                    const panelData=allPanelsFlat.find((pp:any)=>pp.id===p.panelId);
+                    const cfg2=panelData?getEffCfg(panelData.tipe):null;
+                    const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===p.kode);
+                    const relevantProsesKode=panelData?getRelevantProsesForKode(p.kode,panelData.tipe):undefined;
+                    const pipelineStatus=computeProsesStatus(getBestProgressMap(panelData?.checklist?.[p.kode]),p.proses,relevantProsesKode);
+                    if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return null;
+                    const wc=WP_COLOR[p.wp]||"#64748b";const priColor=PRIORITAS_COLOR[p.prioritas]||"#64748b";
+                    const idxGlobal=tasks.length+pi;
+                    const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
+                    const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle" as const};
+                    return(
+                      <tr key={"proy-"+pi} title={`Hari kerja ke-${p.hariKeN}, bobot ${WIRING_BOBOT_LABEL[p.bobot||"MEDIUM"]}, butuh ${p.orang} orang. Posisi asli masih di ${fmtShort(p.liveDate)}.`}>
+                        <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{idxGlobal+1}</td>
+                        <td style={{...td,fontWeight:600,color:"#475569"}}>{p.proyek}</td>
+                        <td style={{...td,fontWeight:600,color:"#1e293b"}}>{p.panel}</td>
+                        <td style={{...td,textAlign:"center"}}><span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{p.wp}</span></td>
+                        <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{p.prioritas}</span></td>
+                        <td style={{...td}}>
+                          <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${p.kode} - ${item.nama}`:p.kode}</span>
+                        </td>
+                        <td style={{...td}}><span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span></td>
+                        <td style={{...td,textAlign:"center"}}><span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span></td>
+                        <td style={{...td,textAlign:"center"}}>
+                          <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                            {STATUS_PIPELINE_LABEL[pipelineStatus]}
+                          </span>
+                        </td>
+                        <td style={{...td,textAlign:"center"}}>
+                          <span style={{fontSize:10,color:"#94a3b8",fontStyle:"italic"}}>Posisi asli: {fmtShort(p.liveDate)}</span>
+                        </td>
+                      </tr>
+                    );
+                  }).filter(Boolean)}
                 </tbody>
               </table>
             </div>
-            )}
-            {proyeksiList.length>0&&(
-              <div style={{border:"1.5px dashed #cbd5e1",borderTop:tasks.length>0?"none":"1.5px dashed #cbd5e1",borderRadius:"0 0 10px 10px",padding:"10px 14px",background:"#f8fafc"}}>
-                <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:.3}}>
-                  🔮 PROYEKSI - belum posisi asli, masih di tanggal sebelumnya sampai ditarik/dijadwalkan manual ke {fmtShort(selDate)}
-                </div>
-                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                  {proyeksiList.map((p,pi)=>(
-                    <div key={pi}
-                      title={`Proyeksi hari kerja ke-${p.hariKeN}, bobot ${WIRING_BOBOT_LABEL[p.bobot||"MEDIUM"]}, butuh ${p.orang} orang. Posisi asli masih di ${fmtShort(p.liveDate)} - belum benar-benar dijadwalkan buat ${fmtShort(selDate)}.`}
-                      style={{display:"inline-flex",alignItems:"center",gap:5,background:"#fff",color:"#64748b",border:"1px dashed #cbd5e1",borderRadius:20,padding:"3px 10px",fontSize:10.5,opacity:.75}}>
-                      <span style={{fontWeight:700}}>{p.panel}</span>
-                      <span>·</span>
-                      <span>{p.wp} {p.kode}</span>
-                      <span>·</span>
-                      <span>H{p.hariKeN}</span>
-                      <span style={{display:"flex",alignItems:"center",gap:2}}><i className="ti ti-users" style={{fontSize:10}}/>{p.orang}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
             )}
           </div>
         );
