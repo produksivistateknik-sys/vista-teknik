@@ -175,6 +175,14 @@ export default function App(){
   useEffect(()=>{refreshPushStatus();},[]);
   const togglePush=async()=>{
     if(!(user as any)?.username)return;
+    // BUG FIX (5 Sep 2026) - dulu tombol ini di-disable HTML-native pas pushStatus==="denied",
+    // penjelasannya cuma ada di title (tooltip hover) - gak pernah kelihatan di tablet/layar
+    // sentuh (gak ada hover), jadi user tablet cuma lihat ikon abu-abu tanpa tahu kenapa/gimana
+    // benerinnya. Sekarang tombol TETAP bisa di-tap biar penjelasannya nyampe lewat alert juga.
+    if(pushStatus==="denied"){
+      alert("Notifikasi diblokir di pengaturan browser/tablet ini, gak bisa diaktifkan lewat tombol ini.\n\nCara benerin:\n1. Buka pengaturan situs (biasanya ikon gembok/info di sebelah alamat website) → Notifikasi → pilih Izinkan.\n2. Kalau pakai tablet Android, cek juga: Pengaturan Android → Aplikasi → (nama browser yang dipakai) → Notifikasi → pastikan diizinkan.\n3. Muat ulang halaman ini, lalu coba tombol lonceng lagi.");
+      return;
+    }
     setPushLoading(true);
     if(pushStatus==="active"){
       const res=await unsubscribeFromPush();
@@ -827,11 +835,15 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
 
                 {/* Toggle push notification (5 Sep 2026) - status live dari Push API browser,
                     disembunyikan total kalau browser gak dukung sama sekali. Kalau diblokir user
-                    di setting browser (denied), tombol jadi non-klik dengan tooltip penjelasan -
-                    gak nawarin aksi yang pasti gagal. */}
+                    di setting browser (denied) - BUG FIX 5 Sep 2026: tombol TETAP bisa di-tap
+                    (dulu disabled HTML-native, penjelasannya cuma nyampe lewat title/tooltip yang
+                    gak pernah kelihatan di tablet/layar sentuh) - togglePush() sendiri yang
+                    nampilin alert penjelasan begitu di-tap, biar user tablet juga kebagian info,
+                    bukan cuma diem liat ikon abu-abu tanpa tahu kenapa. Style tetap dibikin
+                    keliatan "gak aktif" (opacity/cursor) buat sinyal visual. */}
                 {pushStatus!=="unsupported"&&(
-                  <button onClick={togglePush} disabled={pushLoading||pushStatus==="checking"||pushStatus==="denied"}
-                    title={pushStatus==="denied"?"Notifikasi diblokir di setting browser - aktifkan manual, gak bisa lewat tombol ini":pushStatus==="active"?"Notifikasi Push Aktif (klik untuk nonaktifkan)":"Notifikasi Push Nonaktif (klik untuk aktifkan)"}
+                  <button onClick={togglePush} disabled={pushLoading||pushStatus==="checking"}
+                    title={pushStatus==="denied"?"Notifikasi diblokir di setting browser - tap buat lihat cara benerin":pushStatus==="active"?"Notifikasi Push Aktif (klik untuk nonaktifkan)":"Notifikasi Push Nonaktif (klik untuk aktifkan)"}
                     style={{width:26,height:26,border:`1px solid ${pushStatus==="active"?"#16a34a":"var(--border-color,#e5e8ed)"}`,
                       borderRadius:5,background:pushStatus==="active"?"#f0fdf4":"var(--bg-secondary,#f8f9fb)",
                       display:"flex",alignItems:"center",justifyContent:"center",
