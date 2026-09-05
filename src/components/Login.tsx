@@ -4,7 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { GCss } from '../styles/globalCss'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
-export function Login({onLogin}){
+export function Login({onLogin,sessionMismatchNotice}:{onLogin:(u:any)=>void;sessionMismatchNotice?:string}){
   const [username,setUsername]=useState("");
   const [pwd,setPwd]=useState("");
   const [posisi,setPosisi]=useState("admin");
@@ -30,7 +30,16 @@ export function Login({onLogin}){
     await supabase.from("admins").update({last_login:new Date().toISOString()}).eq("id",data.id);
     await activityLogService.insert({user_name:data.nama,action:"LOGIN",description:"Login ke sistem",module:"auth",halaman:"Login"});
     const{password:_pw,...safeData}=data;
-    localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi}));
+    // sessionId (7 Sep 2026, FIX KEAMANAN) - localStorage dibagi bersama SEMUA tab/window di
+    // browser yang sama. Kalau tab lain di browser ini login sebagai akun BEDA, sessionId baru
+    // ini bikin App.tsx (restore-session effect) BISA mendeteksi "identitas di localStorage
+    // berubah sejak tab ini terakhir aktif" - insiden nyata: sesi Engineering diam-diam ketuker
+    // jadi Admin di tab lain setelah reload. sessionId juga langsung dicatat ke sessionStorage
+    // TAB INI (bukan localStorage - sessionStorage khusus per-tab) biar tab ini "kenal" sesi
+    // yang baru dia buat sendiri.
+    const sessionId=(typeof crypto!=="undefined"&&crypto.randomUUID)?crypto.randomUUID():`${Date.now().toString(36)}_${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem("vista_admin_session",JSON.stringify({...safeData,divisi,sessionId}));
+    sessionStorage.setItem("vista_admin_tab_session_id",sessionId);
     setSuccess(true);
     setTimeout(()=>onLogin({...safeData,divisi,name:data.nama}),800);
     setLoading(false);
@@ -164,6 +173,11 @@ export function Login({onLogin}){
             </div>
           </div>
 
+          {!err&&sessionMismatchNotice&&(
+            <div className="lg-err" style={{marginTop:16}}>
+              <span>🔒</span><span>{sessionMismatchNotice}</span>
+            </div>
+          )}
           {err&&(
             <div className="lg-err" style={{marginTop:16}}>
               <span>⚠️</span><span>{err}</span>

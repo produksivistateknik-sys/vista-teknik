@@ -91,6 +91,8 @@ export default function App(){
   const hasDateRolled=useDateRollover();
   const [page,setPage]=useState("landing");
   const [user,setUser]=useState(null);
+  // FIX KEAMANAN (7 Sep 2026) - lihat komentar di effect "Restore admin session" di bawah.
+  const [sessionMismatch,setSessionMismatch]=useState(false);
   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[localStorage.getItem("vista_teknik_active_tab")||"dashboard"]);
@@ -216,8 +218,27 @@ export default function App(){
     if(saved){
       try{
         const parsed=JSON.parse(saved);
+        // FIX KEAMANAN (7 Sep 2026) - localStorage dibagi bersama SEMUA tab/window di browser
+        // yang sama, gak per-tab. Insiden nyata: operator Engineering login di 1 tab, di tab
+        // lain (browser yang sama) ada yang login sebagai Admin - localStorage ketimpa diam-
+        // diam. Reload tab Engineering (mis. gara-gara banner "Versi baru tersedia") lalu
+        // "mewarisi" identitas Admin itu tanpa siapapun sadar. sessionId per-tab (sessionStorage,
+        // TIDAK dibagi antar tab) dipakai buat deteksi: kalau tab ini SEBELUMNYA sudah kenal
+        // sessionId lain (beda dari yang di localStorage sekarang), berarti ada login LAIN
+        // terjadi di browser ini sejak tab ini terakhir aktif - JANGAN restore diam-diam, paksa
+        // balik ke layar login. Tab yang BENAR-BENAR baru (belum pernah kenal sessionId apapun)
+        // tetap restore seperti biasa - gak ganggu kenyamanan buka tab baru di browser yang
+        // sudah login (bukan itu yang jadi masalah keamanannya).
+        const tabSessionId=sessionStorage.getItem("vista_admin_tab_session_id");
+        if(tabSessionId&&parsed.sessionId&&tabSessionId!==parsed.sessionId){
+          sessionStorage.removeItem("vista_admin_tab_session_id");
+          setSessionMismatch(true);
+          setPage("login");
+          return;
+        }
         setUser({...parsed,name:parsed.name||parsed.nama});
         setPage("app");
+        if(parsed.sessionId)sessionStorage.setItem("vista_admin_tab_session_id",parsed.sessionId);
       }catch(e){ console.error('Session restore error:',e); }
     }
   },[]);
@@ -500,7 +521,8 @@ useEffect(() => {
 }, [rawList, rawLoading])
 
 if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
-  if(!user)return <Login onLogin={u=>{
+  if(!user)return <Login sessionMismatchNotice={sessionMismatch?"Sesi login di perangkat/tab ini sudah digantikan oleh login lain. Silakan login ulang untuk melanjutkan.":undefined} onLogin={u=>{
+    setSessionMismatch(false);
     setUser(u);
     setPage("app");
     // Engineering cuma punya 1 menu (WO Digital) - langsung arahkan ke situ, gak lewat
@@ -530,7 +552,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           Buka Vista Pekerja →
         </a>
         <div style={{marginTop:16}}>
-          <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}}
+          <button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");sessionStorage.removeItem("vista_admin_tab_session_id");}}
             style={{background:"none",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:8,
               padding:"8px 20px",cursor:"pointer",fontSize:13,fontWeight:600}}>
             Keluar
@@ -810,7 +832,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 <div className="erp-foot-name">{user?.name||user?.nama}</div>
                 <div className="erp-foot-role">{cfg?.label||"Admin"}</div>
               </div>
-              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
+              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");sessionStorage.removeItem("vista_admin_tab_session_id");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
             </div>
           </div>
           <div className="erp-main">
