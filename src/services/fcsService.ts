@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { ALL_PROSES } from '../constants/panelTypes'
-import { kebutuhanOrangWiring } from '../lib/panelHelpers'
+import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE } from '../lib/panelHelpers'
 import { activityLogService } from './activityLogService'
 
 // ================= WIRING CONTROL/POWER: "hari kerja ke-N" dari histori fcs_timer_kerja =================
@@ -37,6 +37,30 @@ export async function fetchWiringHariKerjaMap(panelIds: number[]): Promise<Recor
 export function hariKeNFromMap(map: Record<string, string[]>, panelId: number, kode: string, proses: string, tanggal: string): number {
   const dates = map[`${panelId}|${kode}|${proses}`] || []
   return dates.filter((t) => t < tanggal).length + 1
+}
+
+// Proyeksi hari-hari kerja BERIKUTNYA (H+1, H+2, ...) untuk SATU komponen wiring yang lagi live
+// di `liveDate`, sepanjang sisa durasi standar bobotnya - DIPINDAH ke sini (5 Sep 2026, dulu lokal
+// di RawSchedule.tsx) supaya jadi SATU sumber kebenaran dipakai BARENG oleh kartu proyeksi di grid
+// Raw Schedule (wiringForwardMap) dan daftar proyeksi di Rencana Harian, biar formulanya gak
+// pernah bisa "kesplit"/beda antara dua tampilan itu. Gak termasuk liveDate itu sendiri (offset
+// mulai dari 1) - liveDate direpresentasikan oleh entry ASLI (real), bukan proyeksi. hariKeNLive
+// dihitung SEKALI dari histori kerja AKTUAL (fcs_timer_kerja, lewat hariKeNFromMap) - offset
+// berikutnya cuma proyeksi optimis "kalau lanjut mulus", BUKAN dihitung ulang per tanggal proyeksi
+// (soalnya tanggal-tanggal itu belum kejadian, belum ada histori).
+export function hitungProyeksiWiring(
+  panelIdRow: any, kode: string, proses: string, wp: string, liveDate: string, bobot: string | undefined,
+  wiringHariKerjaMap: Record<string, string[]>,
+): { tanggal: string; kode: string; wp: string; hariKeN: number; orang: number }[] {
+  const tableLen = (WIRING_BOBOT_TABLE[bobot || 'MEDIUM'] || WIRING_BOBOT_TABLE.MEDIUM).length
+  const hariKeNLive = hariKeNFromMap(wiringHariKerjaMap, panelIdRow, kode, proses, liveDate)
+  const sisaHari = Math.max(1, tableLen - hariKeNLive + 1)
+  const hasil: { tanggal: string; kode: string; wp: string; hariKeN: number; orang: number }[] = []
+  for (let off = 1; off < sisaHari; off++) {
+    const hariKeNProj = hariKeNLive + off
+    hasil.push({ tanggal: addDays(liveDate, off), kode, wp, hariKeN: hariKeNProj, orang: kebutuhanOrangWiring(bobot, hariKeNProj) })
+  }
+  return hasil
 }
 
 interface FCSProcessTime {

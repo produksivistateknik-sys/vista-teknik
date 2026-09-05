@@ -1,7 +1,7 @@
 import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, fetchWiringHariKerjaMap, hariKeNFromMap } from '../services/fcsService'
+import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, fetchWiringHariKerjaMap, hariKeNFromMap, hitungProyeksiWiring } from '../services/fcsService'
 import {
   PANEL_TYPES, ALL_PROSES, WP_LIST, PRIORITAS, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR,
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
@@ -11,28 +11,9 @@ import { markRenharDirty, markRawDirty } from '../lib/globalState'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 
-// Proyeksi hari-hari kerja BERIKUTNYA (H+1, H+2, ...) untuk SATU komponen wiring yang lagi
-// live di `liveDate`, sepanjang sisa durasi standar bobotnya - SATU sumber kebenaran dipakai
-// BARENG oleh kartu proyeksi di grid (wiringForwardMap) dan badge Capacity Utilization, biar
-// formulanya gak pernah bisa "kesplit"/beda antara dua tempat itu. Gak termasuk liveDate itu
-// sendiri (offset mulai dari 1) - liveDate direpresentasikan oleh entry ASLI (real), bukan
-// proyeksi. hariKeNLive dihitung SEKALI dari histori kerja AKTUAL (fcs_timer_kerja, lewat
-// hariKeNFromMap) - offset berikutnya cuma proyeksi optimis "kalau lanjut mulus", BUKAN dihitung
-// ulang per tanggal proyeksi (soalnya tanggal-tanggal itu belum kejadian, belum ada histori).
-const hitungProyeksiWiring=(
-  panelIdRow:any,kode:string,proses:string,wp:string,liveDate:string,bobot:string|undefined,
-  wiringHariKerjaMap:Record<string,string[]>,
-):{tanggal:string;kode:string;wp:string;hariKeN:number;orang:number}[]=>{
-  const tableLen=(WIRING_BOBOT_TABLE[bobot||"MEDIUM"]||WIRING_BOBOT_TABLE.MEDIUM).length;
-  const hariKeNLive=hariKeNFromMap(wiringHariKerjaMap,panelIdRow,kode,proses,liveDate);
-  const sisaHari=Math.max(1,tableLen-hariKeNLive+1);
-  const hasil:{tanggal:string;kode:string;wp:string;hariKeN:number;orang:number}[]=[];
-  for(let off=1;off<sisaHari;off++){
-    const hariKeNProj=hariKeNLive+off;
-    hasil.push({tanggal:addDays(liveDate,off),kode,wp,hariKeN:hariKeNProj,orang:kebutuhanOrangWiring(bobot,hariKeNProj)});
-  }
-  return hasil;
-};
+// hitungProyeksiWiring DIPINDAH (5 Sep 2026) ke fcsService.ts biar bisa dipakai bareng
+// RencanaHarian.tsx (satu sumber kebenaran, biar daftar proyeksi di dua tempat itu gak pernah
+// "kesplit"/beda) - lihat komentar lengkap di sana.
 
 export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];

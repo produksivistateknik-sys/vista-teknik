@@ -1,8 +1,9 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
-import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
+import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, WIRING_BOBOT_LABEL, type ProsesStatus } from '../lib/panelHelpers'
+import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
@@ -69,6 +70,28 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
 
   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
     timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+
+  // Proyeksi WIRING CONTROL/POWER (5 Sep 2026) - biar daftar tugas di Rencana Harian gak "rancu"
+  // dibanding Raw Schedule: kartu proyeksi (kartu pudar/putus-putus yang nunjukkin kelanjutan
+  // wiring yang masih live di tanggal sebelumnya) sekarang muncul juga di sini, pakai fungsi
+  // SAMA PERSIS (hitungProyeksiWiring, fcsService.ts) yang dipakai Raw Schedule - satu sumber
+  // kebenaran, gak bisa "kesplit". wiringHariKerjaMap sumbernya histori fcs_timer_kerja, sama
+  // pola fetch kayak RawSchedule.tsx.
+  const [wiringHariKerjaMap,setWiringHariKerjaMap]=useState<Record<string,string[]>>({});
+  const wiringPanelIds=useMemo(()=>[...new Set(rawData.filter((r:any)=>PROSES_ORANG_RAW_GLOBAL.includes(r.proses)).map((r:any)=>Number(r.panel_id||r.panelId)))],[rawData]);
+  useEffect(()=>{
+    let cancelled=false;
+    const load=async()=>{
+      const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
+      if(!cancelled)setWiringHariKerjaMap(map);
+    };
+    load();
+    const ch=supabase.channel("realtime-fcs-timer-kerja-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},load)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[JSON.stringify(wiringPanelIds)]);
 
   // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
   // cuma nyatet assignment planner - satu komponen bisa dikerjain operator BEDA di hari beda kalau
@@ -278,6 +301,44 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     if(jam<24)return`${jam} jam lalu`;
     return`${Math.floor(jam/24)} hari lalu`;
   };
+
+  // Proyeksi WIRING yang mendarat persis di selDate (5 Sep 2026) - MURNI tampilan, sama sekali
+  // gak nyentuh raw_schedule/renhar (gak ikut allTasks/distributeAll/Rilis Semua) - kartu ini
+  // belum posisi asli, cuma preview kapasitas. Sumbernya SEMUA entry live (across semua tanggal
+  // di row.schedule, bukan cuma selDate) yang progress-nya belum 100% dan belum jadi jejak
+  // (digeserKe) - persis pola wiringForwardMap di RawSchedule.tsx.
+  const proyeksiTasksForSelDate=useMemo(()=>{
+    const out:any[]=[];
+    rawData.forEach((row:any)=>{
+      if(!PROSES_ORANG_RAW_GLOBAL.includes(row.proses))return;
+      const panelIdRow=row.panel_id||row.panelId;
+      const panelData=allPanelsFlat.find((p:any)=>p.id===panelIdRow);
+      Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
+        (liveEntries||[]).forEach((e:any)=>{
+          (e.komponen||[]).forEach((kode:string)=>{
+            if(kode.startsWith("__wiring_"))return;
+            if(e.digeserKe?.[kode])return;
+            const progress=panelData?.checklist?.[kode]?.progress?.[row.proses]||0;
+            if(progress>=100)return;
+            const bobot=row.bobot_komponen?.[kode];
+            hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
+              if(p.tanggal!==selDate)return;
+              out.push({
+                rawId:row.id,proyek:row.proyek,panel:row.panel,proses:row.proses,
+                wp:p.wp,kode:p.kode,hariKeN:p.hariKeN,orang:p.orang,liveDate,bobot,
+              });
+            });
+          });
+        });
+      });
+    });
+    return out;
+  },[rawData,selDate,allPanelsFlat,wiringHariKerjaMap]);
+  const proyeksiByProses=useMemo(()=>{
+    const map:Record<string,any[]>={};
+    proyeksiTasksForSelDate.forEach(t=>{(map[t.proses]=map[t.proses]||[]).push(t);});
+    return map;
+  },[proyeksiTasksForSelDate]);
 
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
   const byProses=useMemo(()=>{
@@ -543,9 +604,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       </div>
       <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length+npYmMarked.length})</button>
-        {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{
-          const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const isSel=selProses===pr;
-          return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt})</button>);
+        {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)||proyeksiByProses[pr]?.length>0).map(pr=>{
+          const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const proyCnt=proyeksiByProses[pr]?.length||0;const isSel=selProses===pr;
+          return(<button key={pr} onClick={()=>setSelProses(isSel?"ALL":pr)} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr} ({cnt}{proyCnt>0?`+${proyCnt} proy.`:""})</button>);
         })}
         {["NAMEPLATE","YELLOWMARK"].filter(pr=>npYmMarked.some((t:any)=>t.proses===pr)).map(pr=>{
           const pc=PROSES_COLOR[pr]||"#64748b";const cnt=npYmMarked.filter((t:any)=>t.proses===pr).length;const isSel=selProses===pr;
@@ -566,15 +627,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           );
         })}
       </div>
-      {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&(
+      {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&proyeksiTasksForSelDate.filter(t=>selProses==="ALL"||t.proses===selProses).length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
           <div style={{fontSize:40,marginBottom:12}}>📭</div>
           <div style={{fontSize:14,fontWeight:600}}>Tidak ada pekerjaan pada tanggal ini</div>
           <div style={{fontSize:12,marginTop:4}}>Tambahkan jadwal di Raw Schedule terlebih dahulu</div>
         </div>
       )}
-      {ALL_PROSES.filter(proses=>byProses[proses]).map(proses=>{
+      {ALL_PROSES.filter(proses=>byProses[proses]||proyeksiByProses[proses]?.length>0).map(proses=>{
         const tasks=byProses[proses]||[];
+        const proyeksiList=proyeksiByProses[proses]||[];
         const pc=PROSES_COLOR[proses]||"#64748b";
         const divisiKey=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(proses))?.[0];
         const dc=divisiKey?DIVISI_CONFIG[divisiKey]:null;
@@ -587,11 +649,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
-                <span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>
+                {tasks.length>0&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>}
+                {proyeksiList.length>0&&<span style={{background:"#ffffff18",color:"#ffffffcc",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700,border:"1px dashed #ffffff55"}}>🔮 {proyeksiList.length} proyeksi</span>}
               </div>
-              <span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>
+              {tasks.length>0&&<span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>}
             </div>
-            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+            {tasks.length>0&&(
+            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:proyeksiList.length>0?"0":"0 0 10px 10px"}}>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
@@ -809,6 +873,28 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                 </tbody>
               </table>
             </div>
+            )}
+            {proyeksiList.length>0&&(
+              <div style={{border:"1.5px dashed #cbd5e1",borderTop:tasks.length>0?"none":"1.5px dashed #cbd5e1",borderRadius:"0 0 10px 10px",padding:"10px 14px",background:"#f8fafc"}}>
+                <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:.3}}>
+                  🔮 PROYEKSI - belum posisi asli, masih di tanggal sebelumnya sampai ditarik/dijadwalkan manual ke {fmtShort(selDate)}
+                </div>
+                <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                  {proyeksiList.map((p,pi)=>(
+                    <div key={pi}
+                      title={`Proyeksi hari kerja ke-${p.hariKeN}, bobot ${WIRING_BOBOT_LABEL[p.bobot||"MEDIUM"]}, butuh ${p.orang} orang. Posisi asli masih di ${fmtShort(p.liveDate)} - belum benar-benar dijadwalkan buat ${fmtShort(selDate)}.`}
+                      style={{display:"inline-flex",alignItems:"center",gap:5,background:"#fff",color:"#64748b",border:"1px dashed #cbd5e1",borderRadius:20,padding:"3px 10px",fontSize:10.5,opacity:.75}}>
+                      <span style={{fontWeight:700}}>{p.panel}</span>
+                      <span>·</span>
+                      <span>{p.wp} {p.kode}</span>
+                      <span>·</span>
+                      <span>H{p.hariKeN}</span>
+                      <span style={{display:"flex",alignItems:"center",gap:2}}><i className="ti ti-users" style={{fontSize:10}}/>{p.orang}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         );
       })}
