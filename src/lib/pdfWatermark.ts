@@ -1,5 +1,13 @@
-import { PDFDocument, degrees } from 'pdf-lib'
+import { PDFDocument, degrees, StandardFonts, rgb } from 'pdf-lib'
 import { VISTA_LOGO_DATA_URI } from './logoAsset'
+
+// Rotasi vektor 2D - dipakai BARENGAN oleh watermarkPdf() dan stampTidakBerlaku() buat
+// kompensasi /Rotate halaman (lihat catatan riwayat di atas). Konvensi arah SUDAH divalidasi
+// (contentRotationDeg = pageRotation, BUKAN 360-pageRotation) - jangan diubah tanpa tes ulang.
+const rotateVec = (x: number, y: number, rad: number) => ({
+  x: x * Math.cos(rad) - y * Math.sin(rad),
+  y: x * Math.sin(rad) + y * Math.cos(rad),
+})
 
 // Watermark PDF (31 Agu 2026, WO Digital) - tempel logo Vista Teknik transparan di TENGAH tiap
 // halaman, proses full di browser (client-side, gak ada backend) pakai pdf-lib.
@@ -26,20 +34,11 @@ const dataUriToBytes = (dataUri: string): Uint8Array => {
   return bytes
 }
 
-export async function watermarkPdf(fileBytes: ArrayBuffer): Promise<{ blob: Blob; pageCount: number }> {
+export async function watermarkPdf(fileBytes: ArrayBuffer, revisionNote?: string): Promise<{ blob: Blob; pageCount: number }> {
   const pdfDoc = await PDFDocument.load(fileBytes)
   const logoBytes = dataUriToBytes(VISTA_LOGO_DATA_URI)
   const logoImage = await pdfDoc.embedPng(logoBytes)
   const logoRatio = logoImage.height / logoImage.width
-
-  // Geser watermark sedikit ke ATAS dari tengah (1 Sep 2026, permintaan setelah posisi tengah
-  // pas dikonfirmasi) - "atas" di sini relatif ke arah TAMPIL (displayed), bukan koordinat
-  // mentah, karena halaman-halaman ini punya rotasi. Diubah jadi vektor (0, shiftUp) lalu
-  // diputar pakai rumus rotasi yang SAMA kayak yang udah diverifikasi buat centering.
-  const rotateVec = (x: number, y: number, rad: number) => ({
-    x: x * Math.cos(rad) - y * Math.sin(rad),
-    y: x * Math.sin(rad) + y * Math.cos(rad),
-  })
 
   const pages = pdfDoc.getPages()
   pages.forEach((page) => {
@@ -73,6 +72,104 @@ export async function watermarkPdf(fileBytes: ArrayBuffer): Promise<{ blob: Blob
     })
   })
 
+  // Watermark keterangan revisi (6 Sep 2026) - HALAMAN PERTAMA SAJA, pojok kanan-atas, merah
+  // tebal. Posisi dihitung dari titik TENGAH halaman (sama teknik kompensasi rotasi dengan
+  // logo di atas: offset dari center, diputar ikut rotasi konten) - bukan formula sudut baru
+  // yang belum tervalidasi terhadap /Rotate halaman gambar CAD.
+  if (revisionNote && revisionNote.trim() && pages.length > 0) {
+    const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+    const page = pages[0]
+    const { width, height } = page.getSize()
+    const pageRotation = ((page.getRotation().angle % 360) + 360) % 360
+    const displayWidth = (pageRotation === 90 || pageRotation === 270) ? height : width
+    const displayHeight = (pageRotation === 90 || pageRotation === 270) ? width : height
+    const contentRotationDeg = pageRotation
+    const rad = (contentRotationDeg * Math.PI) / 180
+
+    const text = revisionNote.trim()
+    const fontSize = Math.max(11, Math.min(16, displayWidth * 0.015))
+    const textWidth = boldFont.widthOfTextAtSize(text, fontSize)
+    const textHeight = boldFont.heightAtSize(fontSize)
+    const marginRight = displayWidth * 0.04
+    const marginTop = displayHeight * 0.035
+
+    // Offset titik TENGAH teks dari titik tengah halaman, ke arah pojok kanan-atas tampilan.
+    const offsetX = displayWidth / 2 - marginRight - textWidth / 2
+    const offsetY = displayHeight / 2 - marginTop - textHeight / 2
+    const halfText = rotateVec(textWidth / 2, textHeight / 2, rad)
+    const centerOffset = rotateVec(offsetX, offsetY, rad)
+
+    page.drawText(text, {
+      x: width / 2 - halfText.x + centerOffset.x,
+      y: height / 2 - halfText.y + centerOffset.y,
+      size: fontSize,
+      font: boldFont,
+      color: rgb(0.75, 0, 0),
+      rotate: degrees(contentRotationDeg),
+    })
+  }
+
   const outBytes = await pdfDoc.save()
   return { blob: new Blob([outBytes as BlobPart], { type: 'application/pdf' }), pageCount: pages.length }
+}
+
+// Stempel "TIDAK BERLAKU" (6 Sep 2026) - ditempel ke file revisi LAMA begitu revisi baru
+// berhasil diupload (lihat useWoDigitalDocs.ts, uploadDoc()). Kotak border merah + teks miring
+// -12 derajat (gaya stempel dokumen resmi, bukan diagonal 45 derajat penuh) di TENGAH SETIAP
+// halaman, DI ATAS watermark logo yang sudah ada di file (file lama di-load apa adanya, logo
+// lama TETAP ada, cuma ditambah layer stempel). Sama teknik kompensasi rotasi kayak
+// watermarkPdf() - tilt -12 derajat digabung LANGSUNG ke contentRotationDeg, bukan rotasi
+// terpisah, biar tetap satu operasi drawRectangle/drawText per halaman.
+export async function stampTidakBerlaku(fileBytes: ArrayBuffer): Promise<Blob> {
+  const pdfDoc = await PDFDocument.load(fileBytes)
+  const boldFont = await pdfDoc.embedFont(StandardFonts.HelveticaBold)
+  const TEXT = 'TIDAK BERLAKU'
+  const TILT_DEG = -12
+  const red = rgb(0.75, 0, 0)
+
+  pdfDoc.getPages().forEach((page) => {
+    const { width, height } = page.getSize()
+    const pageRotation = ((page.getRotation().angle % 360) + 360) % 360
+    const displayWidth = (pageRotation === 90 || pageRotation === 270) ? height : width
+    const contentRotationDeg = pageRotation + TILT_DEG
+    const rad = (contentRotationDeg * Math.PI) / 180
+
+    const fontSize = Math.max(28, Math.min(64, displayWidth * 0.07))
+    const textWidth = boldFont.widthOfTextAtSize(TEXT, fontSize)
+    const textHeight = boldFont.heightAtSize(fontSize)
+    const padX = fontSize * 0.6
+    const padY = fontSize * 0.45
+    const boxWidth = textWidth + padX * 2
+    const boxHeight = textHeight + padY * 2
+
+    // Semua elemen dipusatkan PERSIS di titik tengah halaman (invarian kena rotasi apapun) -
+    // gak ada offset tambahan kayak watermark logo, biar stempel selalu di tengah walau ukuran
+    // halaman beda-beda.
+    const halfBox = rotateVec(boxWidth / 2, boxHeight / 2, rad)
+    const halfText = rotateVec(textWidth / 2, textHeight / 2, rad)
+
+    page.drawRectangle({
+      x: width / 2 - halfBox.x,
+      y: height / 2 - halfBox.y,
+      width: boxWidth,
+      height: boxHeight,
+      borderColor: red,
+      borderWidth: Math.max(3, fontSize * 0.09),
+      opacity: 0.65,
+      borderOpacity: 0.65,
+      rotate: degrees(contentRotationDeg),
+    })
+    page.drawText(TEXT, {
+      x: width / 2 - halfText.x,
+      y: height / 2 - halfText.y,
+      size: fontSize,
+      font: boldFont,
+      color: red,
+      opacity: 0.65,
+      rotate: degrees(contentRotationDeg),
+    })
+  })
+
+  const outBytes = await pdfDoc.save()
+  return new Blob([outBytes as BlobPart], { type: 'application/pdf' })
 }
