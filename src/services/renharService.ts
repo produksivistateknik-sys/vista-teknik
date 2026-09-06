@@ -27,7 +27,13 @@ export function releaseKomponenToRenhar(
 }
 
 export const renharService = {
-  async getAll() {
+  // range opsional (audit egress 6 Sep 2026) - renhar TERUS BERTAMBAH tiap hari kerja baru
+  // (2000+ baris & naik terus), tanpa batas tanggal ini jadi query PALING BOROS egress di
+  // seluruh app (~1MB/panggilan, dipanggil di HAMPIR SETIAP mount app + belasan titik refetch).
+  // Dipakai TrackingPekerja.tsx/RawSchedule.tsx buat fetch TAMBAHAN scoped kalau admin
+  // navigasi keluar window default (lihat useRenhar.ts) - TANPA parameter, behavior PERSIS
+  // SAMA seperti sebelumnya (fetch semua), jaga kompatibilitas kalau ada pemanggil lain nanti.
+  async getAll(range?: { from?: string; to?: string }) {
     // Supabase/PostgREST default-nya CUMA balikin maks 1000 baris per request tanpa .range()
     // eksplisit - renhar sekarang udah >1000 baris, jadi tanpa paginasi ini row2 di luar 1000
     // pertama (terpotong pas di-sort by tanggal ascending) GAK PERNAH masuk ke renharList sama
@@ -39,7 +45,10 @@ export const renharService = {
     let from = 0
     const pageSize = 1000
     while (true) {
-      const { data, error } = await supabase.from('renhar').select('*').order('tanggal', { ascending: true }).range(from, from + pageSize - 1)
+      let q = supabase.from('renhar').select('*').order('tanggal', { ascending: true })
+      if (range?.from) q = q.gte('tanggal', range.from)
+      if (range?.to) q = q.lte('tanggal', range.to)
+      const { data, error } = await q.range(from, from + pageSize - 1)
       if (error) throw new Error(error.message)
       all = all.concat(data ?? [])
       if (!data || data.length < pageSize) break

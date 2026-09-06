@@ -2,6 +2,7 @@
 import { renharService } from '../services/renharService'
 import { supabase } from '../lib/supabase'
 import { GLOBAL_DIRTY_RENHAR_IDS } from '../lib/globalState'
+import { getRenharWindowRange } from '../lib/dateHelpers'
 
 export function useRenhar() {
   const [data, setData] = useState<any[]>([])
@@ -12,7 +13,10 @@ export function useRenhar() {
     try {
       setLoading(true)
       setError(null)
-      const result = await renharService.getAll()
+      // Window default (audit egress 6 Sep 2026, lihat dateHelpers.ts) - bukan fetch semua
+      // histori lagi. RawSchedule.tsx & TrackingPekerja.tsx fetch tambahan sendiri kalau
+      // admin navigasi/pilih tanggal di luar window ini.
+      const result = await renharService.getAll(getRenharWindowRange())
       // refetch() nge-select ULANG semua baris - kalau ini nyala berbarengan sama tulisan lokal
       // yang lagi "dirty" (baru aja diupdate, misal abis klik Rilis), jangan sampai baris itu
       // ketimpa versi hasil select yang mungkin urutan sampainya di client gak sinkron sama commit

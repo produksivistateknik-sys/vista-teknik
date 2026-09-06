@@ -8,7 +8,8 @@ import {
 } from '../constants/panelTypes'
 import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty, markRawDirty } from '../lib/globalState'
-import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull } from '../lib/dateHelpers'
+import { renharService } from '../services/renharService'
+import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 
 // hitungProyeksiWiring DIPINDAH (5 Sep 2026) ke fcsService.ts biar bisa dipakai bareng
@@ -415,6 +416,29 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const LEBAR_KOLOM_TANGGAL=120;
   const tableScrollRef=useRef<HTMLDivElement>(null);
   const days=useMemo(()=>Array.from({length:44},(_,i)=>addDays(weekStart,i-HARI_SEBELUM_WEEKSTART)),[weekStart]);
+
+  // renhar TAMBAHAN (audit egress 6 Sep 2026) - prop `renhar` cuma window default 90 hari
+  // lalu/30 hari depan (dibagi bareng RencanaHarian/OutstandingView/TrackingPekerja, lihat
+  // useRenhar.ts). Klik "‹ Minggu Lalu" TANPA BATAS bisa nge-scroll window 44-hari (`days`)
+  // di atas KELUAR dari window itu - kalau iya, fetch tambahan KHUSUS rentang `days` yang
+  // lagi ditampilkan, digabung ke effectiveRenhar (dipakai gantiin SEMUA baca `renhar.filter/
+  // find` di bawah - bukan buat setRenhar/createRenhar/dst, itu tetap ke state global).
+  const renharWindow=useMemo(()=>getRenharWindowRange(),[]);
+  const [renharExtra,setRenharExtra]=useState<any[]>([]);
+  useEffect(()=>{
+    const rangeFrom=days[0],rangeTo=days[days.length-1];
+    const needsExtra=rangeFrom<renharWindow.from||rangeTo>renharWindow.to;
+    if(!needsExtra){setRenharExtra([]);return;}
+    let cancelled=false;
+    renharService.getAll({from:rangeFrom,to:rangeTo}).then(rows=>{if(!cancelled)setRenharExtra(rows);});
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[days[0],days[days.length-1],renharWindow]);
+  const effectiveRenhar=useMemo(()=>{
+    if(renharExtra.length===0)return renhar;
+    const idsInExtra=new Set(renharExtra.map((r:any)=>r.id));
+    return[...renharExtra,...renhar.filter((r:any)=>!idsInExtra.has(r.id))];
+  },[renhar,renharExtra]);
   useEffect(()=>{
     // Posisikan scroll persis di kolom weekStart (bukan di ujung kiri window yang sekarang
     // mundur 14 hari) - biar tampilan awal/abis klik Minggu Lalu-Depan tetap sama kayak dulu.
@@ -911,7 +935,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak});
     if(mode==="move"){
       // Sync renhar wp="BUSBAR" - sama logic split/gabung kayak proses lain (lihat confirmDrag).
-      const renharBusbar=renhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
+      const renharBusbar=effectiveRenhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
       for(const rh of renharBusbar){
         const komponenLama=rh.komponen||[];
         const komponenPindah=komponenLama.filter((k:string)=>kodeDrag.includes(k));
@@ -1019,7 +1043,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       // (yang baca renhar.tanggal langsung dari DB) masih nampilin di tanggal LAMA walau
       // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
       // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
-      const renharUntukDipindah=renhar.filter((r:any)=>String(r.raw_id||r.rawId)===String(rawId)&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
+      const renharUntukDipindah=effectiveRenhar.filter((r:any)=>String(r.raw_id||r.rawId)===String(rawId)&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
       for(const r of renharUntukDipindah){
         const entry=entries.find((e:any)=>e.wp===r.wp);
         if(!entry)continue;
@@ -1093,7 +1117,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const toUpdate=rawData.filter(r=>(r.panel_id||r.panelId)===panelId);
     toUpdate.forEach(r=>markRawDirty(r.id));
     setRawData(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
-    renhar.filter((r:any)=>(r.panel_id||r.panelId)===panelId).forEach((r:any)=>markRenharDirty(r.id));
+    effectiveRenhar.filter((r:any)=>(r.panel_id||r.panelId)===panelId).forEach((r:any)=>markRenharDirty(r.id));
     setRenhar(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
     for(const r of toUpdate){ await updateRaw(r.id,{prioritas:val}); }
   };
@@ -1160,7 +1184,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const openAssign=(task)=>{
     const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
-    const existing=renhar.find(r=>String(r.raw_id||r.rawId)===String(task.rawId)&&r.wp===task.wp&&r.tanggal===task.tanggal);
+    const existing=effectiveRenhar.find((r:any)=>String(r.raw_id||r.rawId)===String(task.rawId)&&r.wp===task.wp&&r.tanggal===task.tanggal);
     setSelPekerja(existing?.pekerja||[]);
     setAssignModal({task,divisi,existing:existing||null,isExisting:!!existing});
   };

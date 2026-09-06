@@ -1,7 +1,8 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { renharService } from '../services/renharService'
 import { PANEL_TYPES, DIVISI_CONFIG, OPERATOR_ROLES, PROSES_COLOR, WP_COLOR } from '../constants/panelTypes'
-import { fmtDate } from '../lib/dateHelpers'
+import { fmtDate, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Btn } from './ui/Primitives'
 
 export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
@@ -15,17 +16,50 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   const [timerData,setTimerData]=useState<any[]>([]);
   const [checkpointLogData,setCheckpointLogData]=useState<any[]>([]);
 
+  // Rentang efektif buat query (audit egress 6 Sep 2026) - dateFrom/dateTo kosong (default,
+  // "Semua periode") dibulatkan ke window renhar bersama (RENHAR_WINDOW_DAYS_BACK/FORWARD di
+  // dateHelpers.ts) SUPAYA gak fetch histori tak terbatas tiap admin buka halaman ini tanpa
+  // milih tanggal - laporan histori BENERAN lama (>90 hari lalu) tetap bisa diambil, TINGGAL
+  // isi date-picker-nya, itu men-trigger fetch tambahan di bawah.
+  const renharWindow=useMemo(()=>getRenharWindowRange(),[]);
+  const effectiveFrom=dateFrom||renharWindow.from;
+  const effectiveTo=dateTo||renharWindow.to;
+
+  // renhar TAMBAHAN (6 Sep 2026) - `renhar` prop cuma window default (dibagi bareng komponen
+  // lain, lihat useRenhar.ts). Kalau admin pilih tanggal DI LUAR window itu, fetch tambahan
+  // KHUSUS rentang itu (query terpisah, gak nyentuh state global) - digabung cuma buat
+  // perhitungan lokal di halaman ini, lihat effectiveRenhar di bawah.
+  const [renharExtra,setRenharExtra]=useState<any[]>([]);
+  useEffect(()=>{
+    const needsExtra=effectiveFrom<renharWindow.from||effectiveTo>renharWindow.to;
+    if(!needsExtra){setRenharExtra([]);return;}
+    let cancelled=false;
+    renharService.getAll({from:effectiveFrom,to:effectiveTo}).then(rows=>{if(!cancelled)setRenharExtra(rows);});
+    return()=>{cancelled=true;};
+  },[effectiveFrom,effectiveTo,renharWindow]);
+  const effectiveRenhar=useMemo(()=>{
+    if(renharExtra.length===0)return renhar;
+    const idsInExtra=new Set(renharExtra.map((r:any)=>r.id));
+    return[...renharExtra,...renhar.filter((r:any)=>!idsInExtra.has(r.id))];
+  },[renhar,renharExtra]);
+
   // Supabase/PostgREST default-nya cuma balikin maks 1000 baris tanpa .range() - progress_
   // checkpoint_log dan fcs_timer_kerja sudah ribuan baris (tumbuh tiap kali ada yang simpan
   // qty/progress atau mulai/selesai timer di SELURUH pabrik), jadi KPI di halaman ini kemungkinan
   // sudah kepotong diam-diam sebelum fix ini - persis kelas bug renhar/activity_log yang sudah
   // pernah kejadian.
-  const fetchAllRows=async(table:string,select:string)=>{
+  // dateRange opsional (audit egress 6 Sep 2026) - fcs_timer_kerja & progress_checkpoint_log
+  // JUGA terus bertambah tiap ada yang mulai/selesai timer atau simpan progress di SELURUH
+  // pabrik, sama kelasnya kayak renhar. Di-scope ke effectiveFrom/effectiveTo (kolom "tanggal"
+  // di kedua tabel) - refetch tiap rentang itu berubah (lihat useEffect di bawah).
+  const fetchAllRows=async(table:string,select:string,dateRange?:{from:string,to:string})=>{
     let all:any[]=[];
     let from=0;
     const step=1000;
     while(true){
-      const{data}=await supabase.from(table as any).select(select).range(from,from+step-1);
+      let q=supabase.from(table as any).select(select);
+      if(dateRange){q=q.gte("tanggal",dateRange.from).lte("tanggal",dateRange.to);}
+      const{data}=await q.range(from,from+step-1);
       if(!data)break;
       all=all.concat(data);
       if(data.length<step)break;
@@ -52,20 +86,20 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   };
 
   useEffect(()=>{
-    fetchAllRows("progress_checkpoint_log","*").then(setCheckpointLogData);
+    fetchAllRows("progress_checkpoint_log","*",{from:effectiveFrom,to:effectiveTo}).then(setCheckpointLogData);
     const ch=supabase.channel("realtime-checkpoint-log-tracking")
       .on("postgres_changes",{event:"*",schema:"public",table:"progress_checkpoint_log"},(payload:any)=>mergeRow(setCheckpointLogData,payload))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[]);
+  },[effectiveFrom,effectiveTo]);
 
   useEffect(()=>{
-    fetchAllRows("fcs_timer_kerja","*").then(setTimerData);
+    fetchAllRows("fcs_timer_kerja","*",{from:effectiveFrom,to:effectiveTo}).then(setTimerData);
     const ch=supabase.channel("realtime-timer-kerja-tracking")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},(payload:any)=>mergeRow(setTimerData,payload))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[]);
+  },[effectiveFrom,effectiveTo]);
 
   const getKpiPerPekerja=(pkrId:number)=>{
     const sesiPekerja=timerData.filter((t:any)=>{
@@ -86,9 +120,10 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     .filter(([k])=>OPERATOR_ROLES.includes(k))
     .map(([k,v]:any)=>({key:k,...v}));
 
-  // Ambil tugas pekerja dari renhar
+  // Ambil tugas pekerja dari renhar (effectiveRenhar - window default + tambahan kalau admin
+  // pilih tanggal di luar window, lihat definisi di atas)
   const getTugasPerPekerja=(pkrId:number)=>{
-    return renhar.filter(r=>(r.pekerja||[]).includes(pkrId));
+    return effectiveRenhar.filter((r:any)=>(r.pekerja||[]).includes(pkrId));
   };
 
   // Filter tugas berdasarkan tanggal
@@ -105,7 +140,7 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
   // Untuk task lama (cuma pakai field pekerja), tetap 1 entry per komponen di task itu
   const getKomponenIndividualPerPekerja=(pkrId:number)=>{
     const hasil:any[]=[];
-    renhar.forEach((t:any)=>{
+    effectiveRenhar.forEach((t:any)=>{
       const ppk=t.pekerja_per_komponen||{};
       const punyaPpk=Object.keys(ppk).length>0;
       if(punyaPpk){

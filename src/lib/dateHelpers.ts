@@ -30,6 +30,18 @@ export function pBg(v){
   if(v>0)return"#f3f0ff";    return"#f1f5f9";
 }
 export function addDays(s,n){ const d=new Date(s); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
+// Window default renhar (audit egress 6 Sep 2026) - useRenhar.ts fetch awal (dipakai bersama
+// RencanaHarian/RawSchedule/OutstandingView/TrackingPekerja) dibatasi ke rentang ini, bukan
+// SEMUA histori (renhar terus bertambah tiap hari kerja baru, gak pernah menyusut). Konstanta
+// di sini (bukan di-hardcode masing-masing tempat) biar RawSchedule.tsx & TrackingPekerja.tsx
+// yang butuh navigasi/laporan KELUAR window ini selalu tau persis kapan harus fetch tambahan
+// sendiri - dua sisi (mana yang di-fetch awal vs mana yang perlu fetch tambahan) gak bisa
+// "kesplit" beda angka.
+export const RENHAR_WINDOW_DAYS_BACK=90;
+export const RENHAR_WINDOW_DAYS_FORWARD=30;
+export function getRenharWindowRange(){
+  return{from:addDays(getLocalDateStr(),-RENHAR_WINDOW_DAYS_BACK),to:addDays(getLocalDateStr(),RENHAR_WINDOW_DAYS_FORWARD)};
+}
 // "Hari kerja" sisi admin - jam 00:00-06:59 masih dihitung hari yang sama dengan shift
 // sebelumnya (konsisten sama logic hariKerjaAwal di Vista Pekerja utk shift 2 yang lewat
 // tengah malam), tapi disederhanakan jadi aturan universal (gak gantung status shift
