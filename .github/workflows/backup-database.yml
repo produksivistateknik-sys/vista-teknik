@@ -136,9 +136,14 @@ jobs:
 
       - name: Ping healthchecks.io (dead man's switch, opsional)
         if: success()
+        env:
+          RAW_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
         run: |
-          if [ -n "${{ secrets.HEALTHCHECKS_PING_URL }}" ]; then
-            curl -fsS -m 10 "${{ secrets.HEALTHCHECKS_PING_URL }}" || echo "Ping healthchecks.io gagal (bukan fatal, backup tetap sukses)"
+          # Trim whitespace/newline dari secret (6 Sep 2026: paste dari browser sering
+          # ikut nempel newline di akhir, bikin curl "URL rejected: Malformed input").
+          PING_URL=$(printf '%s' "$RAW_PING_URL" | tr -d '\n\r' | xargs)
+          if [ -n "$PING_URL" ]; then
+            curl -fsS -m 10 "$PING_URL" || echo "Ping healthchecks.io gagal (bukan fatal, backup tetap sukses)"
           else
             echo "HEALTHCHECKS_PING_URL belum diset - lewati step ini."
           fi
