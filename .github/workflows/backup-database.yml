@@ -61,8 +61,20 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
-      - name: Install PostgreSQL client (pg_dump)
-        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+      # Server Supabase pakai Postgres 17.6 (dikonfirmasi dari error run pertama, 6 Sep 2026:
+      # "aborting because of server version mismatch"). Ubuntu 24.04 cuma nyediain pg_dump v16
+      # di repo default-nya, dan pg_dump MENOLAK dump dari server yang lebih baru dari dirinya -
+      # jadi wajib tarik pg_dump v17 dari repo resmi PGDG (apt.postgresql.org), bukan cuma
+      # `apt-get install postgresql-client` biasa.
+      - name: Install PostgreSQL client 17 (match versi server Supabase)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends wget ca-certificates gnupg lsb-release
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo wget -q -O /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt $(lsb_release -cs)-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client-17
 
       - name: Dump database (Session Mode Pooler, port 5432)
         env:
