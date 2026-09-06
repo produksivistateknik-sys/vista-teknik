@@ -104,6 +104,18 @@ jobs:
             exit 1
           fi
 
+      # DEBUG SEMENTARA (6 Sep 2026) - cek panjang string secret buat deteksi whitespace/newline
+      # tersembunyi tanpa membocorkan isinya (angka panjang doang, bukan isi secret). Hapus
+      # step ini setelah "Invalid endpoint" ke-diagnosis.
+      - name: Debug panjang secret R2 (sementara)
+        env:
+          ACC: ${{ secrets.R2_ACCOUNT_ID }}
+          BUCKET: ${{ secrets.R2_BACKUP_BUCKET_NAME }}
+        run: |
+          echo "Panjang R2_ACCOUNT_ID: ${#ACC}"
+          echo "Panjang R2_BACKUP_BUCKET_NAME: ${#BUCKET}"
+          echo "Endpoint yang akan dipakai: https://${ACC}.r2.cloudflarestorage.com"
+
       - name: Upload ke R2 (bucket backup terpisah, PRIVATE)
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
