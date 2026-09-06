@@ -76,6 +76,10 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y --no-install-recommends postgresql-client-17
 
+      # Panggil binary v17 pakai PATH LENGKAP (/usr/lib/postgresql/17/bin/pg_dump), BUKAN
+      # cuma "pg_dump" - dikonfirmasi dari 2 run gagal (6 Sep 2026): postgresql-client-17
+      # sudah ke-install, tapi `update-alternatives` cuma nge-switch `psql`, bukan `pg_dump` -
+      # command polos "pg_dump" masih resolve ke v16.15 yang sudah ada bawaan image runner.
       - name: Dump database (Session Mode Pooler, port 5432)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -83,7 +87,7 @@ jobs:
           set -euo pipefail
           FILENAME="vista-teknik-backup-$(date -u +%Y%m%d-%H%M%S).sql"
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
-          pg_dump "$DB_CONN" --no-owner --no-privileges --format=plain --file="$FILENAME"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_CONN" --no-owner --no-privileges --format=plain --file="$FILENAME"
           echo "Dump selesai: $FILENAME ($(stat -c%s "$FILENAME") bytes)"
 
       - name: Validasi dump (bukan file kosong/korup sebelum diupload)
