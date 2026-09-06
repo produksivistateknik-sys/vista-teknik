@@ -1,0 +1,128 @@
+name: Backup Database Harian
+
+# Backup otomatis harian ke Cloudflare R2 - pengganti backup harian otomatis Supabase Pro
+# (evaluasi downgrade Pro->Free, Sep 2026 - Free plan TIDAK punya backup otomatis sama
+# sekali). JANGAN dianggap "aman terpasang" tanpa pernah dicoba - WAJIB tes RESTORE dump
+# ke database kosong/terpisah minimal sekali setelah run pertama sukses.
+#
+# JADWAL: 02:00 WIB (jam sepi produksi) = 19:00 UTC HARI SEBELUMNYA (WIB = UTC+7). Kalau
+# mau ubah jam WIB: jam_UTC = jam_WIB - 7 (mundur ke tanggal sebelumnya kalau hasilnya
+# negatif, cron GitHub Actions pakai UTC selalu).
+#
+# KONEKSI: Session Mode Pooler, PORT 5432 (BUKAN Transaction Mode port 6543) - pg_dump
+# butuh prepared statements yang TIDAK didukung Transaction Mode (bakal gagal kalau salah
+# pakai). Session Mode juga jalan di jaringan IPv4-only (runner GitHub Actions) - Direct
+# Connection (db.<ref>.supabase.co) butuh IPv6 yang gak selalu tersedia di CI. Dikonfirmasi
+# dari dokumentasi resmi: https://supabase.com/docs/guides/database/connecting-to-postgres
+#
+# DAMPAK KE APP LIVE: pg_dump cuma ambil ACCESS SHARE lock (paling ringan, TIDAK nge-block
+# read/write app) lewat 1 snapshot transaksi konsisten - database ~36MB per Sep 2026, dump
+# harusnya kelar dalam hitungan detik. Jam 2 pagi dipilih sebagai lapis aman tambahan,
+# bukan karena benar-benar dibutuhkan buat masalah lock.
+#
+# EGRESS: pg_dump narik data lewat koneksi database - ini JUGA masuk hitungan Database
+# Egress Supabase (bukan gratis). Estimasi ~36MB x 30 hari/bulan =~1GB/bulan tambahan,
+# akan MEMBESAR seiring database tumbuh - WAJIB dihitung eksplisit di evaluasi downgrade,
+# jangan sampai kelewat pas hitung margin aman ke limit 5GB Free plan.
+#
+# GITHUB AUTO-DISABLE 60 HARI: kalau repo ini gak ada commit/aktivitas 60 hari berturut-
+# turut, GitHub OTOMATIS men-nonaktifkan scheduled workflow ini - SILENT, gak ada
+# notifikasi apapun. Dead man's switch healthchecks.io (step terakhir, opsional - butuh
+# secret HEALTHCHECKS_PING_URL) bantu deteksi ini: begitu ping berhenti masuk lebih dari
+# durasi grace period yang di-set di healthchecks.io, otomatis kirim email peringatan -
+# termasuk kalau penyebabnya workflow di-disable (bukan cuma gagal jalan).
+#
+# RETENSI: dump lebih tua dari RETENTION_DAYS hari dihapus otomatis dari R2 tiap run
+# sukses, biar storage gak membengkak tanpa batas.
+#
+# SECRETS yang WAJIB ada di GitHub (Settings -> Secrets and variables -> Actions):
+#   SUPABASE_DB_PASSWORD       - password koneksi database (Settings > Database di Supabase)
+#   R2_ACCOUNT_ID              - account ID Cloudflare (boleh sama dgn punya bucket foto)
+#   R2_BACKUP_BUCKET_NAME      - nama bucket R2 BARU, KHUSUS backup, PRIVATE (jangan pernah
+#                                 aktifkan Public Access/custom domain di bucket ini - beda
+#                                 dari bucket foto yang memang publik)
+#   R2_BACKUP_ACCESS_KEY_ID    - dari API token R2 BARU, scope "Specific bucket" ke bucket
+#                                 backup ini saja (jangan reuse token bucket foto)
+#   R2_BACKUP_SECRET_ACCESS_KEY
+#   HEALTHCHECKS_PING_URL      - OPSIONAL, dari https://healthchecks.io (bikin 1 check baru,
+#                                 salin Ping URL-nya) - kalau belum diisi, step terakhir
+#                                 cuma dilewati diam-diam (gak bikin workflow gagal).
+
+on:
+  schedule:
+    - cron: '0 19 * * *'  # 19:00 UTC = 02:00 WIB (hari berikutnya)
+  workflow_dispatch: {}    # tombol manual "Run workflow" di tab Actions - buat tes kapan saja
+
+env:
+  RETENTION_DAYS: 14
+  DB_CONN: postgresql://postgres.aoxhxfsqjnquwsxjrsmo@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install PostgreSQL client (pg_dump)
+        run: sudo apt-get update -qq && sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Dump database (Session Mode Pooler, port 5432)
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          set -euo pipefail
+          FILENAME="vista-teknik-backup-$(date -u +%Y%m%d-%H%M%S).sql"
+          echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
+          pg_dump "$DB_CONN" --no-owner --no-privileges --format=plain --file="$FILENAME"
+          echo "Dump selesai: $FILENAME ($(stat -c%s "$FILENAME") bytes)"
+
+      - name: Validasi dump (bukan file kosong/korup sebelum diupload)
+        run: |
+          set -euo pipefail
+          SIZE=$(stat -c%s "$FILENAME")
+          echo "Ukuran dump: $SIZE bytes"
+          if [ "$SIZE" -lt 1000000 ]; then
+            echo "::error::Dump cuma $SIZE bytes - jauh lebih kecil dari perkiraan (DB ~36MB), kemungkinan gagal/korup. Upload DIBATALKAN."
+            exit 1
+          fi
+          if ! head -c 200 "$FILENAME" | grep -q "PostgreSQL database dump"; then
+            echo "::error::File dump tidak punya header pg_dump yang valid. Upload DIBATALKAN."
+            exit 1
+          fi
+
+      - name: Upload ke R2 (bucket backup terpisah, PRIVATE)
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          aws s3 cp "$FILENAME" "s3://${{ secrets.R2_BACKUP_BUCKET_NAME }}/$FILENAME" \
+            --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          echo "Upload sukses: $FILENAME"
+
+      - name: Hapus dump lebih tua dari RETENTION_DAYS hari
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: |
+          set -euo pipefail
+          ENDPOINT="https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
+          BUCKET="${{ secrets.R2_BACKUP_BUCKET_NAME }}"
+          CUTOFF=$(date -u -d "-${RETENTION_DAYS} days" +%Y-%m-%dT%H:%M:%S)
+          aws s3api list-objects-v2 --endpoint-url "$ENDPOINT" --bucket "$BUCKET" --output json \
+            | jq -r --arg cutoff "$CUTOFF" '.Contents[]? | select(.LastModified < $cutoff) | .Key' \
+            | while IFS= read -r KEY; do
+                if [ -n "$KEY" ]; then
+                  echo "Menghapus dump lama (>${RETENTION_DAYS} hari): $KEY"
+                  aws s3 rm "s3://$BUCKET/$KEY" --endpoint-url "$ENDPOINT"
+                fi
+              done
+
+      - name: Ping healthchecks.io (dead man's switch, opsional)
+        if: success()
+        run: |
+          if [ -n "${{ secrets.HEALTHCHECKS_PING_URL }}" ]; then
+            curl -fsS -m 10 "${{ secrets.HEALTHCHECKS_PING_URL }}" || echo "Ping healthchecks.io gagal (bukan fatal, backup tetap sukses)"
+          else
+            echo "HEALTHCHECKS_PING_URL belum diset - lewati step ini."
+          fi
