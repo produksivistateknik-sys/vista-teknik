@@ -107,15 +107,24 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   };
   useEffect(()=>{
     fetchAll();
-    // Realtime work_orders/panels (REVISI 3 Sep 2026) - dulu cuma dengar work_instructions/
-    // wi_revisions (khusus dokumen). Sekarang WO/panel bisa dibuat/diedit dari halaman ini SENDIRI
-    // (Engineering) DAN dari Manajemen WO (admin) - keduanya harus saling kelihatan live.
+  },[]);
+  // Filter server-side UPDATE/DELETE panels by id=in.(...) (audit egress 6 Sep 2026) - dulu
+  // dengar event:"*" TANPA filter di panels (select("*") ikut narik checklist, bisa puluhan KB
+  // per baris) - panel APAPUN berubah di seluruh pabrik trigger refetch semua WO+panel di sini.
+  // INSERT panels TETAP tanpa filter (panel baru belum ada di panelIdsKey). work_orders TETAP
+  // tanpa filter (row jauh lebih kecil, jumlah WO juga jauh lebih sedikit drpd panel).
+  const panelIdsKey=useMemo(()=>[...new Set(panelsAll.map((p:any)=>p.id))].sort((a,b)=>a-b).join(","),[panelsAll]);
+  useEffect(()=>{
+    if(!panelIdsKey)return;
+    const filterClause=panelIdsKey.split(",").length<=100?`id=in.(${panelIdsKey})`:undefined;
     const ch=supabase.channel("realtime-wo-digital-admin")
       .on("postgres_changes",{event:"*",schema:"public",table:"work_orders"},()=>fetchAll(true))
-      .on("postgres_changes",{event:"*",schema:"public",table:"panels"},()=>fetchAll(true))
+      .on("postgres_changes",filterClause?{event:"UPDATE",schema:"public",table:"panels",filter:filterClause}:{event:"UPDATE",schema:"public",table:"panels"},()=>fetchAll(true))
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>fetchAll(true))
+      .on("postgres_changes",filterClause?{event:"DELETE",schema:"public",table:"panels",filter:filterClause}:{event:"DELETE",schema:"public",table:"panels"},()=>fetchAll(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[]);
+  },[panelIdsKey]);
 
   // Qty-per-komponen editor (reuse usePanelQtyEditor.ts - SAMA PERSIS logic Manajemen WO, lihat
   // komentar di file hook-nya). getPanel/getWoContext/applyChecklist di-bind ke panelsAll flat

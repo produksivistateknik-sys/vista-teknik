@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useMemo } from 'react'
 import { workOrderService } from '../services/workOrderService'
 import { supabase } from '../lib/supabase'
 
@@ -33,7 +33,30 @@ export function useWorkOrders() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'work_orders' },
         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
-      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'panels' },
+      .subscribe()
+    return () => { supabase.removeChannel(channel) }
+  }, [fetch])
+
+  // Channel TERPISAH khusus panels (audit egress 6 Sep 2026) - dulu digabung 1 channel sama
+  // work_orders TANPA filter, jadi panel APAPUN berubah di seluruh pabrik (checklist bisa
+  // puluhan KB per baris) di-broadcast ke SEMUA admin/engineering yang lagi buka app, disaring
+  // belakangan di client (bytes-nya udah kepalang terkirim). UPDATE & DELETE di-filter server-
+  // side ke id panel yang LAGI ditampilkan (channel dibuat ULANG cuma kalau daftar panel itu
+  // sendiri berubah - bukan tiap checklist-nya berubah, jadi gak resubscribe tiap keystroke).
+  // INSERT TETAP tanpa filter (panel baru belum ada di panelIdsKey, gak bisa difilter by ID yang
+  // belum ada - tapi INSERT jauh lebih jarang drpd UPDATE qty/pct tiap keystroke operator).
+  const panelIdsKey = useMemo(() => {
+    const ids = new Set<number>()
+    data.forEach((wo: any) => (wo.panels || []).forEach((p: any) => { if (p?.id != null) ids.add(p.id) }))
+    return [...ids].sort((a, b) => a - b).join(',')
+  }, [data])
+
+  useEffect(() => {
+    if (!panelIdsKey) return
+    const filterClause = panelIdsKey.split(',').length <= 100 ? `id=in.(${panelIdsKey})` : undefined
+    const channel = supabase
+      .channel('realtime-wo-panels')
+      .on('postgres_changes', filterClause ? { event: 'UPDATE', schema: 'public', table: 'panels', filter: filterClause } : { event: 'UPDATE', schema: 'public', table: 'panels' },
         (payload) => {
           // Ikut nge-stamp alias noPnl (camelCase) dari no_pnl (DB) - kalau enggak, field ini basi
           // habis event realtime apapun ke panel itu (misal generate FCS nulis synced_proses),
@@ -56,7 +79,7 @@ export function useWorkOrders() {
           }))
         }
       )
-      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'panels' },
+      .on('postgres_changes', filterClause ? { event: 'DELETE', schema: 'public', table: 'panels', filter: filterClause } : { event: 'DELETE', schema: 'public', table: 'panels' },
         (payload) => {
           setData(prev => prev.map(wo => ({
             ...wo,
@@ -66,7 +89,7 @@ export function useWorkOrders() {
       )
       .subscribe()
     return () => { supabase.removeChannel(channel) }
-  }, [fetch])
+  }, [panelIdsKey])
 
   const getUname = () => {
     const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
