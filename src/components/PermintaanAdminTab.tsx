@@ -149,12 +149,17 @@ export function PermintaanAdminTab({ user }: any) {
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
                 {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({grouped[divisi].length})</span>
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              {/* Grid (bukan flex-column) - pola sama KendalaInbox.tsx (halaman SYSTEM lain yang
+                  juga list kartu actionable buat admin). flex-column bikin card ikut stretch
+                  100% lebar parent padahal isinya sedikit; grid+minmax cuma selebar kontennya,
+                  otomatis multi-kolom di layar lebar. 320px (bukan 220px kayak KendalaInbox) -
+                  card ini lebih banyak konten (input qty + 2 tombol berdampingan). */}
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 10 }}>
                 {grouped[divisi].map((it: any) => {
                   const isProcessing = processingId === it.id
                   return (
-                    <Card key={it.id} style={{ padding: '14px 16px', borderColor: '#fde68a' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10, gap: 8, flexWrap: 'wrap' }}>
+                    <Card key={it.id} style={{ padding: '12px 14px', borderColor: '#fde68a' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
                         <div style={{ minWidth: 0 }}>
                           <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen}</div>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
@@ -166,7 +171,7 @@ export function PermintaanAdminTab({ user }: any) {
                         </div>
                         <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '8px 10px', marginBottom: 10, flexWrap: 'wrap' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px', marginBottom: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Qty diminta:</span>
                         <input type="number" min="0" value={qtyEdit[it.id] ?? String(it.qty)}
                           onChange={(e: any) => setQtyEdit(prev => ({ ...prev, [it.id]: e.target.value }))}
