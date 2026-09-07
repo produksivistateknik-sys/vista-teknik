@@ -221,6 +221,30 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return{names,tanggal:terbaru.tanggal};
   };
 
+  // FALLBACK KHUSUS PASANG KOMPONEN (7 Sep 2026) - checklist.pasangKomponenTahap[*].lastOperator /
+  // pasangKomponenLastOperator diisi lewat updatePctLive di KomponenPasangView.tsx (Vista Pekerja),
+  // dipakai operator klik step progress LANGSUNG tanpa lewat "Simpan Progress" (yang baru nulis ke
+  // progress_checkpoint_log). Komponen tahap (Box Control/Pintu) bisa dikerjakan WIRING & ASSEMBLING
+  // oleh orang berbeda - ambil KEDUANYA (dedup) biar gak nyamarin salah satu.
+  const getPasangKomponenLiveOperatorNames=(cl:any):string[]=>{
+    if(!cl)return[];
+    if(cl.pasangKomponenTahap){
+      return[...new Set(Object.values(cl.pasangKomponenTahap).map((t:any)=>t?.lastOperator?.nama).filter(Boolean))] as string[];
+    }
+    return cl.pasangKomponenLastOperator?.nama?[cl.pasangKomponenLastOperator.nama]:[];
+  };
+  // FALLBACK TERAKHIR, APPROKSIMASI (7 Sep 2026) - fotoPemasangan.uploaded_by (upload foto terakhir)
+  // dipakai CUMA kalau ke-5 sumber lain kosong total (data lama sebelum lastOperator ada). Ini BUKAN
+  // identitas operator yang pasti - galeri foto 1 array dipakai BERSAMA WIRING & ASSEMBLING, jadi
+  // uploader terakhir belum tentu yang ngerjain tahap yang lagi ditampilin. Ditandai beda di UI
+  // (badge abu-abu + ikon kamera) biar planner gak salah kira ini data pasti.
+  const getPasangKomponenFotoOperatorName=(cl:any):string|null=>{
+    const foto=cl?.fotoPemasangan;
+    if(!foto||foto.length===0)return null;
+    const terbaru=[...foto].sort((a:any,b:any)=>String(b.uploaded_at||"").localeCompare(String(a.uploaded_at||"")))[0];
+    return terbaru?.uploaded_by||null;
+  };
+
   // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar label durasi "Sedang
   // Dikerjakan (X menit)" keliatan jalan live - sebelumnya beku, cuma keupdate kalau ada
   // perubahan lain di tabel fcs_timer_kerja (start/stop timer manapun). Interval cuma nyala
@@ -714,14 +738,23 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // operator gak pernah keliatan kosong/gak jelas padahal ada riwayatnya -
                         // (3) kalau fcs_timer_kerja gak punya baris SAMA SEKALI (progress dikunci
                         // tanpa timer), fallback ke pekerja_nama di progress_checkpoint_log -
-                        // (4) fallback terakhir ke assignment planner (pekerja_per_komponen) kalau
-                        // gak ada riwayat apapun sama sekali.
+                        // (4) KHUSUS PASANG KOMPONEN (7 Sep 2026): fallback ke lastOperator dari klik
+                        // step live (belum sempat "Simpan Progress") - lihat getPasangKomponenLiveOperatorNames -
+                        // (5) fallback ke assignment planner (pekerja_per_komponen) -
+                        // (6) TERAKHIR, approksimasi: uploader foto pemasangan terakhir (data lama
+                        // sebelum poin 4 ada) - lihat getPasangKomponenFotoOperatorName.
                         const operatorTimerKode=getOperatorNamesForKode(t.panelId,kode,t.proses);
                         const fallbackOp=operatorTimerKode.length===0?getFallbackOperatorForKode(t.panelId,kode,t.proses):null;
                         const checkpointOp=(operatorTimerKode.length===0&&(!fallbackOp||fallbackOp.names.length===0))?getCheckpointOperatorForKode(t.panelId,kode,t.proses):null;
                         const lanjutanOp=(fallbackOp&&fallbackOp.names.length>0)?fallbackOp:checkpointOp;
                         const isLanjutan=operatorTimerKode.length===0&&!!lanjutanOp&&lanjutanOp.names.length>0;
-                        const workersKode=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?lanjutanOp!.names:opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean));
+                        const namesFromTimerChain=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?lanjutanOp!.names:[]);
+                        const clKode=panelData?.checklist?.[kode];
+                        const liveOpNames=t.proses==="PASANG KOMPONEN"&&namesFromTimerChain.length===0?getPasangKomponenLiveOperatorNames(clKode):[];
+                        const namesFromPlanner=namesFromTimerChain.length===0&&liveOpNames.length===0?opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean):[];
+                        const fotoOpName=t.proses==="PASANG KOMPONEN"&&namesFromTimerChain.length===0&&liveOpNames.length===0&&namesFromPlanner.length===0?getPasangKomponenFotoOperatorName(clKode):null;
+                        const isFotoApprox=namesFromTimerChain.length===0&&liveOpNames.length===0&&namesFromPlanner.length===0&&!!fotoOpName;
+                        const workersKode=namesFromTimerChain.length>0?namesFromTimerChain:liveOpNames.length>0?liveOpNames:namesFromPlanner.length>0?namesFromPlanner:isFotoApprox?[fotoOpName as string]:[];
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return(
                           <tr key={ti+"-"+kode}>
@@ -757,7 +790,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
                               ):workersKode.length>0?(
                                 <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                                  {workersKode.map((n:string)=>(<span key={n} style={{background:isLanjutan?"#f8fafc":"#eff6ff",border:isLanjutan?"1px solid #e2e8f0":"1px solid #bfdbfe",color:isLanjutan?"#64748b":"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {n}</span>))}
+                                  {workersKode.map((n:string)=>(<span key={n}
+                                    title={isFotoApprox?"Perkiraan dari uploader foto pemasangan terakhir - bukan data operator yang pasti":undefined}
+                                    style={{background:isFotoApprox?"#f8fafc":isLanjutan?"#f8fafc":"#eff6ff",border:isFotoApprox?"1px dashed #cbd5e1":isLanjutan?"1px solid #e2e8f0":"1px solid #bfdbfe",color:isFotoApprox?"#94a3b8":isLanjutan?"#64748b":"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
+                                    {isFotoApprox?"📷":"👤"} {n}
+                                  </span>))}
                                   {isLanjutan&&<span title={"Terakhir ngerjain "+fmtShort(lanjutanOp!.tanggal!)+", belum ada yang mulai lagi hari ini"} style={{fontSize:9,color:"#94a3b8",fontStyle:"italic"}}>lanjutan {fmtShort(lanjutanOp!.tanggal!)}</span>}
                                 </div>
                               ):digeserKeTanggal?(
