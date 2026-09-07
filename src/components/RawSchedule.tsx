@@ -1693,17 +1693,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center",cursor:isDraggableBusbar?"grab":"pointer",padding:"3px",borderRadius:6}}>
                                 {busbarEntries.map((b:string)=>{
                                   const jejakTujuan=busbarJejakHariIni[b];
-                                  const pctB=checklistForBusbar[b]?.progress?.BUSBAR||0;
+                                  // Date-aware (7 Sep 2026, konsisten sama fix Rencana Harian & chip
+                                  // komponen non-BUSBAR di modal bawah) - dulu baca progress.BUSBAR mentah
+                                  // (bukan snapshot per-tanggal `d`), kelas bug sama yang udah diperbaiki
+                                  // di getProgressAsOfDate kemarin.
+                                  const pctB=getProgressAsOfDate(checklistForBusbar[b],"BUSBAR",d);
                                   const isDoneB=pctB>=100;
+                                  const statusIconB=isDoneB?"✓":pctB>0?"●":"";
                                   return(
-                                    <span key={b} title={jejakTujuan?"Belum selesai - sudah digeser ke "+jejakTujuan+" (data di sini histori, gak bisa diaksi lagi)":""}
+                                    <span key={b} title={jejakTujuan?"Belum selesai - sudah digeser ke "+jejakTujuan+" (data di sini histori, gak bisa diaksi lagi)":pctB>0&&!isDoneB?`Berprogres ${pctB}%`:""}
                                       style={{display:"inline-flex",alignItems:"center",gap:2,
                                         background:isPast?"#f1f5f9":(BUSBAR_COLORS[b]||"#64748b")+"22",
                                         color:isPast?"#94a3b8":(BUSBAR_COLORS[b]||"#64748b"),
                                         border:`1px solid ${isPast?"#e2e8f0":(BUSBAR_COLORS[b]||"#64748b")+"44"}`,
                                         borderRadius:4,padding:"1px 4px",fontSize:8,fontWeight:700,
                                         opacity:(isDoneB||jejakTujuan)?0.5:1}}>
-                                      {isDoneB&&<span style={{fontSize:8,fontWeight:900}}>✓</span>}
+                                      {statusIconB&&<span style={{fontSize:8,fontWeight:900}}>{statusIconB}</span>}
                                       {jejakTujuan&&<span style={{fontSize:8}}>➡️</span>}
                                       {b}
                                     </span>
@@ -2189,12 +2194,18 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   {busbarItems.map((b:string)=>{
                     const isSel=busbarSel.includes(b);
                     const bc=BUSBAR_COLORS[b]||"#64748b";
+                    // Persentase progress (7 Sep 2026) - dulu modal ini cuma tombol pilih kode polos,
+                    // gak nunjukin progress sama sekali, beda dari chip komponen proses lain di atas
+                    // (labelQtyPct) yang selalu tampilin persen. Reuse getProgressAsOfDate yang sama.
+                    const pctBModal=getProgressAsOfDate(livePanelForCell?.checklist?.[b],"BUSBAR",cellModal.date);
+                    const isDoneBModal=pctBModal>=100;
+                    const statusIconBModal=isDoneBModal?"✓ ":pctBModal>0?"● ":"";
                     return(
                       <button key={b} onClick={()=>setBusbarSel((p:string[])=>isSel?p.filter((x:string)=>x!==b):[...p,b])}
                         style={{padding:"5px 12px",borderRadius:6,cursor:"pointer",fontSize:11,fontWeight:700,
                           border:`1.5px solid ${isSel?bc:"#e2e8f0"}`,
                           background:isSel?bc+"18":"#fff",color:isSel?bc:"#64748b"}}>
-                        {b}
+                        {statusIconBModal}{b} ({pctBModal}%)
                       </button>
                     );
                   })}
