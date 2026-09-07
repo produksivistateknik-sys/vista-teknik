@@ -9,13 +9,16 @@ export function SummaryProgress({woData}:{woData:any[]}){
 
   const PROSES_LIST=ALL_PROSES;
 
+  // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali, urutan
+  // ngikutin woData apa adanya. Pola SAMA PERSIS ManajemenWO.tsx (fallback "9999-99-99" buat WO
+  // tanpa target, biar turun ke bawah bukan nyangkut di atas).
   const filtered=woData.filter(w=>{
     const pct=woOverall(w);
     const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchQ=!search||(w.wo||"").toLowerCase().includes(search.toLowerCase())||(w.proyek||"").toLowerCase().includes(search.toLowerCase())||(w.panels||[]).some((p:any)=>(p.nama||"").toLowerCase().includes(search.toLowerCase()));
     return matchS&&matchQ;
-  });
+  }).sort((a,b)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99"));
 
   const thS={background:"#1e3a8a",color:"#fff",fontWeight:600,padding:"7px 10px",
     textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,

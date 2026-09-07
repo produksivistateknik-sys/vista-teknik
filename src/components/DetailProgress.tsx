@@ -21,6 +21,9 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
     pd:calcPanelProgress(p),
   })));
 
+  // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali. Sama
+  // persis pola ManajemenWO.tsx/SummaryProgress.tsx - p.target di sini = target WO induknya
+  // (lihat allPanels di atas), jadi panel dari WO paling mendesak naik ke atas.
   const filtered=allPanels.filter(p=>{
     const pct=panelOverall(p);
     const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
@@ -32,7 +35,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
       (p.proyek||"").toLowerCase().includes(search.toLowerCase())||
       (p.wo||"").toLowerCase().includes(search.toLowerCase());
     return matchS&&matchWO&&matchPanel&&matchQ;
-  });
+  }).sort((a,b)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99"));
 
   const thS={background:"#1e3a8a",color:"#fff",fontWeight:600,padding:"7px 10px",
     textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
