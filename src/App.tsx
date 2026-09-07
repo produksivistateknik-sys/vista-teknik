@@ -56,6 +56,7 @@ const OutstandingView = lazy(() => import('./components/OutstandingView').then(m
 const ManajemenWO = lazy(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
 const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
 const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
+const PermintaanAdminTab = lazy(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
 const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
 const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
 const ProyekLuarTab = lazy(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
@@ -257,6 +258,20 @@ const [pekerja, setPekerja] = useState<any[]>([]);
     fetchMaintAlert()
     const ch = supabase.channel('realtime-maint-alert')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_rutin' }, fetchMaintAlert)
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+  // Badge "Permintaan Barang" (7 Sep 2026, fitur approval admin) - jumlah item status
+  // 'menunggu_admin' yang belum diputuskan sama sekali.
+  const [pendingPermintaanCount, setPendingPermintaanCount] = useState(0)
+  useEffect(() => {
+    const fetchPendingPermintaan = async () => {
+      const { count } = await supabase.from('permintaan_item').select('id', { count: 'exact', head: true }).eq('status', 'menunggu_admin')
+      setPendingPermintaanCount(count || 0)
+    }
+    fetchPendingPermintaan()
+    const ch = supabase.channel('realtime-permintaan-admin-count')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan_item' }, fetchPendingPermintaan)
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -631,6 +646,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
+        {id:"permintaan_admin",label:"Permintaan Barang",icon:"ti ti-clipboard-check",badge:pendingPermintaanCount>0?pendingPermintaanCount:null},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
@@ -1033,6 +1049,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("ai_assistant")&&<div style={{display:tab==="ai_assistant"?"block":"none"}}><Suspense fallback={TabFallback}><AiAssistantChat/></Suspense></div>}
               {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
+              {visitedTabs.includes("permintaan_admin")&&<div style={{display:tab==="permintaan_admin"?"block":"none"}}><Suspense fallback={TabFallback}><PermintaanAdminTab user={user}/></Suspense></div>}
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}

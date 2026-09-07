@@ -1,30 +1,32 @@
 /*
-Notify Permintaan - dipicu LANGSUNG dari client Vista Pekerja tepat setelah aksi terkait
+Notify Permintaan - dipicu LANGSUNG dari client Vista Pekerja/Teknik tepat setelah aksi terkait
 permintaan barang (BBMB/BBMU) sukses, BUKAN cron - pola sama persis notify-wo-baru (sekali-jalan
 per event, gak butuh dedup log kayak maintenance-reminder-check yang polling berkala).
 
-5 TRIGGER, target beda-beda:
-- 'baru'   - operator kirim permintaan baru (PermintaanView.tsx submitPermintaan) -> ke GUDANG
-             (push_subscriptions.divisi = 'gudang').
+7 TRIGGER, target beda-beda (targetAdmin=broadcast ke SEMUA admin Vista Teknik yang subscribe,
+push_subscriptions.admin_username IS NOT NULL - pola diambil PERSIS dari notify-wo-baru.
+targetDivisi=push_subscriptions.divisi, BUKAN operator/gudang spesifik - device Vista Pekerja
+login shared per divisi, siapapun yang sedang login di situ yang harus dapat):
+- 'baru'   - operator kirim permintaan baru (PermintaanView.tsx submitPermintaan)
+             -> ADMIN (REVISI 7 Sep 2026, fitur approval admin - dulu langsung ke GUDANG, sekarang
+             Gudang belum boleh tau apa-apa sampai admin setuju, lihat 'admin_disetujui' di bawah).
+- 'admin_disetujui' - admin setuju permintaan (dgn/tanpa edit qty) (PermintaanAdminTab.tsx,
+             7 Sep 2026) -> GUDANG. INI yang gantikan notif "permintaan baru" lama ke Gudang -
+             titik SEKARANG permintaan itu beneran nongol di alur Gudang (status jadi 'pending').
+- 'admin_ditolak'   - admin tolak permintaan di tahap ini (7 Sep 2026) -> DIVISI PENGAJU, isi
+             notif sertakan alasan. BEDA dari trigger 'reject' (itu Gudang yang nolak, tahap
+             SETELAH admin setuju - dua peristiwa beda, jangan disamakan).
 - 'status' - Gudang ubah status item (BBMB submit "Sudah Siap", ATAU BBMU tersedia/belum_lengkap/
-             belum_datang) (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU
-             (push_subscriptions.divisi = targetDivisi, BUKAN operator spesifik - device Vista
-             Pekerja login shared per divisi, siapapun yang sedang login di situ yang harus dapat).
+             belum_datang) (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU.
 - 'reject' - Gudang tolak item BBMB (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU
              (sama kayak 'status'), isi notif sertakan catatanReject.
 - 'koreksi_baru'      - Gudang ajukan koreksi qty (RiwayatGudangTab.tsx, 7 Sep 2026) -> ke DIVISI
-             PENGAJU (sama kayak 'status'/'reject' - lihat permintaan_item_koreksi.sql soal kenapa
-             per-divisi bukan per-orang).
+             PENGAJU (lihat permintaan_item_koreksi.sql soal kenapa per-divisi bukan per-orang).
 - 'koreksi_keputusan' - divisi peminta setuju/tolak pengajuan koreksi (PermintaanView.tsx) -> ke
              GUDANG.
 
-Target 'baru'/'koreksi_keputusan' ('gudang') dan target 'status'/'reject'/'koreksi_baru' (nama
-divisi kayak 'wiring_pwr') SAMA-SAMA dicocokkan ke push_subscriptions.divisi - kolom itu memang
-generik (bisa isi 'gudang' ATAU nama divisi operator manapun, keduanya sama-sama login Vista
-Pekerja, cuma beda value user.divisi).
-
 Reuse VAPID secrets & pola kirim (webpush.sendNotification, cleanup subscription invalid 404/410)
-SAMA PERSIS notify-wo-baru/maintenance-reminder-check - TIDAK ada tabel/kolom baru.
+SAMA PERSIS notify-wo-baru/maintenance-reminder-check.
 */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
@@ -52,16 +54,29 @@ Deno.serve(async (req) => {
     const body = await req.json()
     const { trigger } = body
 
-    let targetDivisi: string
+    let targetDivisi: string | null = null
+    let targetAdmin = false
     let title: string
     let notifBody: string
 
     if (trigger === 'baru') {
       const { jenis, operatorNama, divisi, proyek, panelNama, jumlahItem } = body
       if (!jenis || !operatorNama || !divisi) return jsonResponse({ error: 'jenis, operatorNama, dan divisi wajib diisi.' }, 400)
-      targetDivisi = 'gudang'
-      title = `Permintaan ${jenis} Baru`
+      targetAdmin = true
+      title = `Permintaan ${jenis} Baru - Menunggu Persetujuan`
       notifBody = `${operatorNama} (${divisi}) - ${proyek || '-'} · ${panelNama || '-'} · ${jumlahItem || 0} item`
+    } else if (trigger === 'admin_disetujui') {
+      const { jenis, operatorNama, divisi, proyek, panelNama, jumlahItem } = body
+      if (!jenis || !divisi) return jsonResponse({ error: 'jenis dan divisi wajib diisi.' }, 400)
+      targetDivisi = 'gudang'
+      title = `Permintaan ${jenis} Disetujui Admin`
+      notifBody = `${operatorNama || '-'} (${divisi}) - ${proyek || '-'} · ${panelNama || '-'} · ${jumlahItem || 0} item`
+    } else if (trigger === 'admin_ditolak') {
+      const { targetDivisi: td, namaKomponen, qty, satuan, alasan } = body
+      if (!td || !namaKomponen) return jsonResponse({ error: 'targetDivisi dan namaKomponen wajib diisi.' }, 400)
+      targetDivisi = td
+      title = 'Permintaan Ditolak Admin'
+      notifBody = `${namaKomponen} ×${qty || 1}${satuan ? ` ${satuan}` : ''} ditolak admin${alasan ? ` - ${alasan}` : ''}`
     } else if (trigger === 'status') {
       const { targetDivisi: td, namaKomponen, qty, satuan, statusLabel } = body
       if (!td || !namaKomponen || !statusLabel) return jsonResponse({ error: 'targetDivisi, namaKomponen, dan statusLabel wajib diisi.' }, 400)
@@ -91,16 +106,27 @@ Deno.serve(async (req) => {
       title = disetujui ? 'Koreksi Qty Disetujui' : 'Koreksi Qty Ditolak'
       notifBody = disetujui ? `${namaKomponen} - qty diubah jadi ${qtyDiusulkan}${satuan ? ` ${satuan}` : ''}` : `${namaKomponen} - pengajuan koreksi ditolak`
     } else {
-      return jsonResponse({ error: `trigger tidak dikenali: ${trigger} (harus 'baru'/'status'/'reject'/'koreksi_baru'/'koreksi_keputusan')` }, 400)
+      return jsonResponse({ error: `trigger tidak dikenali: ${trigger} (harus 'baru'/'admin_disetujui'/'admin_ditolak'/'status'/'reject'/'koreksi_baru'/'koreksi_keputusan')` }, 400)
     }
 
-    const { data: subs, error: subsErr } = await supabase
-      .from('push_subscriptions')
-      .select('id,endpoint,p256dh,auth')
-      .eq('divisi', targetDivisi)
-    if (subsErr) throw subsErr
-    if (!subs || subs.length === 0) {
-      return jsonResponse({ dikirim: 0, catatan: `belum ada device divisi '${targetDivisi}' yang subscribe push notification` })
+    // 2 query terpisah (admin & divisi) diunion+dedup di JS - pola PERSIS notify-wo-baru, biar
+    // 1 event bisa target admin+divisi sekaligus kalau suatu saat dibutuhkan (belum ada trigger
+    // yang butuh keduanya sekarang, tapi strukturnya udah siap tanpa perlu ubah lagi nanti).
+    let subs: any[] = []
+    if (targetAdmin) {
+      const { data, error } = await supabase.from('push_subscriptions').select('id,endpoint,p256dh,auth').not('admin_username', 'is', null)
+      if (error) throw error
+      subs = subs.concat(data || [])
+    }
+    if (targetDivisi) {
+      const { data, error } = await supabase.from('push_subscriptions').select('id,endpoint,p256dh,auth').eq('divisi', targetDivisi)
+      if (error) throw error
+      subs = subs.concat(data || [])
+    }
+    const subsMap = new Map(subs.map((s) => [s.id, s]))
+    subs = [...subsMap.values()]
+    if (subs.length === 0) {
+      return jsonResponse({ dikirim: 0, catatan: `belum ada subscriber yang cocok (targetAdmin=${targetAdmin}, targetDivisi=${targetDivisi || '-'})` })
     }
 
     const payload = JSON.stringify({ title, body: notifBody, url: '/' })
@@ -121,7 +147,7 @@ Deno.serve(async (req) => {
       await supabase.from('push_subscriptions').delete().in('id', subsInvalid)
     }
 
-    return jsonResponse({ targetDivisi, totalSubscription: subs.length, dikirim: terkirim, subscriptionDihapus: subsInvalid.length })
+    return jsonResponse({ targetAdmin, targetDivisi, totalSubscription: subs.length, dikirim: terkirim, subscriptionDihapus: subsInvalid.length })
   } catch (e: any) {
     console.error(e)
     return jsonResponse({ error: String(e?.message || e) }, 500)

@@ -931,6 +931,42 @@ export type Database = {
         }
         Relationships: []
       }
+      gudang_lock_status: {
+        Row: {
+          id: number
+          is_locked: boolean
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          id?: number
+          is_locked?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          id?: number
+          is_locked?: boolean
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
+      gudang_read_state: {
+        Row: {
+          last_read_at: string
+          tab: string
+        }
+        Insert: {
+          last_read_at?: string
+          tab: string
+        }
+        Update: {
+          last_read_at?: string
+          tab?: string
+        }
+        Relationships: []
+      }
       kendala: {
         Row: {
           catatan: string
@@ -1100,6 +1136,42 @@ export type Database = {
           id?: number
           nama?: string
           satuan?: string | null
+          tipe?: string | null
+        }
+        Relationships: []
+      }
+      komponen_master: {
+        Row: {
+          created_at: string
+          id: number
+          kategori: string
+          kode_barang: string | null
+          merk: string | null
+          nama: string
+          satuan_list: Json
+          satuan_utama: string | null
+          tipe: string | null
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          kategori: string
+          kode_barang?: string | null
+          merk?: string | null
+          nama: string
+          satuan_list?: Json
+          satuan_utama?: string | null
+          tipe?: string | null
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          kategori?: string
+          kode_barang?: string | null
+          merk?: string | null
+          nama?: string
+          satuan_list?: Json
+          satuan_utama?: string | null
           tipe?: string | null
         }
         Relationships: []
@@ -1544,6 +1616,100 @@ export type Database = {
           status?: string | null
         }
         Relationships: []
+      }
+      mom_fat: {
+        Row: {
+          created_at: string
+          file_type: string
+          file_url: string
+          id: number
+          is_archived: boolean
+          judul: string
+          operator_nama: string
+          pekerja_id: number | null
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          file_type: string
+          file_url: string
+          id?: never
+          is_archived?: boolean
+          judul: string
+          operator_nama: string
+          pekerja_id?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          file_type?: string
+          file_url?: string
+          id?: never
+          is_archived?: boolean
+          judul?: string
+          operator_nama?: string
+          pekerja_id?: number | null
+          status?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mom_fat_pekerja_id_fkey"
+            columns: ["pekerja_id"]
+            isOneToOne: false
+            referencedRelation: "pekerja"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      mom_fat_poin: {
+        Row: {
+          created_at: string
+          dicentang_at: string | null
+          dicentang_oleh: string | null
+          foto: Json
+          id: number
+          mom_fat_id: number
+          ocr_confidence: number | null
+          selesai: boolean
+          teks: string
+          urutan: number
+        }
+        Insert: {
+          created_at?: string
+          dicentang_at?: string | null
+          dicentang_oleh?: string | null
+          foto?: Json
+          id?: never
+          mom_fat_id: number
+          ocr_confidence?: number | null
+          selesai?: boolean
+          teks: string
+          urutan: number
+        }
+        Update: {
+          created_at?: string
+          dicentang_at?: string | null
+          dicentang_oleh?: string | null
+          foto?: Json
+          id?: never
+          mom_fat_id?: number
+          ocr_confidence?: number | null
+          selesai?: boolean
+          teks?: string
+          urutan?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "mom_fat_poin_mom_fat_id_fkey"
+            columns: ["mom_fat_id"]
+            isOneToOne: false
+            referencedRelation: "mom_fat"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       operator_users: {
         Row: {
@@ -2105,15 +2271,23 @@ export type Database = {
           diambil_at: string | null
           diambil_oleh: string | null
           dilihat_operator: boolean
+          disetujui_admin_at: string | null
+          disetujui_admin_oleh: string | null
           id: number
+          induk_item_id: number | null
+          is_hutang: boolean
           kode_komponen: string | null
           komponen_bbmb_master_id: number | null
+          komponen_master_id: number | null
           nama_komponen: string
           permintaan_id: number
           qty: number
+          qty_diminta_awal: number | null
           satuan: string | null
+          satuan_dipilih: string | null
           status: string
           sudah_diambil: boolean
+          sudah_diinput: boolean
           updated_at: string | null
           updated_by: string | null
         }
@@ -2122,15 +2296,23 @@ export type Database = {
           diambil_at?: string | null
           diambil_oleh?: string | null
           dilihat_operator?: boolean
+          disetujui_admin_at?: string | null
+          disetujui_admin_oleh?: string | null
           id?: number
+          induk_item_id?: number | null
+          is_hutang?: boolean
           kode_komponen?: string | null
           komponen_bbmb_master_id?: number | null
+          komponen_master_id?: number | null
           nama_komponen: string
           permintaan_id: number
           qty?: number
+          qty_diminta_awal?: number | null
           satuan?: string | null
+          satuan_dipilih?: string | null
           status?: string
           sudah_diambil?: boolean
+          sudah_diinput?: boolean
           updated_at?: string | null
           updated_by?: string | null
         }
@@ -2139,19 +2321,34 @@ export type Database = {
           diambil_at?: string | null
           diambil_oleh?: string | null
           dilihat_operator?: boolean
+          disetujui_admin_at?: string | null
+          disetujui_admin_oleh?: string | null
           id?: number
+          induk_item_id?: number | null
+          is_hutang?: boolean
           kode_komponen?: string | null
           komponen_bbmb_master_id?: number | null
+          komponen_master_id?: number | null
           nama_komponen?: string
           permintaan_id?: number
           qty?: number
+          qty_diminta_awal?: number | null
           satuan?: string | null
+          satuan_dipilih?: string | null
           status?: string
           sudah_diambil?: boolean
+          sudah_diinput?: boolean
           updated_at?: string | null
           updated_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "permintaan_item_induk_item_id_fkey"
+            columns: ["induk_item_id"]
+            isOneToOne: false
+            referencedRelation: "permintaan_item"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "permintaan_item_komponen_bbmb_master_id_fkey"
             columns: ["komponen_bbmb_master_id"]
@@ -2160,10 +2357,67 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "permintaan_item_komponen_master_id_fkey"
+            columns: ["komponen_master_id"]
+            isOneToOne: false
+            referencedRelation: "komponen_master"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "permintaan_item_permintaan_id_fkey"
             columns: ["permintaan_id"]
             isOneToOne: false
             referencedRelation: "permintaan"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permintaan_item_koreksi: {
+        Row: {
+          alasan: string
+          diajukan_at: string
+          diajukan_oleh: string
+          diputuskan_at: string | null
+          disetujui_oleh: string | null
+          id: number
+          permintaan_item_id: number
+          qty_diusulkan: number
+          qty_lama: number
+          status: string
+          target_divisi: string
+        }
+        Insert: {
+          alasan: string
+          diajukan_at?: string
+          diajukan_oleh: string
+          diputuskan_at?: string | null
+          disetujui_oleh?: string | null
+          id?: never
+          permintaan_item_id: number
+          qty_diusulkan: number
+          qty_lama: number
+          status?: string
+          target_divisi: string
+        }
+        Update: {
+          alasan?: string
+          diajukan_at?: string
+          diajukan_oleh?: string
+          diputuskan_at?: string | null
+          disetujui_oleh?: string | null
+          id?: never
+          permintaan_item_id?: number
+          qty_diusulkan?: number
+          qty_lama?: number
+          status?: string
+          target_divisi?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permintaan_item_koreksi_permintaan_item_id_fkey"
+            columns: ["permintaan_item_id"]
+            isOneToOne: false
+            referencedRelation: "permintaan_item"
             referencedColumns: ["id"]
           },
         ]
@@ -2260,6 +2514,59 @@ export type Database = {
           ts?: string | null
         }
         Relationships: []
+      }
+      proyek_luar: {
+        Row: {
+          catatan: string | null
+          created_at: string
+          divisi: string
+          foto: Json
+          id: number
+          is_archived: boolean
+          nama_lokasi: string
+          operator_nama: string
+          pekerja_id: number | null
+          status: string
+          tanggal: string
+          updated_at: string
+        }
+        Insert: {
+          catatan?: string | null
+          created_at?: string
+          divisi: string
+          foto?: Json
+          id?: never
+          is_archived?: boolean
+          nama_lokasi: string
+          operator_nama: string
+          pekerja_id?: number | null
+          status?: string
+          tanggal: string
+          updated_at?: string
+        }
+        Update: {
+          catatan?: string | null
+          created_at?: string
+          divisi?: string
+          foto?: Json
+          id?: never
+          is_archived?: boolean
+          nama_lokasi?: string
+          operator_nama?: string
+          pekerja_id?: number | null
+          status?: string
+          tanggal?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proyek_luar_pekerja_id_fkey"
+            columns: ["pekerja_id"]
+            isOneToOne: false
+            referencedRelation: "pekerja"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       push_subscriptions: {
         Row: {
@@ -2453,6 +2760,7 @@ export type Database = {
       }
       raw_schedule_archived: {
         Row: {
+          bobot_komponen: Json | null
           busbar_jejak: Json
           busbar_schedule: Json | null
           created_at: string | null
@@ -2472,6 +2780,7 @@ export type Database = {
           wo_id: number | null
         }
         Insert: {
+          bobot_komponen?: Json | null
           busbar_jejak?: Json
           busbar_schedule?: Json | null
           created_at?: string | null
@@ -2491,6 +2800,7 @@ export type Database = {
           wo_id?: number | null
         }
         Update: {
+          bobot_komponen?: Json | null
           busbar_jejak?: Json
           busbar_schedule?: Json | null
           created_at?: string | null
@@ -2740,6 +3050,89 @@ export type Database = {
           },
         ]
       }
+      wi_revisions: {
+        Row: {
+          file_url: string
+          id: number
+          is_current: boolean
+          page_count: number | null
+          rev_mark: string | null
+          revision_number: number
+          uploaded_at: string
+          uploaded_by: string | null
+          work_instruction_id: number
+        }
+        Insert: {
+          file_url: string
+          id?: never
+          is_current?: boolean
+          page_count?: number | null
+          rev_mark?: string | null
+          revision_number: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+          work_instruction_id: number
+        }
+        Update: {
+          file_url?: string
+          id?: never
+          is_current?: boolean
+          page_count?: number | null
+          rev_mark?: string | null
+          revision_number?: number
+          uploaded_at?: string
+          uploaded_by?: string | null
+          work_instruction_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wi_revisions_work_instruction_id_fkey"
+            columns: ["work_instruction_id"]
+            isOneToOne: false
+            referencedRelation: "work_instructions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      work_instructions: {
+        Row: {
+          created_at: string
+          id: number
+          judul: string
+          panel_id: number | null
+          wo_id: number
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          judul: string
+          panel_id?: number | null
+          wo_id: number
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          judul?: string
+          panel_id?: number | null
+          wo_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_instructions_panel_id_fkey"
+            columns: ["panel_id"]
+            isOneToOne: false
+            referencedRelation: "panels"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_instructions_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           created_at: string | null
@@ -2844,6 +3237,10 @@ export type Database = {
           tanggal: string
         }[]
       }
+      merge_panel_checklist: {
+        Args: { p_panel_id: number; p_partial: Json }
+        Returns: undefined
+      }
       search_panel_fuzzy: {
         Args: { min_similarity?: number; search_term: string }
         Returns: {
@@ -2922,12 +3319,12 @@ export type Tables<
   DefaultSchemaTableNameOrOptions extends
     | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
         DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2951,11 +3348,11 @@ export type TablesInsert<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -2976,11 +3373,11 @@ export type TablesUpdate<
   DefaultSchemaTableNameOrOptions extends
     | keyof DefaultSchema["Tables"]
     | { schema: keyof DatabaseWithoutInternals },
-  TableName extends DefaultSchemaTableNameOrOptions extends {
+  TableName extends (DefaultSchemaTableNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaTableNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3001,11 +3398,11 @@ export type Enums<
   DefaultSchemaEnumNameOrOptions extends
     | keyof DefaultSchema["Enums"]
     | { schema: keyof DatabaseWithoutInternals },
-  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+  EnumName extends (DefaultSchemaEnumNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
-    : never = never,
+    : never) = never,
 > = DefaultSchemaEnumNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
@@ -3018,11 +3415,11 @@ export type CompositeTypes<
   PublicCompositeTypeNameOrOptions extends
     | keyof DefaultSchema["CompositeTypes"]
     | { schema: keyof DatabaseWithoutInternals },
-  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+  CompositeTypeName extends (PublicCompositeTypeNameOrOptions extends {
     schema: keyof DatabaseWithoutInternals
   }
     ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
-    : never = never,
+    : never) = never,
 > = PublicCompositeTypeNameOrOptions extends {
   schema: keyof DatabaseWithoutInternals
 }
