@@ -3,7 +3,7 @@ Notify Permintaan - dipicu LANGSUNG dari client Vista Pekerja tepat setelah aksi
 permintaan barang (BBMB/BBMU) sukses, BUKAN cron - pola sama persis notify-wo-baru (sekali-jalan
 per event, gak butuh dedup log kayak maintenance-reminder-check yang polling berkala).
 
-3 TRIGGER, target beda-beda:
+5 TRIGGER, target beda-beda:
 - 'baru'   - operator kirim permintaan baru (PermintaanView.tsx submitPermintaan) -> ke GUDANG
              (push_subscriptions.divisi = 'gudang').
 - 'status' - Gudang ubah status item (BBMB submit "Sudah Siap", ATAU BBMU tersedia/belum_lengkap/
@@ -12,10 +12,16 @@ per event, gak butuh dedup log kayak maintenance-reminder-check yang polling ber
              Pekerja login shared per divisi, siapapun yang sedang login di situ yang harus dapat).
 - 'reject' - Gudang tolak item BBMB (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU
              (sama kayak 'status'), isi notif sertakan catatanReject.
+- 'koreksi_baru'      - Gudang ajukan koreksi qty (RiwayatGudangTab.tsx, 7 Sep 2026) -> ke DIVISI
+             PENGAJU (sama kayak 'status'/'reject' - lihat permintaan_item_koreksi.sql soal kenapa
+             per-divisi bukan per-orang).
+- 'koreksi_keputusan' - divisi peminta setuju/tolak pengajuan koreksi (PermintaanView.tsx) -> ke
+             GUDANG.
 
-Target 'baru' ('gudang') dan target 'status'/'reject' (nama divisi kayak 'wiring_pwr') SAMA-SAMA
-dicocokkan ke push_subscriptions.divisi - kolom itu memang generik (bisa isi 'gudang' ATAU nama
-divisi operator manapun, keduanya sama-sama login Vista Pekerja, cuma beda value user.divisi).
+Target 'baru'/'koreksi_keputusan' ('gudang') dan target 'status'/'reject'/'koreksi_baru' (nama
+divisi kayak 'wiring_pwr') SAMA-SAMA dicocokkan ke push_subscriptions.divisi - kolom itu memang
+generik (bisa isi 'gudang' ATAU nama divisi operator manapun, keduanya sama-sama login Vista
+Pekerja, cuma beda value user.divisi).
 
 Reuse VAPID secrets & pola kirim (webpush.sendNotification, cleanup subscription invalid 404/410)
 SAMA PERSIS notify-wo-baru/maintenance-reminder-check - TIDAK ada tabel/kolom baru.
@@ -68,8 +74,24 @@ Deno.serve(async (req) => {
       targetDivisi = td
       title = 'Permintaan Ditolak'
       notifBody = `${namaKomponen} ×${qty || 1}${satuan ? ` ${satuan}` : ''} ditolak${catatanReject ? ` - ${catatanReject}` : ''}`
+    } else if (trigger === 'koreksi_baru') {
+      // Fitur Pengajuan Koreksi Qty (7 Sep 2026) - Gudang ajukan koreksi -> divisi peminta yang
+      // approve/reject (lihat permintaan_item_koreksi.sql - target per DIVISI, bukan orang
+      // spesifik, sama kayak trigger 'status'/'reject' di atas).
+      const { targetDivisi: td, namaKomponen, qtyLama, qtyDiusulkan, satuan } = body
+      if (!td || !namaKomponen) return jsonResponse({ error: 'targetDivisi dan namaKomponen wajib diisi.' }, 400)
+      targetDivisi = td
+      title = 'Pengajuan Koreksi Qty'
+      notifBody = `${namaKomponen}: ${qtyLama}${satuan ? ` ${satuan}` : ''} -> ${qtyDiusulkan}${satuan ? ` ${satuan}` : ''} - menunggu persetujuan Anda`
+    } else if (trigger === 'koreksi_keputusan') {
+      // Hasil approve/reject dikirim BALIK ke Gudang.
+      const { namaKomponen, disetujui, qtyDiusulkan, satuan } = body
+      if (!namaKomponen) return jsonResponse({ error: 'namaKomponen wajib diisi.' }, 400)
+      targetDivisi = 'gudang'
+      title = disetujui ? 'Koreksi Qty Disetujui' : 'Koreksi Qty Ditolak'
+      notifBody = disetujui ? `${namaKomponen} - qty diubah jadi ${qtyDiusulkan}${satuan ? ` ${satuan}` : ''}` : `${namaKomponen} - pengajuan koreksi ditolak`
     } else {
-      return jsonResponse({ error: `trigger tidak dikenali: ${trigger} (harus 'baru'/'status'/'reject')` }, 400)
+      return jsonResponse({ error: `trigger tidak dikenali: ${trigger} (harus 'baru'/'status'/'reject'/'koreksi_baru'/'koreksi_keputusan')` }, 400)
     }
 
     const { data: subs, error: subsErr } = await supabase
