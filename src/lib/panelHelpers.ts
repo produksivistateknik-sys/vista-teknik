@@ -240,15 +240,24 @@ export function getQtyProsesAsOfDate(cl:any, proses:string, tanggal:string):numb
   return 0;
 }
 
+// BUG FIX (7 Sep 2026): carry-forward dulu CUMA baca `history`, gak pernah baca `progressByDate`
+// buat tanggal SEBELUM tanggal yang diminta - kalau komponen gak punya history sama sekali (cuma
+// progressByDate yang keisi, kejadian nyata: FINNS RESORT/CAPACITOR BANK/FS.13, progressByDate
+// {08-31:12.5, 09-01:62.5} history kosong) dan tanggal yang diminta gak exact-match apapun di
+// progressByDate (mis. lihat hari ini padahal terakhir disentuh beberapa hari lalu), fungsi jatuh
+// ke history kosong terus return 0 - kolom "Status" kelihatan "Belum Dikerjakan" padahal "Status
+// Pipeline" (getBestProgressMap, baca progressByDate juga) udah benar nunjukin ada progress.
+// Sekarang carry-forward dari KEDUA sumber (progressByDate & history), ambil yang tanggalnya
+// paling baru di antara keduanya yang <= tanggal diminta - pola sama kayak getQtyProsesAsOfDate.
 export function getProgressAsOfDate(cl:any, proses:string, tanggal:string):number{
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&byDate[tanggal]!==undefined) return byDate[tanggal];
   const hist=(cl?.history?.[proses]||[]).filter((h:any)=>h.tanggal<=tanggal);
-  if(hist.length>0){
-    const terakhir=hist.reduce((a:any,b:any)=>a.tanggal>b.tanggal?a:b);
-    return terakhir.pct;
-  }
-  return 0;
+  const histTerakhir=hist.length>0?hist.reduce((a:any,b:any)=>a.tanggal>b.tanggal?a:b):null;
+  const tglByDateSebelum=Object.keys(byDate||{}).filter((d:string)=>d<=tanggal).sort();
+  const byDateTerakhir=tglByDateSebelum.length>0?{tanggal:tglByDateSebelum[tglByDateSebelum.length-1],pct:byDate[tglByDateSebelum[tglByDateSebelum.length-1]]}:null;
+  if(histTerakhir&&byDateTerakhir)return histTerakhir.tanggal>=byDateTerakhir.tanggal?histTerakhir.pct:byDateTerakhir.pct;
+  return (histTerakhir||byDateTerakhir)?.pct??0;
 }
 
 // Ambil progress terbaik: history > progressByDate > progress
