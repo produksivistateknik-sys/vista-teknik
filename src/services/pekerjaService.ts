@@ -10,7 +10,11 @@ const logActivity = async (user_name: string, action: string, description: strin
 
 export const pekerjaService = {
   async getAll() {
-    const { data, error } = await supabase.from('pekerja').select('*').order('nama', { ascending: true })
+    // BUG FIX (7 Sep 2026) - delete pekerja (usePekerja.ts hook) itu SOFT-DELETE (set deleted_at),
+    // bukan hapus permanen - tapi query ini dulu gak pernah filter deleted_at, jadi pekerja yang
+    // udah dihapus tetap ikut kefetch dan "balik lagi" ke list/dropdown di seluruh app begitu
+    // di-refresh. remove() di bawah (hard delete) ternyata dead code, gak pernah dipanggil.
+    const { data, error } = await supabase.from('pekerja').select('*').is('deleted_at', null).order('nama', { ascending: true })
     if (error) throw new Error(error.message)
     return data ?? []
   },
