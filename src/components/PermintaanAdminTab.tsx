@@ -260,29 +260,30 @@ export function PermintaanAdminTab({ user }: any) {
                   <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
                     {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({riwayatGrouped[divisi].length})</span>
                   </div>
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 10 }}>
+                  {/* List rata kiri (8 Sep 2026, ganti dari grid card) - baris berurutan dipisah
+                      border-bottom, semua teks left-align (bukan card justify-content:space-between
+                      yang bikin badge status nempel kanan). */}
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {riwayatGrouped[divisi].map((it: any) => {
                       const ditolak = it.status === 'ditolak_admin'
                       return (
-                        <Card key={it.id} style={{ padding: '12px 14px', borderColor: ditolak ? '#fecaca' : '#bbf7d0' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
-                            <div style={{ minWidth: 0 }}>
-                              <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></div>
-                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                                {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
-                              </div>
-                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                                Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
-                              </div>
-                            </div>
+                        <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                             <Badge label={ditolak ? '✕ Ditolak Admin' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
+                            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
                           </div>
-                          <div style={{ fontSize: 12, color: ditolak ? '#b91c1c' : '#15803d', background: ditolak ? '#fef2f2' : '#f0fdf4', borderRadius: 8, padding: '7px 10px' }}>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+                            {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
+                          </div>
+                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
+                            Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
+                          </div>
+                          <div style={{ fontSize: 12, color: ditolak ? '#b91c1c' : '#15803d' }}>
                             {ditolak
                               ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
                               : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
                           </div>
-                        </Card>
+                        </div>
                       )
                     })}
                   </div>
@@ -306,27 +307,24 @@ export function PermintaanAdminTab({ user }: any) {
               <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
                 {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({grouped[divisi].length})</span>
               </div>
-              {/* Grid (bukan flex-column) - pola sama KendalaInbox.tsx (halaman SYSTEM lain yang
-                  juga list kartu actionable buat admin). flex-column bikin card ikut stretch
-                  100% lebar parent padahal isinya sedikit; grid+minmax cuma selebar kontennya,
-                  otomatis multi-kolom di layar lebar. 320px (bukan 220px kayak KendalaInbox) -
-                  card ini lebih banyak konten (input qty + 2 tombol berdampingan). */}
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 10 }}>
+              {/* List rata kiri (8 Sep 2026, ganti dari grid card) - baris berurutan dipisah
+                  border-bottom, semua teks left-align (bukan card justify-content:space-between
+                  yang bikin badge status nempel kanan). Tombol aksi tetap berdampingan tapi gak
+                  lagi stretch flex:1 penuh (biar gak kelihatan kayak lebar card lama). */}
+              <div style={{ display: 'flex', flexDirection: 'column' }}>
                 {grouped[divisi].map((it: any) => {
                   const isProcessing = processingId === it.id
                   return (
-                    <Card key={it.id} style={{ padding: '12px 14px', borderColor: '#fde68a' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen}</div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                            {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
-                          </div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
-                            Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
-                          </div>
-                        </div>
+                    <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                         <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
+                        <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen}</span>
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+                        {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
+                      </div>
+                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+                        Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px', marginBottom: 8, flexWrap: 'wrap' }}>
                         <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Qty diminta:</span>
@@ -339,14 +337,14 @@ export function PermintaanAdminTab({ user }: any) {
                         )}
                       </div>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <Btn color="#dc2626" outline onClick={() => setRejectTarget(it)} disabled={isProcessing} style={{ flex: 1 }}>
+                        <Btn color="#dc2626" outline onClick={() => setRejectTarget(it)} disabled={isProcessing}>
                           ✕ Tolak
                         </Btn>
-                        <Btn color="#16a34a" onClick={() => setujui(it)} disabled={isProcessing} style={{ flex: 1 }}>
+                        <Btn color="#16a34a" onClick={() => setujui(it)} disabled={isProcessing}>
                           {isProcessing ? 'Menyimpan...' : '✓ Setujui'}
                         </Btn>
                       </div>
-                    </Card>
+                    </div>
                   )
                 })}
               </div>
