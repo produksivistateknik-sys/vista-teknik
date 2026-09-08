@@ -43,14 +43,29 @@ const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<
 
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
+const todayStr = () => new Date().toISOString().slice(0, 10)
+
+const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: string, color: string }[] = [
+  { key: 'ALL', label: 'Semua', color: '#475569' },
+  { key: 'DISETUJUI', label: '✓ Disetujui', color: '#16a34a' },
+  { key: 'DITOLAK', label: '✕ Ditolak Admin', color: '#dc2626' },
+]
+
 export function PermintaanAdminTab({ user }: any) {
   const adminUsername: string = user?.username || user?.name || 'Admin'
+  const [viewMode, setViewMode] = useState<'pending' | 'riwayat'>('pending')
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<any[]>([])
   const [qtyEdit, setQtyEdit] = useState<Record<number, string>>({})
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rejectTarget, setRejectTarget] = useState<any | null>(null)
   const [rejectAlasan, setRejectAlasan] = useState('')
+
+  const [riwayatTanggal, setRiwayatTanggal] = useState(todayStr())
+  const [riwayatSearch, setRiwayatSearch] = useState('')
+  const [riwayatStatusFilter, setRiwayatStatusFilter] = useState<'ALL' | 'DISETUJUI' | 'DITOLAK'>('ALL')
+  const [riwayatLoading, setRiwayatLoading] = useState(false)
+  const [riwayatItems, setRiwayatItems] = useState<any[]>([])
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -79,6 +94,46 @@ export function PermintaanAdminTab({ user }: any) {
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
+
+  // RIWAYAT (8 Sep 2026) - disetujui_admin_at itu penanda PERMANEN, gak pernah ditimpa lagi
+  // walau Gudang belakangan ubah status jadi submit/reject - jadi query "pernah disetujui admin
+  // di tanggal X" harus pakai kolom ini, BUKAN status saat ini. Ditolak admin sebaliknya terminal
+  // (status='ditolak_admin' gak pernah berubah lagi), jadi dipakai updated_at sebagai jejak waktu.
+  const fetchRiwayat = async (tanggal: string) => {
+    setRiwayatLoading(true)
+    const startIso = new Date(tanggal + 'T00:00:00').toISOString()
+    const endIso = new Date(tanggal + 'T23:59:59.999').toISOString()
+    try {
+      const [disetujui, ditolak] = await Promise.all([
+        fetchAllPaged((from, to) =>
+          supabase.from('permintaan_item').select('*').not('disetujui_admin_at', 'is', null)
+            .gte('disetujui_admin_at', startIso).lte('disetujui_admin_at', endIso).range(from, to)),
+        fetchAllPaged((from, to) =>
+          supabase.from('permintaan_item').select('*').eq('status', 'ditolak_admin')
+            .gte('updated_at', startIso).lte('updated_at', endIso).range(from, to)),
+      ])
+      const itemRows = [...disetujui, ...ditolak]
+      if (itemRows.length === 0) { setRiwayatItems([]); setRiwayatLoading(false); return }
+      const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
+      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('*').in('id', permIds).range(from, to))
+      const permMap: Record<number, any> = {}
+      perms.forEach((p: any) => { permMap[p.id] = p })
+      const merged = itemRows.map((it: any) => ({ ...it, perm: permMap[it.permintaan_id] })).filter((it: any) => it.perm)
+        .sort((a: any, b: any) => {
+          const ta = a.status === 'ditolak_admin' ? a.updated_at : a.disetujui_admin_at
+          const tb = b.status === 'ditolak_admin' ? b.updated_at : b.disetujui_admin_at
+          return (tb || '').localeCompare(ta || '')
+        })
+      setRiwayatItems(merged)
+    } catch (e: any) {
+      alert('Gagal memuat riwayat: ' + e.message)
+    }
+    setRiwayatLoading(false)
+  }
+
+  useEffect(() => {
+    if (viewMode === 'riwayat') fetchRiwayat(riwayatTanggal)
+  }, [viewMode, riwayatTanggal])
 
   const setujui = async (it: any) => {
     const qtyBaru = Number(qtyEdit[it.id])
@@ -124,17 +179,119 @@ export function PermintaanAdminTab({ user }: any) {
   })
   const divisiKeys = Object.keys(grouped).sort()
 
+  const riwayatFiltered = riwayatItems.filter((it: any) => {
+    if (riwayatStatusFilter === 'DISETUJUI' && it.status === 'ditolak_admin') return false
+    if (riwayatStatusFilter === 'DITOLAK' && it.status !== 'ditolak_admin') return false
+    const q = riwayatSearch.trim().toLowerCase()
+    if (!q) return true
+    const hay = [it.nama_komponen, it.perm.proyek, it.perm.panel_nama, it.perm.operator_nama, it.perm.wo_number].join(' ').toLowerCase()
+    return hay.includes(q)
+  })
+  const riwayatGrouped: Record<string, any[]> = {}
+  riwayatFiltered.forEach((it: any) => {
+    const key = it.perm.divisi || '-'
+    if (!riwayatGrouped[key]) riwayatGrouped[key] = []
+    riwayatGrouped[key].push(it)
+  })
+  const riwayatDivisiKeys = Object.keys(riwayatGrouped).sort()
+
   return (
     <div className="fi">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang - Menunggu Persetujuan</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.</div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : 'Riwayat keputusan admin (disetujui / ditolak).'}
+          </div>
         </div>
-        <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{items.length} menunggu</span>
+        {viewMode === 'pending' && (
+          <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{items.length} menunggu</span>
+        )}
       </div>
 
-      {loading ? (
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
+        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }].map(t => (
+          <button key={t.key} onClick={() => setViewMode(t.key as any)}
+            style={{
+              padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
+              borderBottom: viewMode === t.key ? '2.5px solid #2563eb' : '2.5px solid transparent',
+              color: viewMode === t.key ? '#2563eb' : '#94a3b8', marginBottom: -1.5,
+            }}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+
+      {viewMode === 'riwayat' ? (
+        <div>
+          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+            <input type="date" value={riwayatTanggal} onChange={(e: any) => setRiwayatTanggal(e.target.value)}
+              style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
+            <input type="text" placeholder="Cari nama komponen, proyek, panel, operator..." value={riwayatSearch}
+              onChange={(e: any) => setRiwayatSearch(e.target.value)}
+              style={{ flex: '1 1 220px', minWidth: 180, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
+            <div style={{ display: 'flex', gap: 6 }}>
+              {RIWAYAT_STATUS_OPTIONS.map(opt => (
+                <button key={opt.key} onClick={() => setRiwayatStatusFilter(opt.key)}
+                  style={{
+                    padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    border: riwayatStatusFilter === opt.key ? `1.5px solid ${opt.color}` : '1.5px solid #e2e8f0',
+                    background: riwayatStatusFilter === opt.key ? `${opt.color}15` : '#fff',
+                    color: riwayatStatusFilter === opt.key ? opt.color : '#64748b',
+                  }}>
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {riwayatLoading ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
+          ) : riwayatDivisiKeys.length === 0 ? (
+            <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+              <div style={{ fontSize: 32, marginBottom: 8 }}>🗂️</div>
+              <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
+              <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
+            </Card>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+              {riwayatDivisiKeys.map(divisi => (
+                <div key={divisi}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
+                    {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({riwayatGrouped[divisi].length})</span>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill,minmax(320px,1fr))', gap: 10 }}>
+                    {riwayatGrouped[divisi].map((it: any) => {
+                      const ditolak = it.status === 'ditolak_admin'
+                      return (
+                        <Card key={it.id} style={{ padding: '12px 14px', borderColor: ditolak ? '#fecaca' : '#bbf7d0' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8, gap: 8, flexWrap: 'wrap' }}>
+                            <div style={{ minWidth: 0 }}>
+                              <div style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
+                              </div>
+                              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>
+                                Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
+                              </div>
+                            </div>
+                            <Badge label={ditolak ? '✕ Ditolak Admin' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
+                          </div>
+                          <div style={{ fontSize: 12, color: ditolak ? '#b91c1c' : '#15803d', background: ditolak ? '#fef2f2' : '#f0fdf4', borderRadius: 8, padding: '7px 10px' }}>
+                            {ditolak
+                              ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
+                              : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
+                          </div>
+                        </Card>
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
       ) : divisiKeys.length === 0 ? (
         <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
