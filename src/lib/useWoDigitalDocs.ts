@@ -51,9 +51,14 @@ export function useWoDigitalDocs() {
     const fileUrl=await uploadToR2(blob,key,"application/pdf")
 
     onStage?.("Menyimpan...")
-    // isFirstDoc DITANGKAP SEBELUM mutasi apa pun (REVISI 5 Sep 2026, dipakai buat notifikasi
-    // "gambar direvisi" di bawah - cuma revisi yang notif, upload pertama kali TIDAK, karena
-    // event "WO baru"/"tambah panel" udah cukup mewakili momen itu).
+    // isFirstDoc DITANGKAP SEBELUM mutasi apa pun - dipakai milih trigger notifikasi di bawah
+    // ("gambar_ditambahkan" utk pertama kali, "gambar_direvisi" utk revisi).
+    //
+    // BUG FIX (9 Sep 2026) - dulu upload pertama kali TIDAK memicu notifikasi sama sekali,
+    // asumsinya event "WO baru"/"tambah panel" udah cukup mewakili momen itu. Asumsi itu
+    // keliru begitu panelnya sudah lama ada (dibuat hari/minggu sebelumnya) dan dokumennya
+    // baru ditambahkan belakangan - gak ada event apa pun yang mewakili momen itu, jadi
+    // upload pertama kali diam-diam tanpa notif (kasus WO 066/CLS-FONTAINE, panel LVMDP).
     let wi=wiOfPanel(panelId)
     const isFirstDoc=!wi
     if(!wi){
@@ -129,13 +134,12 @@ export function useWoDigitalDocs() {
       }
     }
 
-    // Push notif "gambar direvisi" ke admin+operator (REVISI 5 Sep 2026) - fitur tambahan,
-    // GAGAL DI SINI TIDAK BOLEH gagalin upload yang udah beres di atas, try/catch sendiri.
-    if(!isFirstDoc){
-      try{
-        await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"gambar_direvisi",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname}})
-      }catch{/* notifikasi gagal - diabaikan */}
-    }
+    // Push notif ke admin+operator (REVISI 5 Sep 2026, DIPERLUAS 9 Sep 2026 supaya upload
+    // pertama kali JUGA notif, bukan cuma revisi) - fitur tambahan, GAGAL DI SINI TIDAK BOLEH
+    // gagalin upload yang udah beres di atas, try/catch sendiri.
+    try{
+      await supabase.functions.invoke("notify-wo-baru",{body:{trigger:isFirstDoc?"gambar_ditambahkan":"gambar_direvisi",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname}})
+    }catch{/* notifikasi gagal - diabaikan */}
   }
 
   return{wiList,revList,wiOfPanel,revisionsOf,currentRevOf,uploadDoc,refetchDocs:fetchDocs}

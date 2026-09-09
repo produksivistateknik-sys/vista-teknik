@@ -2,7 +2,7 @@
 Notify WO/Panel/Gambar Teknik - dipicu LANGSUNG dari client tepat setelah aksi terkait sukses,
 BUKAN cron (sama pola notify-permintaan - sekali-jalan per event, gak butuh tabel dedup terpisah).
 
-REVISI (5 Sep 2026) - dulu cuma 1 event (WO baru, cuma ke admin). Sekarang 4 TRIGGER, target
+REVISI (5 Sep 2026) - dulu cuma 1 event (WO baru, cuma ke admin). Sekarang 5 TRIGGER, target
 admin dan/atau SEMUA divisi operator (broadcast, bukan divisi spesifik - keputusan user,
 panel biasanya belum ada jadwal spesifik pas WO baru dibuat/diedit):
 - 'baru'          - WO baru dibuat (ManajemenWO.tsx/WoDigitalTab.tsx save(), cabang create).
@@ -13,8 +13,13 @@ panel biasanya belum ada jadwal spesifik pas WO baru dibuat/diedit):
                      panel). -> operator SAJA (sesuai spek user).
 - 'tambah_panel'  - panel baru ditambahkan ke WO yang SUDAH ADA (bukan pas Tambah WO Baru).
                      -> admin + operator.
-- 'gambar_direvisi' - upload REVISI gambar teknik (bukan upload pertama kali - lihat guard
-                     isFirstDoc di useWoDigitalDocs.ts). -> admin + operator.
+- 'gambar_direvisi'   - upload REVISI gambar teknik (dokumen SUDAH ada sebelumnya untuk panel
+                     itu - lihat isFirstDoc di useWoDigitalDocs.ts). -> admin + operator.
+- 'gambar_ditambahkan' - upload gambar teknik PERTAMA KALI buat panel itu (9 Sep 2026 - dulu
+                     TIDAK ada notif sama sekali di jalur ini, asumsinya event 'baru'/
+                     'tambah_panel' udah cukup mewakili momennya. Asumsi itu keliru kalau
+                     panelnya sudah lama ada dan dokumennya baru ditambahkan belakangan -
+                     gak ada event apa pun yang mewakili momen itu). -> admin + operator.
 
 Kirim ke SEMUA admin yang subscribe (push_subscriptions.admin_username IS NOT NULL) dan/atau
 SEMUA operator yang subscribe (push_subscriptions.divisi IS NOT NULL) - termasuk yang bikin
@@ -92,6 +97,14 @@ Deno.serve(async (req) => {
       if (!wo_id || !wo_number || !panel_nama) return jsonResponse({ error: 'wo_id, wo_number, dan panel_nama wajib diisi.' }, 400)
       title = 'Gambar Teknik Direvisi'
       notifBody = `${uploader_nama || 'Engineering'} merevisi gambar teknik ${panel_nama} - WO ${wo_number}${proyek ? ` (${proyek})` : ''}`
+      url = `/?tab=wodigital&wo_id=${wo_id}`
+      targetAdmin = true
+      targetOperator = true
+    } else if (trigger === 'gambar_ditambahkan') {
+      const { wo_id, wo_number, proyek, panel_nama, uploader_nama } = body
+      if (!wo_id || !wo_number || !panel_nama) return jsonResponse({ error: 'wo_id, wo_number, dan panel_nama wajib diisi.' }, 400)
+      title = 'Gambar Teknik Ditambahkan'
+      notifBody = `${uploader_nama || 'Engineering'} menambahkan gambar teknik ${panel_nama} - WO ${wo_number}${proyek ? ` (${proyek})` : ''}`
       url = `/?tab=wodigital&wo_id=${wo_id}`
       targetAdmin = true
       targetOperator = true
