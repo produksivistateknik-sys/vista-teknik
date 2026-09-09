@@ -163,7 +163,18 @@ export function MasterPekerja({pekerja,setPekerja,createPekerja,updatePekerja,re
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn>
-            <Btn color="#dc2626" onClick={()=>{setPekerja(prev=>prev.filter(p=>p.id!==delId));setDelId(null);}}>Hapus</Btn>
+            {/* BUG FIX (9 Sep 2026) - dulu tombol ini CUMA setPekerja(prev=>prev.filter(...))
+                (state lokal doang) - removePekerja (soft-delete beneran ke Supabase) DITERIMA
+                sebagai prop tapi GAK PERNAH DIPANGGIL sama sekali di file ini. Efeknya: pekerja
+                "hilang" sebentar di UI, tapi deleted_at di DB tetap NULL - begitu pekerjaList
+                di-refetch/realtime-resync (App.tsx useEffect pekerja<-pekerjaList), pekerja itu
+                "balik lagi". Dikonfirmasi live ke DB: WIRA/SATRIONO deleted_at masih NULL
+                walau sudah berkali-kali "dihapus" dari UI. */}
+            <Btn color="#dc2626" onClick={async()=>{
+              const result=await removePekerja(delId);
+              if(!result?.success){alert('Gagal menghapus: '+(result?.error||'unknown error'));return;}
+              setDelId(null);
+            }}>Hapus</Btn>
           </div>
         </Modal>
       )}
