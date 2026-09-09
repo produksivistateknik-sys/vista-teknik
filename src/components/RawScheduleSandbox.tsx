@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ALL_PROSES, PRIORITAS, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
+import { PANEL_TYPES, ALL_PROSES, PRIORITAS, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { Card } from './ui/Primitives'
 
@@ -40,18 +40,26 @@ const DUMMY_SEED: DummyRow[] = [
     schedule: { [TODAY]: ['WIRING POWER'], [addDays(TODAY, 3)]: ['QC TEST'] } },
   { id: 6, proyek: 'TRANS ICON SURABAYA', panel: 'DP-PUMP', komponen: 'Nameplate Panel', prioritas: 'Rendah',
     schedule: { [addDays(TODAY, 4)]: ['PACKING'] } },
-  // Panel FS & WM (9 Sep 2026) - kode & nama komponen persis ikut konvensi asli di
-  // constants/panelTypes.ts (PANEL_TYPES.FS / PANEL_TYPES.WM), biar data percobaan lebih
-  // representatif ketimbang nama-nama generik di atas.
-  { id: 7, proyek: 'SAKO KIDS SUKABUMI', panel: 'FS-1', komponen: 'FS.1 - Frame (include ambang)', prioritas: 'Tinggi',
-    schedule: { [TODAY]: ['POTONG', 'BENDING'], [addDays(TODAY, 1)]: ['RENDAM', 'PAINTING'] } },
-  { id: 8, proyek: 'SAKO KIDS SUKABUMI', panel: 'FS-1', komponen: 'FS.4 - Groundplate', prioritas: 'Tinggi',
-    schedule: { [addDays(TODAY, 2)]: ['RAKIT', 'PASANG KOMPONEN'] } },
-  { id: 9, proyek: 'MITRA10 BEKASI', panel: 'WM-1', komponen: 'WM.1 - Tulangan Groundplate', prioritas: 'Sedang',
-    schedule: { [TODAY]: ['STEL'], [addDays(TODAY, 1)]: ['FINISHING'] } },
-  { id: 10, proyek: 'MITRA10 BEKASI', panel: 'WM-1', komponen: 'WM.3 - Box (include ambang)', prioritas: 'Sedang',
-    schedule: { [addDays(TODAY, 3)]: ['WIRING CONTROL'] } },
 ]
+
+// Panel FS & WM LENGKAP (9 Sep 2026) - user mau lihat SEBERAPA PANJANG tabel kalau 1 panel
+// ditampilkan dengan SEMUA komponennya (bukan cuma 2 contoh kayak sebelumnya). Diambil
+// programatik dari PANEL_TYPES.FS/WM_MS (constants/panelTypes.ts) - SUMBER YANG SAMA
+// PERSIS dipakai Raw Schedule/Manajemen WO asli buat daftar komponen per tipe panel, jadi
+// kode & nama komponen dijamin "sesuai database" (bukan diketik ulang manual, gak akan
+// ketinggalan/salah ketik kalau daftar komponennya nanti diubah di panelTypes.ts).
+const buildPanelRows = (tipe: 'FS' | 'WM_MS', startId: number, proyek: string, panel: string, prioritas: string): DummyRow[] => {
+  const items = (PANEL_TYPES as any)[tipe].wps.flatMap((wp: any) => wp.items) as { kode: string, nama: string }[]
+  return items.map((it, idx) => ({
+    id: startId + idx, proyek, panel, komponen: `${it.kode} - ${it.nama}`, prioritas,
+    // Cuma beberapa komponen pertama dikasih contoh jadwal (biar gak 100% kosong pas
+    // dibuka) - sisanya sengaja kosong, sama kayak kondisi panel yang baru mulai dikerjakan.
+    schedule: idx === 0 ? { [TODAY]: ['POTONG', 'BENDING'] } : idx === 1 ? { [TODAY]: ['POTONG'] } : idx === 2 ? { [addDays(TODAY, 1)]: ['RENDAM', 'PAINTING'] } : {},
+  }))
+}
+const FS_ROWS = buildPanelRows('FS', 100, 'SAKO KIDS SUKABUMI', 'FS-1', 'Tinggi') // FS.1-FS.24 (24 komponen)
+const WM_ROWS = buildPanelRows('WM_MS', 200, 'MITRA10 BEKASI', 'WM-1', 'Sedang') // WM.1-WM.10 (10 komponen)
+DUMMY_SEED.push(...FS_ROWS, ...WM_ROWS)
 
 // Kapasitas dummy tetap per proses (bukan dari tabel fcs_kapasitas_harian asli - sandbox
 // gak punya modal "Atur Kapasitas") - cuma buat nunjukkin FORMAT tampilan "terpakai/kapasitas
