@@ -52,6 +52,7 @@ const TaskMonitoring = lazy(() => import('./components/TaskMonitoring').then(m =
 const SummaryProgress = lazy(() => import('./components/SummaryProgress').then(m => ({ default: m.SummaryProgress })))
 const DetailProgress = lazy(() => import('./components/DetailProgress').then(m => ({ default: m.DetailProgress })))
 const RawSchedule = lazy(() => import('./components/RawSchedule').then(m => ({ default: m.RawSchedule })))
+const RawScheduleSandbox = lazy(() => import('./components/RawScheduleSandbox').then(m => ({ default: m.RawScheduleSandbox })))
 const OutstandingView = lazy(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
 const ManajemenWO = lazy(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
 const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
@@ -654,6 +655,16 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
+    // PERCOBAAN (9 Sep 2026) - group TERPISAH JELAS dari menu produksi asli, sengaja di
+    // paling bawah sidebar - tempat nampung halaman sandbox/eksperimen (RawScheduleSandbox.tsx
+    // & sejenisnya nanti) yang murni data dummy lokal, TIDAK terhubung Supabase, bukan fitur
+    // resmi. Admin-only sama kayak Raw Schedule asli - biar gak ada divisi lain salah kira
+    // ini menu produksi.
+    ...(["admin"].includes(user?.divisi)?[
+      {group:"PERCOBAAN",items:[
+        {id:"raw_sandbox",label:"Raw Schedule (Percobaan)",icon:"ti ti-flask"},
+      ]},
+    ]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
@@ -1054,6 +1065,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("raw_sandbox")&&<div style={{display:tab==="raw_sandbox"?"block":"none"}}><Suspense fallback={TabFallback}><RawScheduleSandbox/></Suspense></div>}
               {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRaw={refetchRaw} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
