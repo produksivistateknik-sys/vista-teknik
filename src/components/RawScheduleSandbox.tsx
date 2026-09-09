@@ -12,10 +12,18 @@ import { Card } from './ui/Primitives'
 // MURNI (constants/panelTypes.ts, lib/dateHelpers.ts) - keduanya gak ada dependensi
 // Supabase, jadi aman dipakai di sini tanpa menyeret data layer produksi.
 //
-// SENGAJA DISEDERHANAKAN dari RawSchedule.tsx asli (2804 baris, drag-drop/context-menu/
-// modal assign/kalkulasi kapasitas wiring real) - sandbox ini cuma buat menguji IDE TATA
-// LETAK baris/kolomnya, bukan replikasi interaksi penuh. Klik cell tanggal buka toggle-list
-// proses sederhana (checkbox), itu doang.
+// SENGAJA DISEDERHANAKAN dari RawSchedule.tsx asli (2804 baris, context-menu/modal assign/
+// kalkulasi kapasitas wiring real) - sandbox ini cuma buat menguji IDE TATA LETAK
+// baris/kolomnya, bukan replikasi interaksi penuh.
+//
+// INTERAKSI (9 Sep 2026, revisi) - badge yang sudah dipilih SENGAJA "disabled" (klik badge
+// itu sendiri gak ngapa-ngapain, biar gak kehapus gak sengaja) - jalur eksplisit terpisah:
+// klik "+" buka popover tambah proses BARU (yang sudah ada gak muncul lagi di daftar), klik
+// ✓ di badge buat tandai selesai, klik × di badge buat hapus. Badge bisa di-drag (native
+// HTML5 DnD, sama pola RawSchedule.tsx asli - project ini emang gak punya library dnd) ke
+// tanggal lain DI BARIS/KOMPONEN YANG SAMA. Tombol "Simulasikan Hari Berikutnya" majuin
+// virtual clock (`virtualToday`, terpisah dari TODAY asli) 1 hari - badge yang PERSIS di
+// virtualToday & belum ditandai selesai ikut maju 1 hari (auto-geser).
 // ─────────────────────────────────────────────────────────────────────────────
 
 type DummyRow = {
@@ -82,19 +90,91 @@ export function RawScheduleSandbox() {
   const [capacityCollapsed, setCapacityCollapsed] = useState(false)
   const [cellPicker, setCellPicker] = useState<{ rowId: number, date: string } | null>(null)
 
+  // BADGE DISABLED + DRAG&DROP + AUTO-GESER (9 Sep 2026) - 3 state baru:
+  // - selesaiMap: badge yang ditandai selesai (key "rowId::date::proses") DIKECUALIKAN dari
+  //   auto-geser & ditampilkan pudar - status ini IKUT PINDAH kalau badge-nya di-drag (lihat
+  //   handleDrop), bukan nempel ke tanggal.
+  // - dragging/dragOverCell: drag native HTML5 (bukan library - project ini emang gak punya
+  //   dependency dnd, RawSchedule.tsx asli sendiri pakai native API persis kayak ini).
+  // - virtualToday: "hari acuan" simulasi, TERPISAH dari TODAY asli - biar auto-geser bisa
+  //   didemonstrasikan tanpa nunggu hari beneran berganti.
+  const [selesaiMap, setSelesaiMap] = useState<Record<string, boolean>>({})
+  const [dragging, setDragging] = useState<{ rowId: number, date: string, proses: string } | null>(null)
+  const [dragOverCell, setDragOverCell] = useState<{ rowId: number, date: string } | null>(null)
+  const [virtualToday, setVirtualToday] = useState(TODAY)
+
   const days = useMemo(() => Array.from({ length: 20 }, (_, i) => addDays(weekStart, i - HARI_SEBELUM_WEEKSTART)), [weekStart])
   const isSunday = (d: string) => new Date(d).getDay() === 0
+  const keyOf = (rowId: number, date: string, proses: string) => `${rowId}::${date}::${proses}`
 
   const toggleFilterProses = (p: string) => setFilterProses(prev => prev.includes(p) ? prev.filter(x => x !== p) : [...prev, p])
 
-  const toggleProsesDiCell = (rowId: number, date: string, proses: string) => {
+  // Popover "+ Tambah Proses" cuma NAMBAH (proses yang sudah ada gak muncul di daftar ini
+  // lagi, jadi gak bisa "kehapus" gak sengaja lewat sini) - beda dari toggleProsesDiCell lama.
+  const addProsesKeCell = (rowId: number, date: string, proses: string) => {
     setRows(prev => prev.map(r => {
       if (r.id !== rowId) return r
       const current = r.schedule[date] || []
-      const next = current.includes(proses) ? current.filter(p => p !== proses) : [...current, proses]
-      return { ...r, schedule: { ...r.schedule, [date]: next } }
+      if (current.includes(proses)) return r
+      return { ...r, schedule: { ...r.schedule, [date]: [...current, proses] } }
     }))
+    setCellPicker(null)
   }
+
+  // Hapus badge - SATU-SATUNYA jalur hapus sekarang (klik × di badge, bukan lagi klik cell).
+  const hapusProsesDariCell = (rowId: number, date: string, proses: string) => {
+    setRows(prev => prev.map(r => {
+      if (r.id !== rowId) return r
+      return { ...r, schedule: { ...r.schedule, [date]: (r.schedule[date] || []).filter(p => p !== proses) } }
+    }))
+    setSelesaiMap(prev => { const next = { ...prev }; delete next[keyOf(rowId, date, proses)]; return next })
+  }
+
+  const toggleSelesai = (rowId: number, date: string, proses: string) => {
+    const k = keyOf(rowId, date, proses)
+    setSelesaiMap(prev => ({ ...prev, [k]: !prev[k] }))
+  }
+
+  const handleDrop = (targetRowId: number, targetDate: string) => {
+    if (dragging && dragging.rowId === targetRowId && dragging.date !== targetDate) {
+      setRows(prev => prev.map(r => {
+        if (r.id !== targetRowId) return r
+        const fromList = (r.schedule[dragging.date] || []).filter(p => p !== dragging.proses)
+        const toList = (r.schedule[targetDate] || []).includes(dragging.proses) ? (r.schedule[targetDate] || []) : [...(r.schedule[targetDate] || []), dragging.proses]
+        return { ...r, schedule: { ...r.schedule, [dragging.date]: fromList, [targetDate]: toList } }
+      }))
+      // Status selesai IKUT ke tanggal baru (badge yang sama, cuma pindah tempat).
+      const oldKey = keyOf(targetRowId, dragging.date, dragging.proses)
+      const newKey = keyOf(targetRowId, targetDate, dragging.proses)
+      setSelesaiMap(prev => {
+        if (!(oldKey in prev)) return prev
+        const next = { ...prev }; const val = next[oldKey]; delete next[oldKey]; next[newKey] = val; return next
+      })
+    }
+    setDragging(null)
+    setDragOverCell(null)
+  }
+
+  // Auto-geser: badge yang PERSIS di virtualToday & belum ditandai selesai maju 1 hari -
+  // setiap klik tombol = 1 hari berlalu, badge cuma maju 1 langkah (bukan loncat jauh).
+  const simulasikanHariBerikutnya = () => {
+    const dariTanggal = virtualToday
+    const keTanggal = addDays(virtualToday, 1)
+    setRows(prev => prev.map(r => {
+      const entriesHariIni = r.schedule[dariTanggal] || []
+      const belumSelesai = entriesHariIni.filter(p => !selesaiMap[keyOf(r.id, dariTanggal, p)])
+      if (belumSelesai.length === 0) return r
+      const tetapDiSini = entriesHariIni.filter(p => selesaiMap[keyOf(r.id, dariTanggal, p)])
+      const tujuanBaru = [...(r.schedule[keTanggal] || [])]
+      belumSelesai.forEach(p => { if (!tujuanBaru.includes(p)) tujuanBaru.push(p) })
+      return { ...r, schedule: { ...r.schedule, [dariTanggal]: tetapDiSini, [keTanggal]: tujuanBaru } }
+    }))
+    // Status selesai proses yg TETAP di dariTanggal gak perlu dipindah (key tanggalnya gak
+    // berubah); yang ikut geser dijamin belum-selesai jadi gak ada entri selesaiMap buat dihapus.
+    setVirtualToday(keTanggal)
+  }
+
+  const resetSimulasi = () => { setRows(DUMMY_SEED); setSelesaiMap({}); setVirtualToday(TODAY) }
 
   const visibleRows = rows.filter(r => filterProses.length === 0 || (Object.values(r.schedule).some(list => list.some(p => filterProses.includes(p)))))
 
@@ -125,13 +205,19 @@ export function RawScheduleSandbox() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 14, flexWrap: 'wrap', gap: 10 }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Raw Schedule (Percobaan)</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Klik kotak tanggal untuk coba tambah/hapus proses pada komponen itu.</div>
+          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>Klik "+" di kotak tanggal buat tambah proses. Badge yang sudah ada bisa di-drag pindah tanggal (baris sama), klik ✓ tandai selesai, klik × hapus.</div>
         </div>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
           <button onClick={() => setWeekStart(addDays(weekStart, -7))} style={{ height: 28, padding: '0 12px', borderRadius: 5, border: '0.5px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>‹ Minggu Lalu</button>
           <button onClick={() => setWeekStart(TODAY)} style={{ height: 28, padding: '0 12px', borderRadius: 5, border: '0.5px solid #3b5bdb', background: weekStart === TODAY ? '#eff3ff' : '#fff', color: '#3b5bdb', cursor: 'pointer', fontSize: 11, fontWeight: 500, fontFamily: 'inherit' }}>Hari Ini</button>
           <button onClick={() => setWeekStart(addDays(weekStart, 7))} style={{ height: 28, padding: '0 12px', borderRadius: 5, border: '0.5px solid #d1d5db', background: '#fff', color: '#374151', fontSize: 11, fontWeight: 500, cursor: 'pointer', fontFamily: 'inherit' }}>Minggu Depan ›</button>
         </div>
+      </div>
+
+      <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 10, padding: '8px 12px', flexWrap: 'wrap' }}>
+        <span style={{ fontSize: 11, color: '#1d4ed8', fontWeight: 700 }}>🕐 Simulasi Auto-Geser — hari acuan sekarang: <strong>{getDayLabel(virtualToday)}</strong>{virtualToday === TODAY ? ' (= Hari Ini)' : ''}</span>
+        <button onClick={simulasikanHariBerikutnya} style={{ height: 26, padding: '0 12px', borderRadius: 6, border: 'none', background: '#2563eb', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>▶ Simulasikan Hari Berikutnya</button>
+        <button onClick={resetSimulasi} style={{ height: 26, padding: '0 12px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#fff', color: '#1d4ed8', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>↺ Reset Simulasi</button>
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 12, flexWrap: 'wrap', alignItems: 'center' }}>
@@ -196,9 +282,10 @@ export function RawScheduleSandbox() {
               <th style={{ ...thS, textAlign: 'left', minWidth: 170, position: 'sticky', left: 210, zIndex: 5, background: '#1e3a8a' }}>KOMPONEN</th>
               <th style={{ ...thS, minWidth: 90, position: 'sticky', left: 380, zIndex: 5, background: '#1e3a8a' }}>PRIORITAS</th>
               {days.map(d => (
-                <th key={d} style={{ ...thS, minWidth: 120, background: d === TODAY ? '#1e40af' : isSunday(d) ? '#7f1d1d' : '#1e3a8a', borderBottom: d === TODAY ? '2px solid #60a5fa' : 'none' }}>
+                <th key={d} style={{ ...thS, minWidth: 120, background: d === TODAY ? '#1e40af' : isSunday(d) ? '#7f1d1d' : '#1e3a8a', borderBottom: d === TODAY ? '2px solid #60a5fa' : d === virtualToday ? '2px dashed #93c5fd' : 'none' }}>
                   <div>{getDayLabel(d)}</div>
                   {d === TODAY && <div style={{ fontSize: 9, opacity: .7 }}>Hari Ini</div>}
+                  {d === virtualToday && d !== TODAY && <div style={{ fontSize: 9, opacity: .7 }}>🕐 Acuan Simulasi</div>}
                 </th>
               ))}
             </tr>
@@ -219,28 +306,50 @@ export function RawScheduleSandbox() {
                   {days.map(d => {
                     const entries = (row.schedule[d] || []).filter(p => filterProses.length === 0 || filterProses.includes(p))
                     const isPickerOpen = cellPicker?.rowId === row.id && cellPicker?.date === d
+                    const belumDipilih = ALL_PROSES.filter(pr => !(row.schedule[d] || []).includes(pr))
+                    const isDragOver = dragOverCell?.rowId === row.id && dragOverCell?.date === d
                     return (
-                      <td key={d} onClick={(e: any) => { e.stopPropagation(); setCellPicker(isPickerOpen ? null : { rowId: row.id, date: d }) }}
-                        style={{ ...td, textAlign: 'center', padding: '2px', cursor: 'pointer', position: 'relative', background: d === TODAY ? '#eff6ff' : isSunday(d) ? '#fff1f2' : rBg }}>
-                        {entries.length > 0 ? (
-                          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', padding: '3px' }}>
-                            {entries.map(p => {
-                              const pc = (PROSES_COLOR as any)[p] || '#64748b'
-                              return <span key={p} style={{ background: pc, color: '#fff', borderRadius: 3, padding: '1px 5px', fontSize: 9, fontWeight: 700 }}>{p}</span>
-                            })}
-                          </div>
-                        ) : (
-                          <div style={{ width: '100%', minHeight: 26, borderRadius: 6, border: '1px dashed #e2e8f0', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#e2e8f0', fontSize: 14 }}>+</div>
-                        )}
+                      <td key={d}
+                        onDragOver={(e: any) => { if (dragging && dragging.rowId === row.id && dragging.date !== d) { e.preventDefault(); setDragOverCell({ rowId: row.id, date: d }) } }}
+                        onDragLeave={() => setDragOverCell(prev => (prev?.rowId === row.id && prev?.date === d) ? null : prev)}
+                        onDrop={(e: any) => { e.preventDefault(); handleDrop(row.id, d) }}
+                        style={{ ...td, textAlign: 'center', padding: '2px', position: 'relative', background: isDragOver ? '#dbeafe' : d === TODAY ? '#eff6ff' : isSunday(d) ? '#fff1f2' : rBg, outline: isDragOver ? '2px dashed #2563eb' : 'none' }}>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 3, justifyContent: 'center', alignItems: 'center', padding: '3px', minHeight: 26 }}>
+                          {entries.map(p => {
+                            const pc = (PROSES_COLOR as any)[p] || '#64748b'
+                            const isSelesai = !!selesaiMap[keyOf(row.id, d, p)]
+                            return (
+                              <span key={p} draggable
+                                onDragStart={(e: any) => { e.stopPropagation(); setDragging({ rowId: row.id, date: d, proses: p }) }}
+                                onDragEnd={() => { setDragging(null); setDragOverCell(null) }}
+                                title="Drag buat pindah tanggal (baris/komponen yang sama)"
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: isSelesai ? '#94a3b8' : pc, color: '#fff', borderRadius: 3, padding: '1px 3px 1px 5px', fontSize: 9, fontWeight: 700, cursor: 'grab', opacity: isSelesai ? 0.6 : 1 }}>
+                                {p}
+                                <button onClick={(e: any) => { e.stopPropagation(); toggleSelesai(row.id, d, p) }}
+                                  title={isSelesai ? 'Batalkan tanda selesai' : 'Tandai selesai (dikecualikan dari auto-geser)'}
+                                  style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 1px', fontSize: 9, lineHeight: 1 }}>✓</button>
+                                <button onClick={(e: any) => { e.stopPropagation(); hapusProsesDariCell(row.id, d, p) }}
+                                  title="Hapus"
+                                  style={{ background: 'none', border: 'none', color: '#fff', cursor: 'pointer', padding: '0 1px', fontSize: 9, lineHeight: 1 }}>×</button>
+                              </span>
+                            )
+                          })}
+                          <button onClick={(e: any) => { e.stopPropagation(); setCellPicker(isPickerOpen ? null : { rowId: row.id, date: d }) }}
+                            title="Tambah proses"
+                            style={{ width: entries.length > 0 ? 16 : '100%', minHeight: entries.length > 0 ? 16 : 26, borderRadius: 6, border: '1px dashed #e2e8f0', background: 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#cbd5e1', fontSize: entries.length > 0 ? 10 : 14, cursor: 'pointer', fontFamily: 'inherit' }}>+</button>
+                        </div>
                         {isPickerOpen && (
                           <>
                             <div onClick={(e: any) => { e.stopPropagation(); setCellPicker(null) }} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
                             <div onClick={(e: any) => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 999, background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 8, minWidth: 160, textAlign: 'left' }}>
-                              {ALL_PROSES.map(pr => (
-                                <label key={pr} style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 6px', borderRadius: 5, cursor: 'pointer', fontSize: 11 }}>
-                                  <input type="checkbox" checked={(row.schedule[d] || []).includes(pr)} onChange={() => toggleProsesDiCell(row.id, d, pr)} />
+                              {belumDipilih.length === 0 ? (
+                                <div style={{ fontSize: 11, color: '#94a3b8', padding: '4px 6px' }}>Semua proses sudah ditambahkan</div>
+                              ) : belumDipilih.map(pr => (
+                                <div key={pr} onClick={() => addProsesKeCell(row.id, d, pr)}
+                                  style={{ padding: '5px 6px', borderRadius: 5, cursor: 'pointer', fontSize: 11, color: '#1e293b' }}
+                                  onMouseEnter={(e: any) => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={(e: any) => e.currentTarget.style.background = 'transparent'}>
                                   {pr}
-                                </label>
+                                </div>
                               ))}
                             </div>
                           </>
