@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
@@ -11,6 +11,8 @@ import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
 import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
+
+const PdfViewer=lazy(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
 export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
   // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
@@ -62,6 +64,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
+  // Gambar WO viewer (9 Sep 2026 fix) - dulu tombol "Lihat" pakai window.open(file_url) LANGSUNG
+  // ke URL R2 mentah, bypass total PdfViewer.tsx (yang benar-benar dipakai Engineering di
+  // WoDigitalTab.tsx - iframe+proxy /pdf-proxy/* biar PDF cross-origin tampil inline, bukan
+  // native/download). Disamakan persis pola WoDigitalTab.tsx: state `viewing` + early-return.
+  const [viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
   const [delId,setDelId]=useState(null);
   const [open,setOpen]=useState(false);
   const [expandedWo,setExpandedWo]=useState({});
@@ -345,6 +352,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     setGlobalDirtyPanelIds(new Set(Object.keys(dirtyQty).filter(pid=>Object.keys(dirtyQty[pid]||{}).length>0)));
   },[dirtyQty]);
 
+  if(viewing){
+    return(
+      <Suspense fallback={<div style={{textAlign:"center",padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>}>
+        <PdfViewer url={viewing.url} title={viewing.title} subtitle={viewing.subtitle} onBack={()=>setViewing(null)}/>
+      </Suspense>
+    );
+  }
+
   return(
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
@@ -433,7 +448,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         <span style={{fontSize:12,color:"#64748b"}}>
                           {pCurrentCard?<>oleh {pCurrentCard.uploaded_by} · {fmtTglDoc(pCurrentCard.uploaded_at)}</>:"Belum ada dokumen"}
                         </span>
-                        {pCurrentCard&&<button onClick={()=>window.open(pCurrentCard.file_url,"_blank")}
+                        {pCurrentCard&&<button onClick={()=>setViewing({url:pCurrentCard.file_url,title:pWiCard?.judul||`Panel ${p.no_pnl??p.noPnl} - ${p.nama}`,subtitle:`WO ${wo.wo} - ${wo.proyek}${pCurrentCard.rev_mark?` · ${pCurrentCard.rev_mark}`:""} · oleh ${pCurrentCard.uploaded_by} · ${fmtTglDoc(pCurrentCard.uploaded_at)}`})}
                           style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
                       </div>
                       {pLainnyaCard.length>0&&(
@@ -447,7 +462,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                 </div>
                                 <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
                               </div>
-                              <button onClick={()=>window.open(r.file_url,"_blank")}
+                              <button onClick={()=>setViewing({url:r.file_url,title:pWiCard?.judul||`Panel ${p.no_pnl??p.noPnl} - ${p.nama}`,subtitle:`WO ${wo.wo} - ${wo.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTglDoc(r.uploaded_at)} · Tidak Berlaku`})}
                                 style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
                             </div>
                           ))}
@@ -706,7 +721,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         <span style={{fontSize:12,color:"#64748b"}}><b style={{color:"#1e293b"}}>{panelLabel}</b><br/>
                           {current?<>Berlaku: {current.rev_mark?<span style={{fontSize:15,fontWeight:800,color:"#dc2626"}}>{current.rev_mark}</span>:"(tanpa keterangan)"} · oleh {current.uploaded_by} · {fmtTglDoc(current.uploaded_at)}</>:"Belum ada dokumen"}
                         </span>
-                        {current&&<button onClick={()=>window.open(current.file_url,"_blank")}
+                        {current&&<button onClick={()=>setViewing({url:current.file_url,title:wi?.judul||panelLabel,subtitle:`WO ${form.wo} - ${form.proyek}${current.rev_mark?` · ${current.rev_mark}`:""} · oleh ${current.uploaded_by} · ${fmtTglDoc(current.uploaded_at)}`})}
                           style={{padding:"5px 12px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600,whiteSpace:"nowrap"}}>Lihat</button>}
                       </div>
                       {lainnya.length>0&&(
@@ -720,7 +735,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                 </div>
                                 <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
                               </div>
-                              <button onClick={()=>window.open(r.file_url,"_blank")}
+                              <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||panelLabel,subtitle:`WO ${form.wo} - ${form.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTglDoc(r.uploaded_at)} · Tidak Berlaku`})}
                                 style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
                             </div>
                           ))}
