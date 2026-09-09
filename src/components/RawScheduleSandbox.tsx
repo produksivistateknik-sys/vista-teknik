@@ -295,6 +295,14 @@ export function RawScheduleSandbox() {
               const priColor = (PRIORITAS_COLOR as any)[row.prioritas] || '#64748b'
               const rBg = ri % 2 === 0 ? '#fff' : '#f8fafc'
               const td = { borderBottom: '1px solid #f1f5f9', borderRight: '1px solid #f1f5f9', background: rBg, padding: '2px 4px', verticalAlign: 'middle' as const }
+              // Satu komponen (baris) gak boleh punya proses yang sama terpasang di 2 tanggal
+              // sekaligus (9 Sep 2026, revisi) - dihitung LINTAS SEMUA TANGGAL pada baris ini,
+              // bukan per-cell, dipakai buat nge-disable opsi di dropdown tanggal MANAPUN pada
+              // baris ini kalau proses itu sudah dipakai di tanggal lain. "Dipakai" ditentukan
+              // langsung dari isi row.schedule (bukan flag terpisah) - begitu badge dipindah
+              // lewat drag, status ini otomatis ikut pindah, gak akan pernah dobel.
+              const prosesDipakaiBaris: Record<string, string> = {}
+              Object.entries(row.schedule).forEach(([tgl, list]) => list.forEach(p => { if (!(p in prosesDipakaiBaris)) prosesDipakaiBaris[p] = tgl }))
               return (
                 <tr key={row.id}>
                   <td style={{ ...td, position: 'sticky', left: 0, zIndex: 2, fontWeight: 600, fontSize: 9, color: '#475569', background: '#fff', minWidth: 100, maxWidth: 100, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'center' }}>{row.proyek}</td>
@@ -306,7 +314,6 @@ export function RawScheduleSandbox() {
                   {days.map(d => {
                     const entries = (row.schedule[d] || []).filter(p => filterProses.length === 0 || filterProses.includes(p))
                     const isPickerOpen = cellPicker?.rowId === row.id && cellPicker?.date === d
-                    const belumDipilih = ALL_PROSES.filter(pr => !(row.schedule[d] || []).includes(pr))
                     const isDragOver = dragOverCell?.rowId === row.id && dragOverCell?.date === d
                     return (
                       <td key={d}
@@ -341,16 +348,20 @@ export function RawScheduleSandbox() {
                         {isPickerOpen && (
                           <>
                             <div onClick={(e: any) => { e.stopPropagation(); setCellPicker(null) }} style={{ position: 'fixed', inset: 0, zIndex: 998 }} />
-                            <div onClick={(e: any) => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 999, background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 8, minWidth: 160, textAlign: 'left' }}>
-                              {belumDipilih.length === 0 ? (
-                                <div style={{ fontSize: 11, color: '#94a3b8', padding: '4px 6px' }}>Semua proses sudah ditambahkan</div>
-                              ) : belumDipilih.map(pr => (
-                                <div key={pr} onClick={() => addProsesKeCell(row.id, d, pr)}
-                                  style={{ padding: '5px 6px', borderRadius: 5, cursor: 'pointer', fontSize: 11, color: '#1e293b' }}
-                                  onMouseEnter={(e: any) => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={(e: any) => e.currentTarget.style.background = 'transparent'}>
-                                  {pr}
-                                </div>
-                              ))}
+                            <div onClick={(e: any) => e.stopPropagation()} style={{ position: 'absolute', top: '100%', left: 0, zIndex: 999, background: '#fff', borderRadius: 8, border: '1px solid #e2e8f0', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', padding: 8, minWidth: 180, textAlign: 'left' }}>
+                              {ALL_PROSES.map(pr => {
+                                const tglDipakai = prosesDipakaiBaris[pr]
+                                const isDisabled = !!tglDipakai
+                                return (
+                                  <div key={pr} onClick={() => { if (!isDisabled) addProsesKeCell(row.id, d, pr) }}
+                                    title={isDisabled ? `Sudah dipakai di ${getDayLabel(tglDipakai)} - drag badge-nya kalau mau pindah ke sini` : undefined}
+                                    style={{ padding: '5px 6px', borderRadius: 5, cursor: isDisabled ? 'not-allowed' : 'pointer', fontSize: 11, color: isDisabled ? '#cbd5e1' : '#1e293b', display: 'flex', justifyContent: 'space-between', gap: 8 }}
+                                    onMouseEnter={(e: any) => { if (!isDisabled) e.currentTarget.style.background = '#f1f5f9' }} onMouseLeave={(e: any) => e.currentTarget.style.background = 'transparent'}>
+                                    <span>{pr}</span>
+                                    {isDisabled && <span style={{ fontSize: 9, color: '#cbd5e1' }}>terpakai {getDayLabel(tglDipakai)}</span>}
+                                  </div>
+                                )
+                              })}
                             </div>
                           </>
                         )}
