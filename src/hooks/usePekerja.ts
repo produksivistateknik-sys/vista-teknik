@@ -65,7 +65,14 @@ export function usePekerja() {
     try {
       const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
       const uname = user_name || sess?.nama || sess?.name || 'Admin'
-      const { error } = await import('../lib/supabase').then(m => m.supabase.from('pekerja').update({deleted_at: new Date().toISOString(), deleted_by: uname}).eq('id', id))
+      // BUG FIX (10 Sep 2026) - dulu pakai import('../lib/supabase').then(m=>m.supabase...)
+      // (dynamic import redundan) buat manggil `supabase` yang SUDAH di-import statis di baris
+      // 3 file ini - hasilnya "Cannot read properties of undefined (reading 'from')" pas
+      // diklik dari MasterPekerja.tsx (baru kepakai beneran setelah fix sebelumnya yang bikin
+      // tombol Hapus akhirnya memanggil removePekerja - sebelumnya bug ini gak pernah ketahuan
+      // karena fungsinya emang gak pernah dipanggil). Pakai `supabase` statis langsung, sama
+      // kayak channel realtime di useEffect atas & create/update di bawah.
+      const { error } = await supabase.from('pekerja').update({ deleted_at: new Date().toISOString(), deleted_by: uname }).eq('id', id)
       if (error) throw new Error(error.message)
       setData(prev => prev.filter(r => r.id !== id))
       return { success: true }
