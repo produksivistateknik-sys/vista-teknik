@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react'
-import { ALL_PROSES, PRIORITAS, PROSES_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
+import { ALL_PROSES, PRIORITAS, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { Card } from './ui/Primitives'
 
@@ -40,7 +40,30 @@ const DUMMY_SEED: DummyRow[] = [
     schedule: { [TODAY]: ['WIRING POWER'], [addDays(TODAY, 3)]: ['QC TEST'] } },
   { id: 6, proyek: 'TRANS ICON SURABAYA', panel: 'DP-PUMP', komponen: 'Nameplate Panel', prioritas: 'Rendah',
     schedule: { [addDays(TODAY, 4)]: ['PACKING'] } },
+  // Panel FS & WM (9 Sep 2026) - kode & nama komponen persis ikut konvensi asli di
+  // constants/panelTypes.ts (PANEL_TYPES.FS / PANEL_TYPES.WM), biar data percobaan lebih
+  // representatif ketimbang nama-nama generik di atas.
+  { id: 7, proyek: 'SAKO KIDS SUKABUMI', panel: 'FS-1', komponen: 'FS.1 - Frame (include ambang)', prioritas: 'Tinggi',
+    schedule: { [TODAY]: ['POTONG', 'BENDING'], [addDays(TODAY, 1)]: ['RENDAM', 'PAINTING'] } },
+  { id: 8, proyek: 'SAKO KIDS SUKABUMI', panel: 'FS-1', komponen: 'FS.4 - Groundplate', prioritas: 'Tinggi',
+    schedule: { [addDays(TODAY, 2)]: ['RAKIT', 'PASANG KOMPONEN'] } },
+  { id: 9, proyek: 'MITRA10 BEKASI', panel: 'WM-1', komponen: 'WM.1 - Tulangan Groundplate', prioritas: 'Sedang',
+    schedule: { [TODAY]: ['STEL'], [addDays(TODAY, 1)]: ['FINISHING'] } },
+  { id: 10, proyek: 'MITRA10 BEKASI', panel: 'WM-1', komponen: 'WM.3 - Box (include ambang)', prioritas: 'Sedang',
+    schedule: { [addDays(TODAY, 3)]: ['WIRING CONTROL'] } },
 ]
+
+// Kapasitas dummy tetap per proses (bukan dari tabel fcs_kapasitas_harian asli - sandbox
+// gak punya modal "Atur Kapasitas") - cuma buat nunjukkin FORMAT tampilan "terpakai/kapasitas
+// satuan" yang sama persis kayak Raw Schedule asli, angkanya ilustratif.
+const KAPASITAS_DUMMY: Record<string, number> = {
+  POTONG: 384, BENDING: 384, STEL: 384, FINISHING: 384, PAINTING: 480, RENDAM: 480,
+  RAKIT: 384, 'PASANG KOMPONEN': 384, BUSBAR: 300, 'QC TEST': 240, PACKING: 240,
+  'WIRING CONTROL': 6, 'WIRING POWER': 6,
+}
+// Menit ilustratif per 1 entri terjadwal (bukan qty x menit/pcs asli yang butuh data
+// checklist real) - cukup buat nunjukkin bar bergerak isi sesuai jumlah entri per hari.
+const MENIT_PER_ENTRI_DUMMY = 45
 
 const HARI_SEBELUM_WEEKSTART = 3
 
@@ -67,14 +90,17 @@ export function RawScheduleSandbox() {
 
   const visibleRows = rows.filter(r => filterProses.length === 0 || (Object.values(r.schedule).some(list => list.some(p => filterProses.includes(p)))))
 
-  // Capacity Utilization dummy - dihitung murni dari state lokal `rows`, bukan Supabase.
-  // Hitung berapa kali tiap proses muncul di seluruh jadwal dummy, sekadar ilustrasi visual.
-  const capacityByProses = useMemo(() => {
-    const count: Record<string, number> = {}
-    rows.forEach(r => Object.values(r.schedule).forEach(list => list.forEach(p => { count[p] = (count[p] || 0) + 1 })))
-    return count
-  }, [rows])
-  const maxCapacity = Math.max(1, ...Object.values(capacityByProses))
+  // Capacity Utilization - format PERSIS ditiru dari RawSchedule.tsx asli (kartu per hari,
+  // baris per proses, "{terpakai}/{kapasitas} {satuan}" + progress bar) - cuma sumber
+  // datanya dummy lokal (`rows`), bukan Supabase/fcs_kapasitas_harian. WIRING CONTROL/
+  // POWER pakai satuan "orang" (1 entri = 1 orang, ilustratif), proses lain "mnt" (1
+  // entri = MENIT_PER_ENTRI_DUMMY menit, ilustratif juga - lihat komentar konstanta di atas).
+  const hitungTerpakai = (pr: string, d: string): number => {
+    const isOrangPr = PROSES_ORANG_RAW_GLOBAL.includes(pr)
+    let jumlahEntri = 0
+    rows.forEach(r => { if ((r.schedule[d] || []).includes(pr)) jumlahEntri++ })
+    return isOrangPr ? jumlahEntri : jumlahEntri * MENIT_PER_ENTRI_DUMMY
+  }
 
   const thS = { background: '#1e3a8a', color: '#fff', padding: '3px 6px', fontWeight: 600, fontSize: 9, whiteSpace: 'nowrap' as const, letterSpacing: .3, textAlign: 'center' as const, borderRight: '1px solid #ffffff18', position: 'sticky' as const, top: 0, zIndex: 3, textTransform: 'uppercase' as const }
 
@@ -117,21 +143,38 @@ export function RawScheduleSandbox() {
           ⚡ Capacity Utilization {filterProses.length > 0 ? '— ' + filterProses.join(', ') : '(semua proses)'} <span style={{ fontWeight: 400, fontSize: 9, color: '#94a3b8' }}>(dummy lokal)</span>
         </div>
         {!capacityCollapsed && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-            {(filterProses.length > 0 ? filterProses : ALL_PROSES).filter(pr => capacityByProses[pr]).map(pr => {
-              const pc = (PROSES_COLOR as any)[pr] || '#64748b'
-              const val = capacityByProses[pr] || 0
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {days.slice(0, 7).map(d => {
+              const prosesToShow = filterProses.length === 0 ? ['POTONG', 'BENDING', 'STEL', 'FINISHING', 'PAINTING', 'WIRING CONTROL', 'WIRING POWER'] : filterProses
+              const perProses = prosesToShow.map(pr => {
+                const isOrangPr = PROSES_ORANG_RAW_GLOBAL.includes(pr)
+                const terpakai = hitungTerpakai(pr, d)
+                const kapasitas = KAPASITAS_DUMMY[pr] || (isOrangPr ? 6 : 384)
+                return { nama: pr, terpakai, kapasitas, satuan: isOrangPr ? 'orang' : 'mnt' }
+              })
               return (
-                <div key={pr} style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                  <span style={{ width: 110, fontSize: 10, fontWeight: 700, color: pc }}>{pr}</span>
-                  <div style={{ flex: 1, background: '#e2e8f0', borderRadius: 99, height: 8, overflow: 'hidden' }}>
-                    <div style={{ width: `${(val / maxCapacity) * 100}%`, height: '100%', background: pc, borderRadius: 99, transition: 'width .4s' }} />
+                <div key={d} style={{ background: 'var(--card-bg,#fff)', border: '1px solid #e2e8f030', borderRadius: 8, padding: '8px 12px', minWidth: 130, textAlign: 'center' }}>
+                  <div style={{ fontSize: 10, color: '#64748b', marginBottom: 4 }}>{getDayLabel(d)}</div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: 5, textAlign: 'left' }}>
+                    {perProses.map(pp => {
+                      const pctPr = pp.kapasitas > 0 ? Math.min(Math.round((pp.terpakai / pp.kapasitas) * 100), 100) : 0
+                      const colorPr = pctPr >= 95 ? '#dc2626' : pctPr >= 80 ? '#f59e0b' : '#16a34a'
+                      return (
+                        <div key={pp.nama}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 9, marginBottom: 2 }}>
+                            <span style={{ color: '#64748b' }}>{pp.nama}</span>
+                            <span style={{ fontWeight: 700, color: '#1e293b' }}>{pp.satuan === 'orang' ? Number(pp.terpakai.toFixed(1)) : Math.round(pp.terpakai)}/{pp.kapasitas} {pp.satuan}</span>
+                          </div>
+                          <div style={{ width: '100%', height: 4, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}>
+                            <div style={{ width: pctPr + '%', height: '100%', background: colorPr, borderRadius: 99 }} />
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                  <span style={{ width: 24, fontSize: 10, fontWeight: 700, color: '#64748b', textAlign: 'right' }}>{val}</span>
                 </div>
               )
             })}
-            {Object.keys(capacityByProses).length === 0 && <div style={{ fontSize: 11, color: '#94a3b8' }}>Belum ada jadwal dummy.</div>}
           </div>
         )}
       </div>
