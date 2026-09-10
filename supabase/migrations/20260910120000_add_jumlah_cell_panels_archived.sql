@@ -1,0 +1,24 @@
+-- Fix bug (10 Sep 2026): arsip panel gagal - "column jumlah_cell of relation
+-- panels_archived does not exist" (panel "PP-COOL STORAGE GDRM" / WO 039).
+--
+-- Kolom `jumlah_cell` ditambahkan ke panels (live) di migration 20260830040000 tapi
+-- KELEWAT ditambahkan juga ke panels_archived - RPC arsip_panel() membangun daftar kolom
+-- INSERT dinamis dari information_schema.columns tabel SUMBER (panels), lalu insert ke
+-- panels_archived; gagal karena kolomnya gak ada di tabel arsip. Kelas bug SAMA PERSIS
+-- dengan insiden busbar_jejak (31 Jul 2026) & bobot_komponen (30 Agu 2026) - lihat
+-- supabase/ARSIP-SCHEMA-SYNC.md.
+--
+-- Dikonfirmasi lewat perbandingan langsung struktur kedua tabel (query live + generated
+-- types): SATU-SATUNYA kolom yang beda cuma jumlah_cell. Semua pasangan tabel arsip lain
+-- (raw_schedule/renhar/fcs_timer_kerja/kendala/progress_checkpoint_log/fcs_tracking_*)
+-- sudah sinkron.
+--
+-- Tipe integer, nullable, TANPA default - identik dengan panels.jumlah_cell. 99 baris
+-- panels_archived lama akan dapat NULL (benar - sama seperti panel live lama yang
+-- jumlah_cell-nya juga NULL; nilai 0 di panel baru itu default level aplikasi di
+-- workOrderService.ts, bukan default DB).
+--
+-- Sudah dijalankan manual di Supabase SQL Editor 10 Sep 2026 (anon key gak bisa DDL).
+-- File ini dicommit sebagai catatan riwayat + biar re-apply idempoten.
+alter table public.panels_archived
+  add column if not exists jumlah_cell integer;
