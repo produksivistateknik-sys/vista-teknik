@@ -71,10 +71,15 @@ gak dikerjakan sama sekali gak bikin counter maju, konsisten dengan removeOp di 
 tim/WP = jumlah demand semua komponen di dalamnya (tim tetap pindah bareng seperti proses lain -
 cuma cara hitung kebutuhannya yang berubah, bukan cara pindahnya). Token lama masih ada di data
 existing (histori, dibiarkan) tapi gak dipakai lagi buat hitung kapasitas.
-BUSBAR dikecualikan dari cascading (gak punya data fcs_process_time buat hitung demand-nya) - tetap
-geser langsung ke tanggal tujuan tanpa cek kapasitas. Drag manual BUSBAR (fitur terpisah di
-RawSchedule.tsx) punya jejak sendiri (busbar_jejak) - auto-geser ini TETAP gak menyentuhnya sama
-sekali (busbar_schedule bukan bagian dari `schedule` yang diproses fungsi ini).
+BUSBAR (10 Sep 2026 - DULU sama sekali gak ke-geser): diproses di blok TERPISAH (FASE 2-BUSBAR +
+FASE 3-BUSBAR) karena datanya di kolom raw_schedule.busbar_schedule (Record<tanggal,string[]>,
+flat, TANPA wp/Entry), bukan raw_schedule.schedule. Progress per komponen busbar dibaca dari
+panels.checklist[komponen].progress.BUSBAR (model per-tahap Vista Pekerja - lihat busbarProgressKode).
+Shift 1 hari LANGSUNG tanpa cascading kapasitas (gak punya data fcs_process_time / demand orang) -
+pola sama drag manual BUSBAR (confirmDragBusbar di RawSchedule.tsx): kode TETAP di
+busbar_schedule[hariSumber] + ditandai busbar_jejak[hariSumber][kode]=hariTarget, entri live
+mendarat di busbar_schedule[hariTarget]. Idempoten via busbar_jejak. renhar wp="BUSBAR"
+dibersihkan di FASE 3.5 sama seperti proses lain.
 
 PRINSIP ANTI-TABRAKAN (lihat diskusi sebelum implementasi ini):
 1. TIDAK PERNAH menyentuh panels.checklist[kode].progressByDate/history - itu punya fitur "kunci
@@ -108,8 +113,15 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 // NAMEPLATE/YELLOWMARK: proses penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) - kalau gak dikecualikan, tiap malam bakal dianggap "belum 100%" terus dan digeser tanpa henti.
 const PROSES_DIKECUALIKAN = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
 const PROSES_ORANG = ['WIRING CONTROL', 'WIRING POWER']
-// BUSBAR: progress per-tahap (busbar_progress), gak match model qty x menit_per_pcs - dikecualikan dari cascading kapasitas DAN dari skema jejak/digeserKe (di luar scope revisi ini), tetap geser langsung.
-const PROSES_TANPA_CASCADE = ['BUSBAR']
+// BUSBAR (10 Sep 2026): DIPROSES lewat blok terpisah (FASE 2-BUSBAR + FASE 3-BUSBAR di bawah) -
+// datanya di kolom raw_schedule.busbar_schedule (Record<tanggal,string[]>, flat, TANPA wp/Entry),
+// bukan raw_schedule.schedule yang diproses FASE 1/2/3 biasa. Progress per komponen dibaca dari
+// panels.checklist[komponen].progress.BUSBAR (model per-tahap Vista Pekerja). Shift 1 hari
+// langsung TANPA cascading kapasitas (BUSBAR gak punya data fcs_process_time / demand orang) -
+// pola sama drag manual BUSBAR di RawSchedule.tsx (confirmDragBusbar): kode TETAP di
+// busbar_schedule[hariSumber] + ditandai busbar_jejak[hariSumber][kode]=hariTarget, entri live
+// mendarat di busbar_schedule[hariTarget]. Dulu (sebelum 10 Sep 2026) BUSBAR SAMA SEKALI gak
+// pernah ke-geser otomatis - FASE 1 baca row.schedule yang buat baris BUSBAR selalu {}.
 const MAX_CASCADE_HARI = 90
 // FIX INSIDEN WIRING CONTROL/POWER (1 Agu 2026): kapasitas fcs_kapasitas_override cuma
 // dikonfigurasi sampai tanggal tertentu di masa depan - begitu cascading nyampe tanggal yang
@@ -163,6 +175,31 @@ const naturalKodeSort = (a: string, b: string) => {
   const pa = parse(a), pb = parse(b)
   if (pa.prefix !== pb.prefix) return pa.prefix.localeCompare(pb.prefix)
   return pa.num - pb.num
+}
+
+// Replika getBestProgress(cl,'BUSBAR') + getBusbarProgress() dari src/lib/panelHelpers.ts (Deno
+// gak bisa import lintas src/). Model per-tahap Vista Pekerja: history.BUSBAR (paling akurat) >
+// progressByDate.BUSBAR (nilai terbaru) > progress.BUSBAR, fallback ke panels.busbar_progress[k]
+// (kolom legacy - hampir selalu {} sejak model per-tahap, tetap dijaga buat panel lama).
+const busbarProgressKode = (cl: any, panel: any, komponen: string): number => {
+  let best = -1
+  const hist = cl?.history?.BUSBAR
+  if (Array.isArray(hist) && hist.length > 0) {
+    const sorted = [...hist].sort((a: any, b: any) => String(b.ts || b.tanggal || '').localeCompare(String(a.ts || a.tanggal || '')))
+    best = Number(sorted[0]?.pct) || 0
+  }
+  if (best < 0) {
+    const byDate = cl?.progressByDate?.BUSBAR
+    if (byDate && Object.keys(byDate).length > 0) {
+      const dates = Object.keys(byDate).sort()
+      const v = Number(byDate[dates[dates.length - 1]]) || 0
+      if (v > 0) best = v
+    }
+  }
+  if (best < 0) best = Number(cl?.progress?.BUSBAR) || 0
+  if (best > 0) return best
+  const legacy = Number((panel?.busbar_progress || {})[komponen]) || 0
+  return legacy > 0 ? legacy : best
 }
 
 // Sama persis WIRING_BOBOT_TABLE/kebutuhanOrangWiring di src/lib/panelHelpers.ts - direplikasi
@@ -239,7 +276,7 @@ const buildCtx = async (supabase: any): Promise<Ctx> => {
   const rawRowsAwal = await fetchAll(supabase, 'raw_schedule', 'panel_id')
   const panelIds = [...new Set(rawRowsAwal.map((r: any) => r.panel_id).filter(Boolean))]
   const panelRows = panelIds.length > 0
-    ? await fetchAll(supabase, 'panels', 'id,nama,tipe,wo_id,checklist').then((all) => all.filter((p: any) => panelIds.includes(p.id)))
+    ? await fetchAll(supabase, 'panels', 'id,nama,tipe,wo_id,checklist,busbar_progress').then((all) => all.filter((p: any) => panelIds.includes(p.id)))
     : []
   const panelMap: Record<string, any> = {}
   panelRows.forEach((p: any) => { panelMap[String(p.id)] = p })
@@ -357,7 +394,6 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     const checklist = panel.checklist || {}
     const woTarget = woTargetOfPanel(panel)
     const isOrang = PROSES_ORANG.includes(row.proses)
-    const tanpaCascade = PROSES_TANPA_CASCADE.includes(row.proses)
 
     entriesSumber.forEach((e: any) => {
       const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
@@ -377,10 +413,6 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // progress asli di tanggal itu), bukan soal ninggalin jejak atau enggak.
         kodeIkutGeser.push(kode)
         kodeKasus2.push(kode)
-        if (tanpaCascade) {
-          addOp(row.id, hariTarget, e.wp, kode, hariSumber)
-          return
-        }
         if (!isOrang) {
           const qtyTotal = Number(cl?.qty) || 0
           const qtyProsesSkrg = Number(cl?.qtyProses?.[row.proses]) || 0
@@ -390,7 +422,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           kandidatJam[row.proses].push({ rowId: row.id, wp: e.wp, kode, tipePanel: panel.tipe, woTarget, menit, kasus })
         }
       })
-      if (isOrang && !tanpaCascade && kodeIkutGeser.length > 0) {
+      if (isOrang && kodeIkutGeser.length > 0) {
         if (!kandidatOrang[row.proses]) kandidatOrang[row.proses] = []
         kandidatOrang[row.proses].push({ rowId: row.id, wp: e.wp, kodeList: kodeIkutGeser, kodeKasus2, tokenValue: token, woTarget })
       }
@@ -729,6 +761,36 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     })
   }
 
+  // ================= FASE 2-BUSBAR: klasifikasi (struktur busbar_schedule terpisah) =================
+  // BUSBAR gak lewat FASE 1/2 di atas (baris BUSBAR selalu punya row.schedule kosong). Di sini
+  // baca row.busbar_schedule[hariSumber] (Record<tanggal,string[]>), tiap komponen busbar yang
+  // progress-nya < 100% (dibaca dari checklist per-tahap) digeser 1 hari. TANPA cascading
+  // kapasitas (BUSBAR gak punya demand jam/orang).
+  // JEJAK vs SENYAP - PRINSIP SAMA PERSIS proses lain (lihat komentar removeOp/adaPengerjaan):
+  //   - ADA pengerjaan (fcs_timer_kerja BUSBAR di hariSumber) -> jejak: kode TETAP di
+  //     busbar_schedule[hariSumber] + busbar_jejak[hariSumber][kode]=hariTarget (histori "dikerjakan
+  //     tapi belum kelar").
+  //   - GAK ADA pengerjaan -> pindah SENYAP: kode DIHAPUS dari busbar_schedule[hariSumber], gak
+  //     ninggalin jejak. Kalau enggak, komponen busbar yang gak pernah disentuh berhari-hari bakal
+  //     numpuk + bikin puluhan entri busbar_jejak sampah (1 per hari catch-up).
+  const busbarMoves: Record<number, { fromDate: string; toDate: string; kode: string; pct: number; jejak: boolean }[]> = {}
+  for (const row of rawRows) {
+    if (row.proses !== 'BUSBAR') continue
+    const komponenSumber: string[] = row.busbar_schedule?.[hariSumber] || []
+    if (komponenSumber.length === 0) continue
+    const panel = panelMap[String(row.panel_id)]
+    if (!panel) continue
+    const checklist = panel.checklist || {}
+    const jejakHariSumber: Record<string, string> = row.busbar_jejak?.[hariSumber] || {}
+    for (const kode of komponenSumber) {
+      if (jejakHariSumber[kode]) continue // sudah jejak - gak dievaluasi ulang
+      const pct = busbarProgressKode(checklist[kode], panel, kode)
+      if (pct >= 100) continue
+      if (!busbarMoves[row.id]) busbarMoves[row.id] = []
+      busbarMoves[row.id].push({ fromDate: hariSumber, toDate: hariTarget, kode, pct, jejak: adaPengerjaan(row.id, 'BUSBAR', kode) })
+    }
+  }
+
   // ================= FASE 3: terapkan (atau simulasikan) =================
   let jumlahRowDiproses = 0
   const detailDryRun: any[] = []
@@ -799,6 +861,39 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     // yang kode-nya dapat JEJAK yang renhar-nya dibersihkan, lihat FASE 3.5 di bawah.
   }
 
+  // ================= FASE 3-BUSBAR: terapkan geseran busbar_schedule =================
+  // jejak=true : kode TETAP di busbar_schedule[fromDate] + busbar_jejak[fromDate][kode]=toDate
+  //              (pola drag manual confirmDragBusbar - histori "dikerjakan tapi belum kelar").
+  // jejak=false: kode DIHAPUS dari busbar_schedule[fromDate], gak ninggalin jejak (pindah senyap).
+  // Entri live selalu mendarat di busbar_schedule[toDate] (Set-dedup). Fresh-fetch per row biar
+  // catch-up multi-hari lihat hasil hari sebelumnya (sama prinsip FASE 3).
+  for (const [rowIdStr, moves] of Object.entries(busbarMoves)) {
+    const rowId = Number(rowIdStr)
+    const rowAsli = rawRows.find((r: any) => r.id === rowId)
+    if (!rowAsli) continue
+    const { data: freshBusbar } = dryRun ? { data: null } as any : await supabase.from('raw_schedule').select('busbar_schedule,busbar_jejak').eq('id', rowId).single()
+    const bsTerkini: Record<string, string[]> = freshBusbar?.busbar_schedule || rowAsli.busbar_schedule || {}
+    const bjTerkini: Record<string, Record<string, string>> = freshBusbar?.busbar_jejak || rowAsli.busbar_jejak || {}
+    const bsBaru = { ...bsTerkini }
+    const bjBaru = { ...bjTerkini }
+    for (const { fromDate, toDate, kode, jejak } of moves) {
+      if (jejak) {
+        bjBaru[fromDate] = { ...(bjBaru[fromDate] || {}), [kode]: toDate }
+      } else {
+        bsBaru[fromDate] = (bsBaru[fromDate] || []).filter((k: string) => k !== kode)
+      }
+      const atTarget = bsBaru[toDate] || []
+      if (!atTarget.includes(kode)) bsBaru[toDate] = [...atTarget, kode]
+    }
+    if (dryRun) {
+      detailDryRun.push({ rowId, proses: 'BUSBAR', panel: panelMap[String(rowAsli.panel_id)]?.nama, tipe: panelMap[String(rowAsli.panel_id)]?.tipe, busbarMoves: moves, busbarScheduleSebelum: bsTerkini, busbarScheduleSesudah: bsBaru, busbarJejakSesudah: bjBaru })
+    } else {
+      await supabase.from('raw_schedule').update({ busbar_schedule: bsBaru, busbar_jejak: bjBaru }).eq('id', rowId)
+    }
+    jumlahRowDiproses++
+    komponenLangsung += moves.length
+  }
+
   // ================= FASE 3.5: bersihin renhar buat tanggal yang kode-nya dapat jejak =================
   // FIX gap "renhar nyangkut" (lihat PRINSIP ANTI-TABRAKAN #2) - kode yang dapat jejak (digeserKe)
   // di raw_schedule TAPI row renhar di tanggal itu masih nganggep kode itu released/aktif bikin
@@ -816,9 +911,20 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         })
       })
     })
+    // BUSBAR: renhar-nya wp="BUSBAR", tanggal=fromDate - bersihin kode yang dapat JEJAK (bukan
+    // yang pindah senyap - sama seperti ops.remove proses lain gak masuk sini), kode dilepas dari
+    // komponen/komponen_released/pekerja_per_komponen.
+    Object.entries(busbarMoves).forEach(([rowIdStr, moves]) => {
+      moves.forEach(({ fromDate, kode, jejak }) => {
+        if (!jejak) return
+        const key = `${rowIdStr}|${fromDate}|BUSBAR`
+        if (!kodePerRenharKey[key]) kodePerRenharKey[key] = new Set()
+        kodePerRenharKey[key].add(kode)
+      })
+    })
     const renharKeys = Object.keys(kodePerRenharKey)
     if (renharKeys.length > 0) {
-      const rowIdsTerpengaruh = [...new Set(Object.keys(rowOps).map(Number))]
+      const rowIdsTerpengaruh = [...new Set([...Object.keys(rowOps).map(Number), ...Object.keys(busbarMoves).map(Number)])]
       let renharRows: any[] = []
       let from = 0
       while (true) {
