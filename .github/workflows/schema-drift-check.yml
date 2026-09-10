@@ -1,0 +1,57 @@
+name: Cek Sinkronisasi Skema Arsip
+
+# Deteksi drift kolom antara tabel sumber dan *_archived pasangannya (lihat
+# supabase/ARSIP-SCHEMA-SYNC.md). Kelas bug ini sudah 4x kejadian - busbar_jejak (Jul 2026),
+# bobot_komponen (Agu 2026), jumlah_cell (Sep 2026), checkpoint numeric->int4 (Sep 2026):
+# tiap kali ada add/alter column di tabel sumber tapi lupa di tabel arsip pasangannya, RPC
+# arsip_panel() gagal keras - atau lebih buruk, silent (checkpoint 62.5 dibulatkan diam2).
+#
+# Menjalankan `SELECT * FROM public.cek_sync_skema_arsip()` (fungsi read-only, cuma baca
+# information_schema - migration 20260910130000) lewat Session Mode Pooler port 5432. Fail
+# kalau ada baris drift.
+#
+# Ini MONITOR STATE PRODUKSI, bukan gate PR: tim ini apply perubahan skema lewat Supabase
+# SQL Editor manual (sering sebelum / tanpa migration file), jadi yang berguna adalah "prod
+# lagi drift atau nggak" - bukan "PR ini nambah drift". Makanya trigger-nya schedule
+# (jaring pengaman utama) + push migration + manual.
+#
+# SECRET (sudah ada, dipakai backup-database.yml juga):
+#   SUPABASE_DB_PASSWORD  - password role postgres (Supabase > Settings > Database)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'supabase/migrations/**'
+      - '.github/workflows/schema-drift-check.yml'
+  schedule:
+    - cron: '0 20 * * 1'   # Senin 20:00 UTC = Selasa 03:00 WIB - jam sepi, jaring pengaman
+  workflow_dispatch: {}
+
+jobs:
+  cek-drift:
+    runs-on: ubuntu-latest
+    steps:
+      # psql v16 bawaan Ubuntu cukup buat SELECT ke server v17 (yang strict soal versi cuma
+      # pg_dump/pg_restore, bukan psql) - gak perlu repo PGDG kayak backup-database.yml.
+      - name: Install psql
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y --no-install-recommends postgresql-client
+
+      - name: Cek drift skema tabel arsip
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+          # Session Mode Pooler port 5432 (bukan Transaction Mode 6543) + IPv4-friendly,
+          # sama seperti backup-database.yml.
+          DB_CONN: postgresql://postgres.aoxhxfsqjnquwsxjrsmo@aws-1-ap-southeast-1.pooler.supabase.com:5432/postgres
+        run: |
+          set -euo pipefail
+          N=$(psql "$DB_CONN" -tA -c "SELECT count(*) FROM public.cek_sync_skema_arsip();")
+          echo "Baris drift terdeteksi: $N"
+          if [ "$N" != "0" ]; then
+            echo "::error::Drift skema tabel arsip terdeteksi ($N baris). Setiap add/alter column di tabel sumber WAJIB diikutkan ke tabel *_archived pasangannya di migration yang sama - lihat supabase/ARSIP-SCHEMA-SYNC.md. Detail di bawah:"
+            psql "$DB_CONN" -P pager=off -c "SELECT * FROM public.cek_sync_skema_arsip();"
+            exit 1
+          fi
+          echo "OK - semua pasangan tabel sumber <-> *_archived sinkron."

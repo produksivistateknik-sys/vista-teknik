@@ -41,9 +41,13 @@ SELECT * FROM public.cek_sync_skema_arsip();
 - `arah='beda_tipe'` -> kolom ada di dua-duanya tapi tipe beda.
 - `arah='extra_di_arsip'` -> kolom cuma di arsip & bukan snapshot resmi (kemungkinan usang).
 
-Idealnya nol baris. Jalankan tiap habis migration yang `add column` ke tabel sumber, dan
-pasang di CI. Pasangan tabel dideteksi generik (`X` yang punya `X_archived`), jadi pasangan
-baru otomatis ke-cover.
+Idealnya nol baris. Pasangan tabel dideteksi generik (`X` yang punya `X_archived`), jadi
+pasangan baru otomatis ke-cover.
+
+**Sudah otomatis di CI:** workflow `.github/workflows/schema-drift-check.yml` menjalankan
+query ini tiap ada push ke `main` yang menyentuh `supabase/migrations/**`, tiap Senin
+(jaring pengaman untuk perubahan lewat SQL Editor tanpa migration file), dan bisa dipicu
+manual dari tab Actions. Job gagal kalau ada baris drift.
 
 Reminder yang sama juga ditulis sebagai `COMMENT ON TABLE`/`COMMENT ON FUNCTION`
 langsung di database (muncul di Supabase Studio saat lihat tabel/fungsi ini).
