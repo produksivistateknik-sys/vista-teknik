@@ -111,10 +111,11 @@ export const QTY_DIVISI = ["mekanik","painting"];
 // F3B.8/F3B.11 - peninggalan model busbar lama). Progress busbar sekarang dilacak 100% di
 // pseudo-komponen (LINE/NETRAL/GROUND/H-BUS/INCOMING/OUTGOING/COUPLER) via
 // panels.checklist[<komponenBusbar>].progress.BUSBAR - lihat getBusbarProgress/
-// getPanelBusbarKomponen di lib/panelHelpers.ts. Tabel bom_proses_relevan MASIH punya 8 baris
-// jenis_pekerjaan='BUSBAR' (DELETE via anon key & SQL editor ke-swallow diam-diam, kemungkinan
-// RLS/trigger - perlu cek DB admin), tapi guard di isKomponenRelevant() bikin itu gak
-// ngefek. Jangan tambahkan "BUSBAR" ke sini lagi.
+// getPanelBusbarKomponen di lib/panelHelpers.ts. 8 baris bom_proses_relevan
+// jenis_pekerjaan='BUSBAR' sudah dihapus (11 Sep 2026, via Supabase SQL Editor - .delete()
+// dari client/anon key silent no-op karena RLS tanpa policy DELETE). Guard di
+// isKomponenRelevant() juga pastikan BUSBAR selalu false utk komponen mekanikal. Jangan
+// tambahkan "BUSBAR" ke sini lagi.
 export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   // FS (hasil rekonsiliasi otomatis ke Master Data BOM terkini)
   "FS.1": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"],
