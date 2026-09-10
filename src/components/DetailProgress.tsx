@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { calcPanelProgress, panelOverall, getBestProgress, isKomponenRelevant } from '../lib/panelHelpers'
+import { calcPanelProgress, panelOverall, getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress } from '../lib/panelHelpers'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
@@ -18,14 +18,14 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
     woId:wo.id,
     proyek:wo.proyek,
     target:wo.target,
-    pd:calcPanelProgress(p),
+    pd:calcPanelProgress(p,rawData),
   })));
 
   // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali. Sama
   // persis pola ManajemenWO.tsx/SummaryProgress.tsx - p.target di sini = target WO induknya
   // (lihat allPanels di atas), jadi panel dari WO paling mendesak naik ke atas.
   const filtered=allPanels.filter(p=>{
-    const pct=panelOverall(p);
+    const pct=panelOverall(p,rawData);
     const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchWO=woFilter==="semua"||p.wo===woFilter;
@@ -55,9 +55,9 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   );
 
   const totalPanel=allPanels.length;
-  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverall(p),0)/totalPanel):0;
-  const selesai=allPanels.filter(p=>panelOverall(p)===100).length;
-  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverall(p)<100).length;
+  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverall(p,rawData),0)/totalPanel):0;
+  const selesai=allPanels.filter(p=>panelOverall(p,rawData)===100).length;
+  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverall(p,rawData)<100).length;
 
   const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
     if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
@@ -179,7 +179,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
           Tidak ada data yang sesuai filter
         </div>
       ):filtered.map((p:any,pi:number)=>{
-        const ppct=panelOverall(p);
+        const ppct=panelOverall(p,rawData);
         const d=daysUntil(p.target);
         const late=isDelayed(p.target);
         const urg=isUrgent(p.target);
@@ -191,9 +191,10 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
         const borderColor=done?"#16a34a":late?"#dc2626":urg?"#d97706":"#e2e8f0";
         const cfg=getEffCfg(p.tipe);
         const wps=cfg?.wps||[];
-        // Tampilkan BUSBAR jika tipe panel punya komponen busbar (WM) atau ada progress
+        // Tampilkan BUSBAR jika tipe panel punya komponen busbar (WM/FS/F3B) atau ada data
+        // busbar (terjadwal / progress di checklist / busbar_progress legacy).
         const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
-        const hasBusbar=BUSBAR_TIPE.includes(p.tipe)||Object.keys(p.busbar_progress||{}).length>0;
+        const hasBusbar=BUSBAR_TIPE.includes(p.tipe)||getPanelBusbarKomponen(p,rawData).length>0;
         const prosesPanel=PROSES_LIST.filter(pr=>{
           if(pr==="QC TEST"||pr==="PACKING") return false;
           if(pr==="BUSBAR") return hasBusbar;
@@ -286,6 +287,9 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                           <td style={{...tdS,background:rowBg,color:"#94a3b8",fontFamily:"ui-monospace,monospace",fontSize:9}}>{it.kode}</td>
                           <td style={{...tdS,background:rowBg,color:"#475569",fontWeight:600}}>{qty}</td>
                           {prosesPanel.map(pr=>{
+                            // BUSBAR bukan proses per-komponen-mekanikal - progress-nya di pseudo-komponen
+                            // (section "KOMPONEN BUSBAR" di bawah). Baris mekanikal SELALU "—" di kolom ini.
+                            if(pr==="BUSBAR") return <ProsesPctCell key={pr} pct={undefined} proses={pr}/>;
                             const relevant=isKomponenRelevant(it.kode,p.tipe,pr);
                             const pct=relevant?(cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0):undefined;
                             return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name}/>;
@@ -305,15 +309,14 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                   })()}
                   {/* Busbar rows - dari busbar_schedule + busbar_progress */}
                   {(()=>{
-                    // Kumpulkan komponen busbar dari raw_schedule busbar_schedule
-                    const scheduled=(rawData||[])
-                      .filter((r:any)=>r.proses==="BUSBAR"&&Number(r.panel_id||r.panelId)===Number(p.id))
-                      .flatMap((r:any)=>Object.values(r.busbar_schedule||{}).flat() as string[]);
-                    const fromProgress=Object.keys(p.busbar_progress||{});
-                    const busbarKomps=[...new Set([...scheduled,...fromProgress])];
+                    // Komponen busbar = terjadwal (raw_schedule.busbar_schedule) + yang punya data
+                    // progress di checklist + key legacy busbar_progress. Nilai dibaca via
+                    // getBusbarProgress (checklist per-tahap Vista Pekerja > busbar_progress legacy) -
+                    // sumber SAMA yang dipakai Raw Schedule, biar sinkron.
+                    const busbarKomps=getPanelBusbarKomponen(p,rawData);
                     if(!busbarKomps.length) return null;
                     const busbarData=Object.fromEntries(busbarKomps.map((k:string)=>
-                      [k,(p.busbar_progress||{})[k]||0]
+                      [k,getBusbarProgress(p,k)]
                     ));
                     return(
                     <>

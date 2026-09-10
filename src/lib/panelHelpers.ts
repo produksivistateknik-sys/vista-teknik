@@ -5,6 +5,41 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
   return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
 };
 
+// ================= BUSBAR: satu sumber baca progress =================
+// Model busbar per-tahap (FABRIKASI/PLATING/HEATSHRINK/PASANG) yang dipakai Vista Pekerja
+// nyimpen progress ke panels.checklist[<komponenBusbar>] (LINE/NETRAL/GROUND/H-BUS/INCOMING/
+// OUTGOING/COUPLER) - BUKAN lagi ke kolom panels.busbar_progress (kolom itu berhenti diisi
+// sejak pindah model per-tahap ~Sep 2026, sekarang selalu {} / nol di semua panel). Dulu
+// DetailProgress "KOMPONEN BUSBAR" + calcPanelProgress masih baca busbar_progress -> tampil
+// 0% walau kerjaan busbar udah 100% (Raw Schedule benar karena udah baca checklist). Semua
+// sisi baca WAJIB lewat 2 helper ini (1 sumber logika, sama persis dgn getProgressAsOfDate
+// yang dipakai Raw Schedule). busbar_progress dipertahankan cuma sebagai fallback panel lama.
+export function komponenBusbarPunyaData(cl:any):boolean{
+  if(!cl) return false;
+  return (Array.isArray(cl.history?.BUSBAR)&&cl.history.BUSBAR.length>0)
+    || (cl.progressByDate?.BUSBAR&&Object.keys(cl.progressByDate.BUSBAR).length>0)
+    || ((cl.progress?.BUSBAR||0)>0);
+}
+export function getBusbarProgress(panel:any, komponen:string):number{
+  const fromChecklist=getBestProgress(panel?.checklist?.[komponen],"BUSBAR");
+  if(fromChecklist>0) return fromChecklist;
+  const legacy=Number((panel?.busbar_progress||{})[komponen]);
+  if(legacy>0) return legacy;
+  return 0;
+}
+// Daftar komponen busbar yang relevan buat panel ini: gabungan yang pernah dijadwalkan di
+// raw_schedule.busbar_schedule (kalau rawData dikasih) + yang punya data progress di
+// checklist + key legacy busbar_progress.
+export function getPanelBusbarKomponen(panel:any, rawData?:any[]):string[]{
+  const master=getBusbarKomponen(panel?.tipe);
+  const scheduled=(rawData||[])
+    .filter((r:any)=>r.proses==="BUSBAR"&&Number(r.panel_id||r.panelId)===Number(panel?.id))
+    .flatMap((r:any)=>Object.values(r.busbar_schedule||{}).flat() as string[]);
+  const fromChecklist=master.filter((k:string)=>komponenBusbarPunyaData(panel?.checklist?.[k]));
+  const fromLegacy=Object.keys(panel?.busbar_progress||{});
+  return [...new Set([...scheduled,...fromChecklist,...fromLegacy])];
+}
+
 // ================= WIRING CONTROL/POWER: kapasitas orang-per-hari-kerja berbasis bobot =================
 // REVISI TOTAL (12 Agu 2026) - ganti model lama (token __wiring_{orang}org_{bobot}, satu angka
 // TETAP per tim/WP dipilih manual planner) yang terbukti beberapa kali salah baca kapasitas
@@ -47,6 +82,16 @@ export function kebutuhanOrangWiring(bobot: string | null | undefined, hariKeN: 
 export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
 
 export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:string):boolean=>{
+  // BUSBAR bukan proses per-komponen-mekanikal - progress-nya 100% di pseudo-komponen
+  // (LINE/NETRAL/GROUND/dst) via panels.checklist, lihat getBusbarProgress. Dulu mapping
+  // KOMPONEN_PROSES_MAP & bom_proses_relevan nandain Groundplate/Dudukan "relevan" ke BUSBAR
+  // (peninggalan model lama) - bikin badge "BUSBAR 0%" hantu di Detail Progres/Task Monitoring
+  // + baris menit-per-pcs mubazir di Master Data. Guard ini pastikan BUSBAR SELALU false buat
+  // komponen mekanikal apapun, gak peduli isi bom_proses_relevan (sumber data itu susah
+  // dibersihin - RLS/trigger). Semua caller isKomponenRelevant lewatin kode BOM mekanikal,
+  // gak pernah pseudo-komponen busbar.
+  const prosesCek=prosesMaybe===undefined?tipeOrProses:prosesMaybe;
+  if(prosesCek==="BUSBAR") return false;
   if(prosesMaybe===undefined){
     const proses=tipeOrProses;
     if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) return true;
@@ -68,9 +113,10 @@ export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:
 
 export function getRelevantProsesForKode(kode:string,tipe:string):string[]{
   const mapKey=kode+"|"+tipe;
-  const base=GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)
+  const base=(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)
     ? ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr))
-    : (KOMPONEN_PROSES_MAP[kode]||[]);
+    : (KOMPONEN_PROSES_MAP[kode]||[]))
+    .filter((pr:string)=>pr!=="BUSBAR"); // BUSBAR bukan proses komponen mekanikal - lihat isKomponenRelevant
   return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
 }
 
@@ -289,13 +335,25 @@ export function getBestProgressMap(cl:any):Record<string,number>{
   return map;
 }
 
-export function calcPanelProgress(panel): Record<string, number> {
+export function calcPanelProgress(panel, rawData?:any[]): Record<string, number> {
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
   if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
   const prog: Record<string, number> = {};
   ALL_PROSES.forEach(pr=>{
+    // BUSBAR: proses pseudo-komponen, BUKAN per-komponen-mekanikal. Rata-rata dari progress
+    // tiap komponen busbar (LINE/NETRAL/GROUND/dst) - dibaca lewat helper getBusbarProgress
+    // (checklist per-tahap > busbar_progress legacy). Kalau `rawData` dikasih, komponen yang
+    // dijadwalkan tapi belum disentuh ikut sebagai 0% (konsisten dgn section "KOMPONEN BUSBAR"
+    // di DetailProgress). Tanpa rawData -> cuma komponen yang punya data. Panel tanpa data
+    // busbar sama sekali -> 0 (tetap ikut rata-rata panelOverall sebagai 1 dari 13 proses).
+    if(pr==="BUSBAR"){
+      const komps=getPanelBusbarKomponen(panel,rawData);
+      const bvals=komps.map((k:string)=>getBusbarProgress(panel,k));
+      prog[pr]=bvals.length>0?Math.round(bvals.reduce((a,b)=>a+b,0)/bvals.length):0;
+      return;
+    }
     // Cuma komponen yang beneran relevan ke proses ini yang ikut dirata-rata - komponen yang
     // gak relevan (mis. gak pernah lewat RENDAM) sebelumnya ikut kehitung "0%" palsu di rata-rata,
     // bikin persentase gak pernah bisa nyampe 100% walau semua proses yang beneran relevan udah
@@ -304,21 +362,12 @@ export function calcPanelProgress(panel): Record<string, number> {
     const relevantActive=active.filter(it=>isKomponenRelevant(it.kode,panel.tipe,pr));
     const itemsForCalc=relevantActive.length>0?relevantActive:active;
     const vals=itemsForCalc.map(it=>getBestProgress(panel.checklist[it.kode],pr));
-    // Tambahkan busbar_progress ke kalkulasi BUSBAR
-    if(pr==="BUSBAR"&&panel.busbar_progress){
-      const busbarVals=Object.values(panel.busbar_progress) as number[];
-      if(busbarVals.length>0){
-        const allVals=[...vals,...busbarVals];
-        prog[pr]=Math.round(allVals.reduce((a:number,b:number)=>a+b,0)/allVals.length);
-        return;
-      }
-    }
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });
   return prog;
 }
-export function panelOverall(p){
-  const v=Object.values(calcPanelProgress(p));
+export function panelOverall(p, rawData?:any[]){
+  const v=Object.values(calcPanelProgress(p,rawData));
   if(!v.length) return 0;
   const sum=v.reduce((acc,n)=>acc+n,0);
   return Math.round(sum/v.length);

@@ -106,15 +106,24 @@ export const QTY_DIVISI = ["mekanik","painting"];
 // ─────────────────────────────────────────────────────────────────────────────
 // MAPPING: KODE KOMPONEN → PROSES YANG RELEVAN
 // ─────────────────────────────────────────────────────────────────────────────
+// CATATAN BUSBAR (10 Sep 2026): "BUSBAR" SENGAJA tidak dicantumkan di mapping komponen
+// mekanikal manapun (dulu ada di Groundplate/Dudukan: WM.1/WM.2/FS.4/FS.9/F3B.2/F3B.3/
+// F3B.8/F3B.11 - peninggalan model busbar lama). Progress busbar sekarang dilacak 100% di
+// pseudo-komponen (LINE/NETRAL/GROUND/H-BUS/INCOMING/OUTGOING/COUPLER) via
+// panels.checklist[<komponenBusbar>].progress.BUSBAR - lihat getBusbarProgress/
+// getPanelBusbarKomponen di lib/panelHelpers.ts. Tabel bom_proses_relevan MASIH punya 8 baris
+// jenis_pekerjaan='BUSBAR' (DELETE via anon key & SQL editor ke-swallow diam-diam, kemungkinan
+// RLS/trigger - perlu cek DB admin), tapi guard di isKomponenRelevant() bikin itu gak
+// ngefek. Jangan tambahkan "BUSBAR" ke sini lagi.
 export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   // FS (hasil rekonsiliasi otomatis ke Master Data BOM terkini)
   "FS.1": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"],
   "FS.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "FS.3": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
-  "FS.4": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+  "FS.4": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "FS.5": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
   "FS.8": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "FS.9": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+  "FS.9": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "FS.10": ["POTONG","STEL","FINISHING","RENDAM","PAINTING","RAKIT"],
   "FS.11": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "FS.12": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","WIRING POWER"],
@@ -134,14 +143,14 @@ export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   "FS.33": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   // F3B (hasil rekonsiliasi otomatis ke Master Data BOM terkini)
   "F3B.1": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"],
-  "F3B.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
-  "F3B.3": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+  "F3B.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
+  "F3B.3": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "F3B.4": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "F3B.5": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
-  "F3B.8": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+  "F3B.8": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "F3B.9": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
   "F3B.10": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
-  "F3B.11": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+  "F3B.11": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "F3B.12": ["POTONG","STEL","FINISHING","PAINTING","RAKIT"],
   "F3B.13": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "F3B.14": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","WIRING POWER"],
@@ -160,8 +169,8 @@ export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
   "F3B.35": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   "F3B.36": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
   // WM_MS & WM_POLY (hasil rekonsiliasi otomatis ke Master Data BOM terkini)
-  "WM.1": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
-  "WM.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+  "WM.1": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+  "WM.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "WM.3": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"],
   "WM.4": ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
   "WM.5": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
