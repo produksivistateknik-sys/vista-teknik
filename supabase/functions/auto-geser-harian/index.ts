@@ -142,11 +142,13 @@ const MAX_HARI_TANPA_KONFIG = 1
 // komponen yang udah ada di suatu tanggal SELALU dipin di situ, gak pernah dievaluasi buat digeser
 // lewat mekanisme ini, gak peduli prioritas kandidat baru. Kandidat baru cuma boleh mendarat di
 // hari yang BENERAN masih ada sisa kapasitas kosong (gak numpang/nge-squeeze siapapun keluar).
-// Kalau sampai MAX_CASCADE_HARI (90 hari) tetap gak ketemu slot kosong, BEDA dari cascadePlace
-// biasa (yang force-overbook di hari terakhir) - kandidat WIRING TIDAK dipaksa masuk kemanapun,
-// dibiarin apa adanya di tanggal asal (gak di-jejak, gak dipindah), cuma dicatat warning "PERLU
-// REVIEW MANUAL" biar admin isi kapasitas ke depan. `cascadePlace` asli TIDAK berubah sama sekali -
-// proses jam-based (POTONG/BENDING/dst) tetap persis seperti sebelumnya.
+// Kalau sampai MAX_CASCADE_HARI (90 hari) / ketemu hari tanpa-konfig tetap gak ketemu slot kosong:
+// REVISI B1 (10 Sep 2026) - kandidat DIMAJUKAN 1 hari ke hariTargetPin (overbook, dicatat warning
+// "PERLU REVIEW MANUAL"). DULU dibiarin di tanggal asal tanpa placement - tapi catch-up harian
+// maju & gak pernah nengok lagi -> unit STRAND PERMANEN di masa lalu (18 WIRING CONTROL + 9 WIRING
+// POWER nyangkut, Sep 2026). Sekarang unit selalu bergerak maju & ke-evaluasi ulang tiap hari.
+// EXISTING tetap gak pernah didorong (no-displacement utuh). `cascadePlace` asli (jam-based
+// POTONG/BENDING/dst) TIDAK berubah.
 // Batas berapa hari catch-up boleh diproses dalam SATU invocation - jaga-jaga kalau gap-nya
 // kebetulan sangat panjang (misal cron mati berminggu-minggu), biar gak timeout. Kalau kepotong di
 // sini, tombol tinggal diklik lagi buat lanjut dari titik terakhir (auto_geser_runs jadi checkpoint).
@@ -512,9 +514,14 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // di situ, gak lewat pencarian hari sama sekali. Cuma kandidat baru yang jalan maju satu hari
   // demi satu hari, mendarat di hari pertama yang sisa kapasitasnya (setelah dikurangi existing +
   // kandidat lain yang udah diterima hari itu) CUKUP buat demand-nya secara PENUH - gak ada
-  // squeeze/overbook paksa. Kalau MAX_CASCADE_HARI abis tetap gak ketemu, unit itu SENGAJA gak
-  // dikasih placement sama sekali (dibiarin di tanggal asal, gak di-jejak) - beda dari cascadePlace
-  // biasa yang force-overbook di hari terakhir.
+  // squeeze/overbook paksa buat NYARI slot.
+  // REVISI B1 (10 Sep 2026): kalau sampai MAX_CASCADE_HARI / ketemu hari tanpa-konfig tetap gak
+  // ketemu slot kosong, kandidat DULU ditinggal tanpa placement (dibiarin di tanggal asal) -
+  // tapi catch-up harian lalu maju & gak pernah nengok tanggal itu lagi -> unit STRAND PERMANEN
+  // di masa lalu (terbukti: 18 WIRING CONTROL + 9 WIRING POWER nyangkut, Sep 2026). Sekarang
+  // kandidat tetap DIMAJUKAN 1 hari ke hariTargetPin (overbook, tercatat di overbookWarnings) -
+  // biar gak pernah hilang dari jendela hidup & ke-evaluasi ulang tiap hari sampai kelar/kapasitas
+  // longgar. Existing TETAP gak pernah digeser (rule no-displacement utuh).
   const cascadePlaceNoDisplacement = (proses: string, hariTargetPin: string, existingUnits: Unit[], candidateUnitsAwal: Unit[]) => {
     const hasil = new Map<string, { finalDate: string }>()
     const hops = new Map<string, string[]>()
@@ -536,7 +543,9 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         hariTanpaKonfigBerturut++
         if (hariTanpaKonfigBerturut >= MAX_HARI_TANPA_KONFIG) {
           const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
-          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit WIRING TIDAK dipindah (tetap di tanggal asal, gak dipaksa masuk kemanapun sesuai rule no-displacement). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
+          // B1: majukan 1 hari ke hariTargetPin (bukan ditinggal strand). Existing tetap dipin.
+          pool.forEach((u) => { hasil.set(u.id, { finalDate: hariTargetPin }); hops.set(u.id, []) })
+          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI mulai ${tanggalMulaiTanpaKonfig} - ${pool.length} unit WIRING dimajukan 1 hari ke ${hariTargetPin} (overbook; existing tidak digeser). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
           pool = []
           break
         }
@@ -566,9 +575,10 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       tanggal = addDaysStr(tanggal, 1); hari++
     }
     if (pool.length > 0) {
-      overbookWarnings.push(`Kapasitas ${proses} gak ketemu slot kosong sampai ${MAX_CASCADE_HARI} hari sejak ${hariTargetPin} - ${pool.length} unit WIRING TIDAK dipindah (dibiarin di tanggal asal sesuai rule no-displacement, JANGAN dipaksa overbook). PERLU REVIEW MANUAL: ${pool.map((u) => u.sortKode).join(',')}`)
-      // Sengaja TIDAK di-hasil.set() - unit ini gak dapat placement, dibiarin utuh di tanggal asal
-      // (pemanggil skip unit tanpa placement, lihat `if (!p) return` di call-site).
+      // B1: sama alasan dgn branch tanpa-konfig di atas - majukan 1 hari ke hariTargetPin
+      // (overbook, tercatat), JANGAN ditinggal strand. Existing tetap gak digeser.
+      pool.forEach((u) => { hasil.set(u.id, { finalDate: hariTargetPin }); hops.set(u.id, []) })
+      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${hariTargetPin} - ${pool.length} unit WIRING dimajukan 1 hari ke ${hariTargetPin} (overbook; existing tidak digeser). PERLU REVIEW MANUAL: ${pool.map((u) => u.sortKode).join(',')}`)
     }
     return { hasil, hops }
   }
