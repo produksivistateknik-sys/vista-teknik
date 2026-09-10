@@ -29,17 +29,21 @@ ada di tabel arsip pasangannya akan bikin error runtime:
 | `fcs_tracking_komponen_foto` | `fcs_tracking_komponen_foto_archived` (insert manual di `arsip_panel()`, bukan lewat helper generik - cek juga) |
 | `panels` | `panels_archived` (kolom di-generate dinamis juga, tapi punya kolom tambahan `progress_snapshot`/`wo_number_snapshot`/`proyek_snapshot` yang legitimate, jangan dihapus) |
 
-Cara cepat cek semua pasangan sekaligus (butuh `supabase db query --linked`,
-service-role/DB access - tidak bisa lewat anon key client-side):
+Cara cepat cek semua pasangan sekaligus - fungsi diagnostik
+`public.cek_sync_skema_arsip()` (migration `20260910130000_cek_sync_skema_arsip.sql`,
+butuh service-role/DB access - tidak bisa lewat anon key client-side):
 
 ```sql
-SELECT table_name, column_name, data_type, udt_name, column_default, is_nullable, ordinal_position
-FROM information_schema.columns
-WHERE table_schema='public' AND table_name IN ('raw_schedule','raw_schedule_archived', ...)
-ORDER BY table_name, ordinal_position;
+SELECT * FROM public.cek_sync_skema_arsip();
 ```
 
-lalu diff kolom per pasangan (lihat kolom yang ada di sumber tapi hilang di arsip).
+- `arah='kurang_di_arsip'` -> BAHAYA, akan bikin `arsip_panel()` gagal. WAJIB di-ALTER.
+- `arah='beda_tipe'` -> kolom ada di dua-duanya tapi tipe beda.
+- `arah='extra_di_arsip'` -> kolom cuma di arsip & bukan snapshot resmi (kemungkinan usang).
+
+Idealnya nol baris. Jalankan tiap habis migration yang `add column` ke tabel sumber, dan
+pasang di CI. Pasangan tabel dideteksi generik (`X` yang punya `X_archived`), jadi pasangan
+baru otomatis ke-cover.
 
 Reminder yang sama juga ditulis sebagai `COMMENT ON TABLE`/`COMMENT ON FUNCTION`
 langsung di database (muncul di Supabase Studio saat lihat tabel/fungsi ini).
