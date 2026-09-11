@@ -136,8 +136,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // progress beda-beda. Data LAMA (sebelum kolom ini ada) progress-nya NULL - render WAJIB
   // sembunyikan "(%)" kalau null, jangan tampilkan "null%"/"0%" palsu. Durasi kerja
   // (durasi_menit, dijumlah per operator per tanggal+tahap - bisa >1 sesi timer di hari yang
-  // sama) tetap dipakai apa adanya. Diurutkan tanggal TERBARU dulu, tahap sesuai alur kerja
-  // (BUSBAR_TAHAP_URUTAN) buat tanggal yang sama.
+  // sama) tetap dipakai apa adanya. Diurutkan tanggal LAMA ke BARU (kronologis, biar progres
+  // kerja kebaca dari atas ke bawah kayak timeline) - FIX (11 Sep 2026): dulu tanggal TERBARU
+  // dulu (descending), tapi tahap yang sama bisa dikerjakan ulang di beberapa tanggal beda
+  // (FABRIKASI misalnya bisa nongol lagi tanggal jauh setelahnya) - kalau tanggal terbaru di
+  // atas, urutan tahap keliatan acak (mis. Plating/Heat-Shrink/Pasang/Fabrikasi). Ascending
+  // bikin urutan lebih match kronologi kerja beneran. Di tanggal yang sama, tahap tetap
+  // diurutkan sesuai alur kerja (BUSBAR_TAHAP_URUTAN).
   const getBusbarHistoriHarian=(panelId:any,kode:string):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number;persen:number|null}[]=>{
     const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode);
     if(rows.length===0)return[];
@@ -164,7 +169,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           persen:v.persen,
         };
       })
-      .sort((a,b)=>b.tanggal!==a.tanggal?b.tanggal.localeCompare(a.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey));
+      .sort((a,b)=>a.tanggal!==b.tanggal?a.tanggal.localeCompare(b.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey));
   };
 
   // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
