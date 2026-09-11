@@ -67,49 +67,57 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [riwayatLoading, setRiwayatLoading] = useState(false)
   const [riwayatItems, setRiwayatItems] = useState<any[]>([])
 
-  // REKAP PER PANEL (11 Sep 2026) - rekap SEMUA item BBMB/BBMU yang pernah diminta utk 1 panel
-  // tertentu, digabung per jenis item, buat di-print. Cuma hitung item yang BENERAN sudah keluar
-  // dari Gudang (status='submit') - SENGAJA bukan 'pending' (baru disetujui admin, belum tentu
-  // dipenuhi) - keputusan eksplisit user (fitur serupa versi Gudang, yang jangkauannya beda,
-  // direncanakan nyusul terpisah).
+  // REKAP PER WO/PROJECT (11 Sep 2026, REVISI dari versi awal per-panel) - rekap SEMUA item
+  // BBMB/BBMU yang pernah diminta di SELURUH panel dalam 1 WO, digabung per jenis item, buat
+  // di-print. Cuma hitung item yang BENERAN sudah keluar dari Gudang (status='submit') -
+  // SENGAJA bukan 'pending' (baru disetujui admin, belum tentu dipenuhi) - keputusan eksplisit
+  // user (fitur serupa versi Gudang, yang jangkauannya beda, direncanakan nyusul terpisah).
+  // Tetap ada toggle turun ke 1 panel spesifik (rekapScopePanelId) buat kasus mau lihat satu
+  // panel doang - narrow-nya PURE CLIENT-SIDE dari rekapRawItems yang udah ke-fetch based on
+  // seluruh WO (gak refetch ke DB), soalnya raw item per baris udah dibawa panel_id-nya lewat
+  // permMap (perm.panel_id) di fetchRekap.
   // Group key HARUS komponen_master_id + satuan_dipilih (bukan komponen_master_id doang) -
   // dicek live 11 Sep 2026: mayoritas item konsisten 1 master_id = 1 satuan, TAPI ada 1
   // pengecualian nyata (master_id 3640, pernah diminta PCS & PACK) - kalau digabung tanpa satuan
   // bakal ke-jumlah salah (PCS+PACK jadi satu angka gak berarti).
   const allPanelsFlat = useMemo(() =>
     (woData || []).flatMap((wo: any) => (wo.panels || []).map((p: any) => ({
-      id: p.id, nama: p.nama, wo: wo.wo, proyek: wo.proyek,
+      id: p.id, nama: p.nama, woId: wo.id, wo: wo.wo, proyek: wo.proyek,
     }))).sort((a: any, b: any) => (a.nama || '').localeCompare(b.nama || '')),
     [woData])
-  const [rekapPanelSearch, setRekapPanelSearch] = useState('')
-  const [rekapPanelId, setRekapPanelId] = useState<number | null>(null)
+  const allWosFlat = useMemo(() =>
+    (woData || []).map((wo: any) => ({ id: wo.id, wo: wo.wo, proyek: wo.proyek, panelCount: (wo.panels || []).length }))
+      .filter((w: any) => w.panelCount > 0)
+      .sort((a: any, b: any) => (a.wo || '').localeCompare(b.wo || '')),
+    [woData])
+  const [rekapWoSearch, setRekapWoSearch] = useState('')
+  const [rekapWoId, setRekapWoId] = useState<number | null>(null)
+  const [rekapScopePanelId, setRekapScopePanelId] = useState<number | null>(null) // null = semua panel di WO ini
+  const [rekapSearch, setRekapSearch] = useState('') // filter tabel di layar (poin A), TIDAK ikut query ulang
   const [rekapLoading, setRekapLoading] = useState(false)
-  const [rekapRows, setRekapRows] = useState<{ key: string, nama: string, satuan: string, totalQty: number }[]>([])
-  const rekapPanel = allPanelsFlat.find((p: any) => p.id === rekapPanelId) || null
-  const rekapPanelFiltered = allPanelsFlat.filter((p: any) => {
-    const q = rekapPanelSearch.trim().toLowerCase()
+  const [rekapRawItems, setRekapRawItems] = useState<{ komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number }[]>([])
+  const rekapWo = allWosFlat.find((w: any) => w.id === rekapWoId) || null
+  const rekapWoFiltered = allWosFlat.filter((w: any) => {
+    const q = rekapWoSearch.trim().toLowerCase()
     if (!q) return true
-    return [p.nama, p.wo, p.proyek].join(' ').toLowerCase().includes(q)
+    return [w.wo, w.proyek].join(' ').toLowerCase().includes(q)
   })
+  const rekapPanelsInWo = allPanelsFlat.filter((p: any) => p.woId === rekapWoId)
 
-  const fetchRekap = async (panelId: number) => {
+  const fetchRekap = async (woId: number) => {
     setRekapLoading(true)
     try {
-      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id').eq('panel_id', panelId).range(from, to))
-      if (perms.length === 0) { setRekapRows([]); setRekapLoading(false); return }
+      const panelIds = allPanelsFlat.filter((p: any) => p.woId === woId).map((p: any) => p.id)
+      if (panelIds.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
+      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id,panel_id').in('panel_id', panelIds).range(from, to))
+      if (perms.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
       const permIds = perms.map((p: any) => p.id)
+      const permPanelMap: Record<number, number> = {}
+      perms.forEach((p: any) => { permPanelMap[p.id] = p.panel_id })
       const itemRows = await fetchAllPaged((from, to) =>
-        supabase.from('permintaan_item').select('komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
+        supabase.from('permintaan_item').select('permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
           .in('permintaan_id', permIds).eq('status', 'submit').range(from, to))
-      const groups: Record<string, { nama: string, satuan: string, totalQty: number }> = {}
-      itemRows.forEach((it: any) => {
-        const satuan = it.satuan_dipilih || it.satuan || '-'
-        const key = `${it.komponen_master_id ?? 'x'}|${satuan}`
-        if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0 }
-        groups[key].totalQty += Number(it.qty) || 0
-      })
-      const rows = Object.entries(groups).map(([key, v]) => ({ key, ...v })).sort((a, b) => a.nama.localeCompare(b.nama))
-      setRekapRows(rows)
+      setRekapRawItems(itemRows.map((it: any) => ({ ...it, panel_id: permPanelMap[it.permintaan_id] })))
     } catch (e: any) {
       alert('Gagal memuat rekap: ' + e.message)
     }
@@ -117,8 +125,35 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   }
 
   useEffect(() => {
-    if (viewMode === 'rekap' && rekapPanelId) fetchRekap(rekapPanelId)
-  }, [viewMode, rekapPanelId])
+    if (viewMode === 'rekap' && rekapWoId) fetchRekap(rekapWoId)
+    // Ganti WO -> reset cakupan panel & search lama, jangan sampai nyangkut ke WO baru.
+    setRekapScopePanelId(null)
+    setRekapSearch('')
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [viewMode, rekapWoId])
+
+  // Agregasi (SUM per komponen_master_id+satuan) DIHITUNG ULANG tiap kali cakupan panel
+  // (rekapScopePanelId) berubah - murni di memori dari rekapRawItems, gak query ulang.
+  const rekapRowsFull = useMemo(() => {
+    const rows = rekapScopePanelId ? rekapRawItems.filter(it => it.panel_id === rekapScopePanelId) : rekapRawItems
+    const groups: Record<string, { nama: string, satuan: string, totalQty: number }> = {}
+    rows.forEach(it => {
+      const satuan = it.satuan_dipilih || it.satuan || '-'
+      const key = `${it.komponen_master_id ?? 'x'}|${satuan}`
+      if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0 }
+      groups[key].totalQty += Number(it.qty) || 0
+    })
+    return Object.entries(groups).map(([key, v]) => ({ key, ...v })).sort((a, b) => a.nama.localeCompare(b.nama))
+  }, [rekapRawItems, rekapScopePanelId])
+
+  // Filter search box (poin A) - CLIENT-SIDE doang, gak nyentuh rekapRawItems/query. Dipakai
+  // buat render tabel DAN print sekaligus (array yang sama) - biar WYSIWYG, cetak persis yang
+  // lagi kelihatan di layar kalau search sedang aktif, bukan seluruh data mentah.
+  const rekapRowsDisplayed = useMemo(() => {
+    const q = rekapSearch.trim().toLowerCase()
+    if (!q) return rekapRowsFull
+    return rekapRowsFull.filter(r => r.nama.toLowerCase().includes(q))
+  }, [rekapRowsFull, rekapSearch])
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -276,24 +311,40 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       </div>
 
       {viewMode === 'rekap' ? (
-        rekapPanel ? (
+        rekapWo ? (
           <div>
-            <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-              <Btn color="#94a3b8" outline onClick={() => setRekapPanelId(null)}>← Ganti Panel</Btn>
+            <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+              <Btn color="#94a3b8" outline onClick={() => setRekapWoId(null)}>← Ganti WO</Btn>
               <Btn color="#1d4ed8" onClick={() => window.print()}>🖨️ Print Rekap</Btn>
+              {rekapPanelsInWo.length > 1 && (
+                <select value={rekapScopePanelId ?? ''} onChange={(e: any) => setRekapScopePanelId(e.target.value ? Number(e.target.value) : null)}
+                  style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary,#1e293b)' }}>
+                  <option value="">Semua panel di WO ini ({rekapPanelsInWo.length})</option>
+                  {rekapPanelsInWo.map((p: any) => <option key={p.id} value={p.id}>Cuma panel: {p.nama}</option>)}
+                </select>
+              )}
+              <input type="text" placeholder="🔍 Cari nama item..." value={rekapSearch}
+                onChange={(e: any) => setRekapSearch(e.target.value)}
+                style={{ flex: '1 1 180px', minWidth: 160, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
             </div>
             <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>{rekapPanel.proyek} - WO {rekapPanel.wo}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>{rekapPanel.nama}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>{rekapWo.proyek}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>
+                WO {rekapWo.wo}{rekapScopePanelId ? ` - ${rekapPanelsInWo.find((p: any) => p.id === rekapScopePanelId)?.nama || ''}` : ` (gabungan ${rekapPanelsInWo.length} panel)`}
+              </div>
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Rekap Permintaan Barang (item yang sudah keluar dari Gudang) - dicetak {fmtDateTime(new Date().toISOString())}</div>
             </div>
             {rekapLoading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
-            ) : rekapRows.length === 0 ? (
+            ) : rekapRowsDisplayed.length === 0 ? (
               <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
                 <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
-                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Belum ada item</div>
-                <div style={{ fontSize: 12 }}>Belum ada permintaan barang yang sudah keluar dari Gudang untuk panel ini.</div>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
+                  {rekapRowsFull.length === 0 ? 'Belum ada item' : 'Tidak ada item yang cocok dengan pencarian'}
+                </div>
+                <div style={{ fontSize: 12 }}>
+                  {rekapRowsFull.length === 0 ? 'Belum ada permintaan barang yang sudah keluar dari Gudang untuk cakupan ini.' : `Coba kata kunci lain (pencarian: "${rekapSearch}").`}
+                </div>
               </Card>
             ) : (
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
@@ -305,7 +356,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                   </tr>
                 </thead>
                 <tbody>
-                  {rekapRows.map(r => (
+                  {rekapRowsDisplayed.map(r => (
                     <tr key={r.key}>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
                       <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>{r.totalQty}</td>
@@ -315,21 +366,26 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                 </tbody>
               </table>
             )}
+            {rekapSearch && rekapRowsDisplayed.length > 0 && (
+              <div className="no-print" style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+                Menampilkan {rekapRowsDisplayed.length} dari {rekapRowsFull.length} item (hasil pencarian "{rekapSearch}") - Print akan cetak persis yang ditampilkan ini.
+              </div>
+            )}
           </div>
         ) : (
           <div>
-            <input type="text" placeholder="Cari nama panel, WO, atau proyek..." value={rekapPanelSearch}
-              onChange={(e: any) => setRekapPanelSearch(e.target.value)}
+            <input type="text" placeholder="Cari nomor WO atau nama proyek..." value={rekapWoSearch}
+              onChange={(e: any) => setRekapWoSearch(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)', marginBottom: 14 }} />
-            {rekapPanelFiltered.length === 0 ? (
-              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Panel tidak ditemukan.</Card>
+            {rekapWoFiltered.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>WO tidak ditemukan.</Card>
             ) : (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-                {rekapPanelFiltered.map((p: any) => (
-                  <button key={p.id} onClick={() => setRekapPanelId(p.id)}
+                {rekapWoFiltered.map((w: any) => (
+                  <button key={w.id} onClick={() => setRekapWoId(w.id)}
                     style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{p.nama}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{p.proyek} - WO {p.wo}</div>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>WO {w.wo}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{w.proyek} - {w.panelCount} panel</div>
                   </button>
                 ))}
               </div>
