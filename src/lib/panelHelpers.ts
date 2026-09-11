@@ -74,6 +74,19 @@ export function formatBusbarTahapTooltip(cl:any): string|undefined {
   if(!bd) return undefined;
   return bd.map(x=>`${x.label} ${Math.round(x.pct)}%`).join(" · ");
 }
+// Tahap yang SEDANG berjalan (0% < progress < 100%) - buat kolom "Proses" di Rencana Harian &
+// badge Task Monitoring. PENTING: model busbar SENGAJA gak ada "tahap aktif tunggal" - operator
+// bebas kerjakan tahap manapun bersamaan begitu tahap sebelumnya >=25% (lihat OperatorView.tsx
+// vista-pekerja, computeBusbarTahapStatus) - BISA lebih dari satu tahap in-progress bareng.
+// Kosong kalau belum ada progress sama sekali ATAU semua tahap udah 100% (overall Selesai) -
+// dua kondisi itu sengaja gak ditampilkan (gak ada "tahap yang sedang berjalan").
+export function getBusbarTahapAktif(cl:any): {label:string; pct:number}[] {
+  return (getBusbarTahapBreakdown(cl)||[]).filter(t=>t.pct>0 && t.pct<100);
+}
+// "Pasang (75%)" atau "Plating (60%), Heat-Shrink (30%)" kalau kebetulan >1 tahap paralel. "" kalau kosong.
+export function formatBusbarTahapAktif(cl:any): string {
+  return getBusbarTahapAktif(cl).map(t=>`${t.label} (${Math.round(t.pct)}%)`).join(", ");
+}
 
 // ================= WIRING CONTROL/POWER: kapasitas orang-per-hari-kerja berbasis bobot =================
 // REVISI TOTAL (12 Agu 2026) - ganti model lama (token __wiring_{orang}org_{bobot}, satu angka

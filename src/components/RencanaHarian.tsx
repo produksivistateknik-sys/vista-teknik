@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, formatBusbarTahapAktif, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -710,6 +710,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
                     <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
                     <th style={{...thS,width:250}}>Komponen</th>
+                    {proses==="BUSBAR"&&<th style={{...thS,width:150}}>Proses</th>}
                     <th style={{...thS,width:160}}>Operator</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status Pipeline</th>
@@ -796,6 +797,22 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 );
                               })()}
                             </td>
+                            {t.proses==="BUSBAR"&&(()=>{
+                              // Tahap yang lagi berjalan (0%<progress<100%) - bisa lebih dari satu
+                              // sekaligus (model busbar sengaja gak ada "tahap aktif tunggal", operator
+                              // bebas kerjakan tahap manapun bersamaan). Kosong kalau belum ada progress
+                              // sama sekali atau semua tahap udah 100% (overall Selesai).
+                              const tahapAktif=formatBusbarTahapAktif(panelData?.checklist?.[kode]);
+                              return(
+                                <td style={{...td}}>
+                                  {tahapAktif?(
+                                    <span style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{tahapAktif}</span>
+                                  ):(
+                                    <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>–</span>
+                                  )}
+                                </td>
+                              );
+                            })()}
                             <td style={{...td}}>
                               {!sudahRelease&&!digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
@@ -927,7 +944,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   });
                   if(renderedRows.length===0&&statusFilter!=="ALL"){
                     return(
-                      <tr><td colSpan={10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                      <tr><td colSpan={proses==="BUSBAR"?11:10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
                         Tidak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di {proses}.
                       </td></tr>
                     );
