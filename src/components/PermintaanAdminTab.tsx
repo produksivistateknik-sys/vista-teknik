@@ -192,12 +192,15 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   @page { size: A4; margin: 1.8cm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; margin: 0; padding: 0; }
-  .kop { border-bottom: 3px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 26px; }
-  .kop-inner { display: flex; align-items: center; justify-content: center; gap: 18px; }
-  .kop img { height: 56px; width: auto; flex-shrink: 0; }
-  .kop-company { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.3px; text-align: left; }
-  .kop-sub { font-size: 11px; color: #64748b; letter-spacing: 1.2px; margin-top: 2px; text-align: left; }
-  .doc-title { text-align: center; margin: 14px 0 18px; }
+  /* Logo di pojok kiri (absolute, keluar dari flow) TERPISAH dari teks nama perusahaan yang
+     center - dua elemen independen, bukan satu blok gabungan kayak sebelumnya. .kop dikasih
+     position:relative + min-height biar logo absolute punya area acuan, flex+justify-center
+     buat nengahin teks company secara vertikal DAN horizontal relatif ke lebar halaman penuh
+     (bukan relatif ke sisa ruang setelah logo). */
+  .kop { position: relative; display: flex; align-items: center; justify-content: center; min-height: 42px; border-bottom: 3px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 22px; }
+  .kop-logo { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 34px; width: auto; }
+  .kop-company { font-size: 21px; font-weight: 800; color: #1e293b; letter-spacing: 0.4px; text-align: center; }
+  .doc-title { text-align: center; margin: 0 0 18px; }
   .doc-title h1 { font-size: 17px; font-weight: 800; letter-spacing: 1.2px; margin: 0; color: #1e3a8a; }
   .info-block { font-size: 12px; color: #334155; margin-bottom: 20px; line-height: 1.7; }
   .info-block b { color: #1e293b; display: inline-block; width: 90px; }
@@ -220,13 +223,8 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
 </head>
 <body>
   <div class="kop">
-    <div class="kop-inner">
-      <img src="${VISTA_LOGO_DATA_URI}" />
-      <div>
-        <div class="kop-company">VISTA INTI TEKNIK</div>
-        <div class="kop-sub">ERP MANUFACTURE</div>
-      </div>
-    </div>
+    <img class="kop-logo" src="${VISTA_LOGO_DATA_URI}" />
+    <div class="kop-company">PT. VISTA INTI TEKNIK</div>
   </div>
   <div class="doc-title"><h1>REKAP PERMINTAAN BARANG</h1></div>
   <div class="info-block">
