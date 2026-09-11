@@ -110,7 +110,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       let all:any[]=[],from=0;
       while(true){
         const{data,error}:any=await supabase.from("fcs_timer_kerja")
-          .select("panel_id,kode_komponen,tahap,pekerja_id,tanggal,durasi_menit")
+          .select("panel_id,kode_komponen,tahap,pekerja_id,tanggal,durasi_menit,progress,mulai")
           .in("panel_id",busbarPanelIds as number[]).eq("proses","BUSBAR").not("tahap","is",null)
           .range(from,from+999);
         if(error)break;
@@ -128,22 +128,29 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(busbarPanelIds)]);
   // Breakdown HARIAN lengkap (semua tanggal, semua tahap termasuk yang udah 100%) - buat
-  // accordion expand (trigger di kolom Status). SENGAJA gak nampilin persen di sini (busbarTahap.<TAHAP>.progress
-  // cuma nyimpen nilai TERKINI, ke-overwrite tiap simpan - gak ada histori persen per tanggal,
-  // beda dari operator yang emang ke-log per sesi timer). Durasi kerja (durasi_menit, dijumlah per
-  // operator per tanggal+tahap - bisa >1 sesi timer di hari yang sama) dipakai sebagai pengganti,
-  // data ini AKURAT per-hari (beda dari persen yang kalau dipaksa ditampilkan di sini bakal
-  // menyesatkan - lihat diskusi investigasi). Diurutkan tanggal TERBARU dulu, tahap sesuai alur
-  // kerja (BUSBAR_TAHAP_URUTAN) buat tanggal yang sama.
-  const getBusbarHistoriHarian=(panelId:any,kode:string):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number}[]=>{
+  // accordion expand (trigger di kolom Status). Persen (kolom fcs_timer_kerja.progress,
+  // ditambahkan supaya histori per-record bisa punya snapshot persen sendiri - lihat
+  // investigasi "histori persen busbar"; TIDAK menggantikan checklist.busbarTahap.<TAHAP>.progress
+  // yang tetap jadi sumber progress TERKINI/gabungan) diambil dari baris PALING BARU (mulai
+  // terbesar) dalam grup tanggal+tahap yang sama, karena 1 hari bisa ada >1 sesi timer dengan
+  // progress beda-beda. Data LAMA (sebelum kolom ini ada) progress-nya NULL - render WAJIB
+  // sembunyikan "(%)" kalau null, jangan tampilkan "null%"/"0%" palsu. Durasi kerja
+  // (durasi_menit, dijumlah per operator per tanggal+tahap - bisa >1 sesi timer di hari yang
+  // sama) tetap dipakai apa adanya. Diurutkan tanggal TERBARU dulu, tahap sesuai alur kerja
+  // (BUSBAR_TAHAP_URUTAN) buat tanggal yang sama.
+  const getBusbarHistoriHarian=(panelId:any,kode:string):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number;persen:number|null}[]=>{
     const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode);
     if(rows.length===0)return[];
-    const groups:Record<string,{ids:Set<number>;menit:number}>={};
+    const groups:Record<string,{ids:Set<number>;menit:number;persen:number|null;persenMulai:string}>={};
     rows.forEach((r:any)=>{
       const key=r.tanggal+"|"+r.tahap;
-      if(!groups[key])groups[key]={ids:new Set(),menit:0};
+      if(!groups[key])groups[key]={ids:new Set(),menit:0,persen:null,persenMulai:""};
       groups[key].ids.add(r.pekerja_id);
       groups[key].menit+=Number(r.durasi_menit)||0;
+      if(r.progress!=null&&String(r.mulai||"")>groups[key].persenMulai){
+        groups[key].persen=Number(r.progress);
+        groups[key].persenMulai=String(r.mulai||"");
+      }
     });
     const urutanTahap=(t:string)=>{const i=BUSBAR_TAHAP_URUTAN.indexOf(t);return i===-1?BUSBAR_TAHAP_URUTAN.length:i;};
     return Object.entries(groups)
@@ -154,6 +161,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           tahapLabel:BUSBAR_TAHAP_LABEL[tahapKey]||tahapKey,
           operator:[...v.ids].map(id=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean),
           jam:Math.round((v.menit/60)*10)/10,
+          persen:v.persen,
         };
       })
       .sort((a,b)=>b.tanggal!==a.tanggal?b.tanggal.localeCompare(a.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey));
@@ -976,10 +984,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                           </tr>
                         ),
                         // Baris accordion terpisah, cuma dirender kalau lagi di-expand - histori
-                        // harian per tahap (tanggal terbaru dulu), TANPA persen (busbarTahap.<TAHAP>
-                        // cuma nyimpen nilai TERKINI, gak ada histori persen per tanggal - lihat
-                        // komentar getBusbarHistoriHarian di atas). Durasi kerja dipakai sebagai
-                        // pengganti, data itu akurat per-hari.
+                        // harian per tahap (tanggal terbaru dulu). Persen ikut ditampilkan kalau
+                        // ada (kolom fcs_timer_kerja.progress, baris histori LAMA belum punya nilai
+                        // ini - h.persen null - makanya bagian "(x%)" disembunyikan total, JANGAN
+                        // pernah render "null%"/"0%" palsu buat data lama).
                         busbarIsExpanded&&busbarHistori.length>0&&(
                           <tr key={ti+"-"+kode+"-histori"}>
                             <td colSpan={10} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
@@ -987,7 +995,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 {busbarHistori.map((h,hi)=>(
                                   <div key={hi} style={{fontSize:11,color:"#475569"}}>
                                     <span style={{fontWeight:700,color:"#1e293b"}}>{fmtShort(h.tanggal)}</span>
-                                    {" — "}{h.tahapLabel}{" — "}
+                                    {" — "}{h.tahapLabel}
+                                    {h.persen!=null&&<span style={{color:"#16a34a",fontWeight:700}}> ({h.persen}%)</span>}
+                                    {" — "}
                                     {h.operator.length>0?h.operator.join(", "):<span style={{fontStyle:"italic",color:"#94a3b8"}}>operator tidak diketahui</span>}
                                     {h.jam>0&&<span style={{color:"#94a3b8"}}> ({h.jam} jam)</span>}
                                   </div>
