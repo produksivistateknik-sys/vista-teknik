@@ -40,6 +40,41 @@ export function getPanelBusbarKomponen(panel:any, rawData?:any[]):string[]{
   return [...new Set([...scheduled,...fromChecklist,...fromLegacy])];
 }
 
+// Label tahap kerja busbar (ditulis Vista Pekerja ke checklist[kode].busbarTahap). BUKAN semua
+// komponen busbar punya keempatnya - sample live 10 Sep 2026: 29/40 punya FABRIKASI+PLATING+
+// HEATSHRINK+PASANG, 11/40 cuma FABRIKASI+PLATING+PASANG (tanpa HEATSHRINK) - tergantung jenis
+// komponennya. getBusbarTahapBreakdown() di bawah SENGAJA iterasi dinamis dari key yang ada,
+// jangan hardcode 4 tahap di pemanggil.
+export const BUSBAR_TAHAP_LABEL: Record<string,string> = {
+  FABRIKASI:"Fabrikasi", PLATING:"Plating", HEATSHRINK:"Heat-Shrink", PASANG:"Pasang"
+};
+// Urutan alur kerja asli (bukan urutan key JSON - Object.keys busbarTahap urutannya gak
+// terjamin ngikutin alur kerja, tergantung urutan Vista Pekerja nulis field-nya).
+export const BUSBAR_TAHAP_URUTAN=["FABRIKASI","PLATING","HEATSHRINK","PASANG"];
+// Breakdown progress per tahap busbar buat satu komponen (cl = checklist[kodeBusbar]) - dipakai
+// buat tooltip di RencanaHarian & TaskMonitoring, ngelengkapin progress.BUSBAR (angka tunggal,
+// hasil rata-rata ke-4/3 tahap ini) dengan rinciannya. Diurutkan sesuai BUSBAR_TAHAP_URUTAN (tahap
+// tak-dikenal ditaruh di akhir, tetap dipertahankan - jangan sampai hilang cuma karena beda nama).
+// null kalau busbarTahap belum pernah ditulis sama sekali (komponen lama/belum disentuh) -
+// pemanggil fallback ke tampilan polos. "tahapAktif" (kalau suatu saat Vista Pekerja ngirim lagi -
+// saat ini SELALU absen di data live) sengaja di-exclude, itu bukan nama tahap.
+export function getBusbarTahapBreakdown(cl:any): {label:string; pct:number}[] | null {
+  const bt=cl?.busbarTahap;
+  if(!bt) return null;
+  const entries=Object.entries(bt).filter(([k])=>k!=="tahapAktif");
+  if(!entries.length) return null;
+  const urutan=(k:string)=>{const i=BUSBAR_TAHAP_URUTAN.indexOf(k);return i===-1?BUSBAR_TAHAP_URUTAN.length:i;};
+  return entries
+    .sort(([ka],[kb])=>urutan(ka)-urutan(kb))
+    .map(([k,v]:[string,any])=>({label:BUSBAR_TAHAP_LABEL[k]||k, pct:Number(v?.progress)||0}));
+}
+// String siap-pakai buat title="" tooltip: "Fabrikasi 100% · Plating 100% · Heat-Shrink 75% · Pasang 0%"
+export function formatBusbarTahapTooltip(cl:any): string|undefined {
+  const bd=getBusbarTahapBreakdown(cl);
+  if(!bd) return undefined;
+  return bd.map(x=>`${x.label} ${Math.round(x.pct)}%`).join(" · ");
+}
+
 // ================= WIRING CONTROL/POWER: kapasitas orang-per-hari-kerja berbasis bobot =================
 // REVISI TOTAL (12 Agu 2026) - ganti model lama (token __wiring_{orang}org_{bobot}, satu angka
 // TETAP per tim/WP dipilih manual planner) yang terbukti beberapa kali salah baca kapasitas

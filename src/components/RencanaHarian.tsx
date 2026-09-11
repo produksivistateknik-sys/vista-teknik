@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -832,17 +832,23 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 const busbarTahapAktif=t.proses==="BUSBAR"?panelData?.checklist?.[kode]?.busbarTahap?.tahapAktif:null;
                                 const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
                                 const labelTahap=busbarTahapAktif&&BUSBAR_TAHAP_LABEL[busbarTahapAktif]?` · ${BUSBAR_TAHAP_LABEL[busbarTahapAktif]}`:"";
+                                // Breakdown tahap busbar (Fabrikasi/Plating/Heat-Shrink/Pasang, iterasi
+                                // dinamis - gak semua komponen punya keempatnya) buat tooltip on-hover -
+                                // selalu ditampilkan di badge Status manapun (bukan cuma pas "Sedang
+                                // Dikerjakan"), undefined kalau busbarTahap belum pernah ditulis (fallback
+                                // title kosong, gak ganggu proses non-BUSBAR sama sekali).
+                                const busbarTooltip=t.proses==="BUSBAR"?formatBusbarTahapTooltip(panelData?.checklist?.[kode]):undefined;
                                 if(pctKerja>=100){
-                                  return <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
+                                  return <span title={busbarTooltip} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
                                 }
                                 if(pctKerja>0){
-                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
+                                  return <span title={busbarTooltip} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
                                 }
                                 // Jejak 0% (gak sempat disentuh sama sekali di tanggal ini) - status beda
                                 // dari "Belum Dikerjakan" hidup (yang masih actionable hari ini), karena
                                 // ini histori beku, gak akan pernah dikerjakan lagi di tanggal ini.
                                 if(digeserKeTanggal){
-                                  return <span style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⚪ Tidak Dikerjakan (0%)</span>;
+                                  return <span title={busbarTooltip} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⚪ Tidak Dikerjakan (0%)</span>;
                                 }
                                 // Timer aktif cuma relevan buat hari kerja SEKARANG - tanggal yang udah
                                 // lewat itu sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.
@@ -851,9 +857,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                   const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/1000));
                                   const menitBerjalan=Math.floor(totalDetikAktif/60);
                                   const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
-                                  return <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({labelDurasiAktif})</span>;
+                                  return <span title={busbarTooltip} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({labelDurasiAktif})</span>;
                                 }
-                                return <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
+                                return <span title={busbarTooltip} style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
                               })()}
                             </td>
                             <td style={{...td,textAlign:"center"}}>

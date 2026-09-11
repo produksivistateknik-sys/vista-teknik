@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getPanelBusbarKomponen, getBusbarProgress } from '../lib/panelHelpers'
+import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip } from '../lib/panelHelpers'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
 export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],rawData?:any[],livePanelTypes?:any}){
@@ -147,13 +147,17 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
                   return bk.map((k:string,bi:number)=>{
                     const pct=getBusbarProgress(selectedPanel,k);
                     const status=pct>=100?"DONE":pct>0?"IN PROGRESS":"TO DO";
+                    // Breakdown tahap (Fabrikasi/Plating/Heat-Shrink/Pasang) buat tooltip on-hover -
+                    // selalu ditampilkan gak peduli status DONE/IN PROGRESS/TO DO, undefined kalau
+                    // busbarTahap belum pernah ditulis (komponen lama/belum disentuh).
+                    const tahapTooltip=formatBusbarTahapTooltip(selectedPanel.checklist?.[k]);
                     return(
                       <tr key={"busbar-"+k}>
-                        <td style={{padding:"6px 10px",fontWeight:600,color:"#0e7490",background:bi%2===0?"#f0fdfe":"#ecfeff",position:"sticky" as const,left:0,zIndex:1}}>🔌 {k}</td>
+                        <td title={tahapTooltip} style={{padding:"6px 10px",fontWeight:600,color:"#0e7490",background:bi%2===0?"#f0fdfe":"#ecfeff",position:"sticky" as const,left:0,zIndex:1,cursor:tahapTooltip?"help":undefined}}>🔌 {k}</td>
                         {ALL_PROSES.map((proses:string)=>(
                           <td key={proses} style={{padding:4,textAlign:"center" as const,background:bi%2===0?"#f0fdfe":"#ecfeff"}}>
                             {proses==="BUSBAR"&&(
-                              <span style={{background:statusStyle[status].bg,color:statusStyle[status].color,border:`1px solid ${statusStyle[status].border}`,padding:"3px 9px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>
+                              <span title={tahapTooltip} style={{background:statusStyle[status].bg,color:statusStyle[status].color,border:`1px solid ${statusStyle[status].border}`,padding:"3px 9px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>
                                 {status==="IN PROGRESS"?`IN PROGRESS ${Math.round(pct)}%`:status}
                               </span>
                             )}
