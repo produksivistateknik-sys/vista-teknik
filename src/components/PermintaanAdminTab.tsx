@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { Card, Btn, Modal, Badge } from './ui/Primitives'
 
@@ -51,9 +51,9 @@ const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: str
   { key: 'DITOLAK', label: '✕ Ditolak Admin', color: '#dc2626' },
 ]
 
-export function PermintaanAdminTab({ user }: any) {
+export function PermintaanAdminTab({ user, woData = [] }: any) {
   const adminUsername: string = user?.username || user?.name || 'Admin'
-  const [viewMode, setViewMode] = useState<'pending' | 'riwayat'>('pending')
+  const [viewMode, setViewMode] = useState<'pending' | 'riwayat' | 'rekap'>('pending')
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<any[]>([])
   const [qtyEdit, setQtyEdit] = useState<Record<number, string>>({})
@@ -66,6 +66,59 @@ export function PermintaanAdminTab({ user }: any) {
   const [riwayatStatusFilter, setRiwayatStatusFilter] = useState<'ALL' | 'DISETUJUI' | 'DITOLAK'>('ALL')
   const [riwayatLoading, setRiwayatLoading] = useState(false)
   const [riwayatItems, setRiwayatItems] = useState<any[]>([])
+
+  // REKAP PER PANEL (11 Sep 2026) - rekap SEMUA item BBMB/BBMU yang pernah diminta utk 1 panel
+  // tertentu, digabung per jenis item, buat di-print. Cuma hitung item yang BENERAN sudah keluar
+  // dari Gudang (status='submit') - SENGAJA bukan 'pending' (baru disetujui admin, belum tentu
+  // dipenuhi) - keputusan eksplisit user (fitur serupa versi Gudang, yang jangkauannya beda,
+  // direncanakan nyusul terpisah).
+  // Group key HARUS komponen_master_id + satuan_dipilih (bukan komponen_master_id doang) -
+  // dicek live 11 Sep 2026: mayoritas item konsisten 1 master_id = 1 satuan, TAPI ada 1
+  // pengecualian nyata (master_id 3640, pernah diminta PCS & PACK) - kalau digabung tanpa satuan
+  // bakal ke-jumlah salah (PCS+PACK jadi satu angka gak berarti).
+  const allPanelsFlat = useMemo(() =>
+    (woData || []).flatMap((wo: any) => (wo.panels || []).map((p: any) => ({
+      id: p.id, nama: p.nama, wo: wo.wo, proyek: wo.proyek,
+    }))).sort((a: any, b: any) => (a.nama || '').localeCompare(b.nama || '')),
+    [woData])
+  const [rekapPanelSearch, setRekapPanelSearch] = useState('')
+  const [rekapPanelId, setRekapPanelId] = useState<number | null>(null)
+  const [rekapLoading, setRekapLoading] = useState(false)
+  const [rekapRows, setRekapRows] = useState<{ key: string, nama: string, satuan: string, totalQty: number }[]>([])
+  const rekapPanel = allPanelsFlat.find((p: any) => p.id === rekapPanelId) || null
+  const rekapPanelFiltered = allPanelsFlat.filter((p: any) => {
+    const q = rekapPanelSearch.trim().toLowerCase()
+    if (!q) return true
+    return [p.nama, p.wo, p.proyek].join(' ').toLowerCase().includes(q)
+  })
+
+  const fetchRekap = async (panelId: number) => {
+    setRekapLoading(true)
+    try {
+      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id').eq('panel_id', panelId).range(from, to))
+      if (perms.length === 0) { setRekapRows([]); setRekapLoading(false); return }
+      const permIds = perms.map((p: any) => p.id)
+      const itemRows = await fetchAllPaged((from, to) =>
+        supabase.from('permintaan_item').select('komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
+          .in('permintaan_id', permIds).eq('status', 'submit').range(from, to))
+      const groups: Record<string, { nama: string, satuan: string, totalQty: number }> = {}
+      itemRows.forEach((it: any) => {
+        const satuan = it.satuan_dipilih || it.satuan || '-'
+        const key = `${it.komponen_master_id ?? 'x'}|${satuan}`
+        if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0 }
+        groups[key].totalQty += Number(it.qty) || 0
+      })
+      const rows = Object.entries(groups).map(([key, v]) => ({ key, ...v })).sort((a, b) => a.nama.localeCompare(b.nama))
+      setRekapRows(rows)
+    } catch (e: any) {
+      alert('Gagal memuat rekap: ' + e.message)
+    }
+    setRekapLoading(false)
+  }
+
+  useEffect(() => {
+    if (viewMode === 'rekap' && rekapPanelId) fetchRekap(rekapPanelId)
+  }, [viewMode, rekapPanelId])
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -197,11 +250,11 @@ export function PermintaanAdminTab({ user }: any) {
 
   return (
     <div className="fi">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
+      <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : 'Riwayat keputusan admin (disetujui / ditolak).'}
+            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 panel, digabung per jenis item.'}
           </div>
         </div>
         {viewMode === 'pending' && (
@@ -209,8 +262,8 @@ export function PermintaanAdminTab({ user }: any) {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
-        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }].map(t => (
+      <div className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
+        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }, { key: 'rekap', label: 'Rekap per Panel' }].map(t => (
           <button key={t.key} onClick={() => setViewMode(t.key as any)}
             style={{
               padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
@@ -222,7 +275,68 @@ export function PermintaanAdminTab({ user }: any) {
         ))}
       </div>
 
-      {viewMode === 'riwayat' ? (
+      {viewMode === 'rekap' ? (
+        rekapPanel ? (
+          <div>
+            <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
+              <Btn color="#94a3b8" outline onClick={() => setRekapPanelId(null)}>← Ganti Panel</Btn>
+              <Btn color="#1d4ed8" onClick={() => window.print()}>🖨️ Print Rekap</Btn>
+            </div>
+            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16 }}>
+              <div style={{ fontSize: 11, color: '#94a3b8' }}>{rekapPanel.proyek} - WO {rekapPanel.wo}</div>
+              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>{rekapPanel.nama}</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Rekap Permintaan Barang (item yang sudah keluar dari Gudang) - dicetak {fmtDateTime(new Date().toISOString())}</div>
+            </div>
+            {rekapLoading ? (
+              <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
+            ) : rekapRows.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+                <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Belum ada item</div>
+                <div style={{ fontSize: 12 }}>Belum ada permintaan barang yang sudah keluar dari Gudang untuk panel ini.</div>
+              </Card>
+            ) : (
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+                <thead>
+                  <tr>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Nama Item</th>
+                    <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Total Qty</th>
+                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Satuan</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {rekapRows.map(r => (
+                    <tr key={r.key}>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>{r.totalQty}</td>
+                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{r.satuan}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        ) : (
+          <div>
+            <input type="text" placeholder="Cari nama panel, WO, atau proyek..." value={rekapPanelSearch}
+              onChange={(e: any) => setRekapPanelSearch(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)', marginBottom: 14 }} />
+            {rekapPanelFiltered.length === 0 ? (
+              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Panel tidak ditemukan.</Card>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                {rekapPanelFiltered.map((p: any) => (
+                  <button key={p.id} onClick={() => setRekapPanelId(p.id)}
+                    style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>
+                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>{p.nama}</div>
+                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{p.proyek} - WO {p.wo}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        )
+      ) : viewMode === 'riwayat' ? (
         <div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <input type="date" value={riwayatTanggal} onChange={(e: any) => setRiwayatTanggal(e.target.value)}
@@ -369,6 +483,12 @@ export function PermintaanAdminTab({ user }: any) {
           </div>
         </Modal>
       )}
+
+      <style>{`
+        @media print {
+          .no-print { display: none !important; }
+        }
+      `}</style>
     </div>
   )
 }
