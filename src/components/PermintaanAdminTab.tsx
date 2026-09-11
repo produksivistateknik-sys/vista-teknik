@@ -192,10 +192,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   @page { size: A4; margin: 1.8cm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; margin: 0; padding: 0; }
-  .kop { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #1e3a8a; padding-bottom: 14px; margin-bottom: 18px; }
-  .kop img { width: 54px; height: 54px; flex-shrink: 0; }
-  .kop-company { font-size: 19px; font-weight: 800; color: #1e293b; letter-spacing: 0.3px; }
-  .kop-sub { font-size: 10.5px; color: #64748b; letter-spacing: 1px; margin-top: 1px; }
+  .kop { border-bottom: 3px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 26px; }
+  .kop-inner { display: flex; align-items: center; justify-content: center; gap: 18px; }
+  .kop img { height: 56px; width: auto; flex-shrink: 0; }
+  .kop-company { font-size: 20px; font-weight: 800; color: #1e293b; letter-spacing: 0.3px; text-align: left; }
+  .kop-sub { font-size: 11px; color: #64748b; letter-spacing: 1.2px; margin-top: 2px; text-align: left; }
   .doc-title { text-align: center; margin: 14px 0 18px; }
   .doc-title h1 { font-size: 17px; font-weight: 800; letter-spacing: 1.2px; margin: 0; color: #1e3a8a; }
   .info-block { font-size: 12px; color: #334155; margin-bottom: 20px; line-height: 1.7; }
@@ -219,10 +220,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
 </head>
 <body>
   <div class="kop">
-    <img src="${VISTA_LOGO_DATA_URI}" />
-    <div>
-      <div class="kop-company">VISTA INTI TEKNIK</div>
-      <div class="kop-sub">ERP MANUFACTURE</div>
+    <div class="kop-inner">
+      <img src="${VISTA_LOGO_DATA_URI}" />
+      <div>
+        <div class="kop-company">VISTA INTI TEKNIK</div>
+        <div class="kop-sub">ERP MANUFACTURE</div>
+      </div>
     </div>
   </div>
   <div class="doc-title"><h1>REKAP PERMINTAAN BARANG</h1></div>
