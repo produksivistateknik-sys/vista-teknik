@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, getBusbarTahapAktif, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -127,18 +127,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return()=>{cancelled=true;supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(busbarPanelIds)]);
-  // Operator yang ngerjain satu TAHAP tertentu - ambil tanggal TERBARU yang punya sesi timer
-  // buat kombinasi panel+kode+tahap ini (bukan cuma selDate), biar tahap yang lagi aktif hari
-  // ini tetap dapat nama operator walau sesi kerjanya kejadian di hari lain.
-  const getBusbarTahapOperator=(panelId:any,kode:string,tahap:string):string[]=>{
-    const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.tahap===tahap);
-    if(rows.length===0)return[];
-    const tanggalTerbaru=rows.reduce((a:string,r:any)=>r.tanggal>a?r.tanggal:a,rows[0].tanggal);
-    const ids=[...new Set(rows.filter((r:any)=>r.tanggal===tanggalTerbaru).map((r:any)=>r.pekerja_id))];
-    return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
-  };
   // Breakdown HARIAN lengkap (semua tanggal, semua tahap termasuk yang udah 100%) - buat
-  // accordion expand kolom Proses. SENGAJA gak nampilin persen di sini (busbarTahap.<TAHAP>.progress
+  // accordion expand (trigger di kolom Status). SENGAJA gak nampilin persen di sini (busbarTahap.<TAHAP>.progress
   // cuma nyimpen nilai TERKINI, ke-overwrite tiap simpan - gak ada histori persen per tanggal,
   // beda dari operator yang emang ke-log per sesi timer). Durasi kerja (durasi_menit, dijumlah per
   // operator per tanggal+tahap - bisa >1 sesi timer di hari yang sama) dipakai sebagai pengganti,
@@ -788,7 +778,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
                     <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
                     <th style={{...thS,width:250}}>Komponen</th>
-                    {proses==="BUSBAR"&&<th style={{...thS,width:150}}>Proses</th>}
                     <th style={{...thS,width:160}}>Operator</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status Pipeline</th>
@@ -881,44 +870,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 );
                               })()}
                             </td>
-                            {t.proses==="BUSBAR"&&(()=>{
-                              // Tahap yang lagi berjalan (0%<progress<100%) - bisa lebih dari satu
-                              // sekaligus (model busbar sengaja gak ada "tahap aktif tunggal", operator
-                              // bebas kerjakan tahap manapun bersamaan). Tiap tahap dipasangkan operator
-                              // yang beneran ngerjain (histori fcs_timer_kerja.tahap, tanggal terbaru).
-                              // Tahap TANPA operator (progress kebetulan jalan tanpa jejak timer - mis.
-                              // dikunci manual) SENGAJA disembunyikan, bukan ditampilkan tanpa nama.
-                              const barisTahap=getBusbarTahapAktif(panelData?.checklist?.[kode])
-                                .map(ta=>({...ta,operator:getBusbarTahapOperator(t.panelId,kode,ta.key)}))
-                                .filter(ta=>ta.operator.length>0);
-                              // Accordion: chevron cuma muncul kalau beneran ada histori buat dibuka
-                              // (busbarHistori/busbarExpandKey/busbarIsExpanded dihitung di level baris,
-                              // dipakai lagi buat <tr> expand tambahan setelah baris ini).
-                              return(
-                                <td style={{...td}}>
-                                  <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
-                                    {busbarHistori.length>0&&(
-                                      <button onClick={()=>setExpandedBusbarHistori(prev=>({...prev,[busbarExpandKey]:!prev[busbarExpandKey]}))}
-                                        title={busbarIsExpanded?"Sembunyikan histori harian":"Lihat histori harian per tahap"}
-                                        style={{background:"none",border:"none",padding:0,cursor:"pointer",color:"#94a3b8",fontSize:11,lineHeight:1,flexShrink:0,marginTop:2}}>
-                                        {busbarIsExpanded?"▼":"▶"}
-                                      </button>
-                                    )}
-                                    {barisTahap.length>0?(
-                                      <div style={{display:"flex",flexDirection:"column" as const,gap:2,alignItems:"flex-start"}}>
-                                        {barisTahap.map(ta=>(
-                                          <span key={ta.key} style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                                            {ta.label} ({Math.round(ta.pct)}%) - {ta.operator.join(", ")}
-                                          </span>
-                                        ))}
-                                      </div>
-                                    ):(
-                                      <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>–</span>
-                                    )}
-                                  </div>
-                                </td>
-                              );
-                            })()}
                             <td style={{...td}}>
                               {!sudahRelease&&!digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
@@ -936,6 +887,14 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
+                              {t.proses==="BUSBAR"&&busbarHistori.length>0&&(
+                                <button onClick={()=>setExpandedBusbarHistori(prev=>({...prev,[busbarExpandKey]:!prev[busbarExpandKey]}))}
+                                  title={busbarIsExpanded?"Sembunyikan histori harian":"Lihat histori harian per tahap"}
+                                  style={{background:"none",border:"none",padding:0,cursor:"pointer",color:"#94a3b8",fontSize:11,lineHeight:1,flexShrink:0}}>
+                                  {busbarIsExpanded?"▼":"▶"}
+                                </button>
+                              )}
                               {(()=>{
                                 // Row jejak (digeserKeTanggal) HARUS tetap tampilin status asli walau
                                 // kebetulan gak ada row renhar di tanggal hop ini (renhar cuma ada di
@@ -984,6 +943,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 }
                                 return <span title={busbarTooltip} style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
                               })()}
+                              </div>
                             </td>
                             <td style={{...td,textAlign:"center"}}>
                               {digeserKeTanggal?(
@@ -1022,7 +982,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // pengganti, data itu akurat per-hari.
                         busbarIsExpanded&&busbarHistori.length>0&&(
                           <tr key={ti+"-"+kode+"-histori"}>
-                            <td colSpan={11} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
+                            <td colSpan={10} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
                               <div style={{display:"flex",flexDirection:"column" as const,gap:3}}>
                                 {busbarHistori.map((h,hi)=>(
                                   <div key={hi} style={{fontSize:11,color:"#475569"}}>
@@ -1072,7 +1032,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   });
                   if(renderedRows.length===0&&statusFilter!=="ALL"){
                     return(
-                      <tr><td colSpan={proses==="BUSBAR"?11:10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                      <tr><td colSpan={10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
                         Tidak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di {proses}.
                       </td></tr>
                     );
