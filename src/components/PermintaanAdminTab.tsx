@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { Card, Btn, Modal, Badge } from './ui/Primitives'
 
@@ -44,6 +44,14 @@ const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
+
+// Warna header tabel rekap (#1e3a8a) SAMA PERSIS dgn `thS` di RencanaHarian.tsx (tabel
+// BUSBAR/Renhar) - satu-satunya tempat lain di app ini yang punya header tabel gelap solid,
+// dipakai di sini biar konsisten temanya, bukan warna baru.
+const rekapThS: CSSProperties = {
+  background: '#1e3a8a', color: '#fff', padding: '11px 14px', fontWeight: 700, fontSize: 11,
+  textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left',
+}
 
 const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: string, color: string }[] = [
   { key: 'ALL', label: 'Semua', color: '#475569' },
@@ -289,7 +297,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 panel, digabung per jenis item.'}
+            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 WO (gabungan semua panel di dalamnya), digabung per jenis item.'}
           </div>
         </div>
         {viewMode === 'pending' && (
@@ -318,22 +326,29 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
               <Btn color="#1d4ed8" onClick={() => window.print()}>🖨️ Print Rekap</Btn>
               {rekapPanelsInWo.length > 1 && (
                 <select value={rekapScopePanelId ?? ''} onChange={(e: any) => setRekapScopePanelId(e.target.value ? Number(e.target.value) : null)}
-                  style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 12.5, fontWeight: 600, color: 'var(--text-primary,#1e293b)' }}>
+                  style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 600, color: 'var(--text-primary,#1e293b)', background: '#fff' }}>
                   <option value="">Semua panel di WO ini ({rekapPanelsInWo.length})</option>
                   {rekapPanelsInWo.map((p: any) => <option key={p.id} value={p.id}>Cuma panel: {p.nama}</option>)}
                 </select>
               )}
               <input type="text" placeholder="🔍 Cari nama item..." value={rekapSearch}
                 onChange={(e: any) => setRekapSearch(e.target.value)}
-                style={{ flex: '1 1 180px', minWidth: 160, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
+                style={{ flex: '1 1 180px', minWidth: 160, padding: '8px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
             </div>
-            <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, padding: 16, marginBottom: 16 }}>
-              <div style={{ fontSize: 11, color: '#94a3b8' }}>{rekapWo.proyek}</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#1e293b' }}>
-                WO {rekapWo.wo}{rekapScopePanelId ? ` - ${rekapPanelsInWo.find((p: any) => p.id === rekapScopePanelId)?.nama || ''}` : ` (gabungan ${rekapPanelsInWo.length} panel)`}
+
+            {/* Kop surat (7 Sep 2026 -> redesain 11 Sep 2026, buat dokumen cetak) - nama WO/proyek
+                besar di tengah, tanggal cetak kecil muted di bawahnya, garis pemisah halus sebelum
+                tabel. Warna header tabel di bawah (#1e3a8a) SAMA PERSIS dgn thS di RencanaHarian.tsx
+                (tabel BUSBAR/Renhar) - biar konsisten satu tema warna di seluruh aplikasi. */}
+            <div style={{ textAlign: 'center', padding: '18px 16px 16px', marginBottom: 0, borderBottom: '2px solid #1e3a8a' }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 600, letterSpacing: 0.4, textTransform: 'uppercase' }}>{rekapWo.proyek}</div>
+              <div style={{ fontSize: 22, fontWeight: 800, color: '#1e293b', marginTop: 2 }}>
+                WO {rekapWo.wo}{rekapScopePanelId ? ` — ${rekapPanelsInWo.find((p: any) => p.id === rekapScopePanelId)?.nama || ''}` : ` (gabungan ${rekapPanelsInWo.length} panel)`}
               </div>
-              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>Rekap Permintaan Barang (item yang sudah keluar dari Gudang) - dicetak {fmtDateTime(new Date().toISOString())}</div>
+              <div style={{ fontSize: 12, fontWeight: 700, color: '#1e3a8a', marginTop: 4 }}>REKAP PERMINTAAN BARANG</div>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Item yang sudah keluar dari Gudang · dicetak {fmtDateTime(new Date().toISOString())}</div>
             </div>
+
             {rekapLoading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
             ) : rekapRowsDisplayed.length === 0 ? (
@@ -347,23 +362,30 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                 </div>
               </Card>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table className="rekap-print-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Nama Item</th>
-                    <th style={{ textAlign: 'right', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Total Qty</th>
-                    <th style={{ textAlign: 'left', padding: '8px 10px', borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: 11, textTransform: 'uppercase' }}>Satuan</th>
+                    <th style={rekapThS}>Nama Item</th>
+                    <th style={{ ...rekapThS, textAlign: 'right' }}>Total Qty</th>
+                    <th style={{ ...rekapThS, textAlign: 'center' }}>Satuan</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {rekapRowsDisplayed.map(r => (
-                    <tr key={r.key}>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>{r.totalQty}</td>
-                      <td style={{ padding: '8px 10px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{r.satuan}</td>
+                  {rekapRowsDisplayed.map((r, ri) => (
+                    <tr key={r.key} style={{ background: ri % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
+                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{r.totalQty.toLocaleString('id-ID')}</td>
+                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#64748b' }}>{r.satuan}</td>
                     </tr>
                   ))}
                 </tbody>
+                <tfoot>
+                  <tr>
+                    <td colSpan={3} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1e3a8a', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #1e3a8a' }}>
+                      Total {rekapRowsDisplayed.length} jenis item{rekapSearch ? ` (dari ${rekapRowsFull.length} total)` : ''}
+                    </td>
+                  </tr>
+                </tfoot>
               </table>
             )}
             {rekapSearch && rekapRowsDisplayed.length > 0 && (
@@ -543,6 +565,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       <style>{`
         @media print {
           .no-print { display: none !important; }
+          /* Browser default-nya SKIP background color saat print - tanpa ini header tabel rekap
+             (#1e3a8a) bakal cetak putih polos, teks putihnya jadi gak kebaca. */
+          .rekap-print-table th, .rekap-print-table tfoot td {
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
         }
       `}</style>
     </div>
