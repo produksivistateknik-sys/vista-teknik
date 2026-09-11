@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { Card, Btn, Modal, Badge } from './ui/Primitives'
+import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -44,6 +45,10 @@ const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
+
+// Dipakai buat build HTML dokumen print (openPrintWindow) - data dari DB (nama item/proyek/WO)
+// ditulis mentah ke string HTML, WAJIB di-escape biar gak ada karakter yang kebaca sebagai tag.
+const escapeHtml = (s: any) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
 // Warna header tabel rekap (#1e3a8a) SAMA PERSIS dgn `thS` di RencanaHarian.tsx (tabel
 // BUSBAR/Renhar) - satu-satunya tempat lain di app ini yang punya header tabel gelap solid,
@@ -162,6 +167,92 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     if (!q) return rekapRowsFull
     return rekapRowsFull.filter(r => r.nama.toLowerCase().includes(q))
   }, [rekapRowsFull, rekapSearch])
+
+  // Print (REVISI 11 Sep 2026, audit "sidebar ikut ke-print") - dulu window.print() langsung di
+  // halaman utama + CSS .no-print buat nyembunyiin toolbar. TERNYATA gak cukup - sidebar/navbar
+  // app shell (App.tsx, DI LUAR komponen ini) ikut tercetak karena gak ada CSS print yang
+  // nyembunyiin itu (component ini gak punya akses ke markup App.tsx buat nge-hide-nya).
+  // Pendekatan baru: bikin window BARU (window.open) isinya HTML MANDIRI (bukan render React
+  // sama sekali) - CUMA dokumen rekap, gak ada app shell apa pun buat disembunyikan karena
+  // emang gak pernah dirender di situ. Data (rekapWo, rekapRowsDisplayed dkk) di-bake langsung
+  // ke string HTML lewat closure - window baru gak butuh akses ke state React.
+  const openPrintWindow = () => {
+    if (!rekapWo) return
+    const rows = rekapRowsDisplayed
+    const panelListLabel = rekapScopePanelId
+      ? (rekapPanelsInWo.find((p: any) => p.id === rekapScopePanelId)?.nama || '-')
+      : rekapPanelsInWo.map((p: any) => p.nama).join(', ')
+    const judulWo = `WO ${rekapWo.wo}${rekapScopePanelId ? '' : ` (gabungan ${rekapPanelsInWo.length} panel)`}`
+    const html = `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rekap Permintaan Barang - WO ${escapeHtml(rekapWo.wo)}</title>
+<style>
+  @page { size: A4; margin: 1.8cm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; margin: 0; padding: 0; }
+  .kop { display: flex; align-items: center; gap: 16px; border-bottom: 3px solid #1e3a8a; padding-bottom: 14px; margin-bottom: 18px; }
+  .kop img { width: 54px; height: 54px; flex-shrink: 0; }
+  .kop-company { font-size: 19px; font-weight: 800; color: #1e293b; letter-spacing: 0.3px; }
+  .kop-sub { font-size: 10.5px; color: #64748b; letter-spacing: 1px; margin-top: 1px; }
+  .doc-title { text-align: center; margin: 14px 0 18px; }
+  .doc-title h1 { font-size: 17px; font-weight: 800; letter-spacing: 1.2px; margin: 0; color: #1e3a8a; }
+  .info-block { font-size: 12px; color: #334155; margin-bottom: 20px; line-height: 1.7; }
+  .info-block b { color: #1e293b; display: inline-block; width: 90px; }
+  table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  thead { display: table-header-group; }
+  tfoot { display: table-footer-group; }
+  tr { page-break-inside: avoid; }
+  th { background: #1e3a8a; color: #fff; text-align: left; padding: 9px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  th.num, td.num { text-align: right; }
+  th.center, td.center { text-align: center; }
+  td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+  tbody tr:nth-child(even) { background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tfoot td { padding: 9px 10px; background: #eff6ff; color: #1e3a8a; font-weight: 700; border-top: 2px solid #1e3a8a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ttd-section { margin-top: 48px; display: flex; justify-content: space-between; gap: 24px; page-break-inside: avoid; }
+  .ttd-col { flex: 1; text-align: center; font-size: 12px; }
+  .ttd-label { font-weight: 700; margin-bottom: 64px; }
+  .ttd-line { border-top: 1px dashed #94a3b8; margin: 0 8px 6px; }
+  .ttd-name { color: #64748b; font-size: 11px; }
+</style>
+</head>
+<body>
+  <div class="kop">
+    <img src="${VISTA_LOGO_DATA_URI}" />
+    <div>
+      <div class="kop-company">VISTA INTI TEKNIK</div>
+      <div class="kop-sub">ERP MANUFACTURE</div>
+    </div>
+  </div>
+  <div class="doc-title"><h1>REKAP PERMINTAAN BARANG</h1></div>
+  <div class="info-block">
+    <div><b>Proyek</b>: ${escapeHtml(rekapWo.proyek)}</div>
+    <div><b>WO</b>: ${escapeHtml(judulWo)}</div>
+    <div><b>Panel</b>: ${escapeHtml(panelListLabel)}</div>
+    <div><b>Tanggal cetak</b>: ${escapeHtml(fmtDateTime(new Date().toISOString()))}</div>
+  </div>
+  <table>
+    <thead><tr><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
+    <tbody>
+      ${rows.map(r => `<tr><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
+    </tbody>
+    <tfoot><tr><td colspan="3">Total ${rows.length} jenis item</td></tr></tfoot>
+  </table>
+  <div class="ttd-section">
+    <div class="ttd-col"><div class="ttd-label">Dibuat oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
+    <div class="ttd-col"><div class="ttd-label">Diperiksa oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
+    <div class="ttd-col"><div class="ttd-label">Disetujui oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
+  </div>
+</body>
+</html>`
+    const win = window.open('', '_blank', 'width=900,height=1100')
+    if (!win) { alert('Popup diblokir browser - izinkan popup buat halaman ini supaya bisa print.'); return }
+    win.document.open()
+    win.document.write(html)
+    win.document.close()
+    win.onload = () => { win.focus(); win.print(); }
+  }
 
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true)
@@ -293,7 +384,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
 
   return (
     <div className="fi">
-      <div className="no-print" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
@@ -305,7 +396,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
         )}
       </div>
 
-      <div className="no-print" style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
+      <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
         {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }, { key: 'rekap', label: 'Rekap per Panel' }].map(t => (
           <button key={t.key} onClick={() => setViewMode(t.key as any)}
             style={{
@@ -321,9 +412,9 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       {viewMode === 'rekap' ? (
         rekapWo ? (
           <div>
-            <div className="no-print" style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
+            <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap', alignItems: 'center' }}>
               <Btn color="#94a3b8" outline onClick={() => setRekapWoId(null)}>← Ganti WO</Btn>
-              <Btn color="#1d4ed8" onClick={() => window.print()}>🖨️ Print Rekap</Btn>
+              <Btn color="#1d4ed8" onClick={openPrintWindow}>🖨️ Print Rekap</Btn>
               {rekapPanelsInWo.length > 1 && (
                 <select value={rekapScopePanelId ?? ''} onChange={(e: any) => setRekapScopePanelId(e.target.value ? Number(e.target.value) : null)}
                   style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 600, color: 'var(--text-primary,#1e293b)', background: '#fff' }}>
@@ -362,7 +453,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                 </div>
               </Card>
             ) : (
-              <table className="rekap-print-table" style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr>
                     <th style={rekapThS}>Nama Item</th>
@@ -389,7 +480,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
               </table>
             )}
             {rekapSearch && rekapRowsDisplayed.length > 0 && (
-              <div className="no-print" style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
+              <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
                 Menampilkan {rekapRowsDisplayed.length} dari {rekapRowsFull.length} item (hasil pencarian "{rekapSearch}") - Print akan cetak persis yang ditampilkan ini.
               </div>
             )}
@@ -562,17 +653,6 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
         </Modal>
       )}
 
-      <style>{`
-        @media print {
-          .no-print { display: none !important; }
-          /* Browser default-nya SKIP background color saat print - tanpa ini header tabel rekap
-             (#1e3a8a) bakal cetak putih polos, teks putihnya jadi gak kebaca. */
-          .rekap-print-table th, .rekap-print-table tfoot td {
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-        }
-      `}</style>
     </div>
   )
 }
