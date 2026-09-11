@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, formatBusbarTahapAktif, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, getBusbarTahapAktif, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -90,6 +90,51 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return()=>{cancelled=true;supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(wiringPanelIds)]);
+
+  // Operator PER TAHAP busbar (Fabrikasi/Plating/Heat-Shrink/Pasang) - buat kolom "Proses".
+  // Sumber SAMA (fcs_timer_kerja) dgn operatorHistoryData di bawah, TAPI kolom `tahap` yang
+  // sudah ada di tabel itu (dulu gak pernah dibaca - makanya kolom Operator lama nyampur semua
+  // tahap jadi satu daftar) sekarang diikutkan + di-group per tahap. HISTORI PENUH (gak dibatasi
+  // selDate) - tahap yang lagi "aktif" hari ini bisa aja terakhir dikerjakan di tanggal lain
+  // (mis. Fabrikasi selesai kemarin, yang lagi jalan hari ini cuma Plating). Di-scope ke
+  // busbarPanelIds (panel yang punya raw_schedule proses BUSBAR) - JANGAN full table scan,
+  // fcs_timer_kerja tumbuh terus tiap hari.
+  const busbarPanelIds=useMemo(()=>[...new Set(rawData.filter((r:any)=>r.proses==="BUSBAR").map((r:any)=>Number(r.panel_id||r.panelId)))],[rawData]);
+  const [busbarTahapOperatorData,setBusbarTahapOperatorData]=useState<any[]>([]);
+  useEffect(()=>{
+    let cancelled=false;
+    const fetchBusbarTahapOperator=async()=>{
+      if(busbarPanelIds.length===0){setBusbarTahapOperatorData([]);return;}
+      let all:any[]=[],from=0;
+      while(true){
+        const{data,error}:any=await supabase.from("fcs_timer_kerja")
+          .select("panel_id,kode_komponen,tahap,pekerja_id,tanggal")
+          .in("panel_id",busbarPanelIds as number[]).eq("proses","BUSBAR").not("tahap","is",null)
+          .range(from,from+999);
+        if(error)break;
+        all=all.concat(data??[]);
+        if(!data||data.length<1000)break;
+        from+=1000;
+      }
+      if(!cancelled)setBusbarTahapOperatorData(all);
+    };
+    fetchBusbarTahapOperator();
+    const ch=supabase.channel("realtime-busbar-tahap-operator-rencana")
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchBusbarTahapOperator)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[JSON.stringify(busbarPanelIds)]);
+  // Operator yang ngerjain satu TAHAP tertentu - ambil tanggal TERBARU yang punya sesi timer
+  // buat kombinasi panel+kode+tahap ini (bukan cuma selDate), biar tahap yang lagi aktif hari
+  // ini tetap dapat nama operator walau sesi kerjanya kejadian di hari lain.
+  const getBusbarTahapOperator=(panelId:any,kode:string,tahap:string):string[]=>{
+    const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.tahap===tahap);
+    if(rows.length===0)return[];
+    const tanggalTerbaru=rows.reduce((a:string,r:any)=>r.tanggal>a?r.tanggal:a,rows[0].tanggal);
+    const ids=[...new Set(rows.filter((r:any)=>r.tanggal===tanggalTerbaru).map((r:any)=>r.pekerja_id))];
+    return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
+  };
 
   // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
   // cuma nyatet assignment planner - satu komponen bisa dikerjain operator BEDA di hari beda kalau
@@ -800,13 +845,23 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             {t.proses==="BUSBAR"&&(()=>{
                               // Tahap yang lagi berjalan (0%<progress<100%) - bisa lebih dari satu
                               // sekaligus (model busbar sengaja gak ada "tahap aktif tunggal", operator
-                              // bebas kerjakan tahap manapun bersamaan). Kosong kalau belum ada progress
-                              // sama sekali atau semua tahap udah 100% (overall Selesai).
-                              const tahapAktif=formatBusbarTahapAktif(panelData?.checklist?.[kode]);
+                              // bebas kerjakan tahap manapun bersamaan). Tiap tahap dipasangkan operator
+                              // yang beneran ngerjain (histori fcs_timer_kerja.tahap, tanggal terbaru).
+                              // Tahap TANPA operator (progress kebetulan jalan tanpa jejak timer - mis.
+                              // dikunci manual) SENGAJA disembunyikan, bukan ditampilkan tanpa nama.
+                              const barisTahap=getBusbarTahapAktif(panelData?.checklist?.[kode])
+                                .map(ta=>({...ta,operator:getBusbarTahapOperator(t.panelId,kode,ta.key)}))
+                                .filter(ta=>ta.operator.length>0);
                               return(
                                 <td style={{...td}}>
-                                  {tahapAktif?(
-                                    <span style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{tahapAktif}</span>
+                                  {barisTahap.length>0?(
+                                    <div style={{display:"flex",flexDirection:"column" as const,gap:2,alignItems:"flex-start"}}>
+                                      {barisTahap.map(ta=>(
+                                        <span key={ta.key} style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                                          {ta.label} ({Math.round(ta.pct)}%) - {ta.operator.join(", ")}
+                                        </span>
+                                      ))}
+                                    </div>
                                   ):(
                                     <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>–</span>
                                   )}

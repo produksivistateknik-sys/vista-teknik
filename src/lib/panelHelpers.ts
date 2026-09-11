@@ -58,7 +58,7 @@ export const BUSBAR_TAHAP_URUTAN=["FABRIKASI","PLATING","HEATSHRINK","PASANG"];
 // null kalau busbarTahap belum pernah ditulis sama sekali (komponen lama/belum disentuh) -
 // pemanggil fallback ke tampilan polos. "tahapAktif" (kalau suatu saat Vista Pekerja ngirim lagi -
 // saat ini SELALU absen di data live) sengaja di-exclude, itu bukan nama tahap.
-export function getBusbarTahapBreakdown(cl:any): {label:string; pct:number}[] | null {
+export function getBusbarTahapBreakdown(cl:any): {key:string; label:string; pct:number}[] | null {
   const bt=cl?.busbarTahap;
   if(!bt) return null;
   const entries=Object.entries(bt).filter(([k])=>k!=="tahapAktif");
@@ -66,7 +66,7 @@ export function getBusbarTahapBreakdown(cl:any): {label:string; pct:number}[] | 
   const urutan=(k:string)=>{const i=BUSBAR_TAHAP_URUTAN.indexOf(k);return i===-1?BUSBAR_TAHAP_URUTAN.length:i;};
   return entries
     .sort(([ka],[kb])=>urutan(ka)-urutan(kb))
-    .map(([k,v]:[string,any])=>({label:BUSBAR_TAHAP_LABEL[k]||k, pct:Number(v?.progress)||0}));
+    .map(([k,v]:[string,any])=>({key:k, label:BUSBAR_TAHAP_LABEL[k]||k, pct:Number(v?.progress)||0}));
 }
 // String siap-pakai buat title="" tooltip: "Fabrikasi 100% · Plating 100% · Heat-Shrink 75% · Pasang 0%"
 export function formatBusbarTahapTooltip(cl:any): string|undefined {
@@ -80,7 +80,7 @@ export function formatBusbarTahapTooltip(cl:any): string|undefined {
 // vista-pekerja, computeBusbarTahapStatus) - BISA lebih dari satu tahap in-progress bareng.
 // Kosong kalau belum ada progress sama sekali ATAU semua tahap udah 100% (overall Selesai) -
 // dua kondisi itu sengaja gak ditampilkan (gak ada "tahap yang sedang berjalan").
-export function getBusbarTahapAktif(cl:any): {label:string; pct:number}[] {
+export function getBusbarTahapAktif(cl:any): {key:string; label:string; pct:number}[] {
   return (getBusbarTahapBreakdown(cl)||[]).filter(t=>t.pct>0 && t.pct<100);
 }
 // "Pasang (75%)" atau "Plating (60%), Heat-Shrink (30%)" kalau kebetulan >1 tahap paralel. "" kalau kosong.
