@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, getBusbarTahapAktif, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, getBusbarTahapAktif, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -31,6 +31,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [selProses,setSelProses]=useState("ALL");
   const [statusFilter,setStatusFilter]=useState<"ALL"|ProsesStatus>("ALL");
+  // Accordion histori harian BUSBAR (kolom "Proses") - key `${rawId}_${kode}`, toggle per baris.
+  const [expandedBusbarHistori,setExpandedBusbarHistori]=useState<Record<string,boolean>>({});
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
   const [fcsCapData,setFcsCapData]=useState<any[]>([]);
@@ -108,7 +110,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       let all:any[]=[],from=0;
       while(true){
         const{data,error}:any=await supabase.from("fcs_timer_kerja")
-          .select("panel_id,kode_komponen,tahap,pekerja_id,tanggal")
+          .select("panel_id,kode_komponen,tahap,pekerja_id,tanggal,durasi_menit")
           .in("panel_id",busbarPanelIds as number[]).eq("proses","BUSBAR").not("tahap","is",null)
           .range(from,from+999);
         if(error)break;
@@ -134,6 +136,37 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     const tanggalTerbaru=rows.reduce((a:string,r:any)=>r.tanggal>a?r.tanggal:a,rows[0].tanggal);
     const ids=[...new Set(rows.filter((r:any)=>r.tanggal===tanggalTerbaru).map((r:any)=>r.pekerja_id))];
     return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
+  };
+  // Breakdown HARIAN lengkap (semua tanggal, semua tahap termasuk yang udah 100%) - buat
+  // accordion expand kolom Proses. SENGAJA gak nampilin persen di sini (busbarTahap.<TAHAP>.progress
+  // cuma nyimpen nilai TERKINI, ke-overwrite tiap simpan - gak ada histori persen per tanggal,
+  // beda dari operator yang emang ke-log per sesi timer). Durasi kerja (durasi_menit, dijumlah per
+  // operator per tanggal+tahap - bisa >1 sesi timer di hari yang sama) dipakai sebagai pengganti,
+  // data ini AKURAT per-hari (beda dari persen yang kalau dipaksa ditampilkan di sini bakal
+  // menyesatkan - lihat diskusi investigasi). Diurutkan tanggal TERBARU dulu, tahap sesuai alur
+  // kerja (BUSBAR_TAHAP_URUTAN) buat tanggal yang sama.
+  const getBusbarHistoriHarian=(panelId:any,kode:string):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number}[]=>{
+    const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode);
+    if(rows.length===0)return[];
+    const groups:Record<string,{ids:Set<number>;menit:number}>={};
+    rows.forEach((r:any)=>{
+      const key=r.tanggal+"|"+r.tahap;
+      if(!groups[key])groups[key]={ids:new Set(),menit:0};
+      groups[key].ids.add(r.pekerja_id);
+      groups[key].menit+=Number(r.durasi_menit)||0;
+    });
+    const urutanTahap=(t:string)=>{const i=BUSBAR_TAHAP_URUTAN.indexOf(t);return i===-1?BUSBAR_TAHAP_URUTAN.length:i;};
+    return Object.entries(groups)
+      .map(([key,v])=>{
+        const[tanggal,tahapKey]=key.split("|");
+        return{
+          tanggal,tahapKey,
+          tahapLabel:BUSBAR_TAHAP_LABEL[tahapKey]||tahapKey,
+          operator:[...v.ids].map(id=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean),
+          jam:Math.round((v.menit/60)*10)/10,
+        };
+      })
+      .sort((a,b)=>b.tanggal!==a.tanggal?b.tanggal.localeCompare(a.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey));
   };
 
   // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
@@ -774,15 +807,21 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     if(isWiringTask){
                       const ppk=rh?.pekerja_per_komponen||{};
                       const released=rh?.komponen_released||[];
-                      return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).map((kode,ki)=>{
+                      return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).flatMap((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const relevantProsesKode=panelData?getRelevantProsesForKode(kode,panelData.tipe):undefined;
                         const pipelineStatus=computeProsesStatus(getBestProgressMap(panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
-                        if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return null;
+                        if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return[];
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
                         const sudahRelease=released.includes(kode);
                         const digeserKeTanggal=t.digeserKe?.[kode]||null;
+                        // Accordion histori harian BUSBAR (kolom "Proses") - dihitung sekali di sini
+                        // (bukan di dalam IIFE kolom Proses) biar bisa dipakai lagi buat baris <tr>
+                        // expand tambahan di bawah, gak dihitung dobel.
+                        const busbarExpandKey=`${t.rawId}_${kode}`;
+                        const busbarHistori=t.proses==="BUSBAR"?getBusbarHistoriHarian(t.panelId,kode):[];
+                        const busbarIsExpanded=!!expandedBusbarHistori[busbarExpandKey];
                         // BUSBAR nyimpen pekerja_per_komponen[kode] sebagai OBJEK per-tahap
                         // ({FABRIKASI:[..],PLATING:[..],...}), bukan array datar kayak proses
                         // lain - flatten semua tahap jadi satu daftar id biar gak crash .map().
@@ -813,7 +852,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         const isFotoApprox=namesFromTimerChain.length===0&&liveOpNames.length===0&&namesFromPlanner.length===0&&!!fotoOpName;
                         const workersKode=namesFromTimerChain.length>0?namesFromTimerChain:liveOpNames.length>0?liveOpNames:namesFromPlanner.length>0?namesFromPlanner:isFotoApprox?[fotoOpName as string]:[];
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
-                        return(
+                        return[(
                           <tr key={ti+"-"+kode}>
                             <td style={{...td,textAlign:"center",fontWeight:700,color:"#94a3b8"}}>{ti+1}.{ki+1}</td>
                             <td style={{...td,fontWeight:600,color:"#475569"}}>{t.proyek}</td>
@@ -852,19 +891,31 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               const barisTahap=getBusbarTahapAktif(panelData?.checklist?.[kode])
                                 .map(ta=>({...ta,operator:getBusbarTahapOperator(t.panelId,kode,ta.key)}))
                                 .filter(ta=>ta.operator.length>0);
+                              // Accordion: chevron cuma muncul kalau beneran ada histori buat dibuka
+                              // (busbarHistori/busbarExpandKey/busbarIsExpanded dihitung di level baris,
+                              // dipakai lagi buat <tr> expand tambahan setelah baris ini).
                               return(
                                 <td style={{...td}}>
-                                  {barisTahap.length>0?(
-                                    <div style={{display:"flex",flexDirection:"column" as const,gap:2,alignItems:"flex-start"}}>
-                                      {barisTahap.map(ta=>(
-                                        <span key={ta.key} style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                                          {ta.label} ({Math.round(ta.pct)}%) - {ta.operator.join(", ")}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  ):(
-                                    <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>–</span>
-                                  )}
+                                  <div style={{display:"flex",alignItems:"flex-start",gap:6}}>
+                                    {busbarHistori.length>0&&(
+                                      <button onClick={()=>setExpandedBusbarHistori(prev=>({...prev,[busbarExpandKey]:!prev[busbarExpandKey]}))}
+                                        title={busbarIsExpanded?"Sembunyikan histori harian":"Lihat histori harian per tahap"}
+                                        style={{background:"none",border:"none",padding:0,cursor:"pointer",color:"#94a3b8",fontSize:11,lineHeight:1,flexShrink:0,marginTop:2}}>
+                                        {busbarIsExpanded?"▼":"▶"}
+                                      </button>
+                                    )}
+                                    {barisTahap.length>0?(
+                                      <div style={{display:"flex",flexDirection:"column" as const,gap:2,alignItems:"flex-start"}}>
+                                        {barisTahap.map(ta=>(
+                                          <span key={ta.key} style={{background:"#ecfeff",border:"1px solid #a5f3fc",color:"#0e7490",borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                                            {ta.label} ({Math.round(ta.pct)}%) - {ta.operator.join(", ")}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    ):(
+                                      <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>–</span>
+                                    )}
+                                  </div>
                                 </td>
                               );
                             })()}
@@ -963,7 +1014,29 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               })()}
                             </td>
                           </tr>
-                        );
+                        ),
+                        // Baris accordion terpisah, cuma dirender kalau lagi di-expand - histori
+                        // harian per tahap (tanggal terbaru dulu), TANPA persen (busbarTahap.<TAHAP>
+                        // cuma nyimpen nilai TERKINI, gak ada histori persen per tanggal - lihat
+                        // komentar getBusbarHistoriHarian di atas). Durasi kerja dipakai sebagai
+                        // pengganti, data itu akurat per-hari.
+                        busbarIsExpanded&&busbarHistori.length>0&&(
+                          <tr key={ti+"-"+kode+"-histori"}>
+                            <td colSpan={11} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
+                              <div style={{display:"flex",flexDirection:"column" as const,gap:3}}>
+                                {busbarHistori.map((h,hi)=>(
+                                  <div key={hi} style={{fontSize:11,color:"#475569"}}>
+                                    <span style={{fontWeight:700,color:"#1e293b"}}>{fmtShort(h.tanggal)}</span>
+                                    {" — "}{h.tahapLabel}{" — "}
+                                    {h.operator.length>0?h.operator.join(", "):<span style={{fontStyle:"italic",color:"#94a3b8"}}>operator tidak diketahui</span>}
+                                    {h.jam>0&&<span style={{color:"#94a3b8"}}> ({h.jam} jam)</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            </td>
+                          </tr>
+                        ),
+                      ].filter(Boolean);
                       }).filter(Boolean);
                     }
 
