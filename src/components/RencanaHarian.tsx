@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
-import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
+import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -378,8 +378,19 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
 
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
   const byProses=useMemo(()=>{
+    // Urutkan Tinggi->Sedang->Rendah (PRIORITAS di panelTypes.ts sudah dalam urutan itu, dipakai
+    // sebagai rank - bukan alfabetis) SEBELUM dikelompokkan per proses, berlaku otomatis di semua
+    // tab (BENDING/POTONG/dst pakai blok render yang sama, lihat ALL_PROSES.filter(byProses) di
+    // bawah) dan tetap ikut kena filter status (statusFilter cuma nge-skip baris pas render, gak
+    // pernah ngacak urutan tasks). Urutan sekunder (prioritas sama) TETAP urutan asal - tiebreak
+    // pakai index eksplisit, gak ngandelin asumsi stabilitas Array.sort.
+    const prioRank=(p:string)=>{const i=PRIORITAS.indexOf(p);return i===-1?PRIORITAS.length:i;};
+    const sorted=filteredTasks
+      .map((t,i)=>({t,i}))
+      .sort((a,b)=>prioRank(a.t.prioritas)-prioRank(b.t.prioritas)||a.i-b.i)
+      .map(x=>x.t);
     const map={};
-    filteredTasks.forEach(t=>{if(!map[t.proses])map[t.proses]=[];map[t.proses].push(t);});
+    sorted.forEach(t=>{if(!map[t.proses])map[t.proses]=[];map[t.proses].push(t);});
     return map;
   },[filteredTasks]);
   const taskCountByDay=useMemo(()=>{
