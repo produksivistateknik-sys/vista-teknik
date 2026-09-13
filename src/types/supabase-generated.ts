@@ -3188,6 +3188,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      approve_permintaan_koreksi: {
+        Args: { p_admin: string; p_koreksi_id: number; p_qty_final: number }
+        Returns: { pesan: string; sukses: boolean }[]
+      }
       arsip_kembalikan_tabel: {
         Args: { p_col: string; p_panel_id: number; p_table: string }
         Returns: undefined
@@ -3243,6 +3247,10 @@ export type Database = {
       merge_panel_checklist: {
         Args: { p_panel_id: number; p_partial: Json }
         Returns: undefined
+      }
+      reject_permintaan_koreksi: {
+        Args: { p_admin: string; p_catatan: string; p_koreksi_id: number }
+        Returns: { pesan: string; sukses: boolean }[]
       }
       search_panel_fuzzy: {
         Args: { min_similarity?: number; search_term: string }

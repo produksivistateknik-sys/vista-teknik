@@ -123,18 +123,19 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
 
   // Setujui: qty ASLI di permintaan_item berubah ke nilai yang admin konfirmasi (bisa beda dari
   // qty_diusulkan Gudang kalau admin edit dulu), sudah_diinput direset (Gudang perlu input ulang
-  // ke pembukuan) - SAMA PERSIS efek putuskanKoreksi() versi lama di vista-pekerja. Notifikasi
-  // hasil tetap ke GUDANG (trigger koreksi_keputusan, TIDAK berubah dari desain awal).
+  // ke pembukuan). AUDIT FIX (13 Sep 2026, "aplikasi bebas bug") - dulu 2 UPDATE terpisah dari
+  // client (qty item, lalu status koreksi) TANPA transaksi - kalau koneksi putus di tengah, qty
+  // sudah berubah tapi status koreksi nyangkut 'menunggu' (keliatan belum diproses padahal udah).
+  // Sekarang lewat RPC approve_permintaan_koreksi (atomik + guard status='menunggu', race
+  // condition 2 admin klik bersamaan otomatis ke-tangani - yang kedua dapat sukses=false).
   const setujuiKoreksi = async (k: any) => {
     const qtyBaru = Number(koreksiQtyEdit[k.id])
     if (!koreksiQtyEdit[k.id] || isNaN(qtyBaru) || qtyBaru < 0) { alert('Qty harus diisi, angka >= 0'); return }
     setProcessingKoreksiId(k.id)
-    const { error: err1 } = await supabase.from('permintaan_item').update({ qty: qtyBaru, sudah_diinput: false }).eq('id', k.permintaan_item_id)
-    if (err1) { alert('Gagal update qty: ' + err1.message); setProcessingKoreksiId(null); return }
-    const { error: err2 } = await supabase.from('permintaan_item_koreksi').update({
-      status: 'disetujui', disetujui_oleh: adminUsername, diputuskan_at: new Date().toISOString(),
-    }).eq('id', k.id)
-    if (err2) { alert('Gagal simpan keputusan: ' + err2.message); setProcessingKoreksiId(null); return }
+    const { data, error } = await supabase.rpc('approve_permintaan_koreksi', {
+      p_koreksi_id: k.id, p_qty_final: qtyBaru, p_admin: adminUsername,
+    }).single<{ sukses: boolean, pesan: string }>()
+    if (error || !data?.sukses) { alert('Gagal menyetujui: ' + (error?.message || data?.pesan || 'unknown error')); setProcessingKoreksiId(null); return }
     try {
       await supabase.functions.invoke('notify-permintaan', { body: {
         trigger: 'koreksi_keputusan', namaKomponen: k.item?.nama_komponen, disetujui: true, qtyDiusulkan: qtyBaru, satuan: k.item?.satuan,
@@ -143,14 +144,16 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     setProcessingKoreksiId(null)
   }
 
+  // AUDIT FIX (13 Sep 2026) - sama kayak setujuiKoreksi di atas, lewat RPC reject_permintaan_koreksi
+  // (atomik + guard status='menunggu').
   const tolakKoreksi = async () => {
     if (!koreksiRejectTarget) return
     if (!koreksiRejectAlasan.trim()) { alert('Alasan penolakan wajib diisi'); return }
     setProcessingKoreksiId(koreksiRejectTarget.id)
-    const { error } = await supabase.from('permintaan_item_koreksi').update({
-      status: 'ditolak', disetujui_oleh: adminUsername, diputuskan_at: new Date().toISOString(), catatan_reject: koreksiRejectAlasan.trim(),
-    }).eq('id', koreksiRejectTarget.id)
-    if (error) { alert('Gagal menolak: ' + error.message); setProcessingKoreksiId(null); return }
+    const { data, error } = await supabase.rpc('reject_permintaan_koreksi', {
+      p_koreksi_id: koreksiRejectTarget.id, p_admin: adminUsername, p_catatan: koreksiRejectAlasan.trim(),
+    }).single<{ sukses: boolean, pesan: string }>()
+    if (error || !data?.sukses) { alert('Gagal menolak: ' + (error?.message || data?.pesan || 'unknown error')); setProcessingKoreksiId(null); return }
     try {
       await supabase.functions.invoke('notify-permintaan', { body: {
         trigger: 'koreksi_keputusan', namaKomponen: koreksiRejectTarget.item?.nama_komponen, disetujui: false,
