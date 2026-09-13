@@ -2375,6 +2375,7 @@ export type Database = {
       permintaan_item_koreksi: {
         Row: {
           alasan: string
+          catatan_reject: string | null
           diajukan_at: string
           diajukan_oleh: string
           diputuskan_at: string | null
@@ -2388,6 +2389,7 @@ export type Database = {
         }
         Insert: {
           alasan: string
+          catatan_reject?: string | null
           diajukan_at?: string
           diajukan_oleh: string
           diputuskan_at?: string | null
@@ -2401,6 +2403,7 @@ export type Database = {
         }
         Update: {
           alasan?: string
+          catatan_reject?: string | null
           diajukan_at?: string
           diajukan_oleh?: string
           diputuskan_at?: string | null

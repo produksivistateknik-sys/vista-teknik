@@ -66,13 +66,101 @@ const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: str
 
 export function PermintaanAdminTab({ user, woData = [] }: any) {
   const adminUsername: string = user?.username || user?.name || 'Admin'
-  const [viewMode, setViewMode] = useState<'pending' | 'riwayat' | 'rekap'>('pending')
+  const [viewMode, setViewMode] = useState<'pending' | 'riwayat' | 'rekap' | 'koreksi'>('pending')
   const [loading, setLoading] = useState(true)
   const [items, setItems] = useState<any[]>([])
   const [qtyEdit, setQtyEdit] = useState<Record<number, string>>({})
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rejectTarget, setRejectTarget] = useState<any | null>(null)
   const [rejectAlasan, setRejectAlasan] = useState('')
+
+  // KOREKSI QTY (13 Sep 2026, "approval koreksi qty diarahkan ke Admin") - dulu diputuskan siapa
+  // pun yang login di divisi peminta (PermintaanView.tsx vista-pekerja, tab "Koreksi", SEKARANG
+  // DIHAPUS). Sekarang di sini, pola SAMA PERSIS "Menunggu Persetujuan" di atas (qty bisa diedit
+  // sebelum Setujui, Tolak wajib alasan) - target_divisi='admin' adalah pseudo-divisi (nilai yang
+  // ditulis RiwayatGudangTab.tsx saat submit, BUKAN kolom baru - lihat migration
+  // 20260907010000_permintaan_item_koreksi.sql versi lama utk histori kenapa kolomnya
+  // "target_divisi" padahal sekarang isinya selalu 'admin').
+  const [koreksiList, setKoreksiList] = useState<any[]>([])
+  const [loadingKoreksi, setLoadingKoreksi] = useState(true)
+  const [koreksiQtyEdit, setKoreksiQtyEdit] = useState<Record<number, string>>({})
+  const [processingKoreksiId, setProcessingKoreksiId] = useState<number | null>(null)
+  const [koreksiRejectTarget, setKoreksiRejectTarget] = useState<any | null>(null)
+  const [koreksiRejectAlasan, setKoreksiRejectAlasan] = useState('')
+
+  const fetchKoreksi = async (silent = false) => {
+    if (!silent) setLoadingKoreksi(true)
+    const koreksiRows = await fetchAllPaged((from, to) =>
+      supabase.from('permintaan_item_koreksi').select('*').eq('target_divisi', 'admin').eq('status', 'menunggu').range(from, to))
+    if (koreksiRows.length === 0) { setKoreksiList([]); if (!silent) setLoadingKoreksi(false); return }
+    const itemIds = [...new Set(koreksiRows.map((k: any) => k.permintaan_item_id))]
+    const itemRows = await fetchAllPaged((from, to) => supabase.from('permintaan_item').select('*').in('id', itemIds).range(from, to))
+    const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
+    const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('*').in('id', permIds).range(from, to))
+    const permMap: Record<number, any> = {}
+    perms.forEach((p: any) => { permMap[p.id] = p })
+    const itemMap: Record<number, any> = {}
+    itemRows.forEach((it: any) => { itemMap[it.id] = { ...it, perm: permMap[it.permintaan_id] } })
+    const merged = koreksiRows.map((k: any) => ({ ...k, item: itemMap[k.permintaan_item_id] }))
+      .filter((k: any) => k.item && k.item.perm)
+      .sort((a: any, b: any) => (a.diajukan_at || '').localeCompare(b.diajukan_at || ''))
+    setKoreksiList(merged)
+    setKoreksiQtyEdit(prev => {
+      const next = { ...prev }
+      merged.forEach((k: any) => { if (next[k.id] === undefined) next[k.id] = String(k.qty_diusulkan) })
+      return next
+    })
+    if (!silent) setLoadingKoreksi(false)
+  }
+
+  useEffect(() => {
+    fetchKoreksi()
+    const ch = supabase.channel('realtime-permintaan-admin-koreksi')
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan_item_koreksi' }, () => fetchKoreksi(true))
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+  }, [])
+
+  // Setujui: qty ASLI di permintaan_item berubah ke nilai yang admin konfirmasi (bisa beda dari
+  // qty_diusulkan Gudang kalau admin edit dulu), sudah_diinput direset (Gudang perlu input ulang
+  // ke pembukuan) - SAMA PERSIS efek putuskanKoreksi() versi lama di vista-pekerja. Notifikasi
+  // hasil tetap ke GUDANG (trigger koreksi_keputusan, TIDAK berubah dari desain awal).
+  const setujuiKoreksi = async (k: any) => {
+    const qtyBaru = Number(koreksiQtyEdit[k.id])
+    if (!koreksiQtyEdit[k.id] || isNaN(qtyBaru) || qtyBaru < 0) { alert('Qty harus diisi, angka >= 0'); return }
+    setProcessingKoreksiId(k.id)
+    const { error: err1 } = await supabase.from('permintaan_item').update({ qty: qtyBaru, sudah_diinput: false }).eq('id', k.permintaan_item_id)
+    if (err1) { alert('Gagal update qty: ' + err1.message); setProcessingKoreksiId(null); return }
+    const { error: err2 } = await supabase.from('permintaan_item_koreksi').update({
+      status: 'disetujui', disetujui_oleh: adminUsername, diputuskan_at: new Date().toISOString(),
+    }).eq('id', k.id)
+    if (err2) { alert('Gagal simpan keputusan: ' + err2.message); setProcessingKoreksiId(null); return }
+    try {
+      await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'koreksi_keputusan', namaKomponen: k.item?.nama_komponen, disetujui: true, qtyDiusulkan: qtyBaru, satuan: k.item?.satuan,
+      } })
+    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+    setProcessingKoreksiId(null)
+  }
+
+  const tolakKoreksi = async () => {
+    if (!koreksiRejectTarget) return
+    if (!koreksiRejectAlasan.trim()) { alert('Alasan penolakan wajib diisi'); return }
+    setProcessingKoreksiId(koreksiRejectTarget.id)
+    const { error } = await supabase.from('permintaan_item_koreksi').update({
+      status: 'ditolak', disetujui_oleh: adminUsername, diputuskan_at: new Date().toISOString(), catatan_reject: koreksiRejectAlasan.trim(),
+    }).eq('id', koreksiRejectTarget.id)
+    if (error) { alert('Gagal menolak: ' + error.message); setProcessingKoreksiId(null); return }
+    try {
+      await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'koreksi_keputusan', namaKomponen: koreksiRejectTarget.item?.nama_komponen, disetujui: false,
+        qtyDiusulkan: koreksiRejectTarget.qty_diusulkan, satuan: koreksiRejectTarget.item?.satuan,
+      } })
+    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+    setProcessingKoreksiId(null)
+    setKoreksiRejectTarget(null)
+    setKoreksiRejectAlasan('')
+  }
 
   const [riwayatTanggal, setRiwayatTanggal] = useState(todayStr())
   const [riwayatSearch, setRiwayatSearch] = useState('')
@@ -383,22 +471,33 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   })
   const riwayatDivisiKeys = Object.keys(riwayatGrouped).sort()
 
+  const koreksiGrouped: Record<string, any[]> = {}
+  koreksiList.forEach((k: any) => {
+    const key = k.item.perm.divisi || '-'
+    if (!koreksiGrouped[key]) koreksiGrouped[key] = []
+    koreksiGrouped[key].push(k)
+  })
+  const koreksiDivisiKeys = Object.keys(koreksiGrouped).sort()
+
   return (
     <div className="fi">
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
           <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
-            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 WO (gabungan semua panel di dalamnya), digabung per jenis item.'}
+            {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : viewMode === 'koreksi' ? 'Pengajuan koreksi qty dari Gudang (salah input) - qty ASLI baru berubah setelah disetujui di sini.' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 WO (gabungan semua panel di dalamnya), digabung per jenis item.'}
           </div>
         </div>
         {viewMode === 'pending' && (
           <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{items.length} menunggu</span>
         )}
+        {viewMode === 'koreksi' && (
+          <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{koreksiList.length} menunggu</span>
+        )}
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
-        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }, { key: 'rekap', label: 'Rekap per Panel' }].map(t => (
+        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }, { key: 'rekap', label: 'Rekap per Panel' }, { key: 'koreksi', label: 'Koreksi Qty' }].map(t => (
           <button key={t.key} onClick={() => setViewMode(t.key as any)}
             style={{
               padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
@@ -576,6 +675,71 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
             </div>
           )}
         </div>
+      ) : viewMode === 'koreksi' ? (
+        loadingKoreksi ? (
+          <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
+        ) : koreksiDivisiKeys.length === 0 ? (
+          <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
+            <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+            <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada pengajuan koreksi</div>
+            <div style={{ fontSize: 12 }}>Pengajuan koreksi qty dari Gudang (kalau ada salah input) akan muncul di sini.</div>
+          </Card>
+        ) : (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
+            {koreksiDivisiKeys.map(divisi => (
+              <div key={divisi}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
+                  {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({koreksiGrouped[divisi].length})</span>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column' }}>
+                  {koreksiGrouped[divisi].map((k: any) => {
+                    const isProcessing = processingKoreksiId === k.id
+                    return (
+                      <div key={k.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                          <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
+                          <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{k.item.nama_komponen}</span>
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
+                          {k.item.perm.jenis} · {k.item.perm.proyek || '-'} · {k.item.perm.panel_nama || '-'} {k.item.perm.wo_number ? `(WO ${k.item.perm.wo_number})` : ''}
+                        </div>
+                        <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
+                          Diajukan oleh <strong>{k.diajukan_oleh}</strong> (Gudang) — {fmtDateTime(k.diajukan_at)}
+                        </div>
+                        <div style={{ background: '#fffbeb', borderRadius: 8, padding: '8px 10px', marginBottom: 8 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700 }}>
+                            <span style={{ color: '#94a3b8', textDecoration: 'line-through' }}>{k.qty_lama}{k.item.satuan ? ` ${k.item.satuan}` : ''}</span>
+                            <span style={{ color: '#d97706' }}>→</span>
+                            <span style={{ color: '#16a34a' }}>{k.qty_diusulkan}{k.item.satuan ? ` ${k.item.satuan}` : ''}</span>
+                          </div>
+                          <div style={{ fontSize: 11.5, color: '#92400e', marginTop: 6, lineHeight: 1.5 }}>💬 {k.alasan}</div>
+                        </div>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px', marginBottom: 8, flexWrap: 'wrap' }}>
+                          <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Qty final:</span>
+                          <input type="number" min="0" value={koreksiQtyEdit[k.id] ?? String(k.qty_diusulkan)}
+                            onChange={(e: any) => setKoreksiQtyEdit(prev => ({ ...prev, [k.id]: e.target.value }))}
+                            style={{ width: 110, padding: '6px 10px', borderRadius: 6, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 700, color: 'var(--text-primary,#1e293b)' }} />
+                          <span style={{ fontSize: 12, color: '#64748b' }}>{k.item.satuan || ''}</span>
+                          {Number(koreksiQtyEdit[k.id]) !== k.qty_diusulkan && !isNaN(Number(koreksiQtyEdit[k.id])) && (
+                            <span style={{ fontSize: 10.5, color: '#d97706', fontWeight: 600 }}>(diubah dari usulan {k.qty_diusulkan})</span>
+                          )}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8 }}>
+                          <Btn color="#dc2626" outline onClick={() => setKoreksiRejectTarget(k)} disabled={isProcessing}>
+                            ✕ Tolak
+                          </Btn>
+                          <Btn color="#16a34a" onClick={() => setujuiKoreksi(k)} disabled={isProcessing}>
+                            {isProcessing ? 'Menyimpan...' : '✓ Setujui'}
+                          </Btn>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        )
       ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
       ) : divisiKeys.length === 0 ? (
@@ -649,6 +813,23 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
             <Btn color="#94a3b8" outline onClick={() => { setRejectTarget(null); setRejectAlasan('') }}>Batal</Btn>
             <Btn color="#dc2626" onClick={tolak} disabled={processingId === rejectTarget.id}>
               {processingId === rejectTarget.id ? 'Menyimpan...' : 'Tolak Permintaan'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {koreksiRejectTarget && (
+        <Modal title="Tolak Pengajuan Koreksi Qty" onClose={() => { setKoreksiRejectTarget(null); setKoreksiRejectAlasan('') }} width={420}>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 12 }}>
+            {koreksiRejectTarget.item?.nama_komponen} - usulan {koreksiRejectTarget.qty_lama} → {koreksiRejectTarget.qty_diusulkan}{koreksiRejectTarget.item?.satuan ? ` ${koreksiRejectTarget.item.satuan}` : ''} - diajukan oleh {koreksiRejectTarget.diajukan_oleh}
+          </div>
+          <textarea autoFocus value={koreksiRejectAlasan} onChange={(e: any) => setKoreksiRejectAlasan(e.target.value)} rows={3}
+            placeholder="Alasan penolakan (wajib diisi)..."
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border-color,#e2e8f0)', fontSize: 13, color: 'var(--text-primary,#1e293b)', fontFamily: 'inherit', resize: 'vertical', marginBottom: 14, boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn color="#94a3b8" outline onClick={() => { setKoreksiRejectTarget(null); setKoreksiRejectAlasan('') }}>Batal</Btn>
+            <Btn color="#dc2626" onClick={tolakKoreksi} disabled={processingKoreksiId === koreksiRejectTarget.id}>
+              {processingKoreksiId === koreksiRejectTarget.id ? 'Menyimpan...' : 'Tolak Pengajuan'}
             </Btn>
           </div>
         </Modal>

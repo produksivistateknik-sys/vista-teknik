@@ -20,8 +20,11 @@ login shared per divisi, siapapun yang sedang login di situ yang harus dapat):
              belum_datang) (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU.
 - 'reject' - Gudang tolak item BBMB (PermintaanGudangTab.tsx setItemStatus) -> ke DIVISI PENGAJU
              (sama kayak 'status'), isi notif sertakan catatanReject.
-- 'koreksi_baru'      - Gudang ajukan koreksi qty (RiwayatGudangTab.tsx, 7 Sep 2026) -> ke DIVISI
-             PENGAJU (lihat permintaan_item_koreksi.sql soal kenapa per-divisi bukan per-orang).
+- 'koreksi_baru'      - Gudang ajukan koreksi qty (RiwayatGudangTab.tsx, 7 Sep 2026) -> ADMIN
+             (REVISI 13 Sep 2026, "approval koreksi qty diarahkan ke Admin" - dulu ke DIVISI
+             PENGAJU, lihat permintaan_item_koreksi.sql versi lama soal alasan awalnya per-divisi.
+             Sekarang konsisten sama trigger 'baru' di atas, diputuskan di PermintaanAdminTab.tsx
+             tab "Koreksi Qty").
 - 'koreksi_keputusan' - divisi peminta setuju/tolak pengajuan koreksi (PermintaanView.tsx) -> ke
              GUDANG.
 
@@ -90,14 +93,16 @@ Deno.serve(async (req) => {
       title = 'Permintaan Ditolak'
       notifBody = `${namaKomponen} ×${qty || 1}${satuan ? ` ${satuan}` : ''} ditolak${catatanReject ? ` - ${catatanReject}` : ''}`
     } else if (trigger === 'koreksi_baru') {
-      // Fitur Pengajuan Koreksi Qty (7 Sep 2026) - Gudang ajukan koreksi -> divisi peminta yang
-      // approve/reject (lihat permintaan_item_koreksi.sql - target per DIVISI, bukan orang
-      // spesifik, sama kayak trigger 'status'/'reject' di atas).
-      const { targetDivisi: td, namaKomponen, qtyLama, qtyDiusulkan, satuan } = body
-      if (!td || !namaKomponen) return jsonResponse({ error: 'targetDivisi dan namaKomponen wajib diisi.' }, 400)
-      targetDivisi = td
+      // Fitur Pengajuan Koreksi Qty (7 Sep 2026) - Gudang ajukan koreksi.
+      // REVISI (13 Sep 2026, "approval koreksi qty diarahkan ke Admin") - dulu target per DIVISI
+      // peminta (lihat permintaan_item_koreksi.sql versi lama). Sekarang SAMA PERSIS pola trigger
+      // 'baru' (permintaan BBMB/BBMU baru) - broadcast ke SEMUA admin Vista Teknik yang subscribe,
+      // diputuskan di PermintaanAdminTab.tsx tab "Koreksi Qty".
+      const { namaKomponen, qtyLama, qtyDiusulkan, satuan } = body
+      if (!namaKomponen) return jsonResponse({ error: 'namaKomponen wajib diisi.' }, 400)
+      targetAdmin = true
       title = 'Pengajuan Koreksi Qty'
-      notifBody = `${namaKomponen}: ${qtyLama}${satuan ? ` ${satuan}` : ''} -> ${qtyDiusulkan}${satuan ? ` ${satuan}` : ''} - menunggu persetujuan Anda`
+      notifBody = `${namaKomponen}: ${qtyLama}${satuan ? ` ${satuan}` : ''} -> ${qtyDiusulkan}${satuan ? ` ${satuan}` : ''} - menunggu persetujuan Admin`
     } else if (trigger === 'koreksi_keputusan') {
       // Hasil approve/reject dikirim BALIK ke Gudang.
       const { namaKomponen, disetujui, qtyDiusulkan, satuan } = body
