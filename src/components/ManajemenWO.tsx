@@ -14,6 +14,26 @@ import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primi
 
 const PdfViewer=lazy(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
+// Pola sama persis PermintaanAdminTab.tsx/RiwayatGudangTab.tsx - Supabase .select() diam-diam
+// batasin max 1000 baris tanpa .range() (TANPA error, tanpa peringatan). Dipakai arsipkanWO() di
+// bawah - raw_schedule/renhar/fcs_timer_kerja per-WO bisa nembus 1000 baris buat WO berumur
+// panjang (dicek live 13 Sep 2026: WO 151 udah 581 baris fcs_timer_kerja, WO 134 udah 358 baris
+// renhar, dan fcs_timer_kerja TERUS tumbuh tiap hari) - kalau kepotong diam-diam, angka jam kerja/
+// ringkasan operator/snapshot jadwal yang ke-arsip PERMANEN jadi salah tanpa peringatan sama
+// sekali (WO langsung is_archived:true setelahnya, gak ada cara benerin lagi).
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[],from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
+
 export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
   // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
   // panel_type_meta/panel_wp_meta sendiri (duplikat App.tsx yang udah nge-compute livePanelTypes
@@ -155,12 +175,13 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       const totalPanel=panelIds.length;
       const totalKomponen=(wo.panels||[]).reduce((s:number,p:any)=>s+Object.keys(p.checklist||{}).length,0);
 
-      // Ambil semua raw_schedule untuk WO ini
-      const{data:rawRows}=await supabase.from("raw_schedule").select("*").eq("wo_id",wo.id);
-      // Ambil semua renhar untuk WO ini
-      const{data:renharRows}=await supabase.from("renhar").select("*").eq("wo_id",wo.id);
-      // Ambil semua timer kerja untuk panel-panel di WO ini
-      const{data:timerRows}=panelIds.length>0?await supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").in("panel_id",panelIds):{data:[]};
+      // Ambil semua raw_schedule/renhar/fcs_timer_kerja untuk WO ini - WAJIB dipaginasi (AUDIT FIX
+      // 13 Sep 2026, lihat komentar fetchAllPaged di atas) - ini snapshot SEKALI-JALAN yang
+      // di-insert PERMANEN ke fcs_arsip_wo, kalau kepotong diam-diam di 1000 baris gak ada cara
+      // benerin lagi setelahnya.
+      const rawRows=await fetchAllPaged((from,to)=>supabase.from("raw_schedule").select("*").eq("wo_id",wo.id).range(from,to));
+      const renharRows=await fetchAllPaged((from,to)=>supabase.from("renhar").select("*").eq("wo_id",wo.id).range(from,to));
+      const timerRows=panelIds.length>0?await fetchAllPaged((from,to)=>supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").in("panel_id",panelIds).range(from,to)):[];
       // Catatan: tabel kendala tidak punya relasi wo_id/panel_id, jadi tidak bisa difilter per WO
       const kendalaRows:any[]=[];
 
