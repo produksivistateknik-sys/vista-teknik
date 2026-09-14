@@ -199,7 +199,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [rekapScopePanelId, setRekapScopePanelId] = useState<number | null>(null) // null = semua panel di WO ini
   const [rekapSearch, setRekapSearch] = useState('') // filter tabel di layar (poin A), TIDAK ikut query ulang
   const [rekapLoading, setRekapLoading] = useState(false)
-  const [rekapRawItems, setRekapRawItems] = useState<{ komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number }[]>([])
+  const [rekapRawItems, setRekapRawItems] = useState<{ komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number, divisi: string | null }[]>([])
   const rekapWo = allWosFlat.find((w: any) => w.id === rekapWoId) || null
   const rekapWoFiltered = allWosFlat.filter((w: any) => {
     const q = rekapWoSearch.trim().toLowerCase()
@@ -213,15 +213,16 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     try {
       const panelIds = allPanelsFlat.filter((p: any) => p.woId === woId).map((p: any) => p.id)
       if (panelIds.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
-      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id,panel_id').in('panel_id', panelIds).range(from, to))
+      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id,panel_id,divisi').in('panel_id', panelIds).range(from, to))
       if (perms.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
       const permIds = perms.map((p: any) => p.id)
       const permPanelMap: Record<number, number> = {}
-      perms.forEach((p: any) => { permPanelMap[p.id] = p.panel_id })
+      const permDivisiMap: Record<number, string | null> = {}
+      perms.forEach((p: any) => { permPanelMap[p.id] = p.panel_id; permDivisiMap[p.id] = p.divisi })
       const itemRows = await fetchAllPaged((from, to) =>
         supabase.from('permintaan_item').select('permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
           .in('permintaan_id', permIds).eq('status', 'submit').range(from, to))
-      setRekapRawItems(itemRows.map((it: any) => ({ ...it, panel_id: permPanelMap[it.permintaan_id] })))
+      setRekapRawItems(itemRows.map((it: any) => ({ ...it, panel_id: permPanelMap[it.permintaan_id], divisi: permDivisiMap[it.permintaan_id] })))
     } catch (e: any) {
       alert('Gagal memuat rekap: ' + e.message)
     }
@@ -236,15 +237,20 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, rekapWoId])
 
-  // Agregasi (SUM per komponen_master_id+satuan) DIHITUNG ULANG tiap kali cakupan panel
+  // Agregasi (SUM per divisi+komponen_master_id+satuan) DIHITUNG ULANG tiap kali cakupan panel
   // (rekapScopePanelId) berubah - murni di memori dari rekapRawItems, gak query ulang.
+  // Divisi (14 Sep 2026) IKUT masuk key grouping - item yang sama diminta 2 divisi beda TETAP
+  // 2 baris terpisah (bukan digabung jadi 1), biar qty per baris tetap akurat mewakili 1 divisi.
+  // Sumber divisi = permintaan.divisi (kolom yang SUDAH ADA, diisi otomatis dari divisi login
+  // operator saat submit - dipakai juga di tab Menunggu Persetujuan/Riwayat/Koreksi Qty).
   const rekapRowsFull = useMemo(() => {
     const rows = rekapScopePanelId ? rekapRawItems.filter(it => it.panel_id === rekapScopePanelId) : rekapRawItems
-    const groups: Record<string, { nama: string, satuan: string, totalQty: number }> = {}
+    const groups: Record<string, { nama: string, satuan: string, totalQty: number, divisi: string }> = {}
     rows.forEach(it => {
       const satuan = it.satuan_dipilih || it.satuan || '-'
-      const key = `${it.komponen_master_id ?? 'x'}|${satuan}`
-      if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0 }
+      const divisi = it.divisi || '-'
+      const key = `${divisi}|${it.komponen_master_id ?? 'x'}|${satuan}`
+      if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0, divisi }
       groups[key].totalQty += Number(it.qty) || 0
     })
     return Object.entries(groups).map(([key, v]) => ({ key, ...v })).sort((a, b) => a.nama.localeCompare(b.nama))
@@ -325,11 +331,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     <div><b>Tanggal cetak</b>: ${escapeHtml(fmtDateTime(new Date().toISOString()))}</div>
   </div>
   <table>
-    <thead><tr><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
+    <thead><tr><th>Divisi</th><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
     <tbody>
-      ${rows.map(r => `<tr><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
+      ${rows.map(r => `<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi] || r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
     </tbody>
-    <tfoot><tr><td colspan="3">Total ${rows.length} jenis item</td></tr></tfoot>
+    <tfoot><tr><td colspan="4">Total ${rows.length} jenis item</td></tr></tfoot>
   </table>
   <div class="ttd-section">
     <div class="ttd-col"><div class="ttd-label">Dibuat oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
@@ -559,6 +565,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
               <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
                 <thead>
                   <tr>
+                    <th style={rekapThS}>Divisi</th>
                     <th style={rekapThS}>Nama Item</th>
                     <th style={{ ...rekapThS, textAlign: 'right' }}>Total Qty</th>
                     <th style={{ ...rekapThS, textAlign: 'center' }}>Satuan</th>
@@ -567,6 +574,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                 <tbody>
                   {rekapRowsDisplayed.map((r, ri) => (
                     <tr key={r.key} style={{ background: ri % 2 === 0 ? '#fff' : '#f8fafc' }}>
+                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{DIVISI_LABEL[r.divisi] || r.divisi}</td>
                       <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
                       <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{r.totalQty.toLocaleString('id-ID')}</td>
                       <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#64748b' }}>{r.satuan}</td>
@@ -575,7 +583,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                 </tbody>
                 <tfoot>
                   <tr>
-                    <td colSpan={3} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1e3a8a', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #1e3a8a' }}>
+                    <td colSpan={4} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1e3a8a', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #1e3a8a' }}>
                       Total {rekapRowsDisplayed.length} jenis item{rekapSearch ? ` (dari ${rekapRowsFull.length} total)` : ''}
                     </td>
                   </tr>
