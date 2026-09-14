@@ -63,10 +63,12 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
   const[search,setSearch]=useState("")
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null)
   const[lightbox,setLightbox]=useState<any>(null)
-  const[subTab,setSubTab]=useState<"outstanding"|"finished">("outstanding")
-  const[selectedWoId,setSelectedWoId]=useState<number|null>(null)
   const[zipBusy,setZipBusy]=useState<{key:string,done:number,total:number}|null>(null)
   const[statusFilter,setStatusFilter]=useState("ALL")
+  // woFilterId (14 Sep 2026, redesign ikut gaya QC) - gantiin selectedWoId(folder-drill) versi
+  // lama, sekarang dropdown filter di atas tabel flat. subTab(outstanding/finished) DIHAPUS -
+  // kartu Done (klik-toggle) udah nyakup fungsi yang sama.
+  const[woFilterId,setWoFilterId]=useState<number|"ALL">("ALL")
 
   const downloadZipPanelWk=async(panel:any,komponenList:any[])=>{
     const items:FotoZipItem[]=[]
@@ -116,11 +118,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
     return{...p,_wkPct:pctRata,_wkStatus:wkStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels])
 
-  const outstandingPanels=withStatus.filter((p:any)=>p._wkStatus!=="selesai")
-  const finishedPanels=withStatus.filter((p:any)=>p._wkStatus==="selesai")
-  const basePool=subTab==="outstanding"?outstandingPanels:finishedPanels
-
-  const bySearch=basePool.filter((p:any)=>
+  const bySearch=withStatus.filter((p:any)=>
     !search||p.nama?.toLowerCase().includes(search.toLowerCase())||p._wo?.wo?.toLowerCase().includes(search.toLowerCase())||p._wo?.proyek?.toLowerCase().includes(search.toLowerCase())
   )
   const statusCounts=useMemo(()=>{
@@ -128,19 +126,18 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
     bySearch.forEach((p:any)=>{c[p._pipelineStatus]=(c[p._pipelineStatus]||0)+1})
     return c
   },[bySearch])
-  const filtered=bySearch.filter((p:any)=>statusFilter==="ALL"||p._pipelineStatus===statusFilter)
+  const woOptions=useMemo(()=>{
+    const map:Record<number,any>={}
+    bySearch.forEach((p:any)=>{if(p.wo_id&&!map[p.wo_id])map[p.wo_id]=p._wo})
+    return Object.entries(map).map(([id,wo]:any)=>({id:Number(id),wo})).sort((a,b)=>(a.wo?.wo||"").localeCompare(b.wo?.wo||""))
+  },[bySearch])
+  const filtered=bySearch.filter((p:any)=>{
+    const matchStatus=statusFilter==="ALL"||p._pipelineStatus===statusFilter
+    const matchWo=woFilterId==="ALL"||p.wo_id===woFilterId
+    return matchStatus&&matchWo
+  })
+  const activeWoFolder=woFilterId!=="ALL"?{woId:woFilterId,wo:woOptions.find(w=>w.id===woFilterId)?.wo,panels:filtered}:null
 
-  const woFolders=useMemo(()=>{
-    const map:Record<string,{woId:number,wo:any,panels:any[]}>={}
-    filtered.forEach((p:any)=>{
-      const key=String(p.wo_id)
-      if(!map[key])map[key]={woId:p.wo_id,wo:p._wo,panels:[]}
-      map[key].panels.push(p)
-    })
-    return Object.values(map)
-  },[filtered])
-
-  const selectedFolder=woFolders.find((f:any)=>f.woId===selectedWoId)
   const selectedPanel=withStatus.find((p:any)=>p.id===selectedPanelId)
 
   const fmtTgl=(iso:string)=>{
@@ -212,115 +209,127 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
     )
   }
 
+  const total4=bySearch.length
+  const count4=(key:string)=>statusCounts[key]||0
+
   return(
     <div className="fi">
-      <div style={{display:"flex",gap:10,marginBottom:18}}>
-        <button onClick={()=>{setSubTab("outstanding");setStatusFilter("ALL");setSelectedWoId(null)}}
-          style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
-            background:subTab==="outstanding"?"linear-gradient(135deg,#6366f1,#4f46e5)":"#fff",
-            boxShadow:subTab==="outstanding"?"0 4px 14px #4f46e533":"0 1px 3px rgba(0,0,0,0.06)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,borderRadius:10,background:subTab==="outstanding"?"#ffffff2a":"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <i className="ti ti-loader-2" style={{fontSize:18,color:subTab==="outstanding"?"#fff":"#4f46e5"}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,fontWeight:600,color:subTab==="outstanding"?"#ffffffcc":"#94a3b8"}}>Sedang Dikerjakan</div>
-              <div style={{fontSize:20,fontWeight:800,color:subTab==="outstanding"?"#fff":"#1e293b"}}>{outstandingPanels.length}</div>
-            </div>
-          </div>
-        </button>
-        <button onClick={()=>{setSubTab("finished");setStatusFilter("ALL");setSelectedWoId(null)}}
-          style={{flex:1,padding:"14px 18px",borderRadius:12,border:"none",cursor:"pointer",textAlign:"left" as const,
-            background:subTab==="finished"?"linear-gradient(135deg,#22c55e,#16a34a)":"#fff",
-            boxShadow:subTab==="finished"?"0 4px 14px #16a34a33":"0 1px 3px rgba(0,0,0,0.06)"}}>
-          <div style={{display:"flex",alignItems:"center",gap:10}}>
-            <div style={{width:38,height:38,borderRadius:10,background:subTab==="finished"?"#ffffff2a":"#f0fdf4",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <i className="ti ti-circle-check" style={{fontSize:18,color:subTab==="finished"?"#fff":"#16a34a"}}/>
-            </div>
-            <div>
-              <div style={{fontSize:11,fontWeight:600,color:subTab==="finished"?"#ffffffcc":"#94a3b8"}}>Wiring Komponen Selesai</div>
-              <div style={{fontSize:20,fontWeight:800,color:subTab==="finished"?"#fff":"#1e293b"}}>{finishedPanels.length}</div>
-            </div>
-          </div>
-        </button>
-      </div>
-
-      <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap" as const,alignItems:"center"}}>
-        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari panel, WO, atau proyek..."
-          style={{height:34,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",width:260}}/>
-        <PipelineStatusFilterTabs statusList={PIPELINE_STATUS_LIST} statusFilter={statusFilter} setStatusFilter={setStatusFilter} counts={statusCounts}/>
-      </div>
-
-      {selectedFolder?(
-        <div>
-          <button onClick={()=>setSelectedWoId(null)}
-            style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#2563eb",fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
-            <i className="ti ti-chevron-left" style={{fontSize:15}}/> Semua Folder
-          </button>
-          <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14,paddingBottom:10,borderBottom:"2px solid #e2e8f0",flexWrap:"wrap" as const}}>
-            <div style={{width:40,height:40,borderRadius:10,background:"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center"}}>
-              <i className="ti ti-folder-open" style={{fontSize:20,color:"#4f46e5"}}/>
-            </div>
-            <div style={{flex:1,minWidth:0}}>
-              <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{selectedFolder.wo?.proyek}</div>
-              <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {selectedFolder.wo?.wo} - {selectedFolder.panels.length} panel</div>
-            </div>
-            <button onClick={()=>downloadZipProyekWk(selectedFolder)} disabled={zipBusy?.key===`wo_${selectedFolder.woId}`}
-              style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #16a34a",background:"#fff",color:"#16a34a",fontSize:12,fontWeight:600,
-                cursor:zipBusy?.key===`wo_${selectedFolder.woId}`?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
-              {zipBusy?.key===`wo_${selectedFolder.woId}`?`⏳ ${zipBusy.done}/${zipBusy.total}...`:"⬇️ Download Semua Foto Proyek (ZIP)"}
-            </button>
-          </div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:12}}>
-            {selectedFolder.panels.map((p:any)=>{
-              const sb=STATUS_LABEL_WK[p._wkStatus]
-              return(
-                <div key={p.id} onClick={()=>setSelectedPanelId(p.id)}
-                  style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:`4px solid ${p._wkStatus==="selesai"?"#16a34a":"#4f46e5"}`,
-                    padding:16,cursor:"pointer",boxShadow:"0 1px 3px rgba(0,0,0,0.05)",transition:"all .15s"}}
-                  onMouseEnter={(e:any)=>{e.currentTarget.style.boxShadow="0 6px 16px rgba(0,0,0,0.1)";e.currentTarget.style.transform="translateY(-3px)"}}
-                  onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)";e.currentTarget.style.transform="translateY(0)"}}>
-                  <div style={{fontSize:14,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",marginBottom:2}}>{p.nama}</div>
-                  <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{p.tipe} · {p._wkKomponen.map((k:any)=>k.nama).join(", ")}</div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    <span style={{fontSize:11,fontWeight:700,color:p._wkPct>=100?"#16a34a":"#64748b"}}>{p._wkPct}%</span>
-                    <span style={{fontSize:9.5,fontWeight:700,background:sb.bg,color:sb.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{sb.label}</span>
-                  </div>
-                </div>
-              )
-            })}
-          </div>
+      {/* Banner + 4 kartu + search/filter/tabel - ikut gaya QC (14 Sep 2026), warna ungu/indigo
+          dipertahankan biar beda visual sama Assembling. */}
+      <div style={{position:"relative" as const,overflow:"hidden",background:"linear-gradient(135deg,#eef2ff,#e0e7ff)",border:"1px solid #c7d2fe",borderRadius:14,padding:"20px 24px",marginBottom:18,display:"flex",alignItems:"center",gap:16}}>
+        <div style={{width:56,height:56,borderRadius:14,background:"#4f46e5",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:"0 4px 12px #4f46e54d",zIndex:1}}>
+          <i className="ti ti-bolt" style={{fontSize:28,color:"#fff"}}/>
         </div>
-      ):woFolders.length===0?(
+        <div style={{flex:1,minWidth:0,zIndex:1}}>
+          <div style={{fontSize:19,fontWeight:800,color:"#1e293b"}}>Laporan Wiring Control (Komponen)</div>
+          <div style={{fontSize:12.5,fontWeight:500,color:"#334155",marginTop:2}}>Pantau progres wiring per komponen (Box Control/Pintu) tiap panel - status dan dokumentasi foto.</div>
+        </div>
+        <div style={{position:"absolute" as const,right:-24,top:-30,width:150,height:150,borderRadius:"50%",background:"#4f46e51a"}}/>
+        <div style={{position:"absolute" as const,right:60,bottom:-40,width:100,height:100,borderRadius:"50%",background:"#4f46e512"}}/>
+      </div>
+
+      <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:12,marginBottom:16}}>
+        {PIPELINE_STATUS_LIST.map(s=>{
+          const n=count4(s.key)
+          const pct=total4>0?Math.round(n/total4*100):0
+          const active=statusFilter===s.key
+          return(
+            <button key={s.key} onClick={()=>setStatusFilter(active?"ALL":s.key)}
+              style={{textAlign:"left" as const,background:s.bg,border:`1.5px solid ${active?s.color:"transparent"}`,borderRadius:12,
+                padding:"14px 16px",cursor:"pointer",boxShadow:active?`0 0 0 3px ${s.color}33`:"0 1px 3px rgba(0,0,0,0.05)",transition:"all .15s"}}>
+              <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                <div style={{width:34,height:34,borderRadius:9,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <i className={s.icon} style={{fontSize:16,color:s.color}}/>
+                </div>
+                <div style={{fontSize:11,fontWeight:700,color:s.color,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.label}</div>
+              </div>
+              <div style={{fontSize:24,fontWeight:800,color:"#1e293b"}}>{n}</div>
+              <div style={{fontSize:11,fontWeight:600,color:"#475569",marginTop:2}}>{pct}% dari total</div>
+            </button>
+          )
+        })}
+      </div>
+
+      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap" as const,alignItems:"center"}}>
+        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari panel, WO, atau proyek..."
+          style={{height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:500,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",flex:"1 1 220px",minWidth:180}}/>
+        <select value={woFilterId==="ALL"?"ALL":String(woFilterId)} onChange={(e:any)=>setWoFilterId(e.target.value==="ALL"?"ALL":Number(e.target.value))}
+          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:600,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
+          <option value="ALL">Semua WO</option>
+          {woOptions.map(w=><option key={w.id} value={w.id}>WO {w.wo?.wo} - {w.wo?.proyek}</option>)}
+        </select>
+        <select value={statusFilter} onChange={(e:any)=>setStatusFilter(e.target.value)}
+          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:600,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
+          <option value="ALL">Semua Status</option>
+          {PIPELINE_STATUS_LIST.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
+        </select>
+        {activeWoFolder&&(
+          <button onClick={()=>downloadZipProyekWk(activeWoFolder)} disabled={zipBusy?.key===`wo_${activeWoFolder.woId}`}
+            style={{height:36,padding:"0 14px",borderRadius:8,border:"1px solid #16a34a",background:"#fff",color:"#16a34a",fontSize:12,fontWeight:600,
+              cursor:zipBusy?.key===`wo_${activeWoFolder.woId}`?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
+            {zipBusy?.key===`wo_${activeWoFolder.woId}`?`⏳ ${zipBusy.done}/${zipBusy.total}...`:"⬇️ ZIP Foto WO Ini"}
+          </button>
+        )}
+      </div>
+
+      {filtered.length===0?(
         <div style={{textAlign:"center",padding:50,color:"#94a3b8",background:"#fff",borderRadius:12,border:"1px solid #e2e8f0"}}>
           <i className="ti ti-clipboard-x" style={{fontSize:36,display:"block",marginBottom:10}}/>
           Tidak ada panel ditemukan
         </div>
       ):(
-        <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
-          {woFolders.map((f:any)=>{
-            const doneInFolder=f.panels.filter((p:any)=>p._wkStatus==="selesai").length
-            const allDone=doneInFolder===f.panels.length
-            return(
-              <div key={f.woId} onClick={()=>setSelectedWoId(f.woId)}
-                style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:"14px 16px",cursor:"pointer",
-                  display:"flex",alignItems:"center",gap:14,boxShadow:"0 1px 3px rgba(0,0,0,0.05)",transition:"all .15s"}}
-                onMouseEnter={(e:any)=>{e.currentTarget.style.boxShadow="0 4px 12px rgba(0,0,0,0.08)";e.currentTarget.style.borderColor="#c7d2fe"}}
-                onMouseLeave={(e:any)=>{e.currentTarget.style.boxShadow="0 1px 3px rgba(0,0,0,0.05)";e.currentTarget.style.borderColor="#e2e8f0"}}>
-                <div style={{width:46,height:46,borderRadius:11,background:allDone?"#f0fdf4":"#eef2ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <i className="ti ti-folder" style={{fontSize:22,color:allDone?"#16a34a":"#4f46e5"}}/>
-                </div>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:14,color:"#1e293b",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{f.wo?.proyek}</div>
-                  <div style={{fontSize:11.5,color:"#94a3b8"}}>WO {f.wo?.wo} - {f.panels.length} panel</div>
-                </div>
-                <span style={{fontSize:10.5,fontWeight:700,color:allDone?"#16a34a":"#64748b",background:allDone?"#f0fdf4":"#f1f5f9",borderRadius:20,padding:"4px 12px",flexShrink:0}}>
-                  {doneInFolder}/{f.panels.length} selesai
-                </span>
-                <i className="ti ti-chevron-right" style={{fontSize:18,color:"#cbd5e1",flexShrink:0}}/>
-              </div>
-            )
-          })}
+        <div style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,overflowX:"auto" as const}}>
+          <table style={{width:"100%",borderCollapse:"collapse" as const,minWidth:760}}>
+            <thead>
+              <tr style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0"}}>
+                {["No","WO / Panel","Proses","Status","Progress","Aksi"].map((h,i)=>(
+                  <th key={h} style={{padding:"10px 14px",textAlign:i===0?"center" as const:"left" as const,fontSize:11,fontWeight:800,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.4,whiteSpace:"nowrap" as const}}>{h}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map((p:any,i:number)=>{
+                const statusDef=PIPELINE_STATUS_LIST.find(s=>s.key===p._pipelineStatus)||PIPELINE_STATUS_LIST[0]
+                return(
+                  <tr key={p.id} style={{borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none"}}>
+                    <td style={{padding:"10px 14px",textAlign:"center" as const,fontSize:12,color:"#64748b",fontWeight:700}}>{i+1}</td>
+                    <td style={{padding:"10px 14px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8}}>
+                        <i className="ti ti-folder" style={{fontSize:16,color:"#94a3b8",flexShrink:0}}/>
+                        <div style={{minWidth:0}}>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const}}>{p.nama}</div>
+                          <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>WO {p._wo?.wo} - {p._wo?.proyek}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td style={{padding:"10px 14px"}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6,fontSize:12,color:"#475569",fontWeight:600,whiteSpace:"nowrap" as const}}>
+                        <i className="ti ti-bolt" style={{fontSize:14,color:"#4f46e5"}}/> Wiring Control
+                      </div>
+                      <div style={{fontSize:10.5,color:"#94a3b8",marginTop:2}}>{p._wkKomponen.map((k:any)=>k.nama).join(", ")}</div>
+                    </td>
+                    <td style={{padding:"10px 14px"}}>
+                      <span style={{background:statusDef.bg,color:statusDef.color,borderRadius:20,padding:"3px 11px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap" as const}}>{statusDef.label}</span>
+                    </td>
+                    <td style={{padding:"10px 14px",minWidth:160}}>
+                      <div style={{display:"flex",alignItems:"center",gap:6}}>
+                        <div style={{flex:1,height:6,background:"#f1f5f9",borderRadius:99,overflow:"hidden"}}>
+                          <div style={{width:`${p._wkPct}%`,height:"100%",background:"#4f46e5",borderRadius:99}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,color:"#475569",minWidth:32,textAlign:"right" as const}}>{p._wkPct}%</span>
+                      </div>
+                    </td>
+                    <td style={{padding:"10px 14px"}}>
+                      <button onClick={()=>setSelectedPanelId(p.id)}
+                        style={{display:"flex",alignItems:"center",gap:4,height:28,padding:"0 12px",borderRadius:7,border:"1px solid #e0e7ff",background:"#eef2ff",color:"#4f46e5",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap" as const}}>
+                        Detail <i className="ti ti-chevron-right" style={{fontSize:12}}/>
+                      </button>
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+          </table>
         </div>
       )}
     </div>
