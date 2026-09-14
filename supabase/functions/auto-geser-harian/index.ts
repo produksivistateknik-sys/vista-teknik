@@ -180,25 +180,34 @@ const naturalKodeSort = (a: string, b: string) => {
 }
 
 // Replika getBestProgress(cl,'BUSBAR') + getBusbarProgress() dari src/lib/panelHelpers.ts (Deno
-// gak bisa import lintas src/). Model per-tahap Vista Pekerja: history.BUSBAR (paling akurat) >
-// progressByDate.BUSBAR (nilai terbaru) > progress.BUSBAR, fallback ke panels.busbar_progress[k]
-// (kolom legacy - hampir selalu {} sejak model per-tahap, tetap dijaga buat panel lama).
+// gak bisa import lintas src/), fallback ke panels.busbar_progress[k] (kolom legacy - hampir
+// selalu {} sejak model per-tahap, tetap dijaga buat panel lama).
+// BUG FIX (14 Sep 2026, insiden BUSBAR CAPACITOR BANK/WO 011) - DULU prioritas MUTLAK
+// history > progressByDate > progress (asumsi history paling akurat). SALAH buat BUSBAR:
+// OperatorView.tsx (Vista Pekerja) punya 2 jalur simpan terpisah - klik step % (jalan otomatis,
+// nulis progress/progressByDate/busbarTahap, TIDAK PERNAH nyentuh history) vs tombol "Simpan
+// Progress" OPSIONAL (SATU-SATUNYA yang nulis history). Kalau operator cuma klik Simpan sekali di
+// awal (nyangkut persen rendah) lalu lanjut klik step % sampai 100% tanpa Simpan lagi, history
+// jadi snapshot BEKU walau progress asli udah 100% - komponen yang SEBENARNYA sudah selesai bisa
+// salah ke-geser ke hari berikutnya gara-gara fungsi ini percaya history basi. Fix: ambil nilai
+// TERBESAR di antara ketiga sumber (progress gak pernah turun di pemakaian normal - BUSBAR malah
+// ada trigger DB yang maksa monoton naik per-tahap), samain persis sama fix getBestProgress() di
+// panelHelpers.ts (src/, dipakai Task Monitoring dkk) - lihat komentar lengkap di situ.
 const busbarProgressKode = (cl: any, panel: any, komponen: string): number => {
-  let best = -1
+  let histBest = -1
   const hist = cl?.history?.BUSBAR
   if (Array.isArray(hist) && hist.length > 0) {
     const sorted = [...hist].sort((a: any, b: any) => String(b.ts || b.tanggal || '').localeCompare(String(a.ts || a.tanggal || '')))
-    best = Number(sorted[0]?.pct) || 0
+    histBest = Number(sorted[0]?.pct) || 0
   }
-  if (best < 0) {
-    const byDate = cl?.progressByDate?.BUSBAR
-    if (byDate && Object.keys(byDate).length > 0) {
-      const dates = Object.keys(byDate).sort()
-      const v = Number(byDate[dates[dates.length - 1]]) || 0
-      if (v > 0) best = v
-    }
+  let dateBest = -1
+  const byDate = cl?.progressByDate?.BUSBAR
+  if (byDate && Object.keys(byDate).length > 0) {
+    const dates = Object.keys(byDate).sort()
+    dateBest = Number(byDate[dates[dates.length - 1]]) || 0
   }
-  if (best < 0) best = Number(cl?.progress?.BUSBAR) || 0
+  const progBest = Number(cl?.progress?.BUSBAR) || 0
+  const best = Math.max(histBest, dateBest, progBest)
   if (best > 0) return best
   const legacy = Number((panel?.busbar_progress || {})[komponen]) || 0
   return legacy > 0 ? legacy : best

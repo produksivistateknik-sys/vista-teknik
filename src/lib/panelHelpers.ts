@@ -354,16 +354,26 @@ export function getProgressAsOfDate(cl:any, proses:string, tanggal:string):numbe
   return (histTerakhir||byDateTerakhir)?.pct??0;
 }
 
-// Ambil progress terbaik: history > progressByDate > progress
+// BUG FIX (14 Sep 2026, insiden BUSBAR CAPACITOR BANK/WO 011 - Task Monitoring nampilin 50%/75%
+// padahal operator udah selesai 100%) - dulu prioritas MUTLAK history > progressByDate > progress
+// (asumsi "history paling akurat", dipasang 7 Agu buat fix arah SEBALIKNYA - lihat komentar
+// getBestProgressMap di bawah, kasus AFIF/FS.4 waktu itu `progress` yang basi). Asumsi itu salah
+// buat BUSBAR: OperatorView.tsx (Vista Pekerja) punya 2 jalur simpan TERPISAH -
+// updatePctManualBusbarTahap (jalan OTOMATIS tiap klik step %, nulis busbarTahap/progress/
+// progressByDate, TIDAK PERNAH nyentuh history) vs simpanProgressTahapBusbar (tombol "Simpan
+// Progress" OPSIONAL, SATU-SATUNYA yang nulis history). Kalau operator cuma klik "Simpan" sekali
+// di awal (nyangkut low%) lalu lanjut klik step % sampai 100% tanpa klik Simpan lagi, history jadi
+// snapshot BEKU sementara progress/progressByDate yang sebenarnya udah 100% - prioritas mutlak di
+// atas bikin history basi ini yang dipercaya, bukan yang benar.
+// FIX: ambil nilai TERBESAR di antara ketiga sumber, bukan prioritas cascade. Aman buat KEDUA arah
+// bug (history basi-rendah kasus ini, MAUPUN progress basi-rendah kasus AFIF/FS.4 lama) karena
+// progress secara desain gak pernah turun di pemakaian normal (BUSBAR malah ada trigger DB yang
+// maksa monoton naik per-tahap, lihat panels_validate_busbar_cap_progress) - gak perlu tau sumber
+// mana yang "lebih akurat", yang terbesar sudah pasti yang paling baru/benar.
 export function getBestProgress(cl:any, proses:string):number{
-  // Coba dari history dulu (paling akurat)
-  const fromHist=getProgressFromHistory(cl,proses);
-  if(fromHist>=0) return fromHist;
-  // Fallback ke progressByDate
-  const fromDate=getLatestProgress(cl,proses);
-  if(fromDate>0) return fromDate;
-  // Fallback terakhir ke progress
-  return cl?.progress?.[proses]||0;
+  const fromHist=getProgressFromHistory(cl,proses); // -1 kalau history kosong/gak ada
+  const fromDate=getLatestProgress(cl,proses); // sudah fallback sendiri ke cl.progress kalau progressByDate kosong
+  return Math.max(fromHist,fromDate);
 }
 
 // BUG FIX (7 Agu 2026): "Status" (kolom lama, getProgressAsOfDate) vs "Status Pipeline"
