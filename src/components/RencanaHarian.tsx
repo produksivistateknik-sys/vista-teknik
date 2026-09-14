@@ -357,13 +357,33 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       // bikin baris renhar palsu). Progress & tampilannya ditangani section terpisah di bawah,
       // baca raw_schedule langsung, gak lewat renhar sama sekali.
       if(row.proses==="NAMEPLATE"||row.proses==="YELLOWMARK")return;
+      const panelIdRowUtama=row.panel_id||row.panelId;
+      const panelDataUtama=allPanelsFlat.find((p:any)=>p.id===panelIdRowUtama);
       const entries=row.schedule?.[selDate]||[];
       entries.forEach(e=>{
+        // BUG FIX (14 Sep 2026) - kode yang progress-nya SUDAH 100% (Done) tetap ikut nampil
+        // sebagai task aktif kalau raw_schedule.schedule[selDate] masih literal menyimpannya
+        // (carriedOverFrom "basi" - kode itu digeser SEBELUM selesai dikerjakan, lalu keburu
+        // diselesaikan operator DI HARI YANG SAMA sebelum tanggal tujuannya tiba, tapi keputusan
+        // geser yang sudah tertulis gak pernah direkonsiliasi ulang). auto-geser-harian sendiri
+        // SUDAH benar mengecualikan kode 100% dari geseran BERIKUTNYA (Fase 1) - gap-nya cuma di
+        // sini, jalur tampilan utama gak pernah ngecek progress sama sekali sebelum di-push ke
+        // allTasks. Kode yang sudah punya digeserKe (jejak permanen) TETAP dikecualikan (gak
+        // pernah masuk allTasks sejak awal - itu bukan tugas aktif). Pola SAMA PERSIS dengan guard
+        // yang sudah ada di jalur proyeksi WIRING CONTROL/POWER di bawah (progress>=100 return) -
+        // cuma belum ikut diterapkan ke jalur umum/generik ini.
+        const kodeAktif=(e.komponen||[]).filter((kode:string)=>{
+          if(kode.startsWith("__wiring_"))return true; // token, bukan kode BOM - biarin lolos
+          if(e.digeserKe?.[kode])return false; // sudah jejak - jangan tampil sebagai tugas aktif
+          const progress=panelDataUtama?.checklist?.[kode]?.progress?.[row.proses]||0;
+          return progress<100;
+        });
+        if(kodeAktif.length===0)return; // semua kode di entry ini udah Done - gak perlu jadi task
         tasks.push({
           rawId:row.id,woId:row.wo_id||row.woId,panelId:row.panel_id||row.panelId,
           proyek:row.proyek,panel:row.panel,proses:row.proses,
           prioritas:row.prioritas||"Sedang",
-          wp:e.wp,komponen:e.komponen,tanggal:selDate,
+          wp:e.wp,komponen:kodeAktif,tanggal:selDate,
           carriedOverFrom:e.carriedOverFrom||null,
           digeserKe:e.digeserKe||null,
         });
