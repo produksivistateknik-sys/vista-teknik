@@ -250,7 +250,7 @@ export function LaporanQCView({woData}:{woData:any[]}){
         </div>
         <div style={{flex:1,minWidth:0,zIndex:1}}>
           <div style={{fontSize:19,fontWeight:800,color:"#1e293b"}}>Laporan QC</div>
-          <div style={{fontSize:12.5,color:"#475569",marginTop:2}}>Pantau progres pemeriksaan kualitas (Quality Control) tiap panel - status, checklist, dan dokumentasi foto.</div>
+          <div style={{fontSize:12.5,fontWeight:500,color:"#334155",marginTop:2}}>Pantau progres pemeriksaan kualitas (Quality Control) tiap panel - status, checklist, dan dokumentasi foto.</div>
         </div>
         <div style={{position:"absolute" as const,right:-24,top:-30,width:150,height:150,borderRadius:"50%",background:"#1d4ed81a"}}/>
         <div style={{position:"absolute" as const,right:60,bottom:-40,width:100,height:100,borderRadius:"50%",background:"#1d4ed812"}}/>
@@ -275,7 +275,7 @@ export function LaporanQCView({woData}:{woData:any[]}){
                 <div style={{fontSize:11,fontWeight:700,color:s.color,textTransform:"uppercase" as const,letterSpacing:.3}}>{s.label}</div>
               </div>
               <div style={{fontSize:24,fontWeight:800,color:"#1e293b"}}>{n}</div>
-              <div style={{fontSize:10.5,color:"#64748b",marginTop:2}}>{pct}% dari total - {s.desc}</div>
+              <div style={{fontSize:11,fontWeight:600,color:"#475569",marginTop:2}}>{pct}% dari total - {s.desc}</div>
             </button>
           );
         })}
@@ -286,14 +286,14 @@ export function LaporanQCView({woData}:{woData:any[]}){
           proyek muncul otomatis begitu 1 WO dipilih). */}
       <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap" as const,alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Cari panel, WO, atau proyek..."
-          style={{height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",flex:"1 1 220px",minWidth:180}}/>
+          style={{height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:500,background:"#fff",outline:"none",color:"#1e293b",fontFamily:"inherit",flex:"1 1 220px",minWidth:180}}/>
         <select value={woFilterId==="ALL"?"ALL":String(woFilterId)} onChange={e=>setWoFilterId(e.target.value==="ALL"?"ALL":Number(e.target.value))}
-          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
+          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:600,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
           <option value="ALL">Semua WO</option>
           {woOptions.map(w=><option key={w.id} value={w.id}>WO {w.wo?.wo} - {w.wo?.proyek}</option>)}
         </select>
         <select value={status4Filter} onChange={e=>setStatus4Filter(e.target.value)}
-          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
+          style={{height:36,padding:"0 10px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12.5,fontWeight:600,background:"#fff",color:"#1e293b",fontFamily:"inherit",cursor:"pointer"}}>
           <option value="ALL">Semua Status</option>
           {STATUS4_LIST.map(s=><option key={s.key} value={s.key}>{s.label}</option>)}
         </select>
@@ -319,7 +319,7 @@ export function LaporanQCView({woData}:{woData:any[]}){
             <thead>
               <tr style={{background:"#f8fafc",borderBottom:"1.5px solid #e2e8f0"}}>
                 {["No","WO / Panel","Proses","Status","Progress","Tanggal","Aksi"].map((h,i)=>(
-                  <th key={h} style={{padding:"10px 14px",textAlign:i===0?"center" as const:"left" as const,fontSize:10.5,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.3,whiteSpace:"nowrap" as const}}>{h}</th>
+                  <th key={h} style={{padding:"10px 14px",textAlign:i===0?"center" as const:"left" as const,fontSize:11,fontWeight:800,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.4,whiteSpace:"nowrap" as const}}>{h}</th>
                 ))}
               </tr>
             </thead>
@@ -331,13 +331,13 @@ export function LaporanQCView({woData}:{woData:any[]}){
                 const tgl=globalData.complete_at||globalData.todo_at;
                 return(
                   <tr key={p.id} style={{borderBottom:i<filtered.length-1?"1px solid #f1f5f9":"none"}}>
-                    <td style={{padding:"10px 14px",textAlign:"center" as const,fontSize:12,color:"#94a3b8",fontWeight:600}}>{i+1}</td>
+                    <td style={{padding:"10px 14px",textAlign:"center" as const,fontSize:12,color:"#64748b",fontWeight:700}}>{i+1}</td>
                     <td style={{padding:"10px 14px"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8}}>
                         <i className="ti ti-folder" style={{fontSize:16,color:"#94a3b8",flexShrink:0}}/>
                         <div style={{minWidth:0}}>
-                          <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const}}>{p.nama}</div>
-                          <div style={{fontSize:10.5,color:"#94a3b8"}}>WO {p._wo?.wo} - {p._wo?.proyek}</div>
+                          <div style={{fontSize:13,fontWeight:700,color:"#1e293b",whiteSpace:"nowrap" as const}}>{p.nama}</div>
+                          <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>WO {p._wo?.wo} - {p._wo?.proyek}</div>
                         </div>
                       </div>
                     </td>
@@ -359,10 +359,10 @@ export function LaporanQCView({woData}:{woData:any[]}){
                     </td>
                     <td style={{padding:"10px 14px"}}>
                       {tgl?(
-                        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,color:"#64748b",whiteSpace:"nowrap" as const}}>
+                        <div style={{display:"flex",alignItems:"center",gap:5,fontSize:11,fontWeight:600,color:"#475569",whiteSpace:"nowrap" as const}}>
                           <i className="ti ti-calendar-event" style={{fontSize:13,color:"#94a3b8"}}/> {fmtTgl(tgl)}
                         </div>
-                      ):<span style={{fontSize:11,color:"#cbd5e1"}}>-</span>}
+                      ):<span style={{fontSize:11,fontWeight:600,color:"#cbd5e1"}}>-</span>}
                     </td>
                     <td style={{padding:"10px 14px"}}>
                       <button onClick={()=>setSelectedPanelId(p.id)}
