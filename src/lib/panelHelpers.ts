@@ -412,6 +412,25 @@ export function calcPanelProgress(panel, rawData?:any[]): Record<string, number>
       prog[pr]=bvals.length>0?Math.round(bvals.reduce((a,b)=>a+b,0)/bvals.length):0;
       return;
     }
+    // BUG FIX (14 Sep 2026, insiden badge "85%" padahal semua kolom di Detail Progres 100% -
+    // panel FISIOTERAPI/WO 073 AMERTHA) - QC TEST & PACKING, SAMA PERSIS BUSBAR di atas, BUKAN
+    // proses per-komponen-mekanikal (PROSES_TANPA_MAPPING_KOMPONEN nandain isKomponenRelevant
+    // SELALU true buat keduanya - "seluruh panel", bukan spesifik komponen tertentu). Status
+    // SEBENARNYA disimpan TERPISAH dari checklist[kode].progress (yang gak pernah ditulis buat
+    // 2 proses ini): QC di panels.qc_checklist._global.status (LaporanQCView/QCChecklistTab),
+    // PACKING di panels.packing_done (boolean). DetailProgress.tsx sendiri udah baca sumber yang
+    // BENAR ini buat kolom QC/PACKING di tabelnya - calcPanelProgress (dipakai panelOverall buat
+    // badge ringkasan) dulu SALAH masih coba rata-ratakan checklist[kode].progress yang kosong,
+    // bikin 2 dari 13 proses SELALU ke-0% phantom walau QC/Packing beneran udah selesai - narik
+    // rata-rata panelOverall turun drastis (11x100+2x0)/13=~85% padahal semua proses lain 100%.
+    if(pr==="QC TEST"){
+      prog[pr]=panel.qc_checklist?._global?.status==="complete"?100:0;
+      return;
+    }
+    if(pr==="PACKING"){
+      prog[pr]=panel.packing_done?100:0;
+      return;
+    }
     // Cuma komponen yang beneran relevan ke proses ini yang ikut dirata-rata - komponen yang
     // gak relevan (mis. gak pernah lewat RENDAM) sebelumnya ikut kehitung "0%" palsu di rata-rata,
     // bikin persentase gak pernah bisa nyampe 100% walau semua proses yang beneran relevan udah
