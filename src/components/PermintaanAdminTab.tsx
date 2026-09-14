@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
-import { Card, Btn, Modal, Badge } from './ui/Primitives'
+import { Btn, Modal, Badge } from './ui/Primitives'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -50,12 +50,12 @@ const todayStr = () => new Date().toISOString().slice(0, 10)
 // ditulis mentah ke string HTML, WAJIB di-escape biar gak ada karakter yang kebaca sebagai tag.
 const escapeHtml = (s: any) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string))
 
-// Warna header tabel rekap (#1e3a8a) SAMA PERSIS dgn `thS` di RencanaHarian.tsx (tabel
-// BUSBAR/Renhar) - satu-satunya tempat lain di app ini yang punya header tabel gelap solid,
-// dipakai di sini biar konsisten temanya, bukan warna baru.
+// Header tabel Rekap TAMPILAN LAYAR (14 Sep 2026, ikut gaya Quality Center - abu terang, BUKAN
+// biru tua #1e3a8a lagi) - dokumen PRINT (openPrintWindow, string HTML terpisah di bawah) TETAP
+// pakai header biru tua formal seperti sebelumnya, TIDAK disentuh sama sekali oleh constant ini.
 const rekapThS: CSSProperties = {
-  background: '#1e3a8a', color: '#fff', padding: '11px 14px', fontWeight: 700, fontSize: 11,
-  textTransform: 'uppercase', letterSpacing: 0.5, textAlign: 'left',
+  padding: '10px 14px', fontWeight: 800, fontSize: 11, color: '#475569',
+  textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'left', whiteSpace: 'nowrap',
 }
 
 const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: string, color: string }[] = [
@@ -490,19 +490,27 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
 
   return (
     <div className="fi">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14, gap: 8, flexWrap: 'wrap' }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Permintaan Barang</div>
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 2 }}>
+      {/* Banner header (14 Sep 2026, ikut gaya Quality Center/LaporanQCView.tsx - gradient biru +
+          icon box + judul/deskripsi dinamis per tab + lingkaran dekoratif). Counter "X menunggu"
+          fungsi lama TETAP ada, cuma dipindah ke dalam banner di sisi kanan. */}
+      <div style={{ position: 'relative', overflow: 'hidden', background: 'linear-gradient(135deg,#eff6ff,#dbeafe)', border: '1px solid #bfdbfe', borderRadius: 14, padding: '20px 24px', marginBottom: 18, display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div style={{ width: 56, height: 56, borderRadius: 14, background: '#1d4ed8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, boxShadow: '0 4px 12px #1d4ed84d', zIndex: 1 }}>
+          <i className="ti ti-clipboard-list" style={{ fontSize: 28, color: '#fff' }} />
+        </div>
+        <div style={{ flex: 1, minWidth: 0, zIndex: 1 }}>
+          <div style={{ fontSize: 19, fontWeight: 800, color: '#1e293b' }}>Permintaan Barang</div>
+          <div style={{ fontSize: 12.5, fontWeight: 500, color: '#334155', marginTop: 2 }}>
             {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : viewMode === 'koreksi' ? 'Pengajuan koreksi qty dari Gudang (salah input) - qty ASLI baru berubah setelah disetujui di sini.' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 WO (gabungan semua panel di dalamnya), digabung per jenis item.'}
           </div>
         </div>
         {viewMode === 'pending' && (
-          <span style={{ background: '#eff6ff', color: '#1d4ed8', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{items.length} menunggu</span>
+          <span style={{ zIndex: 1, background: '#fff', color: '#1d4ed8', borderRadius: 20, padding: '5px 14px', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>{items.length} menunggu</span>
         )}
         {viewMode === 'koreksi' && (
-          <span style={{ background: '#fffbeb', color: '#b45309', borderRadius: 20, padding: '4px 12px', fontSize: 12, fontWeight: 700 }}>{koreksiList.length} menunggu</span>
+          <span style={{ zIndex: 1, background: '#fff', color: '#b45309', borderRadius: 20, padding: '5px 14px', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>{koreksiList.length} menunggu</span>
         )}
+        <div style={{ position: 'absolute', right: -24, top: -30, width: 150, height: 150, borderRadius: '50%', background: '#1d4ed81a' }} />
+        <div style={{ position: 'absolute', right: 60, bottom: -40, width: 100, height: 100, borderRadius: '50%', background: '#1d4ed812' }} />
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
@@ -526,14 +534,14 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
               <Btn color="#1d4ed8" onClick={openPrintWindow}>🖨️ Print Rekap</Btn>
               {rekapPanelsInWo.length > 1 && (
                 <select value={rekapScopePanelId ?? ''} onChange={(e: any) => setRekapScopePanelId(e.target.value ? Number(e.target.value) : null)}
-                  style={{ padding: '8px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 600, color: 'var(--text-primary,#1e293b)', background: '#fff' }}>
+                  style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', background: '#fff', fontFamily: 'inherit', cursor: 'pointer' }}>
                   <option value="">Semua panel di WO ini ({rekapPanelsInWo.length})</option>
                   {rekapPanelsInWo.map((p: any) => <option key={p.id} value={p.id}>Cuma panel: {p.nama}</option>)}
                 </select>
               )}
               <input type="text" placeholder="🔍 Cari nama item..." value={rekapSearch}
                 onChange={(e: any) => setRekapSearch(e.target.value)}
-                style={{ flex: '1 1 180px', minWidth: 160, padding: '8px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
+                style={{ flex: '1 1 180px', minWidth: 160, height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 500, color: '#1e293b', background: '#fff', fontFamily: 'inherit', outline: 'none' }} />
             </div>
 
             {/* Kop surat (7 Sep 2026 -> redesain 11 Sep 2026, buat dokumen cetak) - nama WO/proyek
@@ -552,43 +560,54 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
             {rekapLoading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
             ) : rekapRowsDisplayed.length === 0 ? (
-              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-                <div style={{ fontSize: 32, marginBottom: 8 }}>📭</div>
+              <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <i className="ti ti-package-off" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
                 <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>
                   {rekapRowsFull.length === 0 ? 'Belum ada item' : 'Tidak ada item yang cocok dengan pencarian'}
                 </div>
                 <div style={{ fontSize: 12 }}>
                   {rekapRowsFull.length === 0 ? 'Belum ada permintaan barang yang sudah keluar dari Gudang untuk cakupan ini.' : `Coba kata kunci lain (pencarian: "${rekapSearch}").`}
                 </div>
-              </Card>
+              </div>
             ) : (
-              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
-                <thead>
-                  <tr>
-                    <th style={rekapThS}>Divisi</th>
-                    <th style={rekapThS}>Nama Item</th>
-                    <th style={{ ...rekapThS, textAlign: 'right' }}>Total Qty</th>
-                    <th style={{ ...rekapThS, textAlign: 'center' }}>Satuan</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {rekapRowsDisplayed.map((r, ri) => (
-                    <tr key={r.key} style={{ background: ri % 2 === 0 ? '#fff' : '#f8fafc' }}>
-                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', color: '#64748b' }}>{DIVISI_LABEL[r.divisi] || r.divisi}</td>
-                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', color: '#1e293b', fontWeight: 600 }}>{r.nama}</td>
-                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'right', fontWeight: 600, color: '#1e293b' }}>{r.totalQty.toLocaleString('id-ID')}</td>
-                      <td style={{ padding: '11px 14px', borderBottom: '1px solid #f1f5f9', textAlign: 'center', color: '#64748b' }}>{r.satuan}</td>
+              /* Tabel layar (14 Sep 2026, ikut gaya Quality Center - header abu terang + ikon per
+                 baris) - SENGAJA beda dari header biru tua dokumen print (openPrintWindow di atas,
+                 string HTML terpisah, TIDAK disentuh sama sekali) - style baru ini cuma buat
+                 tampilan di layar aplikasi. */
+              <div style={{ background: '#fff', border: '1px solid #e2e8f0', borderRadius: 12, overflowX: 'auto' as const }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13, minWidth: 640 }}>
+                  <thead>
+                    <tr style={{ background: '#f8fafc', borderBottom: '1.5px solid #e2e8f0' }}>
+                      <th style={rekapThS}>Divisi</th>
+                      <th style={rekapThS}>Nama Item</th>
+                      <th style={{ ...rekapThS, textAlign: 'right' }}>Total Qty</th>
+                      <th style={{ ...rekapThS, textAlign: 'center' }}>Satuan</th>
                     </tr>
-                  ))}
-                </tbody>
-                <tfoot>
-                  <tr>
-                    <td colSpan={4} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1e3a8a', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #1e3a8a' }}>
-                      Total {rekapRowsDisplayed.length} jenis item{rekapSearch ? ` (dari ${rekapRowsFull.length} total)` : ''}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                  </thead>
+                  <tbody>
+                    {rekapRowsDisplayed.map((r, ri) => (
+                      <tr key={r.key} style={{ borderBottom: ri < rekapRowsDisplayed.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                        <td style={{ padding: '11px 14px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' as const }}>{DIVISI_LABEL[r.divisi] || r.divisi}</td>
+                        <td style={{ padding: '11px 14px' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
+                            <span style={{ color: '#1e293b', fontWeight: 600 }}>{r.nama}</span>
+                          </div>
+                        </td>
+                        <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>{r.totalQty.toLocaleString('id-ID')}</td>
+                        <td style={{ padding: '11px 14px', textAlign: 'center', color: '#64748b' }}>{r.satuan}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={4} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #dbeafe' }}>
+                        Total {rekapRowsDisplayed.length} jenis item{rekapSearch ? ` (dari ${rekapRowsFull.length} total)` : ''}
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
             )}
             {rekapSearch && rekapRowsDisplayed.length > 0 && (
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 8 }}>
@@ -598,18 +617,26 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
           </div>
         ) : (
           <div>
-            <input type="text" placeholder="Cari nomor WO atau nama proyek..." value={rekapWoSearch}
+            <input type="text" placeholder="🔍 Cari nomor WO atau nama proyek..." value={rekapWoSearch}
               onChange={(e: any) => setRekapWoSearch(e.target.value)}
-              style={{ width: '100%', boxSizing: 'border-box', padding: '9px 12px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)', marginBottom: 14 }} />
+              style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 500, color: '#1e293b', fontFamily: 'inherit', outline: 'none', marginBottom: 14 }} />
             {rekapWoFiltered.length === 0 ? (
-              <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>WO tidak ditemukan.</Card>
+              <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+                <i className="ti ti-folder-x" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
+                WO tidak ditemukan.
+              </div>
             ) : (
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 {rekapWoFiltered.map((w: any) => (
                   <button key={w.id} onClick={() => setRekapWoId(w.id)}
-                    style={{ textAlign: 'left', padding: '10px 14px', borderRadius: 8, border: '1.5px solid #e2e8f0', background: '#fff', cursor: 'pointer' }}>
-                    <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>WO {w.wo}</div>
-                    <div style={{ fontSize: 11, color: '#94a3b8' }}>{w.proyek} - {w.panelCount} panel</div>
+                    style={{ textAlign: 'left', display: 'flex', alignItems: 'center', gap: 12, padding: '12px 16px', borderRadius: 12, border: '1px solid #e2e8f0', background: '#fff', cursor: 'pointer', boxShadow: '0 1px 3px rgba(0,0,0,0.05)' }}>
+                    <div style={{ width: 38, height: 38, borderRadius: 10, background: '#eff6ff', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                      <i className="ti ti-folder" style={{ fontSize: 18, color: '#2563eb' }} />
+                    </div>
+                    <div style={{ minWidth: 0 }}>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>WO {w.wo}</div>
+                      <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{w.proyek} - {w.panelCount} panel</div>
+                    </div>
                   </button>
                 ))}
               </div>
@@ -618,18 +645,18 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
         )
       ) : viewMode === 'riwayat' ? (
         <div>
-          <div style={{ display: 'flex', gap: 10, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <input type="date" value={riwayatTanggal} onChange={(e: any) => setRiwayatTanggal(e.target.value)}
-              style={{ padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
-            <input type="text" placeholder="Cari nama komponen, proyek, panel, operator..." value={riwayatSearch}
+              style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit' }} />
+            <input type="text" placeholder="🔍 Cari nama komponen, proyek, panel, operator..." value={riwayatSearch}
               onChange={(e: any) => setRiwayatSearch(e.target.value)}
-              style={{ flex: '1 1 220px', minWidth: 180, padding: '7px 10px', borderRadius: 8, border: '1.5px solid #cbd5e1', fontSize: 13, color: 'var(--text-primary,#1e293b)' }} />
+              style={{ flex: '1 1 220px', minWidth: 180, height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 500, color: '#1e293b', fontFamily: 'inherit', outline: 'none' }} />
             <div style={{ display: 'flex', gap: 6 }}>
               {RIWAYAT_STATUS_OPTIONS.map(opt => (
                 <button key={opt.key} onClick={() => setRiwayatStatusFilter(opt.key)}
                   style={{
-                    padding: '6px 12px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
-                    border: riwayatStatusFilter === opt.key ? `1.5px solid ${opt.color}` : '1.5px solid #e2e8f0',
+                    height: 36, padding: '0 14px', borderRadius: 20, fontSize: 12, fontWeight: 700, cursor: 'pointer',
+                    border: riwayatStatusFilter === opt.key ? `1.5px solid ${opt.color}` : '1px solid #e2e8f0',
                     background: riwayatStatusFilter === opt.key ? `${opt.color}15` : '#fff',
                     color: riwayatStatusFilter === opt.key ? opt.color : '#64748b',
                   }}>
@@ -642,11 +669,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
           {riwayatLoading ? (
             <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
           ) : riwayatDivisiKeys.length === 0 ? (
-            <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-              <div style={{ fontSize: 32, marginBottom: 8 }}>🗂️</div>
+            <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <i className="ti ti-history-toggle" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
               <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
               <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
-            </Card>
+            </div>
           ) : (
             <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
               {riwayatDivisiKeys.map(divisi => (
@@ -663,6 +690,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                       return (
                         <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                            <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
                             <Badge label={ditolak ? '✕ Ditolak Admin' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
                             <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
                           </div>
@@ -690,11 +718,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
         loadingKoreksi ? (
           <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
         ) : koreksiDivisiKeys.length === 0 ? (
-          <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-            <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+          <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+            <i className="ti ti-circle-check" style={{ fontSize: 36, display: 'block', marginBottom: 10, color: '#16a34a' }} />
             <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada pengajuan koreksi</div>
             <div style={{ fontSize: 12 }}>Pengajuan koreksi qty dari Gudang (kalau ada salah input) akan muncul di sini.</div>
-          </Card>
+          </div>
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
             {koreksiDivisiKeys.map(divisi => (
@@ -708,6 +736,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                     return (
                       <div key={k.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                          <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
                           <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
                           <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{k.item.nama_komponen}</span>
                         </div>
@@ -754,11 +783,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
       ) : divisiKeys.length === 0 ? (
-        <Card style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>
-          <div style={{ fontSize: 32, marginBottom: 8 }}>✅</div>
+        <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+          <i className="ti ti-circle-check" style={{ fontSize: 36, display: 'block', marginBottom: 10, color: '#16a34a' }} />
           <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada permintaan menunggu</div>
           <div style={{ fontSize: 12 }}>Semua permintaan sudah diproses. Permintaan baru dari operator akan muncul di sini.</div>
-        </Card>
+        </div>
       ) : (
         <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
           {divisiKeys.map(divisi => (
@@ -776,6 +805,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                   return (
                     <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
+                        <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
                         <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
                         <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen}</span>
                       </div>
