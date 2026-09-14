@@ -30,6 +30,12 @@ const QC_CENTER_SECTIONS_FLAT=[
   {key:"qs",label:"QS",icon:"📋",progressField:"qs_progress",fotoField:"qs_photos"},
 ];
 
+// Urutan tampil proses buat tabel Durasi Pengerjaan (15 Sep 2026) - SAMA persis urutan kolom
+// Detail Progres (ALL_PROSES di constants/panelTypes.ts), biar konsisten. Ditulis manual (bukan
+// import ALL_PROSES) karena cuma dipakai buat urutan render array yang udah dikelompokkan,
+// gak butuh logic lain dari situ.
+const DURASI_PROSES_URUTAN=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+
 const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"];
 
 // Daftar kode Box Control/Pintu yang relevan buat 1 panel (nama, bukan kode - kode beda-beda
@@ -73,6 +79,49 @@ export function ArsipTab({user,refetchWO}:any){
   const[woArchivedMap,setWoArchivedMap]=useState<Record<number,boolean>>({});
   const[qcDetailPanel,setQcDetailPanel]=useState<any>(null);
   const[lightbox,setLightbox]=useState<{fotos:any[],index:number,label:string}|null>(null);
+
+  // DURASI PENGERJAAN PER PROSES (15 Sep 2026, investigasi terpisah - lihat laporan) - sumber
+  // data fcs_timer_kerja_archived (kolom mulai/selesai per sesi timer, GENERIK utk semua proses,
+  // bukan cuma BUSBAR/WIRING). Rentang MIN(mulai)..MAX(selesai) per proses dipakai sebagai
+  // "durasi berjalan" - BUKAN SUM(durasi_menit) per sesi, karena sesi bisa tumpang tindih
+  // (banyak komponen/operator dikerjakan "bersamaan") - kebukti nyata di 1 panel BUSBAR-nya
+  // nunjukkin total 190+ jam kalau dijumlah polos, padahal rentang kalender asli cuma ~7 hari.
+  const[durasiDetailPanel,setDurasiDetailPanel]=useState<any>(null);
+  const[durasiLoading,setDurasiLoading]=useState(false);
+  const[durasiRows,setDurasiRows]=useState<{proses:string,mulai:string|null,selesai:string|null,adaBelumSelesai:boolean,jumlahSesi:number}[]>([]);
+
+  const openDurasiDetail=async(p:any)=>{
+    setDurasiDetailPanel(p);
+    setDurasiLoading(true);
+    setDurasiRows([]);
+    // Paginasi eksplisit (konsisten pola project ini) - satu panel biasanya jauh di bawah 1000
+    // baris timer, tapi jangan asumsikan gak akan pernah lewat.
+    let all:any[]=[];
+    let from=0;
+    const pageSize=1000;
+    for(;;){
+      const{data,error}=await supabase.from("fcs_timer_kerja_archived").select("proses,mulai,selesai").eq("panel_id",p.id).range(from,from+pageSize-1);
+      if(error){alert("Gagal memuat data durasi: "+error.message);setDurasiLoading(false);return;}
+      all=all.concat(data??[]);
+      if(!data||data.length<pageSize)break;
+      from+=pageSize;
+    }
+    const byProses:Record<string,{mulai:string|null,selesai:string|null,adaBelumSelesai:boolean,jumlahSesi:number}>={};
+    all.forEach((r:any)=>{
+      if(!byProses[r.proses])byProses[r.proses]={mulai:null,selesai:null,adaBelumSelesai:false,jumlahSesi:0};
+      const b=byProses[r.proses];
+      b.jumlahSesi++;
+      if(r.mulai&&(!b.mulai||r.mulai<b.mulai))b.mulai=r.mulai;
+      if(r.selesai){if(!b.selesai||r.selesai>b.selesai)b.selesai=r.selesai;}else{b.adaBelumSelesai=true;}
+    });
+    const rows=Object.entries(byProses).map(([proses,b])=>({proses,...b}))
+      .sort((a,b)=>{
+        const ia=DURASI_PROSES_URUTAN.indexOf(a.proses),ib=DURASI_PROSES_URUTAN.indexOf(b.proses);
+        return(ia===-1?99:ia)-(ib===-1?99:ib);
+      });
+    setDurasiRows(rows);
+    setDurasiLoading(false);
+  };
   const[wiList,setWiList]=useState<any[]>([]);
   const[revList,setRevList]=useState<any[]>([]);
 
@@ -203,6 +252,7 @@ export function ArsipTab({user,refetchWO}:any){
                         <th style={thS}>Nama Panel</th>
                         <th style={{...thS,textAlign:"center"}}>Progress</th>
                         <th style={{...thS,textAlign:"center"}}>Quality Center</th>
+                        <th style={{...thS,textAlign:"center"}}>Durasi</th>
                         <th style={thS}>Diarsipkan</th>
                         {canUnarsip&&<th style={{...thS,textAlign:"center"}}>Aksi</th>}
                       </tr></thead>
@@ -220,6 +270,12 @@ export function ArsipTab({user,refetchWO}:any){
                                   style={{background:"none",border:"none",cursor:"pointer",display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:2}}>
                                   <span style={{background:qcInfo.bg,color:qcInfo.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{qcInfo.label}</span>
                                   <span style={{fontSize:9,color:"#94a3b8",textDecoration:"underline"}}>📷 {fotoCount} foto</span>
+                                </button>
+                              </td>
+                              <td style={{...td,textAlign:"center"}}>
+                                <button onClick={()=>openDurasiDetail(p)}
+                                  style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"4px 11px",fontSize:10.5,fontWeight:700,cursor:"pointer",display:"inline-flex",alignItems:"center",gap:4}}>
+                                  <i className="ti ti-clock-hour-4" style={{fontSize:12}}/> Lihat Durasi
                                 </button>
                               </td>
                               <td style={{...td,color:"#94a3b8",fontSize:11}}>{p.diarsipkan_oleh} · {p.diarsipkan_pada?new Date(p.diarsipkan_pada).toLocaleDateString("id-ID"):"—"}</td>
@@ -412,6 +468,90 @@ export function ArsipTab({user,refetchWO}:any){
               </div>
 
             </div>
+          </Modal>
+        );
+      })()}
+
+      {durasiDetailPanel&&(()=>{
+        const fmtTgl=(iso:string|null)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
+        const rentangHari=(mulai:string|null,selesai:string|null)=>{
+          if(!mulai||!selesai)return null;
+          const ms=new Date(selesai).getTime()-new Date(mulai).getTime();
+          return ms<0?0:Math.round(ms/86400000*10)/10;
+        };
+        const punyaData=(pr:string)=>durasiRows.some(r=>r.proses===pr);
+        const pasangKomponenPct=(()=>{try{return calcPanelProgress(durasiDetailPanel)["PASANG KOMPONEN"]||0;}catch{return 0;}})();
+        const semuaMulai=durasiRows.map(r=>r.mulai).filter(Boolean) as string[];
+        const mulaiPalingAwal=semuaMulai.length>0?semuaMulai.reduce((a,b)=>a<b?a:b):null;
+        const packingAt=durasiDetailPanel.packing_done_at;
+        const rentangTotal=rentangHari(mulaiPalingAwal,packingAt);
+        return(
+          <Modal title={"Durasi Pengerjaan — "+durasiDetailPanel.nama} onClose={()=>setDurasiDetailPanel(null)} width={560}>
+            <div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>
+              WO {durasiDetailPanel.wo_number_snapshot} — {durasiDetailPanel.proyek_snapshot}
+            </div>
+            <div style={{fontSize:10.5,color:"#94a3b8",marginBottom:14,lineHeight:1.6,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>
+              Durasi = rentang tanggal MULAI sesi pengerjaan pertama sampai SELESAI sesi terakhir per proses
+              (bukan jumlah menit semua sesi dijumlah - beberapa komponen/operator bisa dikerjakan
+              bersamaan, penjumlahan mentah akan overcount).
+            </div>
+            {durasiLoading?(
+              <div style={{textAlign:"center",padding:30,color:"#94a3b8",fontSize:12}}>Memuat data timer...</div>
+            ):durasiRows.length===0?(
+              <div style={{textAlign:"center",padding:30,color:"#94a3b8",fontSize:12}}>
+                <i className="ti ti-clock-off" style={{fontSize:26,display:"block",marginBottom:8}}/>
+                Belum ada data timer tercatat untuk panel ini.
+              </div>
+            ):(
+              <div style={{maxHeight:420,overflowY:"auto" as const}}>
+                <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5}}>
+                  <thead>
+                    <tr style={{background:"#f8fafc"}}>
+                      <th style={{...thS,fontSize:9.5}}>Proses</th>
+                      <th style={{...thS,fontSize:9.5}}>Mulai</th>
+                      <th style={{...thS,fontSize:9.5}}>Selesai Terakhir</th>
+                      <th style={{...thS,fontSize:9.5,textAlign:"center"}}>Durasi</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {DURASI_PROSES_URUTAN.filter(pr=>pr!=="PASANG KOMPONEN"&&punyaData(pr)).map(pr=>{
+                      const r=durasiRows.find(x=>x.proses===pr)!;
+                      const hari=rentangHari(r.mulai,r.selesai);
+                      return(
+                        <tr key={pr} style={{borderTop:"1px solid #f1f5f9"}}>
+                          <td style={{...td,fontWeight:700,color:"#1e293b"}}>{pr}</td>
+                          <td style={{...td,fontSize:10.5,color:"#64748b"}}>{fmtTgl(r.mulai)}</td>
+                          <td style={{...td,fontSize:10.5,color:"#64748b"}}>
+                            {r.adaBelumSelesai?<span style={{color:"#d97706",fontWeight:600}}>⚠ ada sesi belum ditutup</span>:fmtTgl(r.selesai)}
+                          </td>
+                          <td style={{...td,textAlign:"center",fontWeight:800,color:"#1d4ed8"}}>{hari!==null?hari+" hari":"—"}</td>
+                        </tr>
+                      );
+                    })}
+                    {/* PASANG KOMPONEN (15 Sep 2026) - dilacak TERPISAH dari fcs_timer_kerja biasa
+                        (checklist[kode].pasangKomponenTahap, khusus komponen Box Control/Pintu) -
+                        gak bisa disatukan ke rentang mulai/selesai di atas, cuma tampilkan progress
+                        gabungannya sebagai info, BUKAN durasi (data waktu-nya gak ada di jalur ini). */}
+                    <tr style={{borderTop:"1px solid #f1f5f9",background:"#fffbeb"}}>
+                      <td style={{...td,fontWeight:700,color:"#1e293b"}}>PASANG KOMPONEN</td>
+                      <td colSpan={3} style={{...td,fontSize:10.5,color:"#92400e"}}>
+                        Dilacak terpisah per komponen (Box Control/Pintu) - progress gabungan {pasangKomponenPct}%, data waktu mulai/selesai belum tersedia lewat jalur timer ini.
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+
+                <div style={{marginTop:14,padding:"10px 12px",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8}}>
+                  <div style={{fontWeight:800,fontSize:12,color:"#166534",marginBottom:4}}>📦 Packing Selesai</div>
+                  <div style={{fontSize:11,color:"#166534"}}>
+                    {packingAt?fmtTgl(packingAt)+(durasiDetailPanel.packing_done_by?" · oleh "+durasiDetailPanel.packing_done_by:""):"Belum selesai"}
+                  </div>
+                  {rentangTotal!==null&&(
+                    <div style={{fontSize:10.5,color:"#15803d",marginTop:4}}>Total dari proses pertama mulai s/d Packing selesai: <strong>{rentangTotal} hari</strong></div>
+                  )}
+                </div>
+              </div>
+            )}
           </Modal>
         );
       })()}
