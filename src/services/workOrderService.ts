@@ -240,6 +240,21 @@ export const workOrderService = {
             if (renharErr) throw new Error('Gagal sinkron wo_id renhar panel ' + p.id + ': ' + renharErr.message)
             const { error: fcsErr } = await supabase.from('fcs_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
             if (fcsErr) throw new Error('Gagal sinkron wo_id fcs_schedule panel ' + p.id + ': ' + fcsErr.message)
+            // BUG FIX (14 Sep 2026) - insiden nyata: WO 000/CJI & WO 065/JCI YD EXPANDER displit,
+            // panel pindah ke WO sibling BERES, tapi `permintaan` (Permintaan Barang BBMB/BBMU)
+            // gak pernah ikut disinkronkan di sini - PERSIS kelas bug yang sama kayak raw_schedule/
+            // renhar/fcs_schedule di atas (root cause fix 5 Agu 2026), cuma permintaan ketinggalan
+            // gak dimasukkan waktu itu. Akibatnya riwayat Permintaan Barang panel yang pindah tetap
+            // "nempel" ke wo_id LAMA - begitu WO lama itu (sekarang kosong-panel) dihapus manual
+            // lewat removeWithDependencies() (yang HAPUS BLAK-BLAKAN by wo_id, gak ada pengecekan
+            // panel-masih-hidup kayak cekYatimPiatu di bawah), permintaan+permintaan_item panel yang
+            // sebenarnya MASIH HIDUP di WO baru ikut kehapus permanen. fcs_tracking_komponen juga
+            // ditambahkan sekalian (kena kelas bug sama persis, FK asli ke work_orders + punya
+            // panel_id - kebetulan lagi kosong isinya pas insiden ini jadi belum ketauan dampaknya).
+            const { error: permErr } = await supabase.from('permintaan').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (permErr) throw new Error('Gagal sinkron wo_id permintaan panel ' + p.id + ': ' + permErr.message)
+            const { error: ftkErr } = await supabase.from('fcs_tracking_komponen').update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (ftkErr) throw new Error('Gagal sinkron wo_id fcs_tracking_komponen panel ' + p.id + ': ' + ftkErr.message)
           }
         } else {
           const { error } = await supabase.from('panels').insert(row)
