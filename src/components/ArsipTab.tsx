@@ -645,10 +645,18 @@ export function ArsipTab({user,refetchWO}:any){
           (kendalaByTanggal[key]??=[]).push(k);
         });
         const tanggalKendalaList=Object.keys(kendalaByTanggal).sort();
+        // PROSES_COL_W fixed, kolom hari bagi RATA sisa lebar (16 Sep 2026, revisi) - table-layout
+        // "auto" sebelumnya malah ngasih extra width ke kolom Proses, bukan ke kolom hari (browser
+        // auto-layout ngedistribusi sisa ruang gak terduga). Solusi: table-layout:fixed + <colgroup>
+        // eksplisit - kolom Proses PROSES_COL_W px pasti (gak ikut lebar), kolom hari dapat porsi
+        // sama rata dari sisa lebar via calc() (lebar minimal tetap dijaga DAY_COL_W lewat minWidth
+        // di <table> - begitu kolom hari kepepet di bawah DAY_COL_W, minWidth menang, table jadi
+        // lebih lebar dari wrapper, wrapper yang overflowX:auto scroll).
+        const PROSES_COL_W=150;
         const DAY_COL_W=34;
         const ganttTh:any={padding:"7px 9px",border:"1px solid #cbd5e1",background:"#f8fafc",fontSize:9.5,fontWeight:800,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.3};
         const ganttTd:any={padding:"6px 9px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const};
-        const ganttDayTd:any={padding:"4px 2px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const,textAlign:"center" as const,width:DAY_COL_W};
+        const ganttDayTd:any={padding:"4px 2px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const,textAlign:"center" as const};
         const exportBtnS:any={display:"inline-flex",alignItems:"center",gap:6,height:34,padding:"0 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"};
 
         return(
@@ -675,16 +683,17 @@ export function ArsipTab({user,refetchWO}:any){
               ):(
                 <>
                   <div style={{overflowX:"auto" as const,border:"1.5px solid #cbd5e1",borderRadius:8}}>
-                    {/* width:100% (16 Sep 2026) - sebelumnya table cuma selebar isinya (minWidth
-                        doang), jadi kalau rentang tanggal panel pendek (kolom hari dikit) sisa
-                        lebar modal kosong di kanan. width:100% bikin table isi penuh wrapper-nya;
-                        minWidth tetap dipertahankan buat kasus rentang panjang - begitu minWidth
-                        lebih besar dari lebar wrapper, wrapper overflowX:auto yang scroll, BUKAN
-                        table-nya mengecil. */}
-                    <table style={{borderCollapse:"collapse",fontSize:11,width:"100%",minWidth:cols.length*DAY_COL_W+160}}>
+                    {/* table-layout:fixed + colgroup (16 Sep 2026) - kolom Proses PROSES_COL_W
+                        fixed, kolom hari bagi rata sisa lebar (calc), minWidth di <table> jaga
+                        kolom hari gak lebih sempit dari DAY_COL_W (di situ wrapper mulai scroll). */}
+                    <table style={{borderCollapse:"collapse",fontSize:11,width:"100%",minWidth:cols.length*DAY_COL_W+PROSES_COL_W,tableLayout:"fixed" as const}}>
+                      <colgroup>
+                        <col style={{width:PROSES_COL_W}}/>
+                        {cols.map((_,i)=><col key={i} style={{width:`calc((100% - ${PROSES_COL_W}px) / ${cols.length})`}}/>)}
+                      </colgroup>
                       <thead>
                         <tr>
-                          <th rowSpan={3} style={{...ganttTh,minWidth:150,textAlign:"left" as const}}>Proses</th>
+                          <th rowSpan={3} style={{...ganttTh,textAlign:"left" as const}}>Proses</th>
                           {monthGroups.map((mg,i)=>(
                             <th key={i} colSpan={mg.count} style={{...ganttTh,textAlign:"center" as const}}>{BULAN_LABEL[mg.month]} {mg.year}</th>
                           ))}
@@ -696,7 +705,7 @@ export function ArsipTab({user,refetchWO}:any){
                         </tr>
                         <tr>
                           {cols.map((c,i)=>(
-                            <th key={i} style={{...ganttTh,fontSize:8,fontWeight:700,textAlign:"center" as const,minWidth:DAY_COL_W,padding:"4px 2px"}}>{c.day}</th>
+                            <th key={i} style={{...ganttTh,fontSize:8,fontWeight:700,textAlign:"center" as const,padding:"4px 2px"}}>{c.day}</th>
                           ))}
                         </tr>
                       </thead>
