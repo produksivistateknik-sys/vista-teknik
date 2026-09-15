@@ -656,7 +656,7 @@ export function ArsipTab({user,refetchWO}:any){
         const DAY_COL_W=34;
         const ganttTh:any={padding:"7px 9px",border:"1px solid #cbd5e1",background:"#f8fafc",fontSize:9.5,fontWeight:800,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.3};
         const ganttTd:any={padding:"6px 9px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const};
-        const ganttDayTd:any={padding:"4px 2px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const,textAlign:"center" as const};
+        const ganttDayTd:any={padding:"5px 3px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const,textAlign:"center" as const};
         const exportBtnS:any={display:"inline-flex",alignItems:"center",gap:6,height:34,padding:"0 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"};
 
         return(
@@ -724,13 +724,13 @@ export function ArsipTab({user,refetchWO}:any){
                                   return(
                                     <td key={ci} style={ganttDayTd}>
                                       {tahapDiSini.length>0&&(
-                                        <div style={{display:"flex",flexDirection:"column" as const,gap:1,alignItems:"center"}}>
+                                        <div style={{display:"flex",flexDirection:"column" as const,gap:2.5,alignItems:"center"}}>
                                           {tahapDiSini.map(t=>{
                                             const bc=GANTT_BUSBAR_TAHAP_COLOR[t];
                                             const singkatan:Record<string,string>={FABRIKASI:"FAB",PLATING:"PLT",HEATSHRINK:"HS",PASANG:"PSG"};
                                             return(
                                               <span key={t} title={`${BUSBAR_TAHAP_LABEL[t]} mulai ${fmtTglFull(ganttBusbarTahap[t])}`}
-                                                style={{display:"inline-block",background:bc.color,color:"#fff",borderRadius:3,padding:"1px 3px",fontSize:6.5,fontWeight:800,cursor:"default",lineHeight:1.3}}>
+                                                style={{display:"inline-block",background:bc.color,color:"#fff",borderRadius:4,padding:"2.5px 6px",fontSize:8.5,fontWeight:800,letterSpacing:.2,cursor:"default",lineHeight:1.2}}>
                                                 {singkatan[t]}
                                               </span>
                                             );
@@ -755,7 +755,7 @@ export function ArsipTab({user,refetchWO}:any){
                                 <td key={ci} style={ganttDayTd}>
                                   {ci===colIdx&&(
                                     <span title={`Mulai ${fmtTglFull(startIso)}`}
-                                      style={{display:"inline-block",background:row.color,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:6.5,fontWeight:800,letterSpacing:0,cursor:"default",lineHeight:1.3}}>
+                                      style={{display:"inline-block",background:row.color,color:"#fff",borderRadius:4,padding:"3px 7px",fontSize:9,fontWeight:800,letterSpacing:.2,cursor:"default",lineHeight:1.2}}>
                                       START
                                     </span>
                                   )}
