@@ -361,24 +361,33 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       const panelDataUtama=allPanelsFlat.find((p:any)=>p.id===panelIdRowUtama);
       const entries=row.schedule?.[selDate]||[];
       entries.forEach(e=>{
-        // BUG FIX (14 Sep 2026) - kode yang progress-nya SUDAH 100% (Done) tetap ikut nampil
-        // sebagai task aktif kalau raw_schedule.schedule[selDate] masih literal menyimpannya
-        // (carriedOverFrom "basi" - kode itu digeser SEBELUM selesai dikerjakan, lalu keburu
-        // diselesaikan operator DI HARI YANG SAMA sebelum tanggal tujuannya tiba, tapi keputusan
-        // geser yang sudah tertulis gak pernah direkonsiliasi ulang). auto-geser-harian sendiri
-        // SUDAH benar mengecualikan kode 100% dari geseran BERIKUTNYA (Fase 1) - gap-nya cuma di
-        // sini, jalur tampilan utama gak pernah ngecek progress sama sekali sebelum di-push ke
-        // allTasks. Kode yang sudah punya digeserKe (jejak permanen) TETAP dikecualikan (gak
-        // pernah masuk allTasks sejak awal - itu bukan tugas aktif). Pola SAMA PERSIS dengan guard
-        // yang sudah ada di jalur proyeksi WIRING CONTROL/POWER di bawah (progress>=100 return) -
-        // cuma belum ikut diterapkan ke jalur umum/generik ini.
+        // BUG FIX (14 Sep 2026, DIPERBAIKI LAGI 15 Sep 2026 - lihat komentar di bawah) - kode yang
+        // progress-nya SUDAH 100% (Done) TETAP ikut nampil sebagai task aktif kalau
+        // raw_schedule.schedule[selDate] masih literal menyimpannya (carriedOverFrom "basi" -
+        // kode itu digeser SEBELUM selesai dikerjakan, lalu keburu diselesaikan operator DI HARI
+        // YANG SAMA sebelum tanggal tujuannya tiba, tapi keputusan geser yang sudah tertulis gak
+        // pernah direkonsiliasi ulang). auto-geser-harian sendiri SUDAH benar mengecualikan kode
+        // 100% dari geseran BERIKUTNYA (Fase 1) - gap-nya cuma di sini, jalur tampilan utama gak
+        // pernah ngecek progress sama sekali sebelum di-push ke allTasks. Kode yang sudah punya
+        // digeserKe (jejak permanen) TETAP dikecualikan (gak pernah masuk allTasks sejak awal -
+        // itu bukan tugas aktif).
+        // REGRESI (15 Sep 2026, ditemukan user - Groundplate WM.1/WM.2 hilang total dari Renhar
+        // POTONG hari ini) - filter progress<100 di atas ke-apply ke SEMUA entry di selDate, gak
+        // cuma yang carriedOverFrom. Akibatnya komponen yang diselesaikan HARI INI JUGA (entry
+        // asli, bukan sisa geseran - dicek live: WM.1/WM.2 createdAt hari ini, TANPA
+        // carriedOverFrom/digeserKe) ikut ke-drop dari daftar, padahal seharusnya tetap tampil
+        // dengan badge "Done" (STATUS_PIPELINE_STYLE, sudah ada di render row ~989, tinggal gak
+        // di-drop lebih dulu di sini). Fix: exclude progress>=100 CUMA kalau entry ini beneran
+        // sisa geseran (e.carriedOverFrom truthy) - itu target ASLI fix 14 Sep. Entry asli hari
+        // ini TETAP lolos apapun progressnya.
         const kodeAktif=(e.komponen||[]).filter((kode:string)=>{
           if(kode.startsWith("__wiring_"))return true; // token, bukan kode BOM - biarin lolos
           if(e.digeserKe?.[kode])return false; // sudah jejak - jangan tampil sebagai tugas aktif
+          if(!e.carriedOverFrom)return true; // entry asli tanggal ini - tampil apapun progressnya
           const progress=panelDataUtama?.checklist?.[kode]?.progress?.[row.proses]||0;
           return progress<100;
         });
-        if(kodeAktif.length===0)return; // semua kode di entry ini udah Done - gak perlu jadi task
+        if(kodeAktif.length===0)return; // semua kode di entry ini sisa geseran yang udah Done - gak perlu jadi task
         tasks.push({
           rawId:row.id,woId:row.wo_id||row.woId,panelId:row.panel_id||row.panelId,
           proyek:row.proyek,panel:row.panel,proses:row.proses,
