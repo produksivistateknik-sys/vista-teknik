@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
-import { Btn, Modal, Badge } from './ui/Primitives'
+import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -26,6 +26,7 @@ const DIVISI_LABEL: Record<string, string> = {
   mekanik: 'Mekanik', painting: 'Painting', assembling: 'Assembling',
   wiring_ctrl: 'Wiring Control', wiring_pwr: 'Wiring Power',
   qc: 'QC', nameplate: 'Nameplate', komponen: 'Komponen', gudang: 'Gudang',
+  admin: 'Admin', // permintaan yang diajukan LANGSUNG oleh admin (16 Sep 2026, lihat submitAjukanAdmin)
 }
 
 const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<any[]> => {
@@ -194,6 +195,111 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       .filter((w: any) => w.panelCount > 0)
       .sort((a: any, b: any) => (a.wo || '').localeCompare(b.wo || '')),
     [woData])
+  // AJUKAN PERMINTAAN LANGSUNG OLEH ADMIN (16 Sep 2026) - admin Vista Teknik bisa ajukan sendiri
+  // (mis. kebutuhan darurat/administratif), TANPA lewat alur approval operator->admin->Gudang -
+  // status LANGSUNG 'submit' (final, "sudah keluar dari Gudang" - definisi yang sama dipakai
+  // Rekap per Panel di bawah), disetujui_admin_oleh/at DAN updated_by/at (2 tahap yang biasanya
+  // beda orang/waktu - approval admin & proses Gudang) SAMA-SAMA diisi nama admin ini + waktu
+  // sekarang, biar konsisten (bukan salah satu kosong padahal harusnya keduanya "sudah selesai").
+  // sudah_diambil SENGAJA TIDAK ikut di-set true di sini - itu peristiwa fisik terpisah (ada
+  // orang yang benar-benar ambil barangnya), gak boleh diasumsikan otomatis ikut kejadian cuma
+  // karena permintaannya diajukan+diproses via jalur ini.
+  const [ajukanModalOpen, setAjukanModalOpen] = useState(false)
+  const [ajukanWoSearch, setAjukanWoSearch] = useState('')
+  const [ajukanWoId, setAjukanWoId] = useState<number | null>(null)
+  const [ajukanPanelId, setAjukanPanelId] = useState<number | null>(null)
+  const [ajukanJenis, setAjukanJenis] = useState<'BBMB' | 'BBMU'>('BBMB')
+  const [ajukanKomponenList, setAjukanKomponenList] = useState<any[]>([])
+  const [ajukanKomponenLoading, setAjukanKomponenLoading] = useState(false)
+  type AjukanItemRow = { searchText: string, komponenId: string, namaKomponen: string, qty: string, satuanList: string[], satuanDipilih: string }
+  const kosongItemAjukan = (): AjukanItemRow => ({ searchText: '', komponenId: '', namaKomponen: '', qty: '1', satuanList: [], satuanDipilih: '' })
+  const [ajukanItems, setAjukanItems] = useState<AjukanItemRow[]>([kosongItemAjukan()])
+  const [ajukanSubmitting, setAjukanSubmitting] = useState(false)
+  const ajukanPanelOpts = ajukanWoId ? allPanelsFlat.filter((p: any) => p.woId === ajukanWoId) : []
+  const ajukanWoFiltered = allWosFlat.filter((w: any) => {
+    const q = ajukanWoSearch.trim().toLowerCase()
+    if (!q) return true
+    return [w.wo, w.proyek].join(' ').toLowerCase().includes(q)
+  })
+
+  // Komponen master di-scope per kategori (BBMB/BBMU) - SAMA PERSIS pola PermintaanView.tsx
+  // (Vista Pekerja): fetchAllPaged (komponen_master kategori BBMU sendirian 1.424 baris, lewat
+  // cap 1000 default kalau gak di-.range()), refetch tiap kategori diganti.
+  useEffect(() => {
+    if (!ajukanModalOpen) return
+    let cancelled = false
+    const fetchKomponen = async () => {
+      setAjukanKomponenLoading(true)
+      try {
+        const rows = await fetchAllPaged((from, to) =>
+          supabase.from('komponen_master').select('id,nama,satuan_utama,satuan_list').eq('kategori', ajukanJenis).order('nama', { ascending: true }).range(from, to))
+        if (!cancelled) setAjukanKomponenList(rows)
+      } catch (e: any) {
+        if (!cancelled) alert('Gagal memuat daftar komponen: ' + e.message)
+      }
+      if (!cancelled) setAjukanKomponenLoading(false)
+    }
+    fetchKomponen()
+    return () => { cancelled = true }
+  }, [ajukanModalOpen, ajukanJenis])
+
+  const tutupAjukanModal = () => {
+    setAjukanModalOpen(false)
+    setAjukanWoId(null); setAjukanPanelId(null); setAjukanWoSearch('')
+    setAjukanJenis('BBMB'); setAjukanItems([kosongItemAjukan()])
+  }
+  const updateAjukanItem = (idx: number, patch: Partial<AjukanItemRow>) => {
+    setAjukanItems(prev => prev.map((it, i) => i === idx ? { ...it, ...patch } : it))
+  }
+  const pilihKomponenAjukan = (idx: number, m: any) => {
+    const satuanList: string[] = m.satuan_list || []
+    const satuanDefault = m.satuan_utama && satuanList.includes(m.satuan_utama) ? m.satuan_utama : (satuanList[0] || '')
+    updateAjukanItem(idx, { komponenId: String(m.id), namaKomponen: m.nama, searchText: m.nama, satuanList, satuanDipilih: satuanDefault })
+  }
+
+  const submitAjukanAdmin = async () => {
+    if (!ajukanWoId) { alert('Pilih WO dulu'); return }
+    if (!ajukanPanelId) { alert('Pilih Panel dulu'); return }
+    const itemsValid = ajukanItems.filter(it => it.namaKomponen && Number(it.qty) > 0)
+    if (itemsValid.length === 0) { alert('Isi minimal 1 komponen dengan qty lebih dari 0'); return }
+    setAjukanSubmitting(true)
+    const woObj = allWosFlat.find((w: any) => w.id === ajukanWoId)
+    const panelObj = allPanelsFlat.find((p: any) => p.id === ajukanPanelId)
+    const nowIso = new Date().toISOString()
+    const { data: perm, error: permErr } = await supabase.from('permintaan').insert({
+      jenis: ajukanJenis, operator_nama: adminUsername, divisi: 'admin', sub_bagian: null,
+      wo_id: ajukanWoId, panel_id: ajukanPanelId,
+      wo_number: woObj?.wo || null, proyek: woObj?.proyek || null, panel_nama: panelObj?.nama || null,
+    }).select().single()
+    if (permErr || !perm) {
+      alert('Gagal mengirim permintaan: ' + (permErr?.message || 'unknown error'))
+      setAjukanSubmitting(false)
+      return
+    }
+    const rows = itemsValid.map(it => ({
+      permintaan_id: perm.id,
+      komponen_master_id: it.komponenId ? Number(it.komponenId) : null,
+      nama_komponen: it.namaKomponen,
+      qty: Number(it.qty),
+      satuan: it.satuanDipilih || null,
+      satuan_dipilih: it.satuanDipilih || null,
+      status: 'submit', // skip menunggu_admin/pending sepenuhnya - admin yang ajukan = otomatis disetujui+diproses
+      disetujui_admin_oleh: adminUsername, disetujui_admin_at: nowIso,
+      updated_by: adminUsername, updated_at: nowIso,
+      dilihat_operator: true,
+    }))
+    const { error: itemErr } = await supabase.from('permintaan_item').insert(rows)
+    if (itemErr) {
+      alert('Permintaan tersimpan tapi gagal simpan komponen: ' + itemErr.message)
+      setAjukanSubmitting(false)
+      return
+    }
+    setAjukanSubmitting(false)
+    tutupAjukanModal()
+    alert('Permintaan berhasil diajukan & langsung diproses (status Sudah Siap) - tidak perlu approval lagi.')
+    if (viewMode === 'riwayat') fetchRiwayat(riwayatTanggal)
+  }
+
   const [rekapWoSearch, setRekapWoSearch] = useState('')
   const [rekapWoId, setRekapWoId] = useState<number | null>(null)
   const [rekapScopePanelId, setRekapScopePanelId] = useState<number | null>(null) // null = semua panel di WO ini
@@ -503,6 +609,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
             {viewMode === 'pending' ? 'Permintaan operator (BBMB/BBMU) harus disetujui di sini dulu sebelum masuk ke Gudang.' : viewMode === 'riwayat' ? 'Riwayat keputusan admin (disetujui / ditolak).' : viewMode === 'koreksi' ? 'Pengajuan koreksi qty dari Gudang (salah input) - qty ASLI baru berubah setelah disetujui di sini.' : 'Rekap semua item yang sudah keluar dari Gudang untuk 1 WO (gabungan semua panel di dalamnya), digabung per jenis item.'}
           </div>
         </div>
+        {/* Ajukan Permintaan (admin) - SELALU tampil apapun viewMode aktif (aksi global, bukan
+            konten per-tab), diposisikan sebelum badge counter yang emang cuma muncul per-tab. */}
+        <button onClick={() => setAjukanModalOpen(true)}
+          style={{ zIndex: 1, display: 'flex', alignItems: 'center', gap: 6, background: '#1d4ed8', color: '#fff', border: 'none', borderRadius: 20, padding: '9px 16px', fontSize: 12.5, fontWeight: 700, cursor: 'pointer', flexShrink: 0, fontFamily: 'inherit' }}>
+          <i className="ti ti-plus" style={{ fontSize: 14 }} /> Ajukan Permintaan
+        </button>
         {viewMode === 'pending' && (
           <span style={{ zIndex: 1, background: '#fff', color: '#1d4ed8', borderRadius: 20, padding: '5px 14px', fontSize: 12.5, fontWeight: 700, flexShrink: 0 }}>{items.length} menunggu</span>
         )}
@@ -887,6 +999,110 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
             <Btn color="#94a3b8" outline onClick={() => { setKoreksiRejectTarget(null); setKoreksiRejectAlasan('') }}>Batal</Btn>
             <Btn color="#dc2626" onClick={tolakKoreksi} disabled={processingKoreksiId === koreksiRejectTarget.id}>
               {processingKoreksiId === koreksiRejectTarget.id ? 'Menyimpan...' : 'Tolak Pengajuan'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {ajukanModalOpen && (
+        <Modal title="Ajukan Permintaan (Admin)" onClose={tutupAjukanModal} width={640}>
+          <div style={{ fontSize: 12, color: '#1d4ed8', marginBottom: 14, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
+            Permintaan yang diajukan lewat sini LANGSUNG berstatus "Sudah Siap" - tidak perlu approval lagi (karena diajukan oleh Admin), otomatis masuk ke Riwayat & Rekap per Panel.
+          </div>
+
+          <Lbl>Work Order</Lbl>
+          {ajukanWoId ? (
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 12px', border: '1.5px solid #bfdbfe', background: '#eff6ff', borderRadius: 8, marginBottom: 14 }}>
+              <div>
+                <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>WO {allWosFlat.find((w: any) => w.id === ajukanWoId)?.wo}</div>
+                <div style={{ fontSize: 11, color: '#64748b' }}>{allWosFlat.find((w: any) => w.id === ajukanWoId)?.proyek}</div>
+              </div>
+              <button onClick={() => { setAjukanWoId(null); setAjukanPanelId(null) }}
+                style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 12, fontWeight: 700, fontFamily: 'inherit' }}>Ganti</button>
+            </div>
+          ) : (
+            <>
+              <Inp placeholder="Cari nomor WO atau nama proyek..." value={ajukanWoSearch} onChange={(e: any) => setAjukanWoSearch(e.target.value)} style={{ marginBottom: 8 }} />
+              <div style={{ maxHeight: 160, overflowY: 'auto', border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, marginBottom: 14 }}>
+                {ajukanWoFiltered.length === 0 ? (
+                  <div style={{ padding: 12, fontSize: 12, color: '#94a3b8', textAlign: 'center' }}>WO tidak ditemukan</div>
+                ) : ajukanWoFiltered.map((w: any) => (
+                  <button key={w.id} onClick={() => { setAjukanWoId(w.id); setAjukanPanelId(null) }}
+                    style={{ display: 'block', width: '100%', textAlign: 'left', padding: '8px 12px', border: 'none', borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', fontFamily: 'inherit' }}>
+                    <span style={{ fontWeight: 700, fontSize: 12.5, color: '#1e293b' }}>WO {w.wo}</span>
+                    <span style={{ fontSize: 11.5, color: '#64748b' }}> - {w.proyek}</span>
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
+
+          {ajukanWoId && (
+            <>
+              <Lbl>Panel</Lbl>
+              <Sel value={ajukanPanelId ?? ''} onChange={(e: any) => setAjukanPanelId(e.target.value ? Number(e.target.value) : null)} style={{ marginBottom: 14 }}>
+                <option value="">Pilih panel...</option>
+                {ajukanPanelOpts.map((p: any) => <option key={p.id} value={p.id}>{p.nama}</option>)}
+              </Sel>
+            </>
+          )}
+
+          <Lbl>Kategori</Lbl>
+          <div style={{ display: 'flex', gap: 8, marginBottom: 14 }}>
+            {(['BBMB', 'BBMU'] as const).map(j => (
+              <button key={j} onClick={() => setAjukanJenis(j)}
+                style={{ flex: 1, padding: '8px 12px', borderRadius: 8, border: `1.5px solid ${ajukanJenis === j ? '#2563eb' : 'var(--border-color,#e2e8f0)'}`, background: ajukanJenis === j ? '#eff6ff' : '#fff', color: ajukanJenis === j ? '#2563eb' : '#64748b', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {j}
+              </button>
+            ))}
+          </div>
+
+          <Lbl>Komponen</Lbl>
+          {ajukanKomponenLoading && <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>Memuat daftar komponen...</div>}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10, marginBottom: 10 }}>
+            {ajukanItems.map((it, idx) => {
+              const q = it.searchText.trim().toLowerCase()
+              const matches = q && !it.komponenId ? ajukanKomponenList.filter((m: any) => m.nama.toLowerCase().includes(q)).slice(0, 50) : []
+              return (
+                <div key={idx} style={{ border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, padding: 10 }}>
+                  <div style={{ display: 'flex', gap: 8 }}>
+                    <div style={{ flex: 1, position: 'relative' }}>
+                      <Inp placeholder="Cari nama komponen..." value={it.searchText}
+                        onChange={(e: any) => updateAjukanItem(idx, { searchText: e.target.value, komponenId: '', namaKomponen: '', satuanList: [], satuanDipilih: '' })} />
+                      {matches.length > 0 && (
+                        <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 20, background: '#fff', border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, marginTop: 2, maxHeight: 180, overflowY: 'auto', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}>
+                          {matches.map((m: any) => (
+                            <button key={m.id} onClick={() => pilihKomponenAjukan(idx, m)}
+                              style={{ display: 'block', width: '100%', textAlign: 'left', padding: '7px 10px', border: 'none', borderBottom: '1px solid #f1f5f9', background: '#fff', cursor: 'pointer', fontSize: 12, fontFamily: 'inherit' }}>
+                              {m.nama}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                    <Inp type="number" min="0" placeholder="Qty" value={it.qty} onChange={(e: any) => updateAjukanItem(idx, { qty: e.target.value })} style={{ width: 80, flexShrink: 0 }} />
+                    {it.satuanList.length > 1 ? (
+                      <Sel value={it.satuanDipilih} onChange={(e: any) => updateAjukanItem(idx, { satuanDipilih: e.target.value })} style={{ width: 100, flexShrink: 0 }}>
+                        {it.satuanList.map(s => <option key={s} value={s}>{s}</option>)}
+                      </Sel>
+                    ) : (
+                      <div style={{ width: 100, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 12, color: '#64748b' }}>{it.satuanDipilih || '-'}</div>
+                    )}
+                    {ajukanItems.length > 1 && (
+                      <button onClick={() => setAjukanItems(prev => prev.filter((_, i) => i !== idx))}
+                        style={{ width: 32, flexShrink: 0, border: '1px solid #fecaca', background: '#fef2f2', color: '#dc2626', borderRadius: 7, cursor: 'pointer', fontSize: 14 }}>✕</button>
+                    )}
+                  </div>
+                </div>
+              )
+            })}
+          </div>
+          <Btn color="#64748b" outline onClick={() => setAjukanItems(prev => [...prev, kosongItemAjukan()])} style={{ marginBottom: 16, width: '100%' }}>+ Tambah Baris</Btn>
+
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn color="#94a3b8" outline onClick={tutupAjukanModal} disabled={ajukanSubmitting}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={submitAjukanAdmin} disabled={ajukanSubmitting}>
+              {ajukanSubmitting ? 'Mengirim...' : 'Ajukan & Proses Langsung'}
             </Btn>
           </div>
         </Modal>
