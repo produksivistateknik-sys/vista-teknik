@@ -675,7 +675,13 @@ export function ArsipTab({user,refetchWO}:any){
               ):(
                 <>
                   <div style={{overflowX:"auto" as const,border:"1.5px solid #cbd5e1",borderRadius:8}}>
-                    <table style={{borderCollapse:"collapse",fontSize:11,minWidth:cols.length*DAY_COL_W+160}}>
+                    {/* width:100% (16 Sep 2026) - sebelumnya table cuma selebar isinya (minWidth
+                        doang), jadi kalau rentang tanggal panel pendek (kolom hari dikit) sisa
+                        lebar modal kosong di kanan. width:100% bikin table isi penuh wrapper-nya;
+                        minWidth tetap dipertahankan buat kasus rentang panjang - begitu minWidth
+                        lebih besar dari lebar wrapper, wrapper overflowX:auto yang scroll, BUKAN
+                        table-nya mengecil. */}
+                    <table style={{borderCollapse:"collapse",fontSize:11,width:"100%",minWidth:cols.length*DAY_COL_W+160}}>
                       <thead>
                         <tr>
                           <th rowSpan={3} style={{...ganttTh,minWidth:150,textAlign:"left" as const}}>Proses</th>
