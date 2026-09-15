@@ -514,14 +514,30 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       </div>
 
       <div style={{ display: 'flex', gap: 6, marginBottom: 16, borderBottom: '1.5px solid var(--border-color,#e2e8f0)' }}>
-        {[{ key: 'pending', label: 'Menunggu Persetujuan' }, { key: 'riwayat', label: 'Riwayat' }, { key: 'rekap', label: 'Rekap per Panel' }, { key: 'koreksi', label: 'Koreksi Qty' }].map(t => (
+        {/* Badge jumlah pending di label tab (16 Sep 2026) - items.length/koreksiList.length UDAH
+            di-fetch + realtime-subscribe dari mount (independen dari viewMode aktif, lihat
+            useEffect fetchData/fetchKoreksi di atas), jadi badge ini akurat real-time TANPA query
+            baru sama sekali - murni tambahan render. Sembunyi total kalau 0 (bukan nampilin "0"). */}
+        {[
+          { key: 'pending', label: 'Menunggu Persetujuan', count: items.length },
+          { key: 'riwayat', label: 'Riwayat', count: 0 },
+          { key: 'rekap', label: 'Rekap per Panel', count: 0 },
+          { key: 'koreksi', label: 'Koreksi Qty', count: koreksiList.length },
+        ].map(t => (
           <button key={t.key} onClick={() => setViewMode(t.key as any)}
             style={{
+              display: 'flex', alignItems: 'center', gap: 6,
               padding: '8px 16px', fontSize: 13, fontWeight: 700, cursor: 'pointer', background: 'none', border: 'none',
               borderBottom: viewMode === t.key ? '2.5px solid #2563eb' : '2.5px solid transparent',
               color: viewMode === t.key ? '#2563eb' : '#94a3b8', marginBottom: -1.5,
             }}>
             {t.label}
+            {t.count > 0 && (
+              <span style={{
+                minWidth: 18, height: 18, padding: '0 5px', borderRadius: 9, background: '#dc2626', color: '#fff',
+                fontSize: 10.5, fontWeight: 800, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+              }}>{t.count}</span>
+            )}
           </button>
         ))}
       </div>
