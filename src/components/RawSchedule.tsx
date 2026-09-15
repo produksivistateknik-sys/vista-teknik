@@ -480,9 +480,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setRawData((prev:any)=>prev.map((r:any)=>r.id===rawId?{...r,schedule:newSchedule}:r));
   };
   // PROSES yang cuma penanda tanggal (bukan per-komponen) - klik cell langsung toggle, gak ada modal, gak masuk renhar.
-  // NAMEPLATE/YELLOWMARK gabung sini juga - progress aktualnya tetap di panels.nameplate_progress
-  // (Vista Pekerja NameplateView), baris ini murni penanda jadwal buat muncul di Rencana Harian.
-  const PROSES_MARKER_ONLY=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
+  // NAMEPLATE/YELLOWMARK (16 Sep 2026) - DIHAPUS dari Raw Schedule sesuai permintaan user (baris
+  // "Tambah Panel" gak akan nawarin lagi, baris lama sudah dibersihkan dari raw_schedule) -
+  // progress aktualnya tetap di panels.nameplate_progress (Vista Pekerja NameplateView), sudah
+  // dan tetap dilihat lewat Detail Progres/Task Monitoring, cuma gak lagi lewat jalur ini.
+  const PROSES_MARKER_ONLY=["QC TEST","PACKING"];
 
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
@@ -1127,7 +1129,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const activeKodes=Object.entries(p.checklist||{}).filter(([,v]:any)=>(v?.qty||0)>0).map(([k])=>k);
     const relevantSet=new Set<string>();
     activeKodes.forEach((kode:string)=>getRelevantProsesForKode(kode,p.tipe).forEach((pr:string)=>relevantSet.add(pr)));
-    return [...relevantSet].filter((pr:string)=>!existingProsesP.includes(pr));
+    // NAMEPLATE/YELLOWMARK (16 Sep 2026) - dihapus dari Raw Schedule sesuai permintaan user,
+    // getRelevantProsesForKode() TETAP nyertain keduanya (dipakai juga di TaskMonitoring/
+    // RencanaHarian buat gating status "whole panel", jangan disentuh fungsi bersama itu) -
+    // filter khusus di sini aja biar "Tambah Panel" gak pernah nawarin/bikin baris ini lagi.
+    return [...relevantSet].filter((pr:string)=>pr!=="NAMEPLATE"&&pr!=="YELLOWMARK"&&!existingProsesP.includes(pr));
   };
   const panelOpts=addForm.woId?(woData.find(w=>w.id===Number(addForm.woId))?.panels||[]).filter((p:any)=>getMissingRelevantProses(p).length>0):[];
   const [addLoading,setAddLoading]=useState(false);
@@ -1307,7 +1313,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <span style={{fontSize:11,color:"#64748b",fontWeight:600}}>Filter Proses:</span>
         <button onClick={()=>setFilterProses([])} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${filterProses.length===0?"#1d4ed8":"#e2e8f0"}`,background:filterProses.length===0?"#1d4ed8":"#fff",color:filterProses.length===0?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua</button>
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
-        {["NAMEPLATE","YELLOWMARK"].map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
       {pilihKomponenModal&&(

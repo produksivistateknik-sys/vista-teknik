@@ -1,6 +1,6 @@
 import { supabase } from '../lib/supabase'
 import { ALL_PROSES } from '../constants/panelTypes'
-import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE } from '../lib/panelHelpers'
+import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE, getBusbarKomponen } from '../lib/panelHelpers'
 import { activityLogService } from './activityLogService'
 
 // ================= WIRING CONTROL/POWER: "hari kerja ke-N" dari histori fcs_timer_kerja =================
@@ -1642,6 +1642,15 @@ export async function generateAndSaveToRawSchedule(
       if (activeKodes.length === 0) continue
 
       for (const prosesSkeleton of ALL_PROSES) {
+        // BUSBAR SENGAJA di-skip di sini, jangan digantungkan ke bom_proses_relevan - lihat
+        // commit 4c464e1 (10 Sep 2026, "hapus badge BUSBAR hantu di komponen mekanikal"): tabel
+        // itu isinya pemetaan komponen BOM MEKANIKAL (Groundplate/Dudukan dkk pernah salah
+        // ke-tandai "relevan" ke BUSBAR di situ, sumber badge hantu). Efek samping yang gak
+        // disadari waktu itu: skeleton row BUSBAR di Raw Schedule jadi PERMANEN gak pernah
+        // kebuat lagi buat panel baru manapun sejak fix itu (adaRelevan-nya selalu false,
+        // BUSBAR bukan proses komponen mekanikal, gak ada baris bom_proses_relevan yang valid
+        // buat itu). Skeleton BUSBAR yang benar dibuat terpisah di bawah (getBusbarKomponen).
+        if (prosesSkeleton === 'BUSBAR') continue
         const adaRelevan = PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) || activeKodes.some((kode) => {
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
@@ -1649,6 +1658,16 @@ export async function generateAndSaveToRawSchedule(
         })
         if (adaRelevan) await ensureSkeletonRow(wo, panel, prosesSkeleton)
       }
+
+      // BUSBAR skeleton row (16 Sep 2026) - syarat yang BENAR: tipe panel ini emang punya daftar
+      // komponen busbar (getBusbarKomponen - H-BUS/INCOMING/OUTGOING/NETRAL/GROUND/COUPLER dst),
+      // SAMA PERSIS sumber yang dipakai Detail Progres/Task Monitoring buat nentuin baris BUSBAR
+      // relevan atau enggak - BUKAN bom_proses_relevan (itu buat komponen mekanikal, konsep
+      // beda total, lihat komentar di atas). Semua 4 tipe panel yang ada (FS/F3B/WM_MS/WM_POLY)
+      // punya daftar busbar sendiri jadi ini pasti true buat semua panel saat ini - ditulis
+      // eksplisit (bukan asumsi "selalu true") biar kalau ada tipe baru kelak yang beneran gak
+      // punya busbar, otomatis gak dikasih baris kosong yang gak berguna.
+      if (getBusbarKomponen(panel.tipe).length > 0) await ensureSkeletonRow(wo, panel, 'BUSBAR')
 
       for (const proses of ALL_PROSES) {
         // BUSBAR gak pernah dijadwalin lewat mekanisme WP generik ini - modelnya beda total
