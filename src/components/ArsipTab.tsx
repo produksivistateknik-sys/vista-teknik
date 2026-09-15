@@ -181,30 +181,25 @@ export function ArsipTab({user,refetchWO}:any){
     setGanttLoading(false);
   };
 
-  // Kelompokkan tanggal jadi kolom minggu-per-bulan ("Wk 1".."Wk 5" restart tiap bulan baru -
-  // day 1-7=Wk1, 8-14=Wk2, dst) dari rangeStart s/d rangeEnd (inklusif bulan keduanya).
-  const buildWeekColumns=(rangeStart:string,rangeEnd:string)=>{
-    const start=new Date(rangeStart),end=new Date(rangeEnd);
-    const cols:{year:number,month:number,weekIdx:number}[]=[];
-    let cy=start.getFullYear(),cm=start.getMonth();
-    const ey=end.getFullYear(),em=end.getMonth();
-    while(cy<ey||(cy===ey&&cm<=em)){
-      const daysInMonth=new Date(cy,cm+1,0).getDate();
-      const isFirst=cy===start.getFullYear()&&cm===start.getMonth();
-      const isLast=cy===ey&&cm===em;
-      const firstDay=isFirst?start.getDate():1;
-      const lastDay=isLast?end.getDate():daysInMonth;
-      const firstWeek=Math.floor((firstDay-1)/7);
-      const lastWeek=Math.floor((lastDay-1)/7);
-      for(let w=firstWeek;w<=lastWeek;w++)cols.push({year:cy,month:cm,weekIdx:w});
-      cm++;if(cm>11){cm=0;cy++;}
+  // Kelompokkan tanggal jadi kolom HARIAN (16 Sep 2026, revisi dari kolom mingguan sebelumnya -
+  // 1 kolom Week dulu mewakili 7 hari sekaligus, jadi proses yang start di hari beda dalam
+  // minggu yang sama numpuk di 1 kolom yang sama). weekIdx tetap dihitung per kolom (day 1-7=Wk1,
+  // 8-14=Wk2, dst - restart tiap bulan baru) buat dipakai ngelompokkan header tingkat "Week N".
+  const buildDayColumns=(rangeStart:string,rangeEnd:string)=>{
+    const start=new Date(rangeStart);start.setHours(0,0,0,0);
+    const end=new Date(rangeEnd);end.setHours(0,0,0,0);
+    const cols:{year:number,month:number,day:number,weekIdx:number}[]=[];
+    const cur=new Date(start);
+    while(cur<=end){
+      cols.push({year:cur.getFullYear(),month:cur.getMonth(),day:cur.getDate(),weekIdx:Math.floor((cur.getDate()-1)/7)});
+      cur.setDate(cur.getDate()+1);
     }
     return cols;
   };
-  const colIndexForDate=(cols:{year:number,month:number,weekIdx:number}[],iso:string)=>{
+  const colIndexForDate=(cols:{year:number,month:number,day:number}[],iso:string)=>{
     const d=new Date(iso);
-    const y=d.getFullYear(),m=d.getMonth(),w=Math.floor((d.getDate()-1)/7);
-    return cols.findIndex(c=>c.year===y&&c.month===m&&c.weekIdx===w);
+    const y=d.getFullYear(),m=d.getMonth(),day=d.getDate();
+    return cols.findIndex(c=>c.year===y&&c.month===m&&c.day===day);
   };
   const fmtTglFull=(iso:string|null|undefined)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"-";
   const BULAN_LABEL=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
@@ -628,12 +623,21 @@ export function ArsipTab({user,refetchWO}:any){
         const hasAnyData=allDates.length>0;
         const rangeStart=hasAnyData?allDates.reduce((a,b)=>a<b?a:b):null;
         const rangeEnd=ganttDetailPanel.packing_done_at||(hasAnyData?allDates.reduce((a,b)=>a>b?a:b):null);
-        const cols=hasAnyData&&rangeStart&&rangeEnd?buildWeekColumns(rangeStart,rangeEnd):[];
+        // Kolom harian (16 Sep 2026, revisi dari kolom mingguan - lihat komentar buildDayColumns)
+        // dikelompokkan 2 tingkat buat header: per-bulan (row1) dan per-minggu-dalam-bulan (row2),
+        // row3 nampilin tanggal harian sendiri-sendiri.
+        const cols=hasAnyData&&rangeStart&&rangeEnd?buildDayColumns(rangeStart,rangeEnd):[];
         const monthGroups:{year:number,month:number,count:number}[]=[];
         cols.forEach(c=>{
           const last=monthGroups[monthGroups.length-1];
           if(last&&last.year===c.year&&last.month===c.month)last.count++;
           else monthGroups.push({year:c.year,month:c.month,count:1});
+        });
+        const weekGroups:{year:number,month:number,weekIdx:number,count:number}[]=[];
+        cols.forEach(c=>{
+          const last=weekGroups[weekGroups.length-1];
+          if(last&&last.year===c.year&&last.month===c.month&&last.weekIdx===c.weekIdx)last.count++;
+          else weekGroups.push({year:c.year,month:c.month,weekIdx:c.weekIdx,count:1});
         });
         const kendalaByTanggal:Record<string,any[]>={};
         ganttKendala.forEach(k=>{
@@ -641,8 +645,10 @@ export function ArsipTab({user,refetchWO}:any){
           (kendalaByTanggal[key]??=[]).push(k);
         });
         const tanggalKendalaList=Object.keys(kendalaByTanggal).sort();
+        const DAY_COL_W=34;
         const ganttTh:any={padding:"7px 9px",border:"1px solid #cbd5e1",background:"#f8fafc",fontSize:9.5,fontWeight:800,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.3};
         const ganttTd:any={padding:"6px 9px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const};
+        const ganttDayTd:any={padding:"4px 2px",border:"1px solid #e2e8f0",fontSize:10.5,verticalAlign:"middle" as const,textAlign:"center" as const,width:DAY_COL_W};
         const exportBtnS:any={display:"inline-flex",alignItems:"center",gap:6,height:34,padding:"0 16px",borderRadius:8,fontSize:12,fontWeight:700,cursor:"pointer"};
 
         return(
@@ -669,17 +675,22 @@ export function ArsipTab({user,refetchWO}:any){
               ):(
                 <>
                   <div style={{overflowX:"auto" as const,border:"1.5px solid #cbd5e1",borderRadius:8}}>
-                    <table style={{borderCollapse:"collapse",fontSize:11,minWidth:cols.length*54+160}}>
+                    <table style={{borderCollapse:"collapse",fontSize:11,minWidth:cols.length*DAY_COL_W+160}}>
                       <thead>
                         <tr>
-                          <th rowSpan={2} style={{...ganttTh,minWidth:150,textAlign:"left" as const}}>Proses</th>
+                          <th rowSpan={3} style={{...ganttTh,minWidth:150,textAlign:"left" as const}}>Proses</th>
                           {monthGroups.map((mg,i)=>(
                             <th key={i} colSpan={mg.count} style={{...ganttTh,textAlign:"center" as const}}>{BULAN_LABEL[mg.month]} {mg.year}</th>
                           ))}
                         </tr>
                         <tr>
+                          {weekGroups.map((wg,i)=>(
+                            <th key={i} colSpan={wg.count} style={{...ganttTh,fontSize:9,textAlign:"center" as const}}>{`Week ${wg.weekIdx+1}`}</th>
+                          ))}
+                        </tr>
+                        <tr>
                           {cols.map((c,i)=>(
-                            <th key={i} style={{...ganttTh,fontSize:9,textAlign:"center" as const,minWidth:54}}>{`Wk ${c.weekIdx+1}`}</th>
+                            <th key={i} style={{...ganttTh,fontSize:8,fontWeight:700,textAlign:"center" as const,minWidth:DAY_COL_W,padding:"4px 2px"}}>{c.day}</th>
                           ))}
                         </tr>
                       </thead>
@@ -696,15 +707,15 @@ export function ArsipTab({user,refetchWO}:any){
                                 {cols.map((c,ci)=>{
                                   const tahapDiSini=tahapAda.filter(t=>colIndexForDate(cols,ganttBusbarTahap[t]!)===ci);
                                   return(
-                                    <td key={ci} style={ganttTd}>
+                                    <td key={ci} style={ganttDayTd}>
                                       {tahapDiSini.length>0&&(
-                                        <div style={{display:"flex",flexDirection:"column" as const,gap:2}}>
+                                        <div style={{display:"flex",flexDirection:"column" as const,gap:1,alignItems:"center"}}>
                                           {tahapDiSini.map(t=>{
                                             const bc=GANTT_BUSBAR_TAHAP_COLOR[t];
                                             const singkatan:Record<string,string>={FABRIKASI:"FAB",PLATING:"PLT",HEATSHRINK:"HS",PASANG:"PSG"};
                                             return(
                                               <span key={t} title={`${BUSBAR_TAHAP_LABEL[t]} mulai ${fmtTglFull(ganttBusbarTahap[t])}`}
-                                                style={{display:"inline-block",background:bc.color,color:"#fff",borderRadius:4,padding:"2px 5px",fontSize:8,fontWeight:800,cursor:"default"}}>
+                                                style={{display:"inline-block",background:bc.color,color:"#fff",borderRadius:3,padding:"1px 3px",fontSize:6.5,fontWeight:800,cursor:"default",lineHeight:1.3}}>
                                                 {singkatan[t]}
                                               </span>
                                             );
@@ -726,10 +737,10 @@ export function ArsipTab({user,refetchWO}:any){
                                 {!startIso&&<div style={{fontSize:8.5,color:"#cbd5e1",fontWeight:500,marginTop:2}}>Belum ada data</div>}
                               </td>
                               {cols.map((c,ci)=>(
-                                <td key={ci} style={ganttTd}>
+                                <td key={ci} style={ganttDayTd}>
                                   {ci===colIdx&&(
                                     <span title={`Mulai ${fmtTglFull(startIso)}`}
-                                      style={{display:"inline-block",background:row.color,color:"#fff",borderRadius:4,padding:"2px 7px",fontSize:8.5,fontWeight:800,letterSpacing:.3,cursor:"default"}}>
+                                      style={{display:"inline-block",background:row.color,color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:6.5,fontWeight:800,letterSpacing:0,cursor:"default",lineHeight:1.3}}>
                                       START
                                     </span>
                                   )}
