@@ -35,15 +35,52 @@ Bahasa laporan/ringkasan/penjelasan ke user: **Bahasa Indonesia**.
    dsb), **WAJIB** keduanya pakai **1 fungsi/helper bersama**. **Dilarang**
    masing-masing punya logika sendiri yang bisa beda hasil.
 
-2. **Proses spesial (WIRING / BUSBAR / CONTROL / POWER / dll).** Proses ini
-   historisnya punya jalur kode terpisah. SETIAP kali menambah fitur baru untuk
-   "proses pada umumnya", **WAJIB cek** apakah proses spesial juga perlu
-   disertakan. **Dilarang asumsi** 1 jalur kode mewakili semua proses.
-   - Khusus WIRING CONTROL/POWER: itu **jadwal pasti, bukan proyeksi**. Jangan
+2. **Proses spesial (WIRING / BUSBAR / QC TEST / PACKING / NAMEPLATE /
+   YELLOWMARK).** Proses ini historisnya punya jalur kode terpisah dari
+   "proses pada umumnya" (POTONG/BENDING/STEL/FINISHING/RENDAM/PAINTING/RAKIT/
+   PASANG KOMPONEN). SETIAP kali menambah/mengubah fitur yang menyentuh proses
+   secara generik (progress, filter tampilan, dedup jadwal, dsb), **WAJIB
+   cek satu-satu** apakah proses spesial di bawah ini ikut kena dampaknya —
+   **dilarang asumsi** 1 jalur kode mewakili semua proses (audit 16 Sep 2026:
+   14 file pemakai `ALL_PROSES` di vista-teknik dicek satu-satu, referensi ini
+   dibuat dari hasilnya):
+   - **BUSBAR**: relevansi "panel ini butuh BUSBAR atau tidak" **WAJIB** pakai
+     `getBusbarKomponen(tipe)` (`panelHelpers.ts`) — **BUKAN** `bom_proses_relevan`
+     (tabel itu utk BOM mekanik asli; sejak fix `4c464e1` 10 Sep 2026,
+     `isKomponenRelevant`/`getRelevantProsesForKode` sengaja hardcode exclude
+     BUSBAR dari situ, lihat [[project_busbar_bom_proses_relevan_undeletable]]).
+     Progress disimpan di checklist **pseudo-komponen** (LINE/NETRAL/GROUND dst)
+     `.progress.BUSBAR`, **BUKAN** kolom mati `panels.busbar_progress` — lihat
+     [[project_busbar_storage_model]]. Skeleton row `raw_schedule` dibuat lewat
+     jalur terpisah di `fcsService.ts` (`ensureSkeletonRow` khusus BUSBAR),
+     bukan lewat mapping `bom_proses_relevan` biasa.
+   - **QC TEST / PACKING**: whole-panel, bukan per-komponen — komponennya
+     literal `["MARKED"]`, bukan kode BOM asli. Terdaftar di
+     `PROSES_TANPA_MAPPING_KOMPONEN` (`panelHelpers.ts`, 4 item — termasuk
+     NAMEPLATE/YELLOWMARK). **Hati-hati**: `fcsService.ts` punya konstanta LOKAL
+     bernama sama tapi isinya cuma 2 item (`["QC TEST","PACKING"]`, TANPA
+     NAMEPLATE/YELLOWMARK) — jangan asumsikan dua konstanta bernama sama itu
+     isinya identik, selalu cek definisinya di file yang bersangkutan.
+   - **NAMEPLATE / YELLOWMARK**: **TIDAK ADA** di `ALL_PROSES`
+     (`constants/panelTypes.ts`). Progress-nya kolom terpisah
+     `panels.nameplate_progress` / `panels.yellowmark_progress`, bukan lewat
+     `checklist`. `RawSchedule.tsx` & `RencanaHarian.tsx` menangani ini di
+     **section terpisah sendiri**, baca `raw_schedule` langsung, gak lewat
+     `allTasks`/renhar biasa sama sekali.
+   - **WIRING CONTROL/POWER**: itu **jadwal pasti, bukan proyeksi**. Jangan
      bikin ulang badge/section/teks "proyeksi". Jaga dedup **real-menang** +
      **entri-terakhir-per-kode** kalau menyentuh logic ini.
 
-3. **Tabel snapshot / archive.** Tabel seperti `panel_seksi_archived.data`,
+3. **Filter progress berbasis tanggal ("basi" vs "selesai hari ini").** Kalau
+   nyembunyiin/nge-exclude entry berdasarkan `progress>=100`, **WAJIB** pastikan
+   itu bukan cuma exclude berdasarkan angka progress SAAT INI — cek juga APAKAH
+   progress itu baru dicapai HARI INI (misal lewat `checklist[kode].progressByDate[proses][tanggal]`,
+   field yang sudah konsisten ditulis tiap jalur simpan progress operator) vs
+   beneran basi/sudah lama. 2x insiden nyata (14→15→16 Sep 2026, RencanaHarian
+   carry-over): exclude yang cuma lihat angka progress terkini salah nyembunyiin
+   item yang justru baru selesai dikerjakan hari itu juga.
+
+4. **Tabel snapshot / archive.** Tabel seperti `panel_seksi_archived.data`,
    `raw_schedule_archived`, dan snapshot lain **WAJIB** disinkronkan strukturnya
    kalau ada perubahan skema di tabel live terkait.
 
@@ -80,8 +117,10 @@ hasil tiap poin **secara eksplisit** ke user:
 2. Apakah semua panggilan Supabase baru sudah cek `error`?
 3. Apakah ada perubahan pada tabel yang punya snapshot/archive terkait, dan sudah
    disinkronkan?
-4. Apakah ada proses spesial (WIRING / BUSBAR / dll) yang mungkin terlewat dari
-   perubahan ini?
+4. Apakah ada proses spesial (WIRING / BUSBAR / QC TEST / PACKING / NAMEPLATE /
+   YELLOWMARK — lihat B.2) yang mungkin terlewat dari perubahan ini?
+4b. Kalau ada exclude/filter berbasis `progress>=100`, apakah sudah dibedakan
+    "basi (dari sebelum hari ini)" vs "baru selesai hari ini" (lihat B.3)?
 5. Kalau ada validasi unik/duplikat baru, apakah sudah exclude diri sendiri?
 6. Apakah perubahan sudah dites secara logis untuk skenario: data **KOSONG**,
    data **BANYAK** (edge case volume), dan **MULTI-USER** (kalau relevan)?
