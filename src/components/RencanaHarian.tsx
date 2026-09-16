@@ -57,6 +57,14 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   },[]);
 
   // Timer yang lagi aktif berjalan (belum di-Stop) - buat status "Sedang Dikerjakan" walau qty belum diisi
+  // REFRESH CADANGAN (16 Sep 2026, dilaporkan user - timer WIRING CONTROL yang beneran aktif &
+  // bertanggal benar tetap gak nongol di Renhar sampai di-refresh manual) - sebelumnya CUMA
+  // andalin channel realtime di bawah buat tau ada timer mulai/stop, gak ada fallback kalau
+  // koneksi realtime-nya diam-diam putus (umum kejadian: tab dibiarkan kebuka lama, laptop
+  // sleep/wake, wifi putus-nyambung) - begitu putus, timerAktifData nyangkut beku selamanya
+  // sampai ada yang sadar & reload manual. Polling ringan tiap 30 detik ditambahkan DI SAMPING
+  // realtime (bukan gantiin) - independen dari sehat/enggaknya koneksi realtime, jaring pengaman
+  // biar paling lama nunggu 30 detik buat otomatis kembali sinkron sendiri.
   useEffect(()=>{
     const fetchTimerAktif=async()=>{
       const hariIni=new Date().toISOString().slice(0,10);
@@ -67,7 +75,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     const ch=supabase.channel("realtime-timer-aktif-rencana")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimerAktif)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    const iv=setInterval(fetchTimerAktif,30000);
+    return()=>{supabase.removeChannel(ch);clearInterval(iv);};
   },[]);
 
   const getTimerAktif=(panelId:any,kode:string,proses:string)=>
