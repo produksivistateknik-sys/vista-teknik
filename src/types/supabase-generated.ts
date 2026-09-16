@@ -3269,6 +3269,14 @@ export type Database = {
           wo: string
         }[]
       }
+      set_bom_proses_relevan: {
+        Args: {
+          p_kode_komponen: string
+          p_proses_list: string[]
+          p_tipe_panel: string
+        }
+        Returns: undefined
+      }
       set_current_admin: { Args: { admin_name: string }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }

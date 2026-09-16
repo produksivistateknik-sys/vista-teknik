@@ -102,11 +102,21 @@ export function KapasitasPekerjaanTab(){
   const saveProsesRelevan=async()=>{
     if(!prosesRelevanModal)return;
     setSavingProsesRelevan(true);
-    await supabase.from("bom_proses_relevan").delete()
-      .eq("kode_komponen",prosesRelevanModal.kode_komponen).eq("tipe_panel",prosesRelevanModal.tipe_panel);
-    if(selectedProsesRelevan.length>0){
-      const rows=selectedProsesRelevan.map(p=>({kode_komponen:prosesRelevanModal.kode_komponen,tipe_panel:prosesRelevanModal.tipe_panel,jenis_pekerjaan:p}));
-      await supabase.from("bom_proses_relevan").insert(rows);
+    // FIX (16 Sep 2026) - dulu delete()+insert() langsung dari client. bom_proses_relevan RLS
+    // aktif TANPA policy DELETE utk anon -> delete SELALU silent no-op (dilaporkan sukses padahal
+    // 0 baris kehapus) - hapus proses lewat UI ini gak pernah beneran tersimpan, mapping lama
+    // malah numpuk duplikat tiap kali disimpan ulang. Sekarang lewat RPC SECURITY DEFINER
+    // (set_bom_proses_relevan, migration 20260916010000) - delete beneran jalan (privilege
+    // function owner), scope cuma bisa replace mapping 1 kode+tipe ini, RLS tabel gak diubah.
+    const{error}=await supabase.rpc("set_bom_proses_relevan",{
+      p_kode_komponen:prosesRelevanModal.kode_komponen,
+      p_tipe_panel:prosesRelevanModal.tipe_panel,
+      p_proses_list:selectedProsesRelevan,
+    });
+    if(error){
+      alert("Gagal menyimpan proses relevan: "+error.message);
+      setSavingProsesRelevan(false);
+      return;
     }
     const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
     const relevanSet=new Set<string>();
