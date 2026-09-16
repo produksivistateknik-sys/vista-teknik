@@ -380,12 +380,29 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         // di-drop lebih dulu di sini). Fix: exclude progress>=100 CUMA kalau entry ini beneran
         // sisa geseran (e.carriedOverFrom truthy) - itu target ASLI fix 14 Sep. Entry asli hari
         // ini TETAP lolos apapun progressnya.
+        // REGRESI KE-2 (16 Sep 2026, ditemukan user - WM.9/WM.10 dkk RENDAM hilang total padahal
+        // baru selesai dikerjakan HARI INI) - exclude progress>=100 di atas nembak SEMUA entry
+        // carriedOverFrom yang progress-nya 100, tanpa bisa bedain "beneran basi (100% dari
+        // SEBELUM hari ini, target asli fix 14 Sep)" vs "carry-over yang baru mendarat & DISELESAIKAN
+        // HARI INI JUGA" - checklist.progress cuma nyimpen angka TERKINI, gak ada info kapan
+        // nyampe 100. Dicek live: 6 panel (PP-LANTAI 15B/16B WM.9/WM.10, 4x panel BALI TENNIS
+        // COURT WM.1/WM.2) punya sesi fcs_timer_kerja HARI INI + checklist.progressByDate.RENDAM
+        // = {selDate:100} - beneran dikerjakan hari ini, TAPI ikut ke-drop sama exclude di atas.
+        // Fix: checklist[kode].progressByDate[proses][selDate] adalah snapshot per-tanggal yang
+        // SUDAH ada & konsisten ditulis di semua jalur simpan progress operator (OperatorView.tsx
+        // & KomponenPasangView.tsx, vista-pekerja) - kalau ada snapshot 100 persis di selDate,
+        // progress itu beneran dicapai HARI INI -> tetap tampil (Done). Kalau enggak (snapshot-nya
+        // di tanggal lain/gak ada), beneran basi -> tetap disembunyikan, gak ada perubahan perilaku
+        // utk kasus itu (verified live: WM.1/WM.2 panel PP-LANTAI 15B/16B, progressByDate.RENDAM
+        // tercatat 2026-09-07, TETAP hilang seperti sebelumnya).
         const kodeAktif=(e.komponen||[]).filter((kode:string)=>{
           if(kode.startsWith("__wiring_"))return true; // token, bukan kode BOM - biarin lolos
           if(e.digeserKe?.[kode])return false; // sudah jejak - jangan tampil sebagai tugas aktif
           if(!e.carriedOverFrom)return true; // entry asli tanggal ini - tampil apapun progressnya
           const progress=panelDataUtama?.checklist?.[kode]?.progress?.[row.proses]||0;
-          return progress<100;
+          if(progress<100)return true;
+          const progressHariIni=panelDataUtama?.checklist?.[kode]?.progressByDate?.[row.proses]?.[selDate]||0;
+          return progressHariIni>=100; // 100 persis di selDate = beneran selesai hari ini, bukan basi
         });
         if(kodeAktif.length===0)return; // semua kode di entry ini sisa geseran yang udah Done - gak perlu jadi task
         tasks.push({
