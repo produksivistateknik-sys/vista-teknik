@@ -2,7 +2,31 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { getLocalDateStr } from '../lib/dateHelpers'
+import { uploadToR2 } from '../lib/r2Client'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
+
+// Dokumentasi foto/video "Done" (16 Sep 2026, fitur baru) - OPSIONAL, cermin dari pola sama
+// persis yang dipakai MesinPublic.tsx (form "Tandai Selesai" via QR) supaya baris histori
+// maintenance_rutin_log konsisten strukturnya ({url,type,uploaded_at}) gak peduli lewat admin
+// atau QR - lihat komentar lebih lengkap di MesinPublic.tsx soal kenapa diduplikasi kecil
+// (bukan di-share) di 2 tempat.
+const MAX_FOTO_MB=100;
+function extFromFile(file:File):string{
+  const dot=file.name.lastIndexOf(".");
+  if(dot>0&&dot<file.name.length-1)return file.name.slice(dot+1).toLowerCase();
+  return file.type.startsWith("video/")?"mp4":"jpg";
+}
+async function uploadDokumentasi(files:File[],keyPrefix:string){
+  const hasil:{url:string,type:"image"|"video",uploaded_at:string}[]=[];
+  for(const file of files){
+    const key=`${keyPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${extFromFile(file)}`;
+    try{
+      const url=await uploadToR2(file,key,file.type||"application/octet-stream");
+      hasil.push({url,type:file.type.startsWith("video/")?"video":"image",uploaded_at:new Date().toISOString()});
+    }catch{/* 1 file gagal upload gak boleh gagalin submit Done - lewati, lanjut file lain */}
+  }
+  return hasil;
+}
 
 export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogList,user,today,terlambat,mingguIni}:any){
   const [form,setForm]=useState({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
@@ -11,6 +35,27 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   const [delId,setDelId]=useState<any>(null);
   const [doneId,setDoneId]=useState<any>(null);
   const [filterFrek,setFilterFrek]=useState("ALL");
+  // File dokumentasi yang distaged buat modal "Done" yang lagi kebuka (doneId) - direset tiap
+  // modal dibuka/ditutup/berhasil submit.
+  const [stagedFoto,setStagedFoto]=useState<{file:File,previewUrl:string}[]>([]);
+  const [doneSaving,setDoneSaving]=useState(false);
+  const pilihFoto=(fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return;
+    const tolak:string[]=[];
+    const dipilih=Array.from(fileList).filter(f=>{
+      if(f.size>MAX_FOTO_MB*1024*1024){tolak.push(f.name);return false;}
+      return true;
+    }).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
+    if(tolak.length>0)alert(`File berikut dilewati (lebih dari ${MAX_FOTO_MB}MB):\n${tolak.join("\n")}`);
+    setStagedFoto(prev=>[...prev,...dipilih]);
+  };
+  const batalkanFotoStaged=(idx:number)=>{
+    setStagedFoto(prev=>{const arr=[...prev];URL.revokeObjectURL(arr[idx]?.previewUrl);arr.splice(idx,1);return arr;});
+  };
+  const resetStagedFoto=()=>{
+    stagedFoto.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+    setStagedFoto([]);
+  };
   const FC:any={harian:{label:"Harian",bg:"#E6F1FB",color:"#0C447C",border:"#85B7EB"},mingguan:{label:"Mingguan",bg:"#EEEDFE",color:"#3C3489",border:"#AFA9EC"},bulanan:{label:"Bulanan",bg:"#E1F5EE",color:"#085041",border:"#5DCAA5"},"3bulan":{label:"3 Bulanan",bg:"#FAEEDA",color:"#633806",border:"#EF9F27"},tahunan:{label:"Tahunan",bg:"#FCEBEB",color:"#791F1F",border:"#F09595"}};
   const calcNext=(d:string,f:string)=>{if(!d)return"";const dt=new Date(d);if(f==="harian")dt.setDate(dt.getDate()+1);else if(f==="mingguan")dt.setDate(dt.getDate()+7);else if(f==="bulanan")dt.setMonth(dt.getMonth()+1);else if(f==="3bulan")dt.setMonth(dt.getMonth()+3);else if(f==="tahunan")dt.setFullYear(dt.getFullYear()+1);return dt.toISOString().slice(0,10);};
   const getStatus=(r:any)=>{if(!r.jatuh_tempo)return{label:"Belum dijadwalkan",color:"#64748b",bg:"#f1f5f9"};if(r.jatuh_tempo<today)return{label:"Terlambat",color:"#dc2626",bg:"#fef2f2"};const diff=Math.ceil((new Date(r.jatuh_tempo).getTime()-new Date(today).getTime())/86400000);if(diff===0)return{label:"Hari ini!",color:"#dc2626",bg:"#fef2f2"};if(diff<=3)return{label:diff+"hr lagi",color:"#f59e0b",bg:"#fffbeb"};if(diff<=7)return{label:diff+"hr lagi",color:"#2563eb",bg:"#eff6ff"};return{label:diff+"hr lagi",color:"#16a34a",bg:"#f0fdf4"};};
@@ -58,17 +103,21 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
 };
 
   const markDone=async(item:any)=>{
+    setDoneSaving(true);
     const todayStr=getLocalDateStr();
     const nextDate=calcNext(todayStr,item.frekuensi);
     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
+    const fileTerpilih=stagedFoto.map(s=>s.file);
     const{data}=await supabase.from("maintenance_rutin").update({
       terakhir_dilakukan:todayStr,
       jatuh_tempo:nextDate,
     }).eq("id",item.id).select("*,mesin(nama,kode)").single();
     if(data){
       setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
+      // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin Done.
+      const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${item.id}`):[];
       await supabase.from("maintenance_rutin_log").insert({
-        rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",
+        rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",foto,
       });
       await activityLogService.insert({
         user_name:uname,
@@ -77,6 +126,8 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
         module:"maintenance",halaman:"Maintenance"
       });
     }
+    resetStagedFoto();
+    setDoneSaving(false);
     setDoneId(null);
   };
   // Entry terbaru per rutin_id dari maintenance_rutin_log - buat nunjukin siapa & lewat mana
@@ -160,7 +211,40 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
           </tbody>
         </table>
       </div>
-      {doneId&&(<Modal title="Tandai Selesai?" onClose={()=>setDoneId(null)} width={400}><div style={{fontSize:13,color:"#475569",marginBottom:8}}><strong>{doneId.jenis_maintenance}</strong> — {doneId.mesin?.nama}</div><div style={{fontSize:12,color:"#064e3b",background:"#f0fdf4",borderRadius:8,padding:"10px 12px",marginBottom:20}}>Jadwal berikutnya otomatis dihitung dari hari ini.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDoneId(null)}>Batal</Btn><Btn color="#16a34a" onClick={()=>markDone(doneId)}>Selesai</Btn></div></Modal>)}
+      {doneId&&(<Modal title="Tandai Selesai?" onClose={()=>{setDoneId(null);resetStagedFoto();}} width={400}>
+        <div style={{fontSize:13,color:"#475569",marginBottom:8}}><strong>{doneId.jenis_maintenance}</strong> — {doneId.mesin?.nama}</div>
+        <div style={{fontSize:12,color:"#064e3b",background:"#f0fdf4",borderRadius:8,padding:"10px 12px",marginBottom:14}}>Jadwal berikutnya otomatis dihitung dari hari ini.</div>
+        {/* Dokumentasi OPSIONAL (16 Sep 2026) - sama persis konsepnya kayak form "Tandai Selesai" QR (MesinPublic.tsx). */}
+        <div style={{marginBottom:20}}>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+            <label style={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
+              📎 Lampirkan foto/video (opsional)
+              <input type="file" accept="image/*,video/*" multiple style={{display:"none"}}
+                onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value="";}}/>
+            </label>
+            {stagedFoto.length>0&&<span style={{fontSize:10.5,color:"#94a3b8"}}>{stagedFoto.length} file dipilih</span>}
+          </div>
+          {stagedFoto.length>0&&(
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:8}}>
+              {stagedFoto.map((s,si)=>(
+                <div key={si} style={{position:"relative",width:52,height:52}}>
+                  {s.file.type.startsWith("video/")?(
+                    <video src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000"}}/>
+                  ):(
+                    <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/>
+                  )}
+                  <button onClick={()=>batalkanFotoStaged(si)}
+                    style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#dc2626",color:"#fff",border:"2px solid #fff",fontSize:10,lineHeight:"14px",cursor:"pointer",padding:0}}>✕</button>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+        <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+          <Btn outline color="#64748b" onClick={()=>{setDoneId(null);resetStagedFoto();}} disabled={doneSaving}>Batal</Btn>
+          <Btn color="#16a34a" onClick={()=>markDone(doneId)} disabled={doneSaving}>{doneSaving?"Menyimpan...":"Selesai"}</Btn>
+        </div>
+      </Modal>)}
       {delId&&(<Modal title="Nonaktifkan?" onClose={()=>setDelId(null)} width={360}><div style={{fontSize:13,color:"#475569",marginBottom:20}}>Jadwal ini akan dinonaktifkan.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn><Btn color="#dc2626" onClick={del}>Nonaktifkan</Btn></div></Modal>)}
     </div>
   );

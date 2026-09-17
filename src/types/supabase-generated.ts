@@ -1549,6 +1549,7 @@ export type Database = {
           completed_via: string
           created_at: string | null
           dilakukan_pada: string
+          foto: Json
           id: number
           rutin_id: number | null
           teknisi: string | null
@@ -1558,6 +1559,7 @@ export type Database = {
           completed_via?: string
           created_at?: string | null
           dilakukan_pada: string
+          foto?: Json
           id?: never
           rutin_id?: number | null
           teknisi?: string | null
@@ -1567,6 +1569,7 @@ export type Database = {
           completed_via?: string
           created_at?: string | null
           dilakukan_pada?: string
+          foto?: Json
           id?: never
           rutin_id?: number | null
           teknisi?: string | null

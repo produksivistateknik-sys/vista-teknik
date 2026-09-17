@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
+import { uploadToR2 } from './lib/r2Client'
 
 // Sama persis calcNext di MaintenanceRutinTab.tsx (Vista Teknik) - sengaja diduplikasi kecil,
 // bukan di-share, karena halaman ini PUBLIC/tanpa login sementara MaintenanceRutinTab bagian
@@ -16,6 +17,31 @@ function calcNext(d:string,f:string){
   return dt.toISOString().slice(0,10)
 }
 
+// Dokumentasi foto/video "Tandai Selesai" (16 Sep 2026, fitur baru) - OPSIONAL, gak boleh
+// jadi syarat submit (pekerja yang gak sempat foto tetap harus bisa tandai selesai). Cermin
+// dari pola upload di KerusakanTab.tsx (Vista Teknik, uploadToR2 ke Cloudflare R2) - TAPI
+// diduplikasi kecil di sini (bukan di-share), alasan sama kayak calcNext di atas: halaman
+// public/tanpa-login ini sengaja independen dari bundle admin. Beda dari KerusakanTab: di sini
+// dukung video juga (bukan cuma foto), jadi ekstensi file R2 key diambil dari nama file asli
+// (bukan di-hardcode .jpg kayak KerusakanTab - biar video gak kesimpen dengan ekstensi salah).
+const MAX_FOTO_MB=100
+function extFromFile(file:File):string{
+  const dot=file.name.lastIndexOf(".")
+  if(dot>0&&dot<file.name.length-1)return file.name.slice(dot+1).toLowerCase()
+  return file.type.startsWith("video/")?"mp4":"jpg"
+}
+async function uploadDokumentasi(files:File[],keyPrefix:string){
+  const hasil:{url:string,type:"image"|"video",uploaded_at:string}[]=[]
+  for(const file of files){
+    const key=`${keyPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${extFromFile(file)}`
+    try{
+      const url=await uploadToR2(file,key,file.type||"application/octet-stream")
+      hasil.push({url,type:file.type.startsWith("video/")?"video":"image",uploaded_at:new Date().toISOString()})
+    }catch{/* 1 file gagal upload gak boleh gagalin submit "Selesai" - lewati, lanjut file lain */}
+  }
+  return hasil
+}
+
 export default function MesinPublic(){
   const [mesin,setMesin]=useState<any>(null)
   const [rutinList,setRutinList]=useState<any[]>([])
@@ -27,6 +53,27 @@ export default function MesinPublic(){
   const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
   const [pekerjaPilih,setPekerjaPilih]=useState("")
   const [menyimpan,setMenyimpan]=useState(false)
+  // File dokumentasi (foto/video) yang lagi distaged buat "Tandai Selesai" yang formnya lagi
+  // terbuka (selesaiFormId) - direset tiap form dibuka/ditutup/berhasil submit, sama pola siklus
+  // hidupnya kayak pekerjaPilih di atas.
+  const [stagedFoto,setStagedFoto]=useState<{file:File,previewUrl:string}[]>([])
+  const pilihFoto=(fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return
+    const tolak:string[]=[]
+    const dipilih=Array.from(fileList).filter(f=>{
+      if(f.size>MAX_FOTO_MB*1024*1024){tolak.push(f.name);return false}
+      return true
+    }).map(file=>({file,previewUrl:URL.createObjectURL(file)}))
+    if(tolak.length>0)alert(`File berikut dilewati (lebih dari ${MAX_FOTO_MB}MB):\n${tolak.join("\n")}`)
+    setStagedFoto(prev=>[...prev,...dipilih])
+  }
+  const batalkanFotoStaged=(idx:number)=>{
+    setStagedFoto(prev=>{const arr=[...prev];URL.revokeObjectURL(arr[idx]?.previewUrl);arr.splice(idx,1);return arr})
+  }
+  const resetStagedFoto=()=>{
+    stagedFoto.forEach(s=>URL.revokeObjectURL(s.previewUrl))
+    setStagedFoto([])
+  }
   // Rutin id yang BARU AJA ditandai selesai di sesi halaman ini - dikecualikan dari daftar
   // seketika (optimistic, sebelum round-trip server kelar) supaya item langsung hilang, bukan
   // nongol jadi status "Selesai". Direset kalau item beneran jatuh tempo lagi (reload halaman).
@@ -62,11 +109,17 @@ export default function MesinPublic(){
   const tandaiSelesai=async(rutin:any)=>{
     if(!pekerjaPilih)return
     setMenyimpan(true)
-    // Optimistic - hilang dari daftar SEKETIKA, gak nunggu server dulu.
+    // Optimistic - hilang dari daftar SEKETIKA, gak nunggu server (termasuk upload foto/video,
+    // yang bisa makan waktu lumayan di koneksi pabrik) dulu.
     setSelesaiHariIniIds(prev=>new Set(prev).add(rutin.id))
     setSelesaiFormId(null)
     const pekerjaTerpilih=pekerjaPilih
     setPekerjaPilih("")
+    // Tangkep staged foto SEBELUM di-reset (form ditutup optimistic di atas) - sama pola kayak
+    // pekerjaTerpilih, biar state UI bebas dipakai form berikutnya walau upload+insert di bawah
+    // masih jalan di background.
+    const fileTerpilih=stagedFoto.map(s=>s.file)
+    resetStagedFoto()
     const todayStr=getLocalDateStr()
     const nextDate=calcNext(todayStr,rutin.frekuensi)
     const{data,error}=await supabase.from("maintenance_rutin").update({
@@ -74,8 +127,11 @@ export default function MesinPublic(){
       jatuh_tempo:nextDate,
     }).eq("id",rutin.id).select("*").single()
     if(!error&&data){
+      // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin
+      // "Tandai Selesai" (jadwal & log tetap tercatat, cuma tanpa dokumentasi).
+      const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${rutin.id}`):[]
       await supabase.from("maintenance_rutin_log").insert({
-        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaTerpilih,completed_via:"qr_worker",
+        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaTerpilih,completed_via:"qr_worker",foto,
       })
       await supabase.from("activity_log").insert({
         user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
@@ -212,22 +268,48 @@ export default function MesinPublic(){
                   <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
                 </div>
                 {formTerbuka?(
-                  <div style={{marginTop:8,marginLeft:18,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                    <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
-                      style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,background:"#fff",color:"#1e293b"}}>
-                      <option value="">-- Pilih nama pekerja --</option>
-                      {pekerjaList.map((p:any)=><option key={p.id} value={p.nama}>{p.nama}</option>)}
-                    </select>
-                    <button onClick={()=>tandaiSelesai(r)} disabled={!pekerjaPilih||menyimpan}
-                      style={{background:pekerjaPilih?"#16a34a":"#cbd5e1",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:pekerjaPilih?"pointer":"not-allowed"}}>
-                      {menyimpan?"Menyimpan...":"Konfirmasi"}
-                    </button>
-                    <button onClick={()=>{setSelesaiFormId(null);setPekerjaPilih("")}} disabled={menyimpan}
-                      style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"7px 12px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Batal</button>
+                  <div style={{marginTop:8,marginLeft:18}}>
+                    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                      <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
+                        style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,background:"#fff",color:"#1e293b"}}>
+                        <option value="">-- Pilih nama pekerja --</option>
+                        {pekerjaList.map((p:any)=><option key={p.id} value={p.nama}>{p.nama}</option>)}
+                      </select>
+                      <button onClick={()=>tandaiSelesai(r)} disabled={!pekerjaPilih||menyimpan}
+                        style={{background:pekerjaPilih?"#16a34a":"#cbd5e1",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:pekerjaPilih?"pointer":"not-allowed"}}>
+                        {menyimpan?"Menyimpan...":"Konfirmasi"}
+                      </button>
+                      <button onClick={()=>{setSelesaiFormId(null);setPekerjaPilih("");resetStagedFoto()}} disabled={menyimpan}
+                        style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"7px 12px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Batal</button>
+                    </div>
+                    {/* Dokumentasi OPSIONAL - label bilang jelas biar gak dikira wajib. */}
+                    <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
+                      <label style={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
+                        📎 Lampirkan foto/video (opsional)
+                        <input type="file" accept="image/*,video/*" multiple style={{display:"none"}}
+                          onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value=""}}/>
+                      </label>
+                      {stagedFoto.length>0&&<span style={{fontSize:10.5,color:"#94a3b8"}}>{stagedFoto.length} file dipilih</span>}
+                    </div>
+                    {stagedFoto.length>0&&(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
+                        {stagedFoto.map((s,si)=>(
+                          <div key={si} style={{position:"relative",width:52,height:52}}>
+                            {s.file.type.startsWith("video/")?(
+                              <video src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000"}}/>
+                            ):(
+                              <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/>
+                            )}
+                            <button onClick={()=>batalkanFotoStaged(si)}
+                              style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#dc2626",color:"#fff",border:"2px solid #fff",fontSize:10,lineHeight:"14px",cursor:"pointer",padding:0}}>✕</button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ):(
                   <div style={{marginTop:8,marginLeft:18}}>
-                    <button onClick={()=>{setSelesaiFormId(r.id);setPekerjaPilih("")}}
+                    <button onClick={()=>{setSelesaiFormId(r.id);setPekerjaPilih("");resetStagedFoto()}}
                       style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                       Tandai Selesai
                     </button>
