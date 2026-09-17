@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
 import { uploadToR2 } from './lib/r2Client'
 import { fetchRotasiBatch } from './lib/mediaRotasi'
+import { useVersionCheck } from './lib/versionCheck'
 
 // Sama persis calcNext di MaintenanceRutinTab.tsx (Vista Teknik) - sengaja diduplikasi kecil,
 // bukan di-share, karena halaman ini PUBLIC/tanpa login sementara MaintenanceRutinTab bagian
@@ -44,6 +45,18 @@ async function uploadDokumentasi(files:File[],keyPrefix:string){
 }
 
 export default function MesinPublic(){
+  // Deteksi tab basi (17 Sep 2026, BUG FIX - dilaporkan user: sesi upload dokumentasi
+  // "Tandai Selesai" gak muncul, khusus dialami Tim Painting) - root cause BUKAN kode/data
+  // yang exclude jenis maintenance tertentu (dicek live: upload muncul identik di semua
+  // divisi mesin), tapi halaman PUBLIK/kiosk ini gak pernah pasang useVersionCheck() sama
+  // sekali (sudah ada & dipakai di App.tsx, TAPI gak ikut ditambahkan ke sini pas dibikin) -
+  // device scan QR di lantai produksi wajar dibiarkan terbuka lama tanpa pernah di-refresh
+  // (beda dari app admin yang login ulang tiap sesi), jadi kalau fitur baru di-deploy
+  // (mis. upload dokumentasi ini, 16 Sep 2026), device yang tab-nya udah lama kebuka SAMA
+  // SEKALI gak punya kode fitur itu di memori - insiden KELAS SAMA yang sudah pernah kejadian
+  // di App.tsx (14 Agu 2026, lihat komentar di lib/versionCheck.ts), sekarang kejadian lagi
+  // di halaman ini karena belum ikut dipasangi.
+  const hasNewVersion=useVersionCheck()
   const [mesin,setMesin]=useState<any>(null)
   const [rutinList,setRutinList]=useState<any[]>([])
   const [logList,setLogList]=useState<any[]>([])
@@ -214,6 +227,16 @@ export default function MesinPublic(){
 
   return(
     <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"Inter,sans-serif",paddingBottom:32}}>
+      {hasNewVersion&&(
+        <div style={{position:"sticky",top:0,zIndex:10000,background:"#1e293b",color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"8px 14px",fontSize:11.5,flexWrap:"wrap" as const,textAlign:"center" as const}}>
+          <span>🔄 Ada versi baru halaman ini - muat ulang biar fitur terbaru (mis. upload dokumentasi) kepakai.</span>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"5px 12px",borderRadius:7,border:"none",background:"#fff",color:"#1e293b",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+            Muat Ulang
+          </button>
+        </div>
+      )}
       {/* Header */}
       <div style={{background:"#1e3a5f",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
         <div style={{width:32,height:32,background:"#3b82f6",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>VT</div>
