@@ -82,7 +82,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   useEffect(()=>{
     const fetchTimerAktif=async()=>{
       const hariIni=new Date().toISOString().slice(0,10);
-      const{data}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai").is("selesai",null).eq("tanggal",hariIni);
+      const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,tahap,mulai").is("selesai",null).eq("tanggal",hariIni);
+      if(error){console.error("gagal ambil timer aktif:",error);return;}
       setTimerAktifData(data??[]);
     };
     fetchTimerAktif();
@@ -93,8 +94,26 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return()=>{supabase.removeChannel(ch);clearInterval(iv);};
   },[]);
 
-  const getTimerAktif=(panelId:any,kode:string,proses:string)=>
-    timerAktifData.find((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+  // Tick ringan (17 Sep 2026) - KHUSUS pas ada timer aktif, badge durasi ("X menit") dipaksa
+  // re-render tiap 5 detik biar keliatan nge-tick/jalan, bukan loncat tiap 30 detik polling
+  // (kesannya "diam" walau timer beneran jalan). Gak dijalankan kalau gak ada timer aktif sama
+  // sekali - hemat re-render pas gak relevan.
+  const[,forceTimerTick]=useState(0);
+  useEffect(()=>{
+    if(timerAktifData.length===0)return;
+    const iv=setInterval(()=>forceTimerTick(v=>v+1),5000);
+    return()=>clearInterval(iv);
+  },[timerAktifData.length>0]);
+
+  // getTimerAktifAll (REVISI 17 Sep 2026, dilaporkan user - BUSBAR bisa punya >1 tahap jalan
+  // BERSAMAAN buat kode yang sama, mis. HEATSHRINK & PASANG ditangani 2 operator beda di waktu
+  // tumpang tindih - dicek live 29 kasus overlap nyata di histori fcs_timer_kerja). Dulu
+  // getTimerAktif() pakai .find() - cuma ambil 1 baris pertama yang cocok, timer aktif ke-2 buat
+  // kode yang sama JADI GAK KELIATAN SAMA SEKALI. Sekarang .filter() - balikin SEMUA timer aktif
+  // yang cocok (proses non-BUSBAR gak punya konsep multi-tahap-bersamaan, array-nya ya paling
+  // banter isi 1, perilaku efektif sama kayak sebelumnya).
+  const getTimerAktifAll=(panelId:any,kode:string,proses:string)=>
+    timerAktifData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
 
   // WIRING CONTROL/POWER: "hari kerja ke-N" (dari histori fcs_timer_kerja) dipakai allTasks di
   // bawah buat tau kelanjutan hari kerja mana yang beneran "mendarat" di selDate - fungsi SAMA
@@ -1013,6 +1032,34 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // Dikerjakan"), undefined kalau busbarTahap belum pernah ditulis (fallback
                                 // title kosong, gak ganggu proses non-BUSBAR sama sekali).
                                 const busbarTooltip=t.proses==="BUSBAR"?formatBusbarTahapTooltip(panelData?.checklist?.[kode]):undefined;
+                                // REVISI (17 Sep 2026, dilaporkan user 2x) - timer aktif SEKARANG dicek
+                                // PALING DULU, sebelum pctKerja. Dulu urutannya kebalik (pctKerja>0 dicek
+                                // duluan) - begitu progress BUSBAR sudah >0% (yang notabene HAMPIR SELALU
+                                // kejadian, progress gabungan lintas tahap jarang persis 0), badge berhenti
+                                // di angka persen BEKU (cuma keupdate pas operator klik "Simpan {tahap}"),
+                                // gak pernah nyampe ke pengecekan timer sama sekali - dari sisi admin
+                                // kelihatan "diam" walau timer beneran jalan di belakang layar. Timer aktif
+                                // cuma relevan buat hari kerja SEKARANG - tanggal yang udah lewat itu
+                                // sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.
+                                // getTimerAktifAll (bukan getTimerAktif/.find() lama) - BUSBAR bisa punya
+                                // >1 tahap AKTIF BERSAMAAN buat kode yang sama (2 operator beda, mis.
+                                // Heat-Shrink & Pasang jalan tumpang tindih - dicek live 29 kasus overlap
+                                // nyata di histori). Kalau cuma diambil 1 (.find()), timer ke-2 JADI GAK
+                                // KELIATAN SAMA SEKALI walau beneran jalan.
+                                const timerAktifList=t.tanggal===getHariKerjaSekarang()?getTimerAktifAll(t.panelId,kode,t.proses):[];
+                                if(timerAktifList.length>0){
+                                  return(
+                                    <div title={busbarTooltip} style={{display:"flex",flexWrap:"wrap" as const,gap:4,justifyContent:"center"}}>
+                                      {timerAktifList.map((tm:any,tmi:number)=>{
+                                        const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(tm.mulai).getTime())/1000));
+                                        const menitBerjalan=Math.floor(totalDetikAktif/60);
+                                        const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
+                                        const labelTahapTimer=tm.tahap&&BUSBAR_TAHAP_LABEL[tm.tahap]?`${BUSBAR_TAHAP_LABEL[tm.tahap]} · `:"";
+                                        return <span key={tm.id||tmi} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>🟡 {labelTahapTimer}{labelDurasiAktif}</span>;
+                                      })}
+                                    </div>
+                                  );
+                                }
                                 if(pctKerja>=100){
                                   return <span title={busbarTooltip} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
                                 }
@@ -1024,15 +1071,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // ini histori beku, gak akan pernah dikerjakan lagi di tanggal ini.
                                 if(digeserKeTanggal){
                                   return <span title={busbarTooltip} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⚪ Tidak Dikerjakan (0%)</span>;
-                                }
-                                // Timer aktif cuma relevan buat hari kerja SEKARANG - tanggal yang udah
-                                // lewat itu sejarah/beku, gak ada timer yang "lagi jalan" buat hari itu.
-                                const timerAktif=t.tanggal===getHariKerjaSekarang()?getTimerAktif(t.panelId,kode,t.proses):null;
-                                if(timerAktif){
-                                  const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(timerAktif.mulai).getTime())/1000));
-                                  const menitBerjalan=Math.floor(totalDetikAktif/60);
-                                  const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
-                                  return <span title={busbarTooltip} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({labelDurasiAktif})</span>;
                                 }
                                 return <span title={busbarTooltip} style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
                               })()}
