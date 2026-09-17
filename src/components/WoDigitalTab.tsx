@@ -5,25 +5,21 @@ import { workOrderService } from "../services/workOrderService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
 import { useWoDigitalDocs } from "../lib/useWoDigitalDocs";
+import { broadcastWoEngineeringEvent } from "../lib/useWoEngineeringBroadcast";
 import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
 const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
-// Banner broadcast "WO diubah Engineering" (17 Sep 2026, fitur baru) - 1 event per aksi Save di
-// sini (bukan per sub-trigger notify-wo-baru yang bisa 2x dalam 1 save kalau field WO DAN panel
-// baru berubah bareng - broadcast ini SENGAJA 1 event = 1 aksi Save, biar gak dobel banner buat
-// 1 momen yang sama). Gate divisi==='engineering' di caller (defense-in-depth - tab ini praktiknya
-// eksklusif Engineering, ENGINEERING_ALLOWED_TABS/sidebar admin gak expose tab "wodigital" lagi,
-// tapi gak digantungkan ke asumsi itu doang). Gagal insert TIDAK BOLEH gagalin simpan WO yang
-// sudah beres - try/catch sendiri di caller, sama pola notify-wo-baru di sebelahnya.
-async function broadcastWoEngineeringEvent(params:{woId:number,woNumber:string,proyek:string,jenisPerubahan:"tambah"|"edit",dilakukanOleh:string}){
-  await supabase.from("wo_engineering_events").insert({
-    wo_id:params.woId,wo_number:params.woNumber,proyek:params.proyek,
-    jenis_perubahan:params.jenisPerubahan,dilakukan_oleh:params.dilakukanOleh,
-  });
-}
+// Banner broadcast "WO diubah Engineering" (17 Sep 2026, fitur baru) - broadcastWoEngineeringEvent
+// dipindah ke lib/useWoEngineeringBroadcast.ts (17 Sep 2026, sore) supaya bisa dipakai ulang di
+// useWoDigitalDocs.ts (upload/revisi gambar) juga - lihat komentar lengkap di sana. 1 event per
+// aksi Save di sini (bukan per sub-trigger notify-wo-baru yang bisa 2x dalam 1 save kalau field
+// WO DAN panel baru berubah bareng - broadcast ini SENGAJA 1 event = 1 aksi Save, biar gak dobel
+// banner buat 1 momen yang sama). Gate divisi==='engineering' di caller (defense-in-depth - tab
+// ini praktiknya eksklusif Engineering, ENGINEERING_ALLOWED_TABS/sidebar admin gak expose tab
+// "wodigital" lagi, tapi gak digantungkan ke asumsi itu doang).
 
 // Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
 // request tanpa .range(), sama kelas bug yang udah kejadian di renharService/rawScheduleService/

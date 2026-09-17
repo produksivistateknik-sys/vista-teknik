@@ -18,6 +18,22 @@ export type WoEngineeringEvent={
   jenis_perubahan:"tambah"|"edit",dilakukan_oleh:string,created_at:string,
 }
 
+// PINDAH (17 Sep 2026) dari WoDigitalTab.tsx ke sini - dulu cuma dipakai form Tambah/Edit WO,
+// sekarang JUGA dipakai useWoDigitalDocs.ts (upload/revisi gambar teknik) - jalur kode terpisah
+// yang kelewat pas investigasi awal fitur banner ini (user lapor "notif gak muncul" pas IHSAN
+// upload revisi gambar, bukan tambah/edit WO - lihat komentar broadcastWoEngineeringEvent di
+// useWoDigitalDocs.ts). Dipindah ke sini (bukan diduplikasi) biar 1 sumber logika (CLAUDE.md
+// B.1) dipakai kedua caller. Gagal insert TIDAK BOLEH gagalin aksi utama pemanggil (save WO /
+// upload dokumen) - try/catch non-blocking di CALLER, bukan di sini (sama pola notify-wo-baru
+// di sebelahnya masing-masing caller).
+export async function broadcastWoEngineeringEvent(params:{woId:number|null,woNumber:string,proyek:string,jenisPerubahan:"tambah"|"edit",dilakukanOleh:string}){
+  const{error}=await supabase.from("wo_engineering_events").insert({
+    wo_id:params.woId,wo_number:params.woNumber,proyek:params.proyek,
+    jenis_perubahan:params.jenisPerubahan,dilakukan_oleh:params.dilakukanOleh,
+  });
+  if(error){console.error("gagal broadcast wo_engineering_events:",error);throw error}
+}
+
 const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
   let all:any[]=[]
   let from=0

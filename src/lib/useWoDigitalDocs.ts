@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { activityLogService } from '../services/activityLogService'
 import { uploadToR2, deleteFromR2, extractR2Key } from './r2Client'
 import { watermarkPdf, stampTidakBerlaku } from './pdfWatermark'
+import { broadcastWoEngineeringEvent } from './useWoEngineeringBroadcast'
 
 // Dokumen gambar teknik WO Digital, EKSTRAK (4 Sep 2026) dari WoDigitalTab.tsx supaya bisa
 // dipakai ulang di ManajemenWO.tsx (Admin, viewer-only - lihat prop canUpload di caller,
@@ -140,6 +141,18 @@ export function useWoDigitalDocs() {
     try{
       await supabase.functions.invoke("notify-wo-baru",{body:{trigger:isFirstDoc?"gambar_ditambahkan":"gambar_direvisi",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname}})
     }catch{/* notifikasi gagal - diabaikan */}
+
+    // Banner broadcast "WO diubah Engineering" (17 Sep 2026, BUG FIX sore) - upload/revisi gambar
+    // teknik dulu TIDAK memicu banner in-app sama sekali (cuma push notif OS di atas), jalur kode
+    // terpisah dari form Tambah/Edit WO yang kelewat pas investigasi awal fitur ini - user lapor
+    // "notif gak muncul" pas Engineering upload revisi. isFirstDoc->"tambah" (badge "Ditambahkan"),
+    // revisi ulang->"edit" (badge "Diedit"), sama pemetaan yang dipakai trigger push notif barusan.
+    // Gagal insert TIDAK BOLEH gagalin upload yang udah beres di atas - try/catch sendiri, gak
+    // digantungkan ke divisi (hook ini gak nge-gate apa pun, tanggung jawab UI pemanggil - lihat
+    // komentar atas file).
+    try{
+      await broadcastWoEngineeringEvent({woId,woNumber:woLabel,proyek,jenisPerubahan:isFirstDoc?"tambah":"edit",dilakukanOleh:uname})
+    }catch{/* banner broadcast gagal - diabaikan, upload tetap tersimpan */}
   }
 
   return{wiList,revList,wiOfPanel,revisionsOf,currentRevOf,uploadDoc,refetchDocs:fetchDocs}
