@@ -61,18 +61,21 @@ export function useWoEngineeringBroadcast(akun:string|null){
     return()=>{supabase.removeChannel(ch)}
   },[akun,fetchAll])
 
-  // FIFO tertua dulu (events sudah di-order ascending dari query) - 1 banner ditampilkan per
-  // waktu, bukan ditumpuk - lihat App.tsx/GudangBanner utk alasan pemilihan ini.
+  // REVISI (17 Sep 2026, redesign visual) - dulu cuma nampilin 1 banner per waktu (FIFO,
+  // "current"), sekarang SEMUA event belum dibaca ditumpuk (stack) sebagai kartu terpisah -
+  // lihat WoEngineeringBanner.tsx, cocok sama bentuk "kartu mengambang" yang baru (beda dari
+  // bentuk lama bar tipis full-width yang emang perlu dibatasi 1 biar gak numpuk jadi banyak
+  // bar). Urutan tetap FIFO tertua dulu (events sudah di-order ascending dari query) - kartu
+  // terlama muncul paling atas stack.
   const unread=events.filter(e=>!dibacaIds.has(e.id))
-  const current=unread.length>0?unread[0]:null
 
   const markAsRead=async(eventId:number)=>{
     if(!akun)return
-    setDibacaIds(prev=>new Set(prev).add(eventId)) // optimistic - banner ganti/ilang seketika
+    setDibacaIds(prev=>new Set(prev).add(eventId)) // optimistic - kartu ilang seketika dari data
     // upsert+ignoreDuplicates (bukan insert polos) - idempotent kalau tombol kepencet dobel atau
     // race sama realtime echo, primary key (event_id,akun) yang sudah ada gak boleh nge-throw.
     await supabase.from("wo_engineering_events_dibaca").upsert({event_id:eventId,akun},{onConflict:"event_id,akun",ignoreDuplicates:true})
   }
 
-  return{current,unreadCount:unread.length,markAsRead}
+  return{unread,markAsRead}
 }
