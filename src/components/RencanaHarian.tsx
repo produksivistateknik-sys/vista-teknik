@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -20,6 +20,20 @@ const STATUS_PIPELINE_STYLE:Record<ProsesStatus,{bg:string,color:string,border:s
 const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
   "NOT YET":"Not Yet","TO DO":"To Do","IN PROGRESS":"In Progress","DONE":"Done",
 };
+
+// Kolom QTY (17 Sep 2026, fitur baru) - proses yang progress-nya BENERAN dicatat granular
+// per-unit (checklist[kode].qtyProses[proses] - operator NGETIK LANGSUNG "sudah X dari Y unit",
+// bukan geser persentase, lihat updateQtyProses() vista-pekerja/OperatorView.tsx - progress%
+// yang tersimpan justru DITURUNKAN dari angka ini, bukan sebaliknya). Dicek live 17 Sep 2026
+// (26 panel, 431 kode berqty): POTONG/BENDING/STEL/FINISHING/RENDAM/PAINTING/RAKIT semua punya
+// data qtyProses terisi (310/271/88/84/233/238/150 dari 431). PASANG KOMPONEN/QC TEST/PACKING/
+// WIRING CONTROL/WIRING POWER/BUSBAR SEMUA 0/431 - qtyProses gak PERNAH ditulis buat proses2 itu
+// (progress-nya klik-persentase langsung atau checklist whole-panel/tahap terpisah - bukan
+// input qty per-unit) - kolom QTY tampil "—" buat proses2 itu, JANGAN dipaksakan hitung dari
+// persen (bakal salah/menyesatkan, gak match cara operator app beneran nyatet progress-nya).
+// Reuse getQtyProsesAsOfDate() - fungsi SAMA PERSIS yang dipakai RawSchedule.tsx (badge qty di
+// cell modal) buat kasus yang identik, satu sumber logika (CLAUDE.md B.1).
+const PROSES_QTY_GRANULAR=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"];
 
 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,refetchRaw,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
@@ -846,6 +860,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                     <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
                     <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
                     <th style={{...thS,width:250}}>Komponen</th>
+                    <th style={{...thS,width:70,textAlign:"center"}}>QTY</th>
                     <th style={{...thS,width:160}}>Operator</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status Pipeline</th>
@@ -937,6 +952,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                   </span>
                                 );
                               })()}
+                            </td>
+                            <td style={{...td,textAlign:"center"}}>
+                              {PROSES_QTY_GRANULAR.includes(t.proses)?(()=>{
+                                const qtyTotalKode=clKode?.qty||0;
+                                const qtyDoneKode=getQtyProsesAsOfDate(clKode,t.proses,t.tanggal);
+                                const isQtyDone=qtyTotalKode>0&&qtyDoneKode>=qtyTotalKode;
+                                return <span style={{fontSize:11,fontWeight:700,color:isQtyDone?"#16a34a":qtyDoneKode>0?"#475569":"#94a3b8"}}>{qtyDoneKode}/{qtyTotalKode}</span>;
+                              })():(
+                                <span style={{color:"#e2e8f0",fontSize:11}}>—</span>
+                              )}
                             </td>
                             <td style={{...td}}>
                               {!sudahRelease&&!digeserKeTanggal?(
@@ -1050,7 +1075,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // pernah render "null%"/"0%" palsu buat data lama).
                         busbarIsExpanded&&busbarHistori.length>0&&(
                           <tr key={ti+"-"+kode+"-histori"}>
-                            <td colSpan={10} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
+                            <td colSpan={11} style={{padding:"8px 8px 8px 32px",borderBottom:"1px solid #f1f5f9",background:"#fafbff"}}>
                               <div style={{display:"flex",flexDirection:"column" as const,gap:3}}>
                                 {busbarHistori.map((h,hi)=>(
                                   <div key={hi} style={{fontSize:11,color:"#475569"}}>
@@ -1102,7 +1127,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                   });
                   if(renderedRows.length===0&&statusFilter!=="ALL"){
                     return(
-                      <tr><td colSpan={10} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                      <tr><td colSpan={11} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
                         Tidak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di {proses}.
                       </td></tr>
                     );
