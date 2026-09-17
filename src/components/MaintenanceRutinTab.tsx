@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { getLocalDateStr } from '../lib/dateHelpers'
 import { uploadToR2 } from '../lib/r2Client'
+import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
 
 // Dokumentasi foto/video "Done" (16 Sep 2026, fitur baru) - OPSIONAL, cermin dari pola sama
@@ -47,6 +48,27 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   // rata-rata 3/jadwal, maks 5) - gak perlu pagination/scroll internal.
   const [expandedIds,setExpandedIds]=useState<Set<number>>(new Set());
   const toggleExpand=(id:number)=>setExpandedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  // Rotate PERMANEN thumbnail dokumentasi (17 Sep 2026) - metadata rotasi_derajat per-URL
+  // (media_rotasi), file R2 TIDAK diubah - lihat lib/mediaRotasi.ts & migration
+  // 20260917030000_media_rotasi.sql. rutinLogList kecil (lihat komentar di atas) - fetch batch
+  // 1x tiap data berubah, bukan per-thumbnail.
+  const [rotasiMap,setRotasiMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const urls=(rutinLogList||[]).flatMap((l:any)=>(l.foto||[]).map((f:any)=>f.url));
+    fetchRotasiBatch(urls).then(setRotasiMap);
+  },[rutinLogList]);
+  const [rotatingUrl,setRotatingUrl]=useState<string|null>(null);
+  const doRotateThumb=async(e:any,url:string)=>{
+    e.preventDefault();e.stopPropagation();
+    if(rotatingUrl)return;
+    setRotatingUrl(url);
+    try{
+      const next=await rotateMedia(url,rotasiMap[url]||0,user?.nama||user?.name||"Admin");
+      setRotasiMap(prev=>({...prev,[url]:next}));
+    }catch{alert("Gagal menyimpan rotasi - coba lagi.");}
+    finally{setRotatingUrl(null);}
+  };
   const pilihFoto=(fileList:FileList|null)=>{
     if(!fileList||fileList.length===0)return;
     const tolak:string[]=[];
@@ -240,15 +262,21 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
                         </div>
                         {foto.length>0?(
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            {foto.map((f:any,fi:number)=>(
-                              <a key={fi} href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
-                                {f.type==="video"?(
-                                  <video src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000"}}/>
-                                ):(
-                                  <img src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0"}}/>
-                                )}
-                              </a>
-                            ))}
+                            {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
+                              <div key={fi} style={{position:"relative",width:48,height:48}}>
+                                <a href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
+                                  {f.type==="video"?(
+                                    <video src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
+                                  ):(
+                                    <img src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
+                                  )}
+                                </a>
+                                <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
+                                  style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
+                                  <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>
+                                </button>
+                              </div>
+                            );})}
                           </div>
                         ):(
                           <span style={{fontSize:10,color:"#cbd5e1",fontStyle:"italic",paddingTop:2}}>Tanpa dokumentasi</span>

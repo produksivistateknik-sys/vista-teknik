@@ -1584,6 +1584,27 @@ export type Database = {
           },
         ]
       }
+      media_rotasi: {
+        Row: {
+          rotasi_derajat: number
+          updated_at: string
+          updated_by: string | null
+          url: string
+        }
+        Insert: {
+          rotasi_derajat?: number
+          updated_at?: string
+          updated_by?: string | null
+          url: string
+        }
+        Update: {
+          rotasi_derajat?: number
+          updated_at?: string
+          updated_by?: string | null
+          url?: string
+        }
+        Relationships: []
+      }
       mesin: {
         Row: {
           created_at: string | null

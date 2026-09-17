@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react'
 import { downloadFotoTunggal, sanitizeNamaFile } from '../lib/downloadHelpers'
 import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
+import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 
 export type FotoViewer = {
   url: string
@@ -30,6 +31,28 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
   const resetView=()=>{setZoom(1);setPan({x:0,y:0})}
   const goPrev=()=>{if(index>0){setIndex(index-1);resetView()}}
   const goNext=()=>{if(index<fotos.length-1){setIndex(index+1);resetView()}}
+
+  // Rotate PERMANEN (17 Sep 2026) - metadata rotasi_derajat per-URL (media_rotasi), file R2
+  // TIDAK diubah - lihat komentar lengkap di lib/mediaRotasi.ts & migration
+  // 20260917030000_media_rotasi.sql. Fetch batch 1x per galeri (bukan per-foto) - hemat query.
+  const[rotasiMap,setRotasiMap]=useState<Record<string,number>>({})
+  useEffect(()=>{
+    fetchRotasiBatch(fotos.map(f=>f.url)).then(setRotasiMap)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[fotos.map(f=>f.url).join("|")])
+  const[rotating,setRotating]=useState(false)
+  const getUname=()=>{try{const s=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");return s?.nama||s?.username||"Admin"}catch{return"Admin"}}
+  const doRotate=async()=>{
+    if(rotating)return
+    setRotating(true)
+    try{
+      const next=await rotateMedia(foto.url,rotasiMap[foto.url]||0,getUname())
+      setRotasiMap(prev=>({...prev,[foto.url]:next}))
+    }catch{alert("Gagal menyimpan rotasi - coba lagi.")}
+    finally{setRotating(false)}
+  }
+  const rotDeg=rotasiMap[foto.url]||0
+  const rotSideways=rotDeg===90||rotDeg===270
 
   useEffect(()=>{
     const handler=(e:KeyboardEvent)=>{
@@ -111,6 +134,12 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
           )}
         </div>
         <div style={{display:"flex",gap:8,flexShrink:0}}>
+          {!isGeneric&&(
+            <button onClick={doRotate} disabled={rotating} title="Putar 90°"
+              style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:rotating?"default":"pointer",opacity:rotating?0.6:1}}>
+              <i className="ti ti-rotate-clockwise" style={{fontSize:15}}/> Putar
+            </button>
+          )}
           <button onClick={()=>downloadFotoTunggal(foto.url,sanitizeNamaFile(foto.name||`${label||"foto"}_${index+1}.jpg`))}
             style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
             <i className="ti ti-download" style={{fontSize:15}}/> Download
@@ -133,7 +162,8 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
         )}
         {isVideo?(
           <div style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <video src={foto.url} controls autoPlay style={{maxWidth:"90%",maxHeight:"90%"}}/>
+            <video src={foto.url} controls autoPlay
+              style={{maxWidth:rotSideways?"90vh":"90%",maxHeight:rotSideways?"90vw":"90%",transform:rotDeg?`rotate(${rotDeg}deg)`:undefined}}/>
           </div>
         ):isGeneric?(
           <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:14,color:"#fff"}}>
@@ -151,7 +181,7 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
             onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
             style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none" as const,cursor:zoom>1?(draggingRef.current?"grabbing":"grab"):"default"}}>
             <img src={foto.url} draggable={false}
-              style={{maxWidth:"90%",maxHeight:"90%",objectFit:"contain" as const,transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"center",transition:draggingRef.current?"none":"transform .08s"}}/>
+              style={{maxWidth:rotSideways?"90vh":"90%",maxHeight:rotSideways?"90vw":"90%",objectFit:"contain" as const,transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom}) rotate(${rotDeg}deg)`,transformOrigin:"center",transition:draggingRef.current?"none":"transform .08s"}}/>
           </div>
         )}
         {fotos.length>1&&index<fotos.length-1&&(
@@ -178,18 +208,19 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
             {fotos.map((f,fi)=>{
               const fVideo=isVideoFoto(f)
               const fGeneric=isGenericFoto(f)
+              const fRot=rotasiMap[f.url]||0
               return(
                 <div key={fi} onClick={()=>{setIndex(fi);resetView()}}
                   style={{position:"relative" as const,width:48,height:48,borderRadius:6,cursor:"pointer",flexShrink:0,overflow:"hidden",
                     background:"#1e293b",display:"flex",alignItems:"center",justifyContent:"center",
                     border:fi===index?"2px solid #fff":"2px solid transparent",opacity:fi===index?1:0.55}}>
                   {fVideo?(
-                    <><video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                    <><video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const,transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
                     <i className="ti ti-player-play-filled" style={{position:"absolute" as const,fontSize:14,color:"#fff"}}/></>
                   ):fGeneric?(
                     <i className="ti ti-file-text" style={{fontSize:18,color:"#cbd5e1"}}/>
                   ):(
-                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const,transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
                   )}
                 </div>
               )

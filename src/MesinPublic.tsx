@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
 import { uploadToR2 } from './lib/r2Client'
+import { fetchRotasiBatch } from './lib/mediaRotasi'
 
 // Sama persis calcNext di MaintenanceRutinTab.tsx (Vista Teknik) - sengaja diduplikasi kecil,
 // bukan di-share, karena halaman ini PUBLIC/tanpa login sementara MaintenanceRutinTab bagian
@@ -49,6 +50,17 @@ export default function MesinPublic(){
   const [pekerjaList,setPekerjaList]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
   const [notFound,setNotFound]=useState(false)
+  // Rotate PERMANEN (17 Sep 2026) - baca-saja di halaman publik ini (rotasi cuma bisa DIUBAH
+  // dari sisi admin, KerusakanTab.tsx - lihat komentar lengkap di lib/mediaRotasi.ts &
+  // migration 20260917030000_media_rotasi.sql). Sengaja gak dikasih tombol putar di sini -
+  // halaman QR ini diakses publik tanpa login, jangan buka jalur ubah data ke pengunjung
+  // anonim - tapi hasil rotate dari admin tetap kelihatan benar di sini juga (fetch+terapkan
+  // transform, gak nulis apa pun).
+  const [rotasiMap,setRotasiMap]=useState<Record<string,number>>({})
+  useEffect(()=>{
+    const urls=logList.flatMap((l:any)=>(l.foto||[]).map((f:any)=>f.url))
+    fetchRotasiBatch(urls).then(setRotasiMap)
+  },[logList])
   // Rutin mana yang lagi buka form "pilih pekerja", nama yang dipilih, dan status simpan.
   const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
   const [pekerjaPilih,setPekerjaPilih]=useState("")
@@ -363,9 +375,9 @@ export default function MesinPublic(){
                       ))}
                       {foto.length>0&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
-                          {foto.map((f:any,fi:number)=>(
-                            <a key={fi} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/></a>
-                          ))}
+                          {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
+                            <a key={fi} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/></a>
+                          );})}
                         </div>
                       )}
                     </div>

@@ -1,8 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { uploadToR2 } from '../lib/r2Client'
 import { activityLogService } from '../services/activityLogService'
 import { fmtShort } from '../lib/dateHelpers'
+import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
 
 const BLANK_FORM={mesin_id:"",judul:"",kendala:"",perbaikan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"};
@@ -22,6 +23,26 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
   const getUname=()=>{const s=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");return user?.name||user?.nama||s?.nama||"Admin";};
 
   const toggleExpand=(id:any)=>setExpanded(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
+
+  // Rotate PERMANEN thumbnail dokumentasi kerusakan (17 Sep 2026) - metadata rotasi_derajat
+  // per-URL (media_rotasi), file R2 TIDAK diubah - lihat lib/mediaRotasi.ts & migration
+  // 20260917030000_media_rotasi.sql.
+  const [rotasiMap,setRotasiMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const urls=(maintenanceList||[]).flatMap((m:any)=>(m.foto||[]).map((f:any)=>f.url));
+    fetchRotasiBatch(urls).then(setRotasiMap);
+  },[maintenanceList]);
+  const [rotatingUrl,setRotatingUrl]=useState<string|null>(null);
+  const doRotateThumb=async(e:any,url:string)=>{
+    e.preventDefault();e.stopPropagation();
+    if(rotatingUrl)return;
+    setRotatingUrl(url);
+    try{
+      const next=await rotateMedia(url,rotasiMap[url]||0,getUname());
+      setRotasiMap(prev=>({...prev,[url]:next}));
+    }catch{alert("Gagal menyimpan rotasi - coba lagi.");}
+    finally{setRotatingUrl(null);}
+  };
 
   const pilihFoto=(fileList:FileList|null)=>{
     if(!fileList||fileList.length===0)return;
@@ -256,9 +277,15 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
                   ))}
                   {foto.length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
-                      {foto.map((f:any,fi:number)=>(
-                        <a key={fi} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/></a>
-                      ))}
+                      {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
+                        <div key={fi} style={{position:"relative",width:52,height:52}}>
+                          <a href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/></a>
+                          <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
+                            style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
+                            <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>
+                          </button>
+                        </div>
+                      );})}
                     </div>
                   )}
                 </div>
