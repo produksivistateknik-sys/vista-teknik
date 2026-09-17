@@ -39,6 +39,14 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   // modal dibuka/ditutup/berhasil submit.
   const [stagedFoto,setStagedFoto]=useState<{file:File,previewUrl:string}[]>([]);
   const [doneSaving,setDoneSaving]=useState(false);
+  // Accordion histori dokumentasi (17 Sep 2026, Phase A - lihat Phase B: kolom
+  // maintenance_rutin_log.foto). rutinLogList SUDAH di-fetch penuh di parent
+  // (MaintenancePageTab.tsx) + auto-refresh via realtime tiap ada INSERT/UPDATE
+  // maintenance_rutin_log - jadi expand di sini MURNI filter di memori, TIDAK ada
+  // query baru. Data kecil (dicek live 16 Sep: 9 jadwal aktif, cuma 15 log total,
+  // rata-rata 3/jadwal, maks 5) - gak perlu pagination/scroll internal.
+  const [expandedIds,setExpandedIds]=useState<Set<number>>(new Set());
+  const toggleExpand=(id:number)=>setExpandedIds(prev=>{const n=new Set(prev);n.has(id)?n.delete(id):n.add(id);return n;});
   const pilihFoto=(fileList:FileList|null)=>{
     if(!fileList||fileList.length===0)return;
     const tolak:string[]=[];
@@ -130,12 +138,17 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
     setDoneSaving(false);
     setDoneId(null);
   };
+  // SATU SUMBER LOGIKA (CLAUDE.md B.1) - semua log utk 1 rutin_id, terbaru dulu. Dipakai getLatestLog
+  // (kolom Terakhir, "via QR"/"Admin") DAN accordion Riwayat Dokumentasi (17 Sep 2026) - jangan
+  // duplikasi filter+sort ini di 2 tempat, biar urutan/hasil gak bisa "kesplit" beda.
+  const getLogsForRutin=(rutinId:number)=>
+    (rutinLogList||[]).filter((l:any)=>l.rutin_id===rutinId)
+      .slice().sort((a:any,b:any)=>(b.dilakukan_pada||"").localeCompare(a.dilakukan_pada||"")||b.id-a.id);
   // Entry terbaru per rutin_id dari maintenance_rutin_log - buat nunjukin siapa & lewat mana
   // (admin vs QR pekerja) terakhir nandain jadwal ini selesai.
   const getLatestLog=(rutinId:number)=>{
-    const rows=(rutinLogList||[]).filter((l:any)=>l.rutin_id===rutinId);
-    if(rows.length===0)return null;
-    return rows.slice().sort((a:any,b:any)=>(b.dilakukan_pada||"").localeCompare(a.dilakukan_pada||"")||b.id-a.id)[0];
+    const rows=getLogsForRutin(rutinId);
+    return rows.length===0?null:rows[0];
   };
   const kepatuhan=rutinList.length>0?Math.round((rutinList.filter((r:any)=>r.terakhir_dilakukan&&r.jatuh_tempo>=today).length/rutinList.length)*100):0;
   const filtered=filterFrek==="ALL"?rutinList:rutinList.filter((r:any)=>r.frekuensi===filterFrek);
@@ -190,7 +203,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
           <thead><tr>{["Mesin","Jenis Maintenance","Frekuensi","Teknisi","Terakhir","Jatuh Tempo","Status","Aksi"].map((h:string)=><th key={h} style={thS}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.length===0?(<tr><td colSpan={8} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Belum ada jadwal</td></tr>):
-            filtered.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};const latestLog=getLatestLog(r.id);return(
+            filtered.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};const latestLog=getLatestLog(r.id);const logs=getLogsForRutin(r.id);const isExpanded=expandedIds.has(r.id);return[(
               <tr key={r.id}>
                 <td style={td}><div style={{fontWeight:700}}>{r.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{r.mesin?.kode}</div></td>
                 <td style={{...td,fontWeight:600,color:"#475569"}}>{r.jenis_maintenance}</td>
@@ -201,13 +214,51 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
                 <td style={td}><span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{st.label}</span></td>
                 <td style={{...td,textAlign:"center"}}>
                   <div style={{display:"flex",gap:4,justifyContent:"center"}}>
+                    {logs.length>0&&(
+                      <button onClick={()=>toggleExpand(r.id)} title={isExpanded?"Sembunyikan riwayat dokumentasi":"Lihat riwayat dokumentasi"}
+                        style={{background:isExpanded?"#eff6ff":"#f8fafc",border:`1px solid ${isExpanded?"#bfdbfe":"#e2e8f0"}`,borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11,color:isExpanded?"#1d4ed8":"#64748b",fontWeight:700}}>
+                        {isExpanded?"▲":"▼"} {logs.length}
+                      </button>
+                    )}
                     <button onClick={()=>setDoneId(r)} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11,color:"#16a34a",fontWeight:700}}>Done</button>
                     <button onClick={()=>{setEditId(r.id);setForm({mesin_id:r.mesin_id?.toString()||"",jenis_maintenance:r.jenis_maintenance||"",frekuensi:r.frekuensi||"mingguan",teknisi:r.teknisi||"",terakhir_dilakukan:r.terakhir_dilakukan||"",jatuh_tempo:r.jatuh_tempo||"",catatan:r.catatan||""});setShowForm(true);}} style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11}}>✏️</button>
                     <button onClick={()=>setDelId(r.id)} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"3px 7px",cursor:"pointer",fontSize:11,color:"#dc2626"}}>🗑</button>
                   </div>
                 </td>
               </tr>
-            );})}
+            ),isExpanded&&logs.length>0&&(
+              <tr key={r.id+"-hist"}>
+                <td colSpan={8} style={{background:"#f8fafc",padding:"12px 16px",borderBottom:"1px solid #f1f5f9"}}>
+                  <div style={{fontSize:10.5,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📋 Riwayat Dokumentasi ({logs.length})</div>
+                  <div style={{display:"flex",flexDirection:"column",gap:6}}>
+                    {logs.map((l:any)=>{const foto=l.foto||[];return(
+                      <div key={l.id} style={{display:"flex",gap:12,alignItems:"flex-start",background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px"}}>
+                        <div style={{minWidth:150}}>
+                          <div style={{fontSize:11,fontWeight:700,color:"#1e293b"}}>{l.dilakukan_pada||"—"}</div>
+                          <div style={{fontSize:10,fontWeight:700,color:l.completed_via==="qr_worker"?"#7c3aed":"#94a3b8",marginTop:1}}>{l.completed_via==="qr_worker"?"via QR":"Admin"} ({l.teknisi||"—"})</div>
+                          {l.catatan&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>{l.catatan}</div>}
+                        </div>
+                        {foto.length>0?(
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                            {foto.map((f:any,fi:number)=>(
+                              <a key={fi} href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
+                                {f.type==="video"?(
+                                  <video src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000"}}/>
+                                ):(
+                                  <img src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0"}}/>
+                                )}
+                              </a>
+                            ))}
+                          </div>
+                        ):(
+                          <span style={{fontSize:10,color:"#cbd5e1",fontStyle:"italic",paddingTop:2}}>Tanpa dokumentasi</span>
+                        )}
+                      </div>
+                    );})}
+                  </div>
+                </td>
+              </tr>
+            )];})}
           </tbody>
         </table>
       </div>
