@@ -11,6 +11,20 @@ import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
 const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
+// Banner broadcast "WO diubah Engineering" (17 Sep 2026, fitur baru) - 1 event per aksi Save di
+// sini (bukan per sub-trigger notify-wo-baru yang bisa 2x dalam 1 save kalau field WO DAN panel
+// baru berubah bareng - broadcast ini SENGAJA 1 event = 1 aksi Save, biar gak dobel banner buat
+// 1 momen yang sama). Gate divisi==='engineering' di caller (defense-in-depth - tab ini praktiknya
+// eksklusif Engineering, ENGINEERING_ALLOWED_TABS/sidebar admin gak expose tab "wodigital" lagi,
+// tapi gak digantungkan ke asumsi itu doang). Gagal insert TIDAK BOLEH gagalin simpan WO yang
+// sudah beres - try/catch sendiri di caller, sama pola notify-wo-baru di sebelahnya.
+async function broadcastWoEngineeringEvent(params:{woId:number,woNumber:string,proyek:string,jenisPerubahan:"tambah"|"edit",dilakukanOleh:string}){
+  await supabase.from("wo_engineering_events").insert({
+    wo_id:params.woId,wo_number:params.woNumber,proyek:params.proyek,
+    jenis_perubahan:params.jenisPerubahan,dilakukan_oleh:params.dilakukanOleh,
+  });
+}
+
 // Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
 // request tanpa .range(), sama kelas bug yang udah kejadian di renharService/rawScheduleService/
 // workOrderService. work_orders/panels masih kecil sekarang (puluhan baris), tapi fetchAll() di
@@ -189,6 +203,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         panelsToSave.forEach((p:any)=>{const t=p.tanggal||form.target;(byTanggal[t]=byTanggal[t]||[]).push(p);});
         const groupedReal=Object.entries(byTanggal).map(([tanggal,panels])=>({tanggal,panels}));
         await workOrderService.saveWOWithSplit(formEditId,form.wo,form.proyek,form.target,groupedReal,uname);
+        if(user?.divisi==="engineering"){
+          try{
+            await broadcastWoEngineeringEvent({woId:formEditId,woNumber:form.wo,proyek:form.proyek,jenisPerubahan:"edit",dilakukanOleh:uname});
+          }catch{/* banner broadcast gagal - diabaikan, WO tetap tersimpan */}
+        }
         if(woFieldsChanged){
           try{
             await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"revisi_wo",wo_id:formEditId,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
@@ -207,6 +226,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         try{
           await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"baru",wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
         }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}
+        if(user?.divisi==="engineering"){
+          try{
+            await broadcastWoEngineeringEvent({woId:newWo.id,woNumber:form.wo,proyek:form.proyek,jenisPerubahan:"tambah",dilakukanOleh:uname});
+          }catch{/* banner broadcast gagal - diabaikan, WO tetap tersimpan */}
+        }
 
         // Upload dokumen yang ditahan pas isi form (REVISI 4 Sep 2026) - savePanels() insert
         // tanpa .select(), jadi id panel baru belum diketahui di sini. Query ulang panels by

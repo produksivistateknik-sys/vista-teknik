@@ -40,6 +40,7 @@ import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './componen
 import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
 import { GlobalSearch } from './components/GlobalSearch'
+import { WoEngineeringBanner } from './components/WoEngineeringBanner'
 
 const TrackingView = lazy(() => import('./components/TrackingView').then(m => ({ default: m.TrackingView })))
 const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
@@ -710,6 +711,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </button>
         </div>
       )}
+      <WoEngineeringBanner akun={user?.username?`teknik:${user.username}`:null} topOffset={(hasNewVersion||hasDateRolled)?40:0}/>
       {ctxMenu&&(
         <div
           onClick={(e:any)=>e.stopPropagation()}

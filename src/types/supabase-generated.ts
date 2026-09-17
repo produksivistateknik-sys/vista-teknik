@@ -3139,6 +3139,70 @@ export type Database = {
           },
         ]
       }
+      wo_engineering_events: {
+        Row: {
+          created_at: string
+          dilakukan_oleh: string
+          id: number
+          jenis_perubahan: string
+          proyek: string
+          wo_id: number | null
+          wo_number: string
+        }
+        Insert: {
+          created_at?: string
+          dilakukan_oleh: string
+          id?: never
+          jenis_perubahan: string
+          proyek: string
+          wo_id?: number | null
+          wo_number: string
+        }
+        Update: {
+          created_at?: string
+          dilakukan_oleh?: string
+          id?: never
+          jenis_perubahan?: string
+          proyek?: string
+          wo_id?: number | null
+          wo_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_engineering_events_wo_id_fkey"
+            columns: ["wo_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      wo_engineering_events_dibaca: {
+        Row: {
+          akun: string
+          dibaca_at: string
+          event_id: number
+        }
+        Insert: {
+          akun: string
+          dibaca_at?: string
+          event_id: number
+        }
+        Update: {
+          akun?: string
+          dibaca_at?: string
+          event_id?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "wo_engineering_events_dibaca_event_id_fkey"
+            columns: ["event_id"]
+            isOneToOne: false
+            referencedRelation: "wo_engineering_events"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       work_orders: {
         Row: {
           created_at: string | null
