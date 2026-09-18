@@ -22,6 +22,7 @@ const divisiLabel=(v:string)=>DIVISI_OPTIONS.find(d=>d.value===v)?.label||v;
 
 export function MasterMesinTab({mesinList,setMesinList,user}:any){
   const [printQR,setPrintQR]=useState<any>(null);
+  const [printingAll,setPrintingAll]=useState(false);
   const [form,setForm]=useState({kode:"",nama:"",lokasi:"",status:"aktif",divisi:""});
   const [editId,setEditId]=useState<any>(null);
   const [delId,setDelId]=useState<any>(null);
@@ -59,6 +60,52 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
     }
   };
   const STATUS_COLOR={aktif:"#16a34a",rusak:"#dc2626",maintenance:"#f59e0b",nonaktif:"#64748b"};
+
+  // Cetak Semua QR (18 Sep 2026, fitur baru diminta user) - dulu print QR cuma bisa 1 mesin per
+  // klik (modal printQR di bawah) - QR fisik yang perlu diganti ulang (root cause domain Vercel
+  // beku, lihat komentar di modal printQR) jumlahnya banyak, 1-per-1 gak praktis. Sekalian buka
+  // 1 window print-preview berisi kartu QR SEMUA mesin di mesinList (list ini SUDAH terfilter
+  // exclude soft-delete dari parent - lihat cara mesinList di-fetch di App.tsx/System tab, sama
+  // sumber yang dipakai tabel di atas) - user tinggal Print/Ctrl+P sekali, browser yang atur
+  // page break antar kartu (CSS grid + break-inside:avoid per kartu).
+  const cetakSemuaQR=async()=>{
+    if(mesinList.length===0||printingAll)return;
+    setPrintingAll(true);
+    try{
+      const items=await Promise.all(mesinList.map(async(m:any)=>{
+        const url="https://admin.vistaproduksi.com/mesin?id="+m.id;
+        const dataUrl=await QRCode.toDataURL(url,{width:200,margin:2,color:{dark:"#1e293b",light:"#ffffff"}});
+        return{m,url,dataUrl};
+      }));
+      const w=window.open("","_blank");
+      if(!w){setPrintingAll(false);return;}
+      const cards=items.map(({m,url,dataUrl})=>
+        '<div class="kartu">'
+        +'<h3>'+m.nama+'</h3>'
+        +'<p class="sub">'+m.kode+(m.lokasi?' · '+m.lokasi:'')+'</p>'
+        +'<img src="'+dataUrl+'" width="160" height="160"/>'
+        +'<p class="url">'+url+'</p>'
+        +'</div>'
+      ).join("");
+      w.document.write('<!DOCTYPE html><html><head><title>QR Semua Mesin</title>'
+        +'<style>'
+        +'body{font-family:Arial;padding:24px;background:#fff;margin:0}'
+        +'.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}'
+        +'.kartu{border:1px solid #e2e8f0;border-radius:8px;padding:16px 12px;text-align:center;break-inside:avoid;page-break-inside:avoid}'
+        +'.kartu h3{margin:0 0 4px;font-size:14px}'
+        +'.kartu .sub{color:#64748b;margin:0 0 10px;font-size:11px}'
+        +'.kartu img{border:1px solid #e2e8f0;border-radius:6px;padding:6px}'
+        +'.kartu .url{font-size:9px;color:#94a3b8;margin:8px 0 0;word-break:break-all}'
+        +'@media print{.grid{grid-template-columns:repeat(3,1fr)}}'
+        +'</style></head><body>'
+        +'<div class="grid">'+cards+'</div>'
+        +'<scri'+'pt>setTimeout(function(){window.print();},600);</scri'+'pt>'
+        +'</body></html>');
+      w.document.close();
+    } finally {
+      setPrintingAll(false);
+    }
+  };
 
 
   const thS={background:"#1e3a8a",color:"#fff",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left" as const,whiteSpace:"nowrap" as const,borderRight:"1px solid #ffffff18"};
@@ -101,6 +148,12 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
             <div style={{fontSize:10,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.3,marginTop:2}}>{s}</div>
           </Card>
         ))}
+      </div>
+
+      <div style={{display:"flex",justifyContent:"flex-end",marginBottom:10}}>
+        <Btn color="#16a34a" onClick={cetakSemuaQR} disabled={printingAll||mesinList.length===0}>
+          {printingAll?"⏳ Menyiapkan...":`🖨 Cetak Semua QR (${mesinList.length})`}
+        </Btn>
       </div>
 
       <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
