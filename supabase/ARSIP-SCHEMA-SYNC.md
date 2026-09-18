@@ -56,9 +56,20 @@ langsung di database (muncul di Supabase Studio saat lihat tabel/fungsi ini).
 
 Fitur Arsip Seksi (`panel_seksi_archived`, trigger `panels_auto_archive_seksi()` di
 tabel `panels`, dipicu OTOMATIS begitu `warehouse_progress`/`qs_progress`/
-`qc_checklist._global.status`/`checklist[kode].pasangKomponenTahap` mencapai
-"selesai" - lihat tab "Arsip Seksi" di `ArsipTab.tsx` Vista Teknik dan tab "Arsip"
-di Vista Pekerja) BUKAN pemindahan seperti `arsip_panel()` di atas - ini SALINAN
+`qc_checklist._global.status` mencapai "selesai" - lihat tab "Arsip Seksi" di
+`ArsipTab.tsx` Vista Teknik dan tab "Arsip" di Vista Pekerja) BUKAN pemindahan
+seperti `arsip_panel()` di atas - ini SALINAN
+
+**REVISI (18 Sep 2026)** - seksi `assembling_luar`/`wiring_control` (sumber
+`checklist[kode].pasangKomponenTahap`) **BUKAN lagi otomatis** - blok itu DIHAPUS dari
+`panels_auto_archive_seksi()` (migration `20260918020000_remove_auto_archive_pasang_komponen.sql`,
+backup source lama di `backup_panels_auto_archive_seksi_20260918_before_remove_pasang_komponen.sql`)
+setelah serangkaian bug (panel ter-archive padahal proses belum genuinely 100%, operator
+ter-lock tanpa cara lanjut - lihat histori investigasi). Sekarang MANUAL: operator klik
+tombol "Simpan Progress"/"Arsipkan Komponen" di `KomponenPasangView.tsx`
+(Vista Pekerja) - fungsi `simpanProgress()` di sana yang isi `panel_seksi_archived` buat
+2 seksi ini, bukan trigger lagi. Warehouse/QS/QC TETAP otomatis seperti sebelumnya,
+tidak berubah.
 read-only, data live di `panels` TIDAK pernah dihapus/diubah (sengaja, supaya
 `calcPanelProgress()` yang baca `checklist[kode].progress["PASANG KOMPONEN"]`
 langsung dan berbagai laporan Vista Teknik yang baca `warehouse_*`/`qs_*`/
