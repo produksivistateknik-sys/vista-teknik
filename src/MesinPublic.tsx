@@ -59,6 +59,20 @@ export default function MesinPublic(){
   const hasNewVersion=useVersionCheck()
   const [mesin,setMesin]=useState<any>(null)
   const [rutinList,setRutinList]=useState<any[]>([])
+  // Log Maintenance Rutin (18 Sep 2026, FITUR BARU + BUG FIX "hilang setelah Selesai") - dulu
+  // gak ada tempat nampilin histori "baru aja diselesaikan" sama sekali di halaman ini, beda
+  // dari Log Kerusakan yang barisnya permanen tampil apa pun statusnya - begitu jadwal rutin
+  // ditandai selesai, jatuh_tempo-nya mundur (calcNext) jadi lolos filter rutinDue, KESANNYA
+  // hilang total padahal sebenarnya cuma gak actionable lagi hari ini. Section terpisah ini
+  // baca dari maintenance_rutin_log (SUDAH otomatis keisi tiap "Tandai Selesai" sejak fitur
+  // dokumentasi foto 16 Sep 2026) - independen dari status due/tidaknya jadwal, jadi entri
+  // "baru diselesaikan" tetap kelihatan di sini dengan badge Selesai, PERSIS pola Log Kerusakan.
+  // ROLLING 30 HARI (query di-scope .gte dilakukan_pada) - selaras sama pg_cron harian
+  // (maintenance-rutin-log-cleanup) yang hapus fisik baris >30 hari, lihat migration
+  // 20260918010000. Dicek dulu (18 Sep 2026): jatuh_tempo/terakhir_dilakukan/kepatuhan% semua
+  // baca dari kolom maintenance_rutin sendiri, BUKAN dari tabel log ini - jadi rolling-delete di
+  // sini TIDAK merusak kalkulasi jadwal apa pun, murni histori/dokumentasi.
+  const [rutinLogList,setRutinLogList]=useState<any[]>([])
   const [logList,setLogList]=useState<any[]>([])
   const [pekerjaList,setPekerjaList]=useState<any[]>([])
   const [loading,setLoading]=useState(true)
@@ -71,9 +85,9 @@ export default function MesinPublic(){
   // transform, gak nulis apa pun).
   const [rotasiMap,setRotasiMap]=useState<Record<string,number>>({})
   useEffect(()=>{
-    const urls=logList.flatMap((l:any)=>(l.foto||[]).map((f:any)=>f.url))
+    const urls=[...logList,...rutinLogList].flatMap((l:any)=>(l.foto||[]).map((f:any)=>f.url))
     fetchRotasiBatch(urls).then(setRotasiMap)
-  },[logList])
+  },[logList,rutinLogList])
   // Rutin mana yang lagi buka form "pilih pekerja", nama yang dipilih, dan status simpan.
   const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
   const [pekerjaPilih,setPekerjaPilih]=useState("")
@@ -115,6 +129,18 @@ export default function MesinPublic(){
     fetchData()
   },[mesinId])
 
+  const RETENSI_LOG_RUTIN_HARI=30
+  // rutinIds dipisah dari r yang dipilih init (bukan cuma yang lagi due) - Riwayat tetap kebaca
+  // buat jadwal yang lagi gak due juga (mis. baru aja diselesaikan, jatuh_tempo udah maju).
+  const fetchRutinLog=async(rutinIds:number[])=>{
+    if(rutinIds.length===0){setRutinLogList([]);return}
+    const batas=new Date();batas.setDate(batas.getDate()-RETENSI_LOG_RUTIN_HARI)
+    const{data}=await supabase.from("maintenance_rutin_log").select("*")
+      .in("rutin_id",rutinIds).gte("dilakukan_pada",batas.toISOString().slice(0,10))
+      .order("dilakukan_pada",{ascending:false})
+    setRutinLogList(data??[])
+  }
+
   const fetchData=async()=>{
     const mesinIdNum=Number(mesinId)
     const [{data:m},{data:r},{data:l},{data:p}]=await Promise.all([
@@ -129,6 +155,7 @@ export default function MesinPublic(){
     setLogList(l??[])
     setPekerjaList(p??[])
     setLoading(false)
+    await fetchRutinLog((r??[]).map((x:any)=>x.id))
   }
 
   const tandaiSelesai=async(rutin:any)=>{
@@ -158,6 +185,9 @@ export default function MesinPublic(){
       await supabase.from("maintenance_rutin_log").insert({
         rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaTerpilih,completed_via:"qr_worker",foto,
       })
+      // Refetch biar entri yang baru aja diinsert langsung nongol di Log Maintenance Rutin -
+      // pakai rutinList TERKINI (bukan snapshot lama) biar id jadwal yang lagi gak due juga ikut.
+      await fetchRutinLog(rutinList.map((x:any)=>x.id))
       await supabase.from("activity_log").insert({
         user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
         description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
@@ -348,6 +378,48 @@ export default function MesinPublic(){
                       style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
                       Tandai Selesai
                     </button>
+                  </div>
+                )}
+              </div>
+            )
+          })}
+        </div>
+
+        {/* Log Maintenance Rutin (18 Sep 2026, FITUR BARU + BUG FIX "hilang setelah Selesai") -
+            lihat komentar lengkap di deklarasi rutinLogList/fetchRutinLog di atas. Rolling 30
+            hari (query sudah di-scope, PLUS pg_cron harian yang beneran hapus fisik baris lama -
+            migration 20260918010000) - beda dari Log Kerusakan di bawah yang permanen. */}
+        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden",marginBottom:12}}>
+          <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
+            <span style={{fontSize:14}}>🧾</span>
+            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Log Maintenance Rutin</span>
+            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{rutinLogList.length} log (30 hari terakhir)</span>
+          </div>
+          {rutinLogList.length===0?(
+            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada maintenance rutin yang diselesaikan</div>
+          ):rutinLogList.map((rl:any,i:number)=>{
+            const jenisNama=rutinList.find((r:any)=>r.id===rl.rutin_id)?.jenis_maintenance||"Maintenance Rutin"
+            const foto=rl.foto||[]
+            return(
+              <div key={rl.id} style={{padding:"10px 14px",borderLeft:"3px solid #16a34a",borderBottom:i<rutinLogList.length-1?"1px solid #f1f5f9":"none"}}>
+                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{jenisNama}</div>
+                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{fmtDate(rl.dilakukan_pada)}{rl.teknisi?" · "+rl.teknisi:""}{rl.completed_via==="qr_worker"?" · via QR":""}</div>
+                  </div>
+                  <span style={{background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>✅ Selesai</span>
+                </div>
+                {foto.length>0&&(
+                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
+                    {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
+                      <a key={fi} href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
+                        {f.type==="video"?(
+                          <video src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
+                        ):(
+                          <img src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
+                        )}
+                      </a>
+                    );})}
                   </div>
                 )}
               </div>
