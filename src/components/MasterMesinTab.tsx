@@ -160,6 +160,18 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
         </Modal>
       )}
       {printQR&&(
+        // BUG FIX (18 Sep 2026, root cause "sesi upload dokumentasi gak muncul khusus
+        // Painting") - domain QR dulu vista-teknik-new.vercel.app, ternyata deployment
+        // Vercel itu BEKU sejak 5 Sep 2026 (gak lagi auto-deploy dari git push - dicek
+        // langsung: bundle JS-nya nol kecocokan utk fitur 16-18 Sep, termasuk upload
+        // dokumentasi ini). Setiap scan QR fisik di mesin manapun jadi selalu ketemu kode
+        // 13 hari basi, terlepas device operatornya baru di-refresh atau enggak - BUKAN
+        // soal tab basi (itu dugaan awal, sudah kepalang di-fix di MesinPublic.tsx pakai
+        // useVersionCheck, TAPI gak akan mempan di sini karena version.json-nya IKUT beku).
+        // Ganti ke admin.vistaproduksi.com - domain asli yang beneran auto-deploy (dicek:
+        // build 17 Sep 15:03, up to date). QR FISIK yang SUDAH tertempel di mesin masih
+        // perlu dicetak ulang manual - kode ini cuma benerin QR yang di-print BARU
+        // mulai sekarang.
         <Modal title={"QR Code — "+printQR.nama} onClose={()=>setPrintQR(null)} width={380}>
           <div style={{textAlign:"center",padding:"8px 0"}}>
             <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
@@ -169,13 +181,13 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
               <canvas ref={(canvas:any)=>{
                 if(canvas&&!(canvas as any).__qr_done){
                   (canvas as any).__qr_done=true;
-                  const url="https://vista-teknik-new.vercel.app/mesin?id="+printQR.id;
+                  const url="https://admin.vistaproduksi.com/mesin?id="+printQR.id;
                   QRCode.toCanvas(canvas,url,{width:180,margin:2,color:{dark:"#1e293b",light:"#ffffff"}},(err:any)=>{if(err)console.error(err);});
                 }
               }}/>
             </div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:4,fontFamily:"monospace",wordBreak:"break-all" as const,padding:"0 8px"}}>
-              {"https://vista-teknik-new.vercel.app/mesin?id="+printQR.id}
+              {"https://admin.vistaproduksi.com/mesin?id="+printQR.id}
             </div>
             <div style={{fontSize:11,color:"#64748b",marginBottom:20}}>
               {printQR.kode} · {printQR.nama}
@@ -183,7 +195,7 @@ export function MasterMesinTab({mesinList,setMesinList,user}:any){
             <div style={{display:"flex",gap:8,justifyContent:"center"}}>
               <Btn outline color="#64748b" onClick={()=>setPrintQR(null)}>Tutup</Btn>
               <Btn color="#1d4ed8" onClick={async()=>{
-                const url="https://vista-teknik-new.vercel.app/mesin?id="+printQR.id;
+                const url="https://admin.vistaproduksi.com/mesin?id="+printQR.id;
                 const dataUrl=await QRCode.toDataURL(url,{width:200,margin:2,color:{dark:"#1e293b",light:"#ffffff"}});
                 const w=window.open("","_blank","width=420,height=520");
                 if(!w)return;
