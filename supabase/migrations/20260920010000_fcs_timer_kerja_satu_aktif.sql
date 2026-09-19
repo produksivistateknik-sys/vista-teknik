@@ -1,0 +1,31 @@
+-- Cegah timer kerja duplikat (20 Sep 2026, ditemukan lewat audit database - 7 baris
+-- fcs_timer_kerja duplikat utk pekerja+komponen+proses+tanggal yang SAMA, dibuat dalam detik
+-- yang sama, KHADIRUN/WM.2/RENDAM panel PP-ELECTRONIC - POLYESTER WO 174).
+--
+-- Root cause (2 penyebab yang saling memperkuat, lihat commit terkait vista-pekerja):
+-- 1. Tombol bulk-assign "Mulai (N)" (OperatorView.tsx) gak di-disable selagi proses berjalan -
+--    tap berkali-kali bisa memicu pemanggilan startTimer() paralel utk kombinasi yang sama.
+-- 2. withTimeout() (koneksi.ts) gak membatalkan request asli saat timeout - di koneksi lambat,
+--    cek "timer udah ada?" sebelum retry bisa lolos krn insert attempt sebelumnya belum
+--    ke-commit/kebaca pas attempt berikutnya jalan (TOCTOU race, gak bisa dibereskan tuntas di
+--    level aplikasi doang).
+--
+-- Fix DB-level (defense in depth, pola SAMA PERSIS wi_revisions_one_current): partial unique
+-- index - maksimal 1 baris "aktif" (selesai IS NULL) per kombinasi pekerja+panel+komponen+
+-- proses+tanggal+tahap. INSERT kedua yang bentrok gagal dgn unique violation (23505) - kode
+-- aplikasi (startTimer(), lihat commit terkait) menangkap error itu, fetch baris yang udah ada,
+-- pakai itu - BUKAN alert error ke operator.
+--
+-- COALESCE(tahap,'') dipakai krn kolom tahap NULLABLE (proses non-BUSBAR/non-Pasang-Komponen
+-- gak punya tahap) - NULL di index biasa dianggap "beda" satu sama lain (gak collide), jadi
+-- WAJIB di-COALESCE ke string biar NULL-vs-NULL dianggap sama utk kombinasi yang sama.
+--
+-- TIDAK ADA data yang dihapus. Prasyarat sebelum index ini bisa dibuat: 3 grup baris duplikat
+-- (persis kombinasi yang mau dicegah index ini) sudah dibereskan lewat DB langsung (bukan lewat
+-- migration, dikonfirmasi user) - 8 dari 11 baris duplikat DITUTUP (selesai=mulai, durasi 0
+-- menit, BUKAN dihapus) menyisakan 1 baris "asli" (mulai paling awal) tetap terbuka apa adanya
+-- per grup. 7 baris timer basi LAIN (bukan bagian duplikat, cuma nyangkut biasa) TIDAK disentuh -
+-- di luar lingkup task ini.
+CREATE UNIQUE INDEX IF NOT EXISTS fcs_timer_kerja_satu_aktif
+  ON public.fcs_timer_kerja(pekerja_id, panel_id, kode_komponen, proses, tanggal, COALESCE(tahap,''))
+  WHERE selesai IS NULL;
