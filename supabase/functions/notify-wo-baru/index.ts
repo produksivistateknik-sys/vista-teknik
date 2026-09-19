@@ -108,6 +108,18 @@ Deno.serve(async (req) => {
       url = `/?tab=wodigital&wo_id=${wo_id}`
       targetAdmin = true
       targetOperator = true
+    } else if (trigger === 'gambar_dibatalkan') {
+      // FITUR BARU (19 Sep 2026) - notif begitu Engineering membatalkan revisi gambar teknik
+      // yang salah upload (lihat cancelRevisi() di useWoDigitalDocs.ts). Alasan WAJIB dikirim
+      // caller (divalidasi non-kosong di UI, WoDigitalTab.tsx) - kalau somehow kosong, tetap
+      // dikirim tanpa alasan drpd gagal seluruh notifikasi.
+      const { wo_id, wo_number, proyek, panel_nama, uploader_nama, alasan } = body
+      if (!wo_id || !wo_number || !panel_nama) return jsonResponse({ error: 'wo_id, wo_number, dan panel_nama wajib diisi.' }, 400)
+      title = 'Gambar Teknik Dibatalkan'
+      notifBody = `${uploader_nama || 'Engineering'} membatalkan gambar teknik ${panel_nama} - WO ${wo_number}${proyek ? ` (${proyek})` : ''}${alasan ? `. Alasan: ${alasan}` : ''}`
+      url = `/?tab=wodigital&wo_id=${wo_id}`
+      targetAdmin = true
+      targetOperator = true
     } else {
       return jsonResponse({ error: `trigger tidak dikenali: ${trigger}` }, 400)
     }

@@ -155,5 +155,49 @@ export function useWoDigitalDocs() {
     }catch{/* banner broadcast gagal - diabaikan, upload tetap tersimpan */}
   }
 
-  return{wiList,revList,wiOfPanel,revisionsOf,currentRevOf,uploadDoc,refetchDocs:fetchDocs}
+  // Batalkan revisi (19 Sep 2026, FITUR BARU) - dulu TIDAK ADA cara membatalkan revisi yang
+  // kadung salah upload & tayang sebagai "Berlaku" (dicek live, gak ada tombol/fungsi ini sama
+  // sekali) - kasus nyata: IHSAN salah upload gambar panel YD EXPANDER - SIDOARJO 2 (WO 065).
+  // Cuma bisa membatalkan revisi yang LAGI "Berlaku" (is_current=true) - kalau mau batalkan
+  // revisi lama yang udah kesuperseded, gak ada urgensinya (udah "Tidak Berlaku" duluan). TIDAK
+  // ADA DELETE - baris tetap ada (is_cancelled=true + alasan/siapa/kapan, audit trail), file R2
+  // TIDAK disentuh sama sekali. Revisi SEBELUMNYA yang belum dibatalkan (kalau ada) otomatis
+  // jadi "Berlaku" lagi - kalau gak ada (kasus IHSAN di atas, itu revisi #1/pertama), slot balik
+  // ke "Belum ada dokumen".
+  const cancelRevisi=async(revisionId:number,panelLabel:string,woId:number,woLabel:string,proyek:string,alasan:string,uname:string)=>{
+    const rev=revList.find((r:any)=>r.id===revisionId)
+    if(!rev)throw new Error("Revisi tidak ditemukan (mungkin sudah berubah, coba refresh).")
+    if(!rev.is_current)throw new Error("Cuma revisi yang lagi Berlaku yang bisa dibatalkan.")
+    const{error:cancelErr}=await supabase.from("wi_revisions" as any).update({
+      is_cancelled:true,is_current:false,cancel_reason:alasan.trim(),cancelled_by:uname,cancelled_at:new Date().toISOString(),
+    }).eq("id",revisionId)
+    if(cancelErr)throw new Error(cancelErr.message)
+
+    // Revisi sebelumnya yang belum dibatalkan & bukan revisi yang baru dibatalkan ini, nomor
+    // revisi TERTINGGI (paling baru sebelum yang dibatalkan) - jadi "Berlaku" lagi.
+    const kandidat=revList
+      .filter((r:any)=>r.work_instruction_id===rev.work_instruction_id&&r.id!==revisionId&&!r.is_cancelled)
+      .sort((a:any,b:any)=>b.revision_number-a.revision_number)
+    if(kandidat[0]){
+      const{error:restoreErr}=await supabase.from("wi_revisions" as any).update({is_current:true}).eq("id",kandidat[0].id)
+      if(restoreErr)throw new Error(restoreErr.message)
+    }
+
+    await activityLogService.insert({
+      user_name:uname,action:"BATALKAN REVISI WO DIGITAL",
+      description:`Batalkan gambar teknik${kandidat[0]?` (balik ke revisi ${kandidat[0].revision_number})`:" (tidak ada revisi sebelumnya, slot kosong lagi)"} - ${panelLabel} (WO ${woLabel}). Alasan: ${alasan.trim()}`,
+      module:"wo_digital",halaman:"WO Digital",
+    })
+    await fetchDocs()
+
+    try{
+      await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"gambar_dibatalkan",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname,alasan:alasan.trim()}})
+    }catch{/* notifikasi gagal - diabaikan, pembatalan tetap tersimpan */}
+
+    try{
+      await broadcastWoEngineeringEvent({woId,woNumber:woLabel,proyek,jenisPerubahan:"batal",dilakukanOleh:uname})
+    }catch{/* banner broadcast gagal - diabaikan */}
+  }
+
+  return{wiList,revList,wiOfPanel,revisionsOf,currentRevOf,uploadDoc,cancelRevisi,refetchDocs:fetchDocs}
 }

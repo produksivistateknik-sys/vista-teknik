@@ -48,7 +48,7 @@ function WoEngineeringCard({event,onRead}:{event:WoEngineeringEvent,onRead:(id:n
     setClosing(true)
     setTimeout(()=>onRead(event.id),260)
   }
-  const jenisLabel=event.jenis_perubahan==="tambah"?"Ditambahkan":"Diedit"
+  const jenisLabel=event.jenis_perubahan==="tambah"?"Ditambahkan":event.jenis_perubahan==="batal"?"Dibatalkan":"Diedit"
   const waktuRelatif=(()=>{
     const diffMin=Math.round((Date.now()-new Date(event.created_at).getTime())/60000)
     if(diffMin<1)return"baru saja"

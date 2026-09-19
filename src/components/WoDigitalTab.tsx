@@ -97,7 +97,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   // Dokumen (work_instructions/wi_revisions) DIEKSTRAK (4 Sep 2026) ke useWoDigitalDocs.ts -
   // fetch+realtime-nya sekarang independen dari fetchAll di bawah (dulu digabung 1 query),
   // dipakai ulang di ManajemenWO.tsx (Admin, viewer-only).
-  const{wiOfPanel,revisionsOf,currentRevOf,uploadDoc:uploadDocPipeline}=useWoDigitalDocs();
+  const{wiOfPanel,revisionsOf,currentRevOf,uploadDoc:uploadDocPipeline,cancelRevisi}=useWoDigitalDocs();
 
   // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
   // (tanpa filter, dengar SEMUA work_orders/panels) biar list gak "berkedip" tiap ada perubahan
@@ -324,6 +324,34 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     setUploadRevMark("");
   };
 
+  // ── Batalkan Revisi modal (19 Sep 2026, FITUR BARU) ── cuma revisi "Berlaku" yang bisa
+  // dibatalkan (lihat validasi di cancelRevisi()) - dipicu kasus IHSAN salah upload gambar
+  // panel YD EXPANDER - SIDOARJO 2, dicek live sebelumnya SAMA SEKALI TIDAK ADA cara membatalkan
+  // revisi dari UI. Alasan WAJIB diisi (divalidasi doCancel di bawah SEBELUM panggil hook,
+  // bukan cuma disabled tombol - jaga-jaga textarea trim jadi kosong).
+  const[cancelTarget,setCancelTarget]=useState<{revisionId:number,panelLabel:string,woId:number,woLabel:string,proyek:string}|null>(null);
+  const[cancelReason,setCancelReason]=useState("");
+  const[cancelling,setCancelling]=useState(false);
+
+  const openCancel=(revisionId:number,panelLabel:string,woId:number,woLabel:string,proyek:string)=>{
+    setCancelTarget({revisionId,panelLabel,woId,woLabel,proyek});
+    setCancelReason("");
+  };
+  const doCancel=async()=>{
+    if(!cancelTarget)return;
+    const alasan=cancelReason.trim();
+    if(!alasan){alert("Alasan pembatalan wajib diisi.");return;}
+    setCancelling(true);
+    try{
+      const uname=user?.name||user?.nama||"Engineering";
+      await cancelRevisi(cancelTarget.revisionId,cancelTarget.panelLabel,cancelTarget.woId,cancelTarget.woLabel,cancelTarget.proyek,alasan,uname);
+      setCancelTarget(null);
+    }catch(err:any){
+      alert("Gagal membatalkan revisi: "+(err?.message||"unknown error"));
+    }
+    setCancelling(false);
+  };
+
   // Pipeline upload dokumen sekarang di useWoDigitalDocs.ts (diekstrak 4 Sep 2026, alias
   // uploadDocPipeline - dipakai ulang juga di ManajemenWO.tsx viewer-only build, dan di sini
   // buat modal revisi + upload sekaligus pas Tambah WO Baru, lihat saveWoForm di bawah).
@@ -464,10 +492,11 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                         <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"var(--bg-secondary,#f8fafc)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
                           <div style={{minWidth:0}}>
                             <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                              <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                              {r.is_cancelled?<Badge label="❌ Dibatalkan" color="#dc2626" bg="#fef2f2"/>:<Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>}
                               {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                             </div>
                             <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                            {r.is_cancelled&&<div style={{fontSize:10,color:"#dc2626",marginTop:2}}>Dibatalkan oleh {r.cancelled_by} · {fmtTgl(r.cancelled_at)} · Alasan: {r.cancel_reason||"-"}</div>}
                           </div>
                           <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||panelLabel,subtitle:`${panelLabel} - WO ${form.wo}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTgl(r.uploaded_at)}`})}
                             style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
@@ -571,6 +600,8 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                             <div style={{display:"flex",gap:8,flexShrink:0}}>
                               {pCurrent&&<button onClick={()=>openPanelViewer(pCurrent)}
                                 style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--bg-secondary,#f8fafc)",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>Lihat</button>}
+                              {canUpload&&pCurrent&&<button onClick={()=>openCancel(pCurrent.id,panelLabel,w.id,w.wo,w.proyek)}
+                                style={{padding:"5px 12px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑️ Batalkan</button>}
                               {canUpload&&<Btn color="#1d4ed8" onClick={()=>openUpload(p.id,panelLabel,w.id,w.wo,w.proyek)}>{pCurrent?"Upload Revisi":"+ Upload"}</Btn>}
                             </div>
                           </div>
@@ -585,10 +616,13 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                                   <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 8px",background:"var(--card-bg,#fff)",borderRadius:6,border:"1px solid var(--border-color,#e2e8f0)"}}>
                                     <div style={{minWidth:0}}>
                                       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                        <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                        {r.is_cancelled?<Badge label="❌ Dibatalkan" color="#dc2626" bg="#fef2f2"/>:<Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>}
                                         {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                                       </div>
                                       <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTgl(r.uploaded_at)}</div>
+                                      {/* Jejak audit pembatalan (19 Sep 2026) - siapa/kapan/kenapa, TIDAK
+                                          pernah dihapus dari sini, baris revisi tetap utuh selamanya. */}
+                                      {r.is_cancelled&&<div style={{fontSize:10,color:"#dc2626",marginTop:2}}>Dibatalkan oleh {r.cancelled_by} · {fmtTgl(r.cancelled_at)} · Alasan: {r.cancel_reason||"-"}</div>}
                                     </div>
                                     <button onClick={()=>openPanelViewer(r)}
                                       style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
@@ -677,6 +711,30 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
               <div style={{textAlign:"center",padding:12,background:"#eff6ff",borderRadius:10,fontSize:12.5,fontWeight:700,color:"#1d4ed8"}}>{uploadStage}</div>
             )}
             <Btn color="#1d4ed8" onClick={doUpload} disabled={uploading||!uploadFile}>{uploading?"Memproses...":"Upload & Tempel Watermark"}</Btn>
+          </div>
+        </Modal>
+      )}
+
+      {cancelTarget&&(
+        <Modal title="Batalkan Revisi?" onClose={()=>{if(!cancelling)setCancelTarget(null);}} width={420}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
+            <div style={{fontSize:12,color:"#64748b"}}>{cancelTarget.panelLabel} · WO {cancelTarget.woLabel}</div>
+            <div style={{fontSize:12.5,color:"#dc2626",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"10px 12px"}}>
+              Revisi ini akan ditandai <b>Dibatalkan</b> (bukan dihapus - file & riwayat tetap tersimpan).
+              Kalau ada revisi sebelumnya yang belum dibatalkan, itu otomatis jadi "Berlaku" lagi -
+              kalau tidak ada, slot dokumen panel ini balik ke "Belum ada dokumen".
+            </div>
+            <div>
+              <Lbl>Alasan Pembatalan (wajib)</Lbl>
+              <textarea value={cancelReason} onChange={(e:any)=>setCancelReason(e.target.value)} disabled={cancelling}
+                placeholder="mis. Salah upload file, seharusnya untuk panel lain" rows={3}
+                style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid var(--border-color,#e2e8f0)",
+                  background:"var(--input-bg,#f8fafc)",color:"var(--text-primary,#1e293b)",fontSize:13,fontFamily:"inherit",resize:"vertical" as const}}/>
+            </div>
+            <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+              <Btn outline color="#64748b" onClick={()=>setCancelTarget(null)} disabled={cancelling}>Batal</Btn>
+              <Btn color="#dc2626" onClick={doCancel} disabled={cancelling||!cancelReason.trim()}>{cancelling?"Memproses...":"🗑️ Batalkan Revisi"}</Btn>
+            </div>
           </div>
         </Modal>
       )}

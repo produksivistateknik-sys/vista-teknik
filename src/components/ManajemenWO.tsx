@@ -478,10 +478,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                             <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
                               <div style={{minWidth:0}}>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                  <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                  {r.is_cancelled?<Badge label="❌ Dibatalkan" color="#dc2626" bg="#fef2f2"/>:<Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>}
                                   {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                                 </div>
                                 <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
+                                {r.is_cancelled&&<div style={{fontSize:10,color:"#dc2626",marginTop:2}}>Dibatalkan oleh {r.cancelled_by} · {fmtTglDoc(r.cancelled_at)} · Alasan: {r.cancel_reason||"-"}</div>}
                               </div>
                               <button onClick={()=>setViewing({url:r.file_url,title:pWiCard?.judul||`Panel ${p.no_pnl??p.noPnl} - ${p.nama}`,subtitle:`WO ${wo.wo} - ${wo.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTglDoc(r.uploaded_at)} · Tidak Berlaku`})}
                                 style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>
@@ -751,10 +752,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                             <div key={r.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,padding:"6px 10px",background:"#f8fafc",borderRadius:6,border:"1px solid #e2e8f0"}}>
                               <div style={{minWidth:0}}>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                  <Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>
+                                  {r.is_cancelled?<Badge label="❌ Dibatalkan" color="#dc2626" bg="#fef2f2"/>:<Badge label="Tidak Berlaku" color="#64748b" bg="#f1f5f9"/>}
                                   {r.rev_mark&&<span style={{fontSize:13,fontWeight:800,color:"#dc2626"}}>{r.rev_mark}</span>}
                                 </div>
                                 <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>oleh {r.uploaded_by} · {fmtTglDoc(r.uploaded_at)}</div>
+                                {r.is_cancelled&&<div style={{fontSize:10,color:"#dc2626",marginTop:2}}>Dibatalkan oleh {r.cancelled_by} · {fmtTglDoc(r.cancelled_at)} · Alasan: {r.cancel_reason||"-"}</div>}
                               </div>
                               <button onClick={()=>setViewing({url:r.file_url,title:wi?.judul||panelLabel,subtitle:`WO ${form.wo} - ${form.proyek}${r.rev_mark?` · ${r.rev_mark}`:""} · oleh ${r.uploaded_by} · ${fmtTglDoc(r.uploaded_at)} · Tidak Berlaku`})}
                                 style={{background:"none",border:"none",fontSize:11,fontWeight:600,color:"#94a3b8",cursor:"pointer",whiteSpace:"nowrap",padding:0}}>Lihat →</button>

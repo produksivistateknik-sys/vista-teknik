@@ -15,7 +15,7 @@ import { supabase } from './supabase'
 // yang lagi login, dikirim ke hook ini apa adanya.
 export type WoEngineeringEvent={
   id:number,wo_id:number|null,wo_number:string,proyek:string,
-  jenis_perubahan:"tambah"|"edit",dilakukan_oleh:string,created_at:string,
+  jenis_perubahan:"tambah"|"edit"|"batal",dilakukan_oleh:string,created_at:string,
 }
 
 // PINDAH (17 Sep 2026) dari WoDigitalTab.tsx ke sini - dulu cuma dipakai form Tambah/Edit WO,
@@ -26,7 +26,7 @@ export type WoEngineeringEvent={
 // B.1) dipakai kedua caller. Gagal insert TIDAK BOLEH gagalin aksi utama pemanggil (save WO /
 // upload dokumen) - try/catch non-blocking di CALLER, bukan di sini (sama pola notify-wo-baru
 // di sebelahnya masing-masing caller).
-export async function broadcastWoEngineeringEvent(params:{woId:number|null,woNumber:string,proyek:string,jenisPerubahan:"tambah"|"edit",dilakukanOleh:string}){
+export async function broadcastWoEngineeringEvent(params:{woId:number|null,woNumber:string,proyek:string,jenisPerubahan:"tambah"|"edit"|"batal",dilakukanOleh:string}){
   const{error}=await supabase.from("wo_engineering_events").insert({
     wo_id:params.woId,wo_number:params.woNumber,proyek:params.proyek,
     jenis_perubahan:params.jenisPerubahan,dilakukan_oleh:params.dilakukanOleh,
