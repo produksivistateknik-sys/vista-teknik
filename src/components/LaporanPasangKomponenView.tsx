@@ -15,12 +15,23 @@ const STATUS_LABEL_PK:Record<string,{label:string,bg:string,color:string}>={
 // REUSE ambang RAKIT yang udah dipakai computeProsesStatus buat WIRING CONTROL/POWER (proses
 // yang posisinya sama persis di alur kerja, sama-sama "abis RAKIT"). Komponen non-tahap
 // (Groundplate dst) pakai computeProsesStatus asli dengan proses="PASANG KOMPONEN".
+// BUG FIX (20 Sep 2026, pola sama dengan fix computeProsesStatus di panelHelpers.ts) - gate
+// ke RAKIT di atas cuma valid kalau RAKIT genuinely relevan buat kode ini. Kode beli-jadi
+// (Pintu/Box Control tipe polyester dkk) gak punya baris RAKIT di bom_proses_relevan sama
+// sekali - progressMap["RAKIT"] PERMANEN 0 bukan krn belum dikerjakan, jadi gate ">0" gak akan
+// PERNAH kebuka -> macet "NOT YET" selamanya walau tahap ASSEMBLING-nya genuinely siap
+// dikerjakan. Sekarang gate RAKIT cuma dipakai kalau RAKIT ada di relevantProses kode ini;
+// kalau enggak, langsung "TO DO" (kode ini gak nunggu proses apa pun sebelumnya).
 const RANK_PIPELINE:Record<string,number>={"NOT YET":0,"TO DO":1,"IN PROGRESS":2,"DONE":3}
 const kodePipelineStatusPk=(panel:any,kode:string,pct:number,isTahap:boolean):string=>{
   if(pct>=100)return"DONE"
   if(pct>0)return"IN PROGRESS"
   const progressMap=getBestProgressMap(panel.checklist?.[kode])
-  if(isTahap)return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET"
+  if(isTahap){
+    const relevantProses=getRelevantProsesForKode(kode,panel.tipe)
+    if(!relevantProses.includes("RAKIT"))return"TO DO"
+    return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET"
+  }
   return computeProsesStatus(progressMap,"PASANG KOMPONEN",getRelevantProsesForKode(kode,panel.tipe))
 }
 // Roll-up panel = status TERBAIK di antara semua komponennya (begitu ada 1 komponen yang udah

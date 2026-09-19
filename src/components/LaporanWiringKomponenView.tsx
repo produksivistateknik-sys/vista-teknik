@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { getEffCfgGlobal, getBestProgressMap } from '../lib/panelHelpers'
+import { getEffCfgGlobal, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 
@@ -13,11 +13,20 @@ const STATUS_LABEL_WK:Record<string,{label:string,bg:string,color:string}>={
 // Kontribusi WIRING (checklist[kode].pasangKomponenTahap.WIRING) gak punya gating resmi -
 // REUSE ambang RAKIT persis kayak yang dipakai LaporanPasangKomponenView buat komponen tahap
 // yang sama (Box Control/Pintu), biar definisinya konsisten di kedua laporan.
+// BUG FIX (20 Sep 2026, pola sama dengan fix computeProsesStatus di panelHelpers.ts &
+// kodePipelineStatusPk di LaporanPasangKomponenView.tsx) - gate ke RAKIT cuma valid kalau
+// RAKIT genuinely relevan buat kode ini. Kode beli-jadi (Pintu/Box Control tipe polyester dkk)
+// gak punya baris RAKIT di bom_proses_relevan - progressMap["RAKIT"] PERMANEN 0, gate ">0"
+// gak akan pernah kebuka -> macet "NOT YET" selamanya walau tahap WIRING-nya genuinely siap
+// dikerjakan. Sekarang gate RAKIT cuma dipakai kalau RAKIT ada di relevantProses kode ini;
+// kalau enggak, langsung "TO DO".
 const RANK_PIPELINE_WK:Record<string,number>={"NOT YET":0,"TO DO":1,"IN PROGRESS":2,"DONE":3}
 const kodePipelineStatusWk=(panel:any,kode:string,pct:number):string=>{
   if(pct>=100)return"DONE"
   if(pct>0)return"IN PROGRESS"
   const progressMap=getBestProgressMap(panel.checklist?.[kode])
+  const relevantProses=getRelevantProsesForKode(kode,panel.tipe)
+  if(!relevantProses.includes("RAKIT"))return"TO DO"
   return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET"
 }
 const panelPipelineStatusWk=(panel:any,komponenList:{kode:string,pct:number}[]):string=>{
