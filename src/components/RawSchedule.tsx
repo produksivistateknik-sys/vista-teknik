@@ -2148,13 +2148,29 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 })()}
                 {!PROSES_ORANG_RAW.includes(rawRow?.proses||"")&&(
                   <>
-                  {wpItems.length>0&&(
+                  {/* BUG FIX (20 Sep 2026, ditemukan user - "Tutup Samping" CAPACITOR BANK
+                      CLS-FONTAINE muncul lagi sbg pilihan padahal FINISHING-nya udah 100%) -
+                      wpItems (dipakai bareng sama cabang PROSES_ORANG_RAW di atas) SEBELUMNYA
+                      cuma nge-exclude komponen yang PERNAH tercatat di raw_schedule.schedule
+                      (komponenSudahDipakaiTanggalLain) - kalau komponen sampai 100% TANPA pernah
+                      lewat entry schedule proses itu (kasus nyata FS.29: checklist.progress.
+                      FINISHING=100 tapi gak pernah nongol di schedule[tanggal].komponen manapun),
+                      dia lolos gak ke-exclude sama sekali, tampil kayak belum pernah dikerjakan.
+                      Cabang PROSES_ORANG_RAW (WIRING) di atas UDAH BENAR dari awal - baca
+                      checklist.progress LANGSUNG (sudahSelesai=progress>=100), gak gantung ke
+                      histori schedule. Di sini disamakan (satu sumber logika, CLAUDE.md B.1):
+                      TIDAK dihapus diam-diam dari daftar (biar gak kelihatan kayak komponennya
+                      "hilang" & bingung nyarinya) - tetap tampil TAPI disabled + badge "✓
+                      Selesai", pola visual identik cabang WIRING. TIDAK ada perubahan data sama
+                      sekali - murni tambahan pengecekan di render, wpItems/checklist/schedule
+                      yang sudah ada gak disentuh. */}
+                  {wpItems.filter((it:any)=>(livePanelForCell?.checklist?.[it.kode]?.progress?.[rawRow?.proses||""]||0)<100).length>0&&(
                     <button onClick={()=>{
-                      const semuaKode=wpItems.map((it:any)=>it.kode);
+                      const semuaKode=wpItems.filter((it:any)=>(livePanelForCell?.checklist?.[it.kode]?.progress?.[rawRow?.proses||""]||0)<100).map((it:any)=>it.kode);
                       const semuaTerpilih=semuaKode.every((k:string)=>modalKomponen.includes(k));
                       setModalKomponen(semuaTerpilih?[]:semuaKode);
                     }} style={{marginBottom:8,padding:"5px 12px",borderRadius:7,border:"1px dashed #94a3b8",background:"#f8fafc",color:"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                      {wpItems.every((it:any)=>modalKomponen.includes(it.kode))?"✕ Batal Pilih Semua":"✓ Pilih Semua"}
+                      {wpItems.filter((it:any)=>(livePanelForCell?.checklist?.[it.kode]?.progress?.[rawRow?.proses||""]||0)<100).every((it:any)=>modalKomponen.includes(it.kode))?"✕ Batal Pilih Semua":"✓ Pilih Semua"}
                     </button>
                   )}
                   <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:14}}>
@@ -2162,9 +2178,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const sel=modalKomponen.includes(it.kode);const wc=WP_COLOR[modalWp]||"#64748b";
                       const{sisa,totalQty}=hitungSisaQty(it.kode);
                       const adaProgres=totalQty>0&&sisa<totalQty;
-                      return(<button key={it.kode} onClick={()=>setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode])} style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sel?wc:"#e2e8f0"}`,background:sel?wc+"18":"#f8fafc",color:sel?wc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:600}}>
-                        {sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
-                        {adaProgres&&(
+                      const sudahSelesai=(livePanelForCell?.checklist?.[it.kode]?.progress?.[rawRow?.proses||""]||0)>=100;
+                      return(<button key={it.kode} disabled={sudahSelesai}
+                        onClick={()=>{if(sudahSelesai)return;setModalKomponen(prev=>sel?prev.filter(k=>k!==it.kode):[...prev,it.kode]);}}
+                        title={sudahSelesai?"Sudah selesai - gak bisa dijadwalkan lagi":undefined}
+                        style={{padding:"6px 12px",borderRadius:8,border:`1.5px solid ${sudahSelesai?"#bbf7d0":sel?wc:"#e2e8f0"}`,background:sudahSelesai?"#f0fdf4":sel?wc+"18":"#f8fafc",color:sudahSelesai?"#16a34a":sel?wc:"#64748b",cursor:sudahSelesai?"not-allowed":"pointer",fontSize:11,fontWeight:600,opacity:sudahSelesai?0.85:1}}>
+                        {sudahSelesai?"✓ ":sel?"✓ ":""}{it.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({it.kode})</span>
+                        {sudahSelesai?(
+                          <span style={{fontSize:9,fontWeight:700,marginLeft:6,padding:"1px 6px",borderRadius:20,background:"#dcfce7",color:"#16a34a"}}>Selesai</span>
+                        ):adaProgres&&(
                           <span style={{fontSize:9,fontWeight:700,marginLeft:6,padding:"1px 6px",borderRadius:20,
                             background:sisa===0?"#dcfce7":"#fef9c3",color:sisa===0?"#16a34a":"#92400e"}}>
                             {sisa}/{totalQty} tersisa
