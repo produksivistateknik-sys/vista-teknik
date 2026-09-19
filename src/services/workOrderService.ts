@@ -91,7 +91,7 @@ export const workOrderService = {
     await step('permintaan', supabase.from('permintaan').delete().eq('wo_id', id))
     await step('renhar', supabase.from('renhar').delete().eq('wo_id', id))
     await step('raw_schedule', supabase.from('raw_schedule').delete().eq('wo_id', id))
-    await step('fcs_schedule', supabase.from('fcs_schedule').delete().eq('wo_id', id))
+    // fcs_schedule step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
     await step('panels', supabase.from('panels').delete().eq('wo_id', id))
     await step('work_orders', supabase.from('work_orders').delete().eq('id', id))
     await logActivity(user_name, 'HAPUS WO', `Hapus WO ${woToDelete?.wo} - ${woToDelete?.proyek} beserta semua data terkait`, { proyek: woToDelete?.proyek || '', wo_number: woToDelete?.wo || '', halaman: extra?.halaman })
@@ -171,7 +171,7 @@ export const workOrderService = {
     if (idsToDelete.length > 0) {
       await supabase.from('renhar').delete().in('panel_id', idsToDelete)
       await supabase.from('raw_schedule').delete().in('panel_id', idsToDelete)
-      await supabase.from('fcs_schedule').delete().in('panel_id', idsToDelete)
+      // fcs_schedule step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
       await supabase.from('fcs_timer_kerja').delete().in('panel_id', idsToDelete)
       await supabase.from('progress_checkpoint_log').delete().in('panel_id', idsToDelete)
       await supabase.from('kendala').delete().in('panel_id', idsToDelete)
@@ -238,8 +238,7 @@ export const workOrderService = {
             if (rawErr) throw new Error('Gagal sinkron wo_id raw_schedule panel ' + p.id + ': ' + rawErr.message)
             const { error: renharErr } = await supabase.from('renhar').update({ wo_id: targetWoId }).eq('panel_id', p.id)
             if (renharErr) throw new Error('Gagal sinkron wo_id renhar panel ' + p.id + ': ' + renharErr.message)
-            const { error: fcsErr } = await supabase.from('fcs_schedule').update({ wo_id: targetWoId }).eq('panel_id', p.id)
-            if (fcsErr) throw new Error('Gagal sinkron wo_id fcs_schedule panel ' + p.id + ': ' + fcsErr.message)
+            // fcs_schedule sync step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
             // BUG FIX (14 Sep 2026) - insiden nyata: WO 000/CJI & WO 065/JCI YD EXPANDER displit,
             // panel pindah ke WO sibling BERES, tapi `permintaan` (Permintaan Barang BBMB/BBMU)
             // gak pernah ikut disinkronkan di sini - PERSIS kelas bug yang sama kayak raw_schedule/
@@ -293,7 +292,7 @@ export const workOrderService = {
       }
       await cekYatimPiatu('renhar')
       await cekYatimPiatu('raw_schedule')
-      await cekYatimPiatu('fcs_schedule')
+      // cekYatimPiatu('fcs_schedule') DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
       // BUG FIX (29 Agu 2026): fcs_tracking_komponen & permintaan punya FK constraint ASLI ke
       // work_orders.id (beda dari fcs_schedule yang cuma konvensi kolom tanpa FK sungguhan) tapi
       // dulu SAMA SEKALI gak pernah dibersihkan di sini - itu akar kenapa delete work_orders di

@@ -196,7 +196,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [expandedTasks,setExpandedTasks]=useState({});
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
-  const [fcsCapData,setFcsCapData]=useState<any[]>([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [swapModal,setSwapModal]=useState<any>(null);
   const [swapSelected,setSwapSelected]=useState<string[]>([]);
@@ -249,20 +248,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [pilihKomponenModal,setPilihKomponenModal]=useState<any>(null);
 
   useEffect(()=>{
+    // FIX (20 Sep 2026, retirement fcs_schedule Fase 1) - dulu Promise.all ini JUGA baca
+    // fcs_schedule ke state fcsCapData, tapi fcsCapData gak pernah dibaca lagi di file ini -
+    // "Capacity Utilization" yang tampil (di bawah) dihitung LANGSUNG dari raw_schedule, bukan
+    // dari fcs_schedule. Dicek live (audit database 20 Sep 2026): fcs_schedule 0 baris, satu-
+    // satunya jalur isi tabelnya (modal "Generate FCS" fcsModal di ManajemenWO.tsx) gak pernah
+    // ke-reach dari UI manapun. Dihapus - fcs_kapasitas_override & fcs_process_time TETAP
+    // dibaca (dipakai nyata, lihat fcsKapasitas/processTimeList di bawah).
     const fetchCap=async()=>{
-      const [{data:s},{data:k},{data:pt}]=await Promise.all([
-        supabase.from("fcs_schedule").select("tanggal,jenis_pekerjaan,total_menit").neq("status","cancelled"),
+      const [{data:k},{data:pt}]=await Promise.all([
         supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
         supabase.from("fcs_process_time").select("tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs").eq("is_active",true),
       ]);
-      setFcsCapData(s??[]);
       setFcsKapasitas(k??[]);
       setProcessTimeList(pt??[]);
     };
     fetchCap();
     fetchNotifAvailable();
     const ch=supabase.channel("realtime-fcs-cap-raw-rawschedule")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_process_time"},fetchCap)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"fcs_notifikasi"},fetchNotifAvailable)

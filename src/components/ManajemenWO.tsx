@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
 import { rawScheduleService } from '../services/rawScheduleService'
-import { generateFCSSchedule, generateFCSWiring, generateAndSaveToRawSchedule } from '../services/fcsService'
+import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
@@ -60,27 +60,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const fmtTglDoc=(iso:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
   const blank={wo:"",proyek:"",target:""};
   const blankPanel={noPnl:"1",nama:"",tipe:"FS",qty:1,jumlahCell:0};
-  const [fcsModal,setFcsModal]=useState<any>(null);
+  // fcsModal/fcsLoading/fcsResult/fcsForm/selectedPanelIds/panelBobot/WIRING_PROSES/
+  // BOBOT_CONFIG/selectedKomponen DIHAPUS (20 Sep 2026, retirement fcs_schedule Fase 1) -
+  // seluruhnya cuma dipakai modal "Generate FCS" yang gak reachable dari UI manapun (lihat
+  // fcsService.ts). BOBOT_CONFIG malah sudah gak kepakai lagi sebelum ini (dideklarasi,
+  // gak pernah dibaca). quickGenModal dkk di bawah (alur v2, generateAndSaveToRawSchedule)
+  // TETAP dipertahankan, itu yang aktif dipakai.
   const [quickGenModal,setQuickGenModal]=useState<any>(null);
   const [quickGenTanggal,setQuickGenTanggal]=useState(new Date().toISOString().slice(0,10));
   const [quickGenLoading,setQuickGenLoading]=useState(false);
   const [quickGenResult,setQuickGenResult]=useState<any>(null);
   const [quickGenSelectedPanelIds,setQuickGenSelectedPanelIds]=useState<number[]>([]);
-  const [fcsLoading,setFcsLoading]=useState(false);
-  const [fcsResult,setFcsResult]=useState<any>(null);
-  const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
-  const [selectedPanelIds,setSelectedPanelIds]=useState<number[]>([]);
-  // State bobot per panel untuk WIRING CONTROL/WIRING POWER
-  // format: {panelId: {bobot: "EASY"|"MEDIUM"|"HARD"|"VERY_HARD", jumlahOrang: number}}
-  const [panelBobot,setPanelBobot]=useState<Record<number,{bobot:string,jumlahOrang:number}>>({});
-  const WIRING_PROSES=["WIRING CONTROL","WIRING POWER"];
-  const BOBOT_CONFIG:Record<string,{label:string,hariOrang:number,color:string,bg:string}>={
-    EASY:{label:"Easy",hariOrang:1,color:"#16a34a",bg:"#f0fdf4"},
-    MEDIUM:{label:"Medium",hariOrang:2,color:"#d97706",bg:"#fffbeb"},
-    HARD:{label:"Hard",hariOrang:3,color:"#dc2626",bg:"#fef2f2"},
-    VERY_HARD:{label:"Very Hard",hariOrang:4,color:"#7c3aed",bg:"#f5f3ff"},
-  };
-  const [selectedKomponen,setSelectedKomponen]=useState<string[]>([]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -862,138 +852,6 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
               )}
               <div style={{marginTop:16}}>
                 <Btn color="#1d4ed8" onClick={()=>{setQuickGenModal(null);setQuickGenResult(null);}}>Tutup</Btn>
-              </div>
-            </div>
-          )}
-        </Modal>
-      )}
-
-      {fcsModal&&(
-        <Modal title={"⏱ Generate FCS — WO "+fcsModal.wo} onClose={()=>{setFcsModal(null);setFcsResult(null);setSelectedKomponen([]);setPanelBobot({});}} width={520}>
-          <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>
-            <strong>{fcsModal.proyek}</strong> · {(fcsModal.panels||[]).length} panel · Target: {fcsModal.target}
-          </div>
-          {!fcsResult?(
-            <div>
-              <div style={{marginBottom:14}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                  <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({selectedPanelIds.length}/{(fcsModal.panels||[]).length})</div>
-                  <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>setSelectedPanelIds((fcsModal.panels||[]).map((p:any)=>p.id))}
-                      style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
-                    <button onClick={()=>setSelectedPanelIds([])}
-                      style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
-                  </div>
-                </div>
-                <div style={{maxHeight:140,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:8}}>
-                  {(fcsModal.panels||[]).map((p:any)=>{
-                    const checked=selectedPanelIds.includes(p.id);
-                    return(
-                      <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",cursor:"pointer",borderRadius:6,background:checked?"#eff6ff":"transparent"}}>
-                        <input type="checkbox" checked={checked}
-                          onChange={()=>setSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
-                        <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
-                        <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
-                      </label>
-                    );
-                  })}
-                </div>
-              </div>
-              <div style={{marginBottom:14,padding:"10px 14px",background:"#eff6ff",borderRadius:8,border:"1px solid #bfdbfe"}}>
-                <div style={{fontSize:12,color:"#1d4ed8",fontWeight:600}}>⚡ Semua proses relevan akan digenerate otomatis sesuai komponen tiap panel</div>
-              </div>
-              <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#92400e"}}>
-                ⚠️ Schedule lama status Planning untuk WO ini akan digantikan jadwal baru.
-              </div>
-              <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-                <button onClick={()=>setFcsModal(null)}
-                  style={{padding:"8px 16px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
-                <button disabled={fcsLoading||selectedPanelIds.length===0} onClick={async()=>{
-                  setFcsLoading(true);
-                  const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-                  const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  const panels=(fcsModal.panels||[]).filter((p:any)=>selectedPanelIds.includes(p.id));
-                  let totalCount=0;const errors:string[]=[];
-                  for(const panel of panels){
-                    const cl=panel.checklist||{};
-                    const prosesSet=new Set<string>();
-                    Object.entries(cl).forEach(([kode,clVal]:any)=>{
-                      if((clVal?.qty||0)<=0)return;
-                      getRelevantProsesForKode(kode,panel.tipe).forEach((pr:string)=>prosesSet.add(pr));
-                    });
-                    const cfgWpMap=getEffectiveCfg(panel.tipe);
-                    const kodeToWpMap:Record<string,string>={};
-                    if(cfgWpMap){
-                      cfgWpMap.wps.forEach((w:any)=>{
-                        w.items.forEach((it:any)=>{kodeToWpMap[it.kode]=w.wp;});
-                      });
-                    }
-                    for(const proses of prosesSet){
-                      if(WIRING_PROSES.includes(proses)){
-                        const relevantWps=new Set<string>();
-                        Object.entries(cl).forEach(([kode,clVal]:any)=>{
-                          if((clVal?.qty||0)<=0)return;
-                          if(!isKomponenRelevant(kode,panel.tipe,proses))return;
-                          const wpFound=kodeToWpMap[kode];
-                          if(wpFound)relevantWps.add(wpFound);
-                        });
-                        if(relevantWps.size===0)relevantWps.add("WP1");
-                        for(const wpTarget of relevantWps){
-                          const resWp=await generateFCSWiring({
-                            woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                            panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                            jenisPekerjaan:proses,
-                            wp:wpTarget,
-                            tanggalMulai:fcsForm.tanggalMulai,
-                            generatedBy:uname,
-                          });
-                          if(resWp.success)totalCount+=resWp.count;
-                          else errors.push(panel.nama+" ("+proses+" "+wpTarget+"): "+(resWp.error||"Error"));
-                        }
-                      } else {
-                        const res=await generateFCSSchedule({
-                          woId:fcsModal.id,woNumber:fcsModal.wo,proyek:fcsModal.proyek,
-                          panelId:panel.id,panelNama:panel.nama,tipePanel:panel.tipe,
-                          checklist:panel.checklist||{},
-                          jenisPekerjaan:proses,
-                          tanggalMulai:fcsForm.tanggalMulai,
-                          generatedBy:uname,
-                          selectedKomponen:null,
-                        });
-                        if(res.success)totalCount+=res.count;
-                        else errors.push(panel.nama+" ("+proses+"): "+(res.error||"Error"));
-                      }
-                    }
-                  }
-                  if(totalCount>0&&refetchWO)await refetchWO();
-                  setFcsResult({totalCount,errors,panels:panels.length});
-                  setFcsLoading(false);
-                }}
-                  style={{padding:"8px 20px",borderRadius:8,border:"none",background:(fcsLoading||selectedPanelIds.length===0)?"#94a3b8":"#16a34a",color:"#fff",fontSize:12,fontWeight:700,cursor:(fcsLoading||selectedPanelIds.length===0)?"not-allowed":"pointer",fontFamily:"inherit"}}>
-                  {fcsLoading?"Generating...":selectedPanelIds.length===0?"Pilih panel dulu":"⏱ Generate Schedule ("+selectedPanelIds.length+" panel)"}
-                </button>
-              </div>
-            </div>
-          ):(
-            <div>
-              {fcsResult.errors.length===0?(
-                <div style={{textAlign:"center",padding:"20px 0"}}>
-                  <div style={{fontSize:40,marginBottom:12}}>✅</div>
-                  <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Schedule Berhasil!</div>
-                  <div style={{fontSize:13,color:"#64748b",marginBottom:4}}>{fcsResult.panels} panel · {fcsResult.totalCount} baris jadwal</div>
-                  <div style={{fontSize:12,color:"#94a3b8"}}>Mulai: <strong>{fcsForm.tanggalMulai}</strong></div>
-                </div>
-              ):(
-                <div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#1e293b",marginBottom:8}}>{fcsResult.totalCount} jadwal berhasil, {fcsResult.errors.length} error:</div>
-                  {fcsResult.errors.map((e:string,i:number)=>(
-                    <div key={i} style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:6,padding:"8px 12px",marginBottom:6,fontSize:12,color:"#dc2626"}}>{e}</div>
-                  ))}
-                </div>
-              )}
-              <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:16}}>
-                <button onClick={()=>{setFcsModal(null);setFcsResult(null);}}
-                  style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Tutup</button>
               </div>
             </div>
           )}

@@ -49,22 +49,20 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [expandedBusbarHistori,setExpandedBusbarHistori]=useState<Record<string,boolean>>({});
   const [assignModal,setAssignModal]=useState(null);
   const [selPekerja,setSelPekerja]=useState([]);
-  const [fcsCapData,setFcsCapData]=useState<any[]>([]);
+  // FIX (20 Sep 2026, retirement fcs_schedule Fase 1) - fcsCapData (baca fcs_schedule) dulu
+  // di-set tapi gak pernah dibaca lagi di file ini, sama pola persis RawSchedule.tsx. Dihapus -
+  // fcs_kapasitas_override (fcsKapasitas) TETAP dibaca, di luar lingkup task ini walau state-nya
+  // sendiri juga kelihatan gak terpakai di file ini (tidak disentuh, beda tabel dari fcs_schedule).
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
 
   useEffect(()=>{
     const fetchCap=async()=>{
-      const [{data:s},{data:k}]=await Promise.all([
-        supabase.from("fcs_schedule").select("tanggal,jenis_pekerjaan,total_menit").neq("status","cancelled"),
-        supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
-      ]);
-      setFcsCapData(s??[]);
+      const {data:k}=await supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas");
       setFcsKapasitas(k??[]);
     };
     fetchCap();
     const ch=supabase.channel("realtime-fcs-cap-raw-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_schedule"},fetchCap)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_kapasitas_override"},fetchCap)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
