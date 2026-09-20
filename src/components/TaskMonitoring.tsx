@@ -1,4 +1,5 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
 import { Card, Lbl, Sel } from './ui/Primitives'
@@ -7,6 +8,30 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selectedWoId,setSelectedWoId]=useState<number|null>(null);
   const [selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+
+  // FASE 6 (21 Sep 2026) - mulai baca component_process_progress (bukan checklist) buat 10
+  // proses yang sudah dual-write (Pasang Komponen/WIRING CONTROL/WIRING POWER/proses biasa).
+  // Fetch di-scope ke PANEL YANG DIPILIH SAJA (bukan semua panel), cuma jalan pas panel dipilih.
+  // checklist TETAP fallback (lihat progressMapCcp di bawah) - kalau ada baris yang belum
+  // ke-backfill/dual-write karena alasan apa pun, gak nampilin kosong/salah, jatuh balik ke
+  // sumber lama seperti sebelum Fase 6. BUSBAR & QC TEST/PACKING TIDAK disentuh (BUSBAR belum
+  // punya baris gabungan di skema ini - lihat FASE4_BUSBAR_DESIGN.md poin 3; QC TEST/PACKING
+  // bukan bagian domain manapun yang di-dual-write - lihat FASE5_PROSES_BIASA_DESIGN.md poin 1).
+  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    if(!selectedPanelId){setCcpMap({});return;}
+    let cancelled=false;
+    supabase.from('component_process_progress' as any).select('kode_komponen,proses,progress_pct')
+      .eq('panel_id',selectedPanelId).neq('status','not_applicable')
+      .then(({data,error})=>{
+        if(cancelled)return;
+        if(error){console.error('gagal ambil component_process_progress:',error);setCcpMap({});return;}
+        const map:Record<string,number>={};
+        (data||[]).forEach((r:any)=>{map[`${r.kode_komponen}|${r.proses}`]=Number(r.progress_pct);});
+        setCcpMap(map);
+      });
+    return()=>{cancelled=true;};
+  },[selectedPanelId]);
 
   const PROSES_LABEL:Record<string,string>={
     POTONG:"Potong",BENDING:"Bending",STEL:"Stel",FINISHING:"Finishing",RENDAM:"Rendam",PAINTING:"Painting",
@@ -20,6 +45,18 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
   const selectedPanel=panelList.find((p:any)=>p.id===selectedPanelId);
   const cfg=selectedPanel?getEffCfg(selectedPanel.tipe):null;
 
+  // progressMap "campuran" - ccp menang kalau barisnya ADA, checklist tetap fallback (satu
+  // sumber logika, computeProsesStatus TIDAK berubah sama sekali, cuma sumber angkanya digeser).
+  const getCcpAwareProgressMap=(kode:string)=>{
+    const base=getBestProgressMap(selectedPanel?.checklist?.[kode]);
+    const merged={...base};
+    ALL_PROSES.forEach((proses:string)=>{
+      const key=`${kode}|${proses}`;
+      if(key in ccpMap)merged[proses]=ccpMap[key];
+    });
+    return merged;
+  };
+
   // Status kesiapan estafet direuse dari computeProsesStatus (lib/panelHelpers.ts) - single
   // source of truth yang sama juga dipakai Rencana Harian & Vista Pekerja, biar gak ada 2
   // definisi beda buat data identik.
@@ -29,7 +66,7 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
     if(qty<=0)return null;
     const proses=ALL_PROSES[prosesIdx];
     if(!isKomponenRelevant(kode,selectedPanel.tipe,proses))return null;
-    const progressMap=getBestProgressMap(selectedPanel.checklist?.[kode]);
+    const progressMap=getCcpAwareProgressMap(kode);
     const relevantProses=getRelevantProsesForKode(kode,selectedPanel.tipe);
     const status=computeProsesStatus(progressMap,proses,relevantProses);
     return{status,pct:progressMap[proses]||0};
@@ -49,10 +86,10 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
     allItems.forEach((it:any)=>{
       const qty=selectedPanel.checklist?.[it.kode]?.qty||0;
       if(qty<=0)return;
+      const progressMapIt=getCcpAwareProgressMap(it.kode);
       ALL_PROSES.forEach((proses:string)=>{
         if(!isKomponenRelevant(it.kode,selectedPanel.tipe,proses))return;
-        const progress=selectedPanel.checklist?.[it.kode]?.progress?.[proses]||0;
-        sum+=progress;count++;
+        sum+=progressMapIt[proses]||0;count++;
       });
     });
     return count>0?(sum/count):0;
