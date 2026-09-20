@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
-import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
@@ -13,19 +13,13 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
 
   const PROSES_LIST=ALL_PROSES;
 
-  // FASE 7 (21 Sep 2026) - mulai baca component_process_progress. ccp menang kalau barisnya ADA,
-  // checklist tetap fallback. calcPanelProgressCcpAware/panelOverallCcpAware (panelHelpers.ts)
-  // dan fetchCcpMapForPanels (lib/componentProcessProgress.ts) DIKONSOLIDASI di situ (bukan lagi
-  // duplikasi lokal per file) sejak consumer ke-3 (Dashboard/SummaryProgress) butuh pola yang sama
-  // persis - CLAUDE.md B.1.
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    const panelIds=[...new Set(woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>p.id)))];
-    let cancelled=false;
-    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[woData.length]);
+  // FASE 7 (21 Sep 2026) - baca component_process_progress. ccp menang kalau barisnya ADA,
+  // checklist tetap fallback. useCcpMap (lib/componentProcessProgress.ts, AUDIT 21 Sep 2026) -
+  // fetch+subscribe REALTIME, bukan fetch sekali - halaman ini tetap mounted (display:none) lama
+  // setelah dikunjungi (App.tsx `visitedTabs`), tanpa realtime angkanya basi begitu operator
+  // nulis progress baru sementara halaman ini udah kebuka.
+  const panelIds=[...new Set(woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>p.id)))];
+  const ccpMap=useCcpMap(panelIds);
   const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>{
     const key=`${panelId}|${kode}|${proses}`;
     return key in ccpMap?ccpMap[key]:fallback;

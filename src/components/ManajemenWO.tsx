@@ -6,7 +6,7 @@ import { rawScheduleService } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
-import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
@@ -43,20 +43,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const bomPanelTypesCache=livePanelTypes;
   const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
   const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
-  // FASE 10 (21 Sep 2026) - component_process_progress, pola sama Fase 7/9 (fungsi ccp-aware +
-  // fetchCcpMapForPanels sudah dikonsolidasi di panelHelpers.ts/lib/componentProcessProgress.ts,
-  // CLAUDE.md B.1). Dipakai baik buat badge persen tampilan MAUPUN snapshot progress yang dikirim
-  // ke RPC arsip_panel (prosesArsipPanel di bawah) - aman, ccp selalu mirror checklist real-time
-  // (dual-write), bukan snapshot historis-per-tanggal (beda dari kekhawatiran Rencana Harian,
-  // Fase 8 - ini "progress SEKARANG", bukan "progress di tanggal lampau").
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
-    let cancelled=false;
-    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[woData.length]);
+  // FASE 10 (21 Sep 2026) - component_process_progress. useCcpMap (lib/componentProcessProgress.ts,
+  // AUDIT 21 Sep 2026) - fetch+subscribe REALTIME, bukan fetch sekali. Dipakai baik buat badge
+  // persen tampilan MAUPUN snapshot progress yang dikirim ke RPC arsip_panel (prosesArsipPanel di
+  // bawah) - aman, ccp selalu mirror checklist real-time (dual-write), bukan snapshot historis-
+  // per-tanggal (beda dari kekhawatiran Rencana Harian, Fase 8 - ini "progress SEKARANG", bukan
+  // "progress di tanggal lampau").
+  const ccpPanelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+  const ccpMap=useCcpMap(ccpPanelIds);
   // Qty-per-komponen editor (3 Sep 2026, di-extract ke usePanelQtyEditor.ts - dipakai bareng
   // WoDigitalTab.tsx/Engineering juga). getPanel/getWoContext/applyChecklist di-bind ke woData
   // nested-per-WO punya komponen ini - behavior SAMA PERSIS kayak sebelum di-extract.

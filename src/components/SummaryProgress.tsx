@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { woOverallCcpAware, panelOverallCcpAware, calcPanelProgressCcpAware } from '../lib/panelHelpers'
-import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { PROSES_COLOR, ALL_PROSES } from '../constants/panelTypes'
 
@@ -10,18 +10,12 @@ export function SummaryProgress({woData}:{woData:any[]}){
 
   const PROSES_LIST=ALL_PROSES;
 
-  // FASE 9 (21 Sep 2026) - component_process_progress, pola sama Fase 7/9 (Detail Progres/
-  // Dashboard) - woOverallCcpAware/panelOverallCcpAware/calcPanelProgressCcpAware
-  // (panelHelpers.ts) + fetchCcpMapForPanels (lib/componentProcessProgress.ts), 1 sumber logika
-  // (CLAUDE.md B.1).
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
-    let cancelled=false;
-    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[woData.length]);
+  // FASE 9 (21 Sep 2026) - component_process_progress. useCcpMap (lib/componentProcessProgress.ts,
+  // AUDIT 21 Sep 2026) - fetch+subscribe REALTIME, bukan fetch sekali. woOverallCcpAware/
+  // panelOverallCcpAware/calcPanelProgressCcpAware (panelHelpers.ts) dikonsolidasi, 1 sumber
+  // logika (CLAUDE.md B.1).
+  const ccpPanelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+  const ccpMap=useCcpMap(ccpPanelIds);
 
   // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali, urutan
   // ngikutin woData apa adanya. Pola SAMA PERSIS ManajemenWO.tsx (fallback "9999-99-99" buat WO

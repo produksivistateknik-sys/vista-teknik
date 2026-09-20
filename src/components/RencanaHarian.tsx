@@ -3,7 +3,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
-import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
@@ -66,17 +66,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // histori tanggal tetap di checklist.progressByDate/history, sengaja gak diduplikasi ke ccp).
   // File ini juga punya logika basi-vs-baru-hari-ini yang sudah 2x insiden nyata (CLAUDE.md B.3)
   // - JANGAN sentuh logika itu sama sekali di migrasi ini.
-  // fetchCcpMapForPanels (lib/componentProcessProgress.ts) - fetch+paginasi DIKONSOLIDASI di
-  // situ, bukan lagi diduplikasi lokal (dipakai bareng Detail Progres/Dashboard/SummaryProgress,
-  // CLAUDE.md B.1).
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    const panelIds=[...new Set(woData.flatMap((wo:any)=>(wo.panels||[]).map((p:any)=>p.id)))] as number[];
-    let cancelled=false;
-    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[woData.length]);
+  // useCcpMap (lib/componentProcessProgress.ts) - fetch+subscribe REALTIME (AUDIT 21 Sep 2026,
+  // dikonsolidasi bareng Detail Progres/Dashboard/SummaryProgress, CLAUDE.md B.1) - bukan fetch
+  // sekali, halaman ini tetap mounted lama, tanpa realtime "Status Pipeline" basi begitu operator
+  // nulis progress baru.
+  const ccpPanelIds=[...new Set(woData.flatMap((wo:any)=>(wo.panels||[]).map((p:any)=>p.id)))] as number[];
+  const ccpMap=useCcpMap(ccpPanelIds);
   const getCcpAwarePipelineProgressMap=(panelId:number,kode:string,cl:any)=>{
     const base=getBestProgressMap(cl);
     const merged={...base};

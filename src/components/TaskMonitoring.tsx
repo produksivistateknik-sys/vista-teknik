@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
 export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],rawData?:any[],livePanelTypes?:any}){
@@ -11,27 +11,15 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
 
   // FASE 6 (21 Sep 2026) - mulai baca component_process_progress (bukan checklist) buat 10
   // proses yang sudah dual-write (Pasang Komponen/WIRING CONTROL/WIRING POWER/proses biasa).
-  // Fetch di-scope ke PANEL YANG DIPILIH SAJA (bukan semua panel), cuma jalan pas panel dipilih.
-  // checklist TETAP fallback (lihat progressMapCcp di bawah) - kalau ada baris yang belum
-  // ke-backfill/dual-write karena alasan apa pun, gak nampilin kosong/salah, jatuh balik ke
-  // sumber lama seperti sebelum Fase 6. BUSBAR & QC TEST/PACKING TIDAK disentuh (BUSBAR belum
-  // punya baris gabungan di skema ini - lihat FASE4_BUSBAR_DESIGN.md poin 3; QC TEST/PACKING
-  // bukan bagian domain manapun yang di-dual-write - lihat FASE5_PROSES_BIASA_DESIGN.md poin 1).
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    if(!selectedPanelId){setCcpMap({});return;}
-    let cancelled=false;
-    supabase.from('component_process_progress' as any).select('kode_komponen,proses,progress_pct')
-      .eq('panel_id',selectedPanelId).neq('status','not_applicable')
-      .then(({data,error})=>{
-        if(cancelled)return;
-        if(error){console.error('gagal ambil component_process_progress:',error);setCcpMap({});return;}
-        const map:Record<string,number>={};
-        (data||[]).forEach((r:any)=>{map[`${r.kode_komponen}|${r.proses}`]=Number(r.progress_pct);});
-        setCcpMap(map);
-      });
-    return()=>{cancelled=true;};
-  },[selectedPanelId]);
+  // useCcpMap (lib/componentProcessProgress.ts, AUDIT 21 Sep 2026) - fetch+subscribe REALTIME
+  // (scope ke panel yang dipilih saja), bukan fetch sekali - dulu ccpMap basi kalau operator
+  // nulis progress baru sementara admin masih di panel yang sama. checklist TETAP fallback
+  // (lihat getCcpAwareProgressMap di bawah) - kalau ada baris yang belum ke-backfill/dual-write
+  // karena alasan apa pun, gak nampilin kosong/salah, jatuh balik ke sumber lama seperti sebelum
+  // Fase 6. BUSBAR & QC TEST/PACKING TIDAK disentuh (BUSBAR belum punya baris gabungan di skema
+  // ini - lihat FASE4_BUSBAR_DESIGN.md poin 3; QC TEST/PACKING bukan bagian domain manapun yang
+  // di-dual-write - lihat FASE5_PROSES_BIASA_DESIGN.md poin 1).
+  const ccpMap=useCcpMap(selectedPanelId?[selectedPanelId]:[]);
 
   const PROSES_LABEL:Record<string,string>={
     POTONG:"Potong",BENDING:"Bending",STEL:"Stel",FINISHING:"Finishing",RENDAM:"Rendam",PAINTING:"Painting",
@@ -51,7 +39,7 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
     const base=getBestProgressMap(selectedPanel?.checklist?.[kode]);
     const merged={...base};
     ALL_PROSES.forEach((proses:string)=>{
-      const key=`${kode}|${proses}`;
+      const key=`${selectedPanelId}|${kode}|${proses}`;
       if(key in ccpMap)merged[proses]=ccpMap[key];
     });
     return merged;

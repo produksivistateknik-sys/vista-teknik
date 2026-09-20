@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
-import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
+import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { Btn } from './ui/Primitives'
 import { KalenderTab } from './KalenderTab'
@@ -14,17 +14,12 @@ export function Dashboard({woData}){
   const [panelProgress,setPanelProgress]=useState("semua");
   const [alertType,setAlertType]=useState("semua");
 
-  // FASE 9 (21 Sep 2026) - component_process_progress, pola sama Fase 7 (Detail Progres) -
-  // woOverallCcpAware/panelOverallCcpAware (panelHelpers.ts) + fetchCcpMapForPanels
-  // (lib/componentProcessProgress.ts) sudah dikonsolidasi, satu sumber logika (CLAUDE.md B.1).
-  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
-  useEffect(()=>{
-    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
-    let cancelled=false;
-    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
-    return()=>{cancelled=true;};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[woData.length]);
+  // FASE 9 (21 Sep 2026) - component_process_progress. useCcpMap (lib/componentProcessProgress.ts,
+  // AUDIT 21 Sep 2026) - fetch+subscribe REALTIME, bukan fetch sekali (dashboard tetap mounted
+  // lama setelah dikunjungi, App.tsx `visitedTabs`). woOverallCcpAware/panelOverallCcpAware
+  // (panelHelpers.ts) dikonsolidasi, satu sumber logika (CLAUDE.md B.1).
+  const ccpPanelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+  const ccpMap=useCcpMap(ccpPanelIds);
 
   if(!woData.length) return(
     <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
