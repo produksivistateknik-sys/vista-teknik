@@ -56,6 +56,49 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
 
+  // FASE 8 (21 Sep 2026) - component_process_progress, SCOPE SEMPIT SENGAJA: cuma dipakai buat
+  // kolom "Status Pipeline" (computeProsesStatus - readiness TERKINI, sama konsep Task
+  // Monitoring/Detail Progres). Kolom "Status" (getProgressAsOfDate) & "QTY" (getQtyProsesAsOfDate)
+  // TIDAK disentuh sama sekali dan TIDAK BOLEH dipindah ke ccp - keduanya snapshot PERMANEN
+  // per-tanggal ("progress persis di tanggal t.tanggal", lihat komentar di render row bawah),
+  // sementara component_process_progress CUMA simpan state TERKINI (per desain sejak Fase 2 -
+  // histori tanggal tetap di checklist.progressByDate/history, sengaja gak diduplikasi ke ccp).
+  // File ini juga punya logika basi-vs-baru-hari-ini yang sudah 2x insiden nyata (CLAUDE.md B.3)
+  // - JANGAN sentuh logika itu sama sekali di migrasi ini.
+  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const panelIds=[...new Set(woData.flatMap((wo:any)=>(wo.panels||[]).map((p:any)=>p.id)))];
+    if(panelIds.length===0){setCcpMap({});return;}
+    let cancelled=false;
+    (async()=>{
+      let all:any[]=[],from=0;
+      const PAGE=1000;
+      for(;;){
+        const{data,error}=await supabase.from('component_process_progress' as any).select('panel_id,kode_komponen,proses,progress_pct')
+          .in('panel_id',panelIds).neq('status','not_applicable').range(from,from+PAGE-1);
+        if(cancelled)return;
+        if(error){console.error('gagal ambil component_process_progress:',error);setCcpMap({});return;}
+        all=all.concat(data||[]);
+        if(!data||data.length<PAGE)break;
+        from+=PAGE;
+      }
+      const map:Record<string,number>={};
+      all.forEach((r:any)=>{map[`${r.panel_id}|${r.kode_komponen}|${r.proses}`]=Number(r.progress_pct);});
+      setCcpMap(map);
+    })();
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[woData.length]);
+  const getCcpAwarePipelineProgressMap=(panelId:number,kode:string,cl:any)=>{
+    const base=getBestProgressMap(cl);
+    const merged={...base};
+    ALL_PROSES.forEach((pr:string)=>{
+      const key=`${panelId}|${kode}|${pr}`;
+      if(key in ccpMap)merged[pr]=ccpMap[key];
+    });
+    return merged;
+  };
+
   useEffect(()=>{
     const fetchCap=async()=>{
       const {data:k}=await supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas");
@@ -899,7 +942,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).flatMap((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const relevantProsesKode=panelData?getRelevantProsesForKode(kode,panelData.tipe):undefined;
-                        const pipelineStatus=computeProsesStatus(getBestProgressMap(panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
+                        const pipelineStatus=computeProsesStatus(getCcpAwarePipelineProgressMap(t.panelId,kode,panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
                         if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return[];
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
