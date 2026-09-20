@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { woOverall, panelOverall } from '../lib/panelHelpers'
+import { useState, useEffect } from 'react'
+import { woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { Btn } from './ui/Primitives'
 import { KalenderTab } from './KalenderTab'
@@ -13,6 +14,18 @@ export function Dashboard({woData}){
   const [panelProgress,setPanelProgress]=useState("semua");
   const [alertType,setAlertType]=useState("semua");
 
+  // FASE 9 (21 Sep 2026) - component_process_progress, pola sama Fase 7 (Detail Progres) -
+  // woOverallCcpAware/panelOverallCcpAware (panelHelpers.ts) + fetchCcpMapForPanels
+  // (lib/componentProcessProgress.ts) sudah dikonsolidasi, satu sumber logika (CLAUDE.md B.1).
+  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+    let cancelled=false;
+    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[woData.length]);
+
   if(!woData.length) return(
     <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
       <div style={{fontSize:40,marginBottom:12}}>📋</div>
@@ -21,12 +34,12 @@ export function Dashboard({woData}){
     </div>
   );
 
-  const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target)));
-  const avgOverall=woData.length?Math.round(woData.reduce((a,w)=>a+woOverall(w),0)/woData.length):0;
+  const alerts=woData.filter(w=>woOverallCcpAware(w,ccpMap)<100&&(isDelayed(w.target)||isUrgent(w.target)));
+  const avgOverall=woData.length?Math.round(woData.reduce((a,w)=>a+woOverallCcpAware(w,ccpMap),0)/woData.length):0;
   const totalPanel=woData.reduce((a,w)=>a+(w.panels||[]).length,0);
 
   const filteredWO=woData.filter(w=>{
-    const pct=woOverall(w);
+    const pct=woOverallCcpAware(w,ccpMap);
     const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
     const matchS=woStatus==="semua"||(woStatus==="ontrack"&&s==="ontrack")||(woStatus==="mendesak"&&s==="mendesak")||(woStatus==="terlambat"&&s==="terlambat")||(woStatus==="selesai"&&s==="selesai");
     const matchQ=!woSearch||(w.wo||"").toLowerCase().includes(woSearch.toLowerCase())||(w.proyek||"").toLowerCase().includes(woSearch.toLowerCase());
@@ -35,7 +48,7 @@ export function Dashboard({woData}){
 
   const allPanels=woData.flatMap(w=>(w.panels||[]).map(p=>({...p,wo:w.wo,proyek:w.proyek,woId:w.id,target:w.target})));
   const filteredPanels=allPanels.filter(p=>{
-    const pct=panelOverall?.(p)??0;
+    const pct=panelOverallCcpAware(p,undefined,ccpMap);
     const matchWO=panelWO==="semua"||(p.wo||"")===panelWO;
     const matchQ=!panelSearch||(p.nama||"").toLowerCase().includes(panelSearch.toLowerCase())||(p.proyek||"").toLowerCase().includes(panelSearch.toLowerCase());
     const matchP=panelProgress==="semua"||(panelProgress==="0-25"&&pct<=25)||(panelProgress==="26-50"&&pct>25&&pct<=50)||(panelProgress==="51-75"&&pct>50&&pct<=75)||(panelProgress==="76-100"&&pct>75);
@@ -56,7 +69,7 @@ export function Dashboard({woData}){
     color:"#374151",verticalAlign:"middle" as const,fontSize:11.5};
 
   const StatusBadge=({w}:{w:any})=>{
-    const pct=woOverall(w);
+    const pct=woOverallCcpAware(w,ccpMap);
     const s=pct===100?"Selesai":isDelayed(w.target)?"Terlambat":isUrgent(w.target)?"Mendesak":"On Track";
     const c=pct===100?"#16a34a":isDelayed(w.target)?"#dc2626":isUrgent(w.target)?"#d97706":"#16a34a";
     const bg=pct===100?"#f0fdf4":isDelayed(w.target)?"#fef2f2":isUrgent(w.target)?"#fffbeb":"#f0fdf4";
@@ -168,7 +181,7 @@ export function Dashboard({woData}){
               <tbody>
                 {filteredWO.length===0&&<tr><td colSpan={7} style={{...tdS,textAlign:"center",color:"#94a3b8",padding:"24px"}}>Tidak ada data</td></tr>}
                 {filteredWO.map(wo=>{
-                  const pct=woOverall(wo);
+                  const pct=woOverallCcpAware(wo,ccpMap);
                   const d=daysUntil(wo.target);
                   const late=isDelayed(wo.target);
                   const urg=isUrgent(wo.target);
@@ -200,7 +213,7 @@ export function Dashboard({woData}){
                 <tr style={{background:"#f8fafc"}}>
                   <td colSpan={4} style={{padding:"7px 11px",fontSize:10.5,color:"#94a3b8"}}>{filteredWO.length} work order · rata-rata</td>
                   <td style={{padding:"7px 11px"}}>
-                    <PBar pct={filteredWO.length?Math.round(filteredWO.reduce((a,w)=>a+woOverall(w),0)/filteredWO.length):0}/>
+                    <PBar pct={filteredWO.length?Math.round(filteredWO.reduce((a,w)=>a+woOverallCcpAware(w,ccpMap),0)/filteredWO.length):0}/>
                   </td>
                   <td/>
                 </tr>
@@ -237,7 +250,7 @@ export function Dashboard({woData}){
               <tbody>
                 {filteredPanels.length===0&&<tr><td colSpan={5} style={{...tdS,textAlign:"center",color:"#94a3b8",padding:"24px"}}>Tidak ada data</td></tr>}
                 {filteredPanels.map((p,i)=>{
-                  const pct=panelOverall?.(p)??0;
+                  const pct=panelOverallCcpAware(p,undefined,ccpMap);
                   const late=isDelayed(p.target);
                   const urg=isUrgent(p.target);
                   const s=pct===100?"Selesai":late?"Terlambat":urg?"Mendesak":"On Track";
@@ -276,7 +289,7 @@ export function Dashboard({woData}){
               <tbody>
                 {filteredAlerts.length===0&&<tr><td colSpan={6} style={{...tdS,textAlign:"center",color:"#94a3b8",padding:"24px"}}>Tidak ada peringatan</td></tr>}
                 {filteredAlerts.map(w=>{
-                  const pct=woOverall(w);
+                  const pct=woOverallCcpAware(w,ccpMap);
                   const d=daysUntil(w.target);
                   const late=isDelayed(w.target);
                   return(

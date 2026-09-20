@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { calcPanelProgress, panelOverall, getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress } from '../lib/panelHelpers'
+import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
@@ -13,79 +13,22 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
 
   const PROSES_LIST=ALL_PROSES;
 
-  // FASE 7 (21 Sep 2026) - mulai baca component_process_progress, SAMA pola Fase 6 (Task
-  // Monitoring): ccp menang kalau barisnya ADA, checklist tetap fallback. Fetch di-scope ke
-  // SEMUA panel_id yang tampil di halaman ini (view ini multi-panel, gak ada seleksi 1 panel
-  // kayak Task Monitoring) - skala kecil (26 panel live), 1 query gak perlu pagination khusus.
-  //
-  // calcPanelProgress/panelOverall (panelHelpers.ts) SENGAJA TIDAK diubah di sini - fungsi itu
-  // dipakai banyak consumer lain (Dashboard/SummaryProgress/ManajemenWO) yang BELUM diverifikasi
-  // migrasinya satu-satu (pola sama persis Fase 6: getCcpAwareProgressMap situ juga TIDAK ubah
-  // getBestProgressMap yang dipakai bersama). calcPanelProgressCcpAware di bawah ini duplikasi
-  // SENGAJA sementara selama migrasi bertahap - akan dikonsolidasi balik ke 1 fungsi begitu semua
-  // consumer langsung calcPanelProgress sudah dipindah satu-satu.
+  // FASE 7 (21 Sep 2026) - mulai baca component_process_progress. ccp menang kalau barisnya ADA,
+  // checklist tetap fallback. calcPanelProgressCcpAware/panelOverallCcpAware (panelHelpers.ts)
+  // dan fetchCcpMapForPanels (lib/componentProcessProgress.ts) DIKONSOLIDASI di situ (bukan lagi
+  // duplikasi lokal per file) sejak consumer ke-3 (Dashboard/SummaryProgress) butuh pola yang sama
+  // persis - CLAUDE.md B.1.
   const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
   useEffect(()=>{
     const panelIds=[...new Set(woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>p.id)))];
-    if(panelIds.length===0){setCcpMap({});return;}
     let cancelled=false;
-    // CLAUDE.md A.1 - view multi-panel ini gampang lewat 1000 baris (2710 baris non-not_applicable
-    // di seluruh tabel per 21 Sep 2026, sudah lebih dari cap Supabase) - WAJIB paginate penuh,
-    // gak boleh andalkan 1 query polos kayak Task Monitoring (Fase 6, scope-nya cuma 1 panel jadi
-    // aman tanpa ini).
-    (async()=>{
-      let all:any[]=[],from=0;
-      const PAGE=1000;
-      for(;;){
-        const{data,error}=await supabase.from('component_process_progress' as any).select('panel_id,kode_komponen,proses,progress_pct')
-          .in('panel_id',panelIds).neq('status','not_applicable').range(from,from+PAGE-1);
-        if(cancelled)return;
-        if(error){console.error('gagal ambil component_process_progress:',error);setCcpMap({});return;}
-        all=all.concat(data||[]);
-        if(!data||data.length<PAGE)break;
-        from+=PAGE;
-      }
-      const map:Record<string,number>={};
-      all.forEach((r:any)=>{map[`${r.panel_id}|${r.kode_komponen}|${r.proses}`]=Number(r.progress_pct);});
-      setCcpMap(map);
-    })();
+    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
     return()=>{cancelled=true;};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[woData.length]);
   const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>{
     const key=`${panelId}|${kode}|${proses}`;
     return key in ccpMap?ccpMap[key]:fallback;
-  };
-  // Cermin calcPanelProgress (panelHelpers.ts) - BUSBAR/QC TEST/PACKING TETAP baca sumber asli
-  // (belum ada baris gabungan BUSBAR di ccp, QC/PACKING bukan bagian domain manapun yang
-  // di-dual-write - lihat FASE4/FASE5 design doc), cuma cabang generik (proses biasa/Pasang
-  // Komponen/WIRING) yang sumbernya digeser ke ccp-aware.
-  const calcPanelProgressCcpAware=(panel:any,rawDataArg?:any[]):Record<string,number>=>{
-    const cfg=getEffCfg(panel.tipe);
-    if(!cfg||!panel.checklist)return ALL_PROSES.reduce((a:any,p:string)=>({...a,[p]:0}),{});
-    const active=cfg.wps.flatMap((w:any)=>w.items).filter((it:any)=>(panel.checklist[it.kode]?.qty||0)>0);
-    if(!active.length)return ALL_PROSES.reduce((a:any,p:string)=>({...a,[p]:0}),{});
-    const prog:Record<string,number>={};
-    ALL_PROSES.forEach((pr:string)=>{
-      if(pr==="BUSBAR"){
-        const komps=getPanelBusbarKomponen(panel,rawDataArg);
-        const bvals=komps.map((k:string)=>getBusbarProgress(panel,k));
-        prog[pr]=bvals.length>0?Math.round(bvals.reduce((a:number,b:number)=>a+b,0)/bvals.length):0;
-        return;
-      }
-      if(pr==="QC TEST"){prog[pr]=panel.qc_checklist?._global?.status==="complete"?100:0;return;}
-      if(pr==="PACKING"){prog[pr]=panel.packing_done?100:0;return;}
-      const relevantActive=active.filter((it:any)=>isKomponenRelevant(it.kode,panel.tipe,pr));
-      const itemsForCalc=relevantActive.length>0?relevantActive:active;
-      const vals=itemsForCalc.map((it:any)=>ccpAwarePct(panel.id,it.kode,pr,getBestProgress(panel.checklist[it.kode],pr)));
-      prog[pr]=Math.round(vals.reduce((a:number,b:number)=>a+b,0)/vals.length);
-    });
-    return prog;
-  };
-  const panelOverallCcpAware=(p:any,rawDataArg?:any[]):number=>{
-    const v=Object.values(calcPanelProgressCcpAware(p,rawDataArg));
-    if(!v.length)return 0;
-    return Math.round(v.reduce((acc,n)=>acc+n,0)/v.length);
   };
 
   const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
@@ -94,14 +37,14 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
     woId:wo.id,
     proyek:wo.proyek,
     target:wo.target,
-    pd:calcPanelProgressCcpAware(p,rawData),
+    pd:calcPanelProgressCcpAware(p,rawData,ccpMap),
   })));
 
   // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali. Sama
   // persis pola ManajemenWO.tsx/SummaryProgress.tsx - p.target di sini = target WO induknya
   // (lihat allPanels di atas), jadi panel dari WO paling mendesak naik ke atas.
   const filtered=allPanels.filter(p=>{
-    const pct=panelOverallCcpAware(p,rawData);
+    const pct=panelOverallCcpAware(p,rawData,ccpMap);
     const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchWO=woFilter==="semua"||p.wo===woFilter;
@@ -131,9 +74,9 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   );
 
   const totalPanel=allPanels.length;
-  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverallCcpAware(p,rawData),0)/totalPanel):0;
-  const selesai=allPanels.filter(p=>panelOverallCcpAware(p,rawData)===100).length;
-  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverallCcpAware(p,rawData)<100).length;
+  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverallCcpAware(p,rawData,ccpMap),0)/totalPanel):0;
+  const selesai=allPanels.filter(p=>panelOverallCcpAware(p,rawData,ccpMap)===100).length;
+  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverallCcpAware(p,rawData,ccpMap)<100).length;
 
   const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
     if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
@@ -255,7 +198,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
           Tidak ada data yang sesuai filter
         </div>
       ):filtered.map((p:any,pi:number)=>{
-        const ppct=panelOverallCcpAware(p,rawData);
+        const ppct=panelOverallCcpAware(p,rawData,ccpMap);
         const d=daysUntil(p.target);
         const late=isDelayed(p.target);
         const urg=isUrgent(p.target);

@@ -1,5 +1,6 @@
-import { useState } from 'react'
-import { woOverall, panelOverall, calcPanelProgress } from '../lib/panelHelpers'
+import { useState, useEffect } from 'react'
+import { woOverallCcpAware, panelOverallCcpAware, calcPanelProgressCcpAware } from '../lib/panelHelpers'
+import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { PROSES_COLOR, ALL_PROSES } from '../constants/panelTypes'
 
@@ -9,11 +10,24 @@ export function SummaryProgress({woData}:{woData:any[]}){
 
   const PROSES_LIST=ALL_PROSES;
 
+  // FASE 9 (21 Sep 2026) - component_process_progress, pola sama Fase 7/9 (Detail Progres/
+  // Dashboard) - woOverallCcpAware/panelOverallCcpAware/calcPanelProgressCcpAware
+  // (panelHelpers.ts) + fetchCcpMapForPanels (lib/componentProcessProgress.ts), 1 sumber logika
+  // (CLAUDE.md B.1).
+  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+    let cancelled=false;
+    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[woData.length]);
+
   // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali, urutan
   // ngikutin woData apa adanya. Pola SAMA PERSIS ManajemenWO.tsx (fallback "9999-99-99" buat WO
   // tanpa target, biar turun ke bawah bukan nyangkut di atas).
   const filtered=woData.filter(w=>{
-    const pct=woOverall(w);
+    const pct=woOverallCcpAware(w,ccpMap);
     const s=pct===100?"selesai":isDelayed(w.target)?"terlambat":isUrgent(w.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchQ=!search||(w.wo||"").toLowerCase().includes(search.toLowerCase())||(w.proyek||"").toLowerCase().includes(search.toLowerCase())||(w.panels||[]).some((p:any)=>(p.nama||"").toLowerCase().includes(search.toLowerCase()));
@@ -38,10 +52,10 @@ export function SummaryProgress({woData}:{woData:any[]}){
   );
 
   const totalPanel=woData.reduce((a,w)=>a+(w.panels||[]).length,0);
-  const avgOverall=woData.length?Math.round(woData.reduce((a,w)=>a+woOverall(w),0)/woData.length):0;
-  const selesai=woData.filter(w=>woOverall(w)===100).length;
-  const mendesak=woData.filter(w=>woOverall(w)<100&&isUrgent(w.target)&&!isDelayed(w.target)).length;
-  const terlambat=woData.filter(w=>isDelayed(w.target)&&woOverall(w)<100).length;
+  const avgOverall=woData.length?Math.round(woData.reduce((a,w)=>a+woOverallCcpAware(w,ccpMap),0)/woData.length):0;
+  const selesai=woData.filter(w=>woOverallCcpAware(w,ccpMap)===100).length;
+  const mendesak=woData.filter(w=>woOverallCcpAware(w,ccpMap)<100&&isUrgent(w.target)&&!isDelayed(w.target)).length;
+  const terlambat=woData.filter(w=>isDelayed(w.target)&&woOverallCcpAware(w,ccpMap)<100).length;
   // Kartu "Belum Nameplate"/"Belum Yellowmark" DIHAPUS dari stat row (14 Sep 2026, permintaan
   // user) - allPanelsForNp/belumNameplate/belumYellowmark dulu di sini cuma buat 2 kartu itu,
   // gak dipakai di tempat lain di file ini, jadi ikut dihapus (bukan dead code yang dibiarkan).
@@ -128,7 +142,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
       )}
 
       {filtered.map(wo=>{
-        const pct=woOverall(wo);
+        const pct=woOverallCcpAware(wo,ccpMap);
         const d=daysUntil(wo.target);
         const late=isDelayed(wo.target);
         const urg=isUrgent(wo.target);
@@ -141,7 +155,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
         const panels=wo.panels||[];
 
         // Gunakan calcPanelProgress untuk dapat data proses
-        const panelProgressData=panels.map((p:any)=>calcPanelProgress(p));
+        const panelProgressData=panels.map((p:any)=>calcPanelProgressCcpAware(p,undefined,ccpMap));
 
         // Proses yang ada data (pct > 0 atau ada di salah satu panel)
         const prosesAda=PROSES_LIST.filter(pr=>
@@ -209,7 +223,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
                   <tbody>
                     {panels.map((p:any,pi:number)=>{
                       const pd=panelProgressData[pi];
-                      const ppct=panelOverall(p);
+                      const ppct=panelOverallCcpAware(p,undefined,ccpMap);
                       const pc=ppct===100?"#16a34a":ppct>=70?"#16a34a":ppct>=40?"#d97706":"#dc2626";
                       const ps=ppct===100?"Selesai":ppct>=70?"On Track":ppct>=40?"On Track":"On Track";
                       const pbg=ppct===100?"#f0fdf4":"#eff6ff";

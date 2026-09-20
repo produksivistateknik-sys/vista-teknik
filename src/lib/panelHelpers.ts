@@ -468,6 +468,53 @@ export function woOverall(wo){
   return Math.round(sum/vals.length);
 }
 
+// ================= Fase 8+ (21 Sep 2026): varian ccp-aware =================
+// Cermin calcPanelProgress/panelOverall/woOverall di atas - BUSBAR/QC TEST/PACKING TETAP baca
+// sumber asli (belum ada baris gabungan BUSBAR di component_process_progress, QC/PACKING bukan
+// bagian domain manapun yang di-dual-write - lihat FASE4/FASE5 design doc), cuma cabang generik
+// (proses biasa/Pasang Komponen/WIRING) yang sumbernya digeser ke `ccpMap` (kalau barisnya ADA -
+// checklist tetap fallback). Dikonsolidasi ke sini (bukan diduplikasi lagi per consumer) mulai
+// consumer ke-3 (Dashboard/SummaryProgress) - CLAUDE.md B.1. `ccpMap` di-fetch consumer sendiri
+// lewat fetchCcpMapForPanels() (lib/componentProcessProgress.ts), function di sini TETAP pure
+// (gak nyentuh supabase sendiri).
+export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, ccpMap:Record<string,number>): Record<string, number> {
+  const cfg=getEffCfgGlobal(panel.tipe);
+  if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
+  if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+  const prog: Record<string, number> = {};
+  ALL_PROSES.forEach(pr=>{
+    if(pr==="BUSBAR"){
+      const komps=getPanelBusbarKomponen(panel,rawData);
+      const bvals=komps.map((k:string)=>getBusbarProgress(panel,k));
+      prog[pr]=bvals.length>0?Math.round(bvals.reduce((a,b)=>a+b,0)/bvals.length):0;
+      return;
+    }
+    if(pr==="QC TEST"){ prog[pr]=panel.qc_checklist?._global?.status==="complete"?100:0; return; }
+    if(pr==="PACKING"){ prog[pr]=panel.packing_done?100:0; return; }
+    const relevantActive=active.filter(it=>isKomponenRelevant(it.kode,panel.tipe,pr));
+    const itemsForCalc=relevantActive.length>0?relevantActive:active;
+    const vals=itemsForCalc.map(it=>{
+      const key=`${panel.id}|${it.kode}|${pr}`;
+      return key in ccpMap?ccpMap[key]:getBestProgress(panel.checklist[it.kode],pr);
+    });
+    prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
+  });
+  return prog;
+}
+export function panelOverallCcpAware(p:any, rawData:any[]|undefined, ccpMap:Record<string,number>){
+  const v=Object.values(calcPanelProgressCcpAware(p,rawData,ccpMap));
+  if(!v.length) return 0;
+  const sum=v.reduce((acc,n)=>acc+n,0);
+  return Math.round(sum/v.length);
+}
+export function woOverallCcpAware(wo:any, ccpMap:Record<string,number>){
+  const vals=(wo.panels??[]).flatMap((p:any)=>Object.values(calcPanelProgressCcpAware(p,undefined,ccpMap)));
+  if(!vals.length) return 0;
+  const sum=vals.reduce((acc,n)=>acc+n,0);
+  return Math.round(sum/vals.length);
+}
+
 // compute progress % for a WP (all komponen in WP across all proses for that divisi)
 export const wpProgress=(panelData,wp,proses)=>{
   if(!panelData)return 0;
