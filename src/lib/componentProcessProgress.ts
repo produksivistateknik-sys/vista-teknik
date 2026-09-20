@@ -4,8 +4,19 @@
 // SummaryProgress) butuh pola yang SAMA PERSIS (CLAUDE.md B.1, satu sumber logika). Cermin
 // nama file dari vista-pekerja/src/lib/componentProcessProgress.ts (beda isi - itu buat
 // upsert/tulis dari operator, ini buat baca/agregasi dari sisi admin).
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from './supabase';
+
+// Counter modul-level buat channel realtime unik per HOOK INSTANCE (bukan cuma per panelIdsKey) -
+// AUDIT (21 Sep 2026): 6 consumer (Task Monitoring/Detail Progres/Rencana Harian/Dashboard/
+// Summary Progress/Manajemen WO) semuanya biasanya nampilin SET PANEL YANG SAMA (semua panel
+// aktif), jadi panelIdsKey-nya SAMA PERSIS lintas file - kalau nama channel cuma dari panelIdsKey,
+// beberapa consumer yang mounted BARENGAN (App.tsx `visitedTabs` nahan semua tab tetap mounted)
+// bakal bikin channel dengan NAMA SAMA PERSIS. Supabase JS behavior utk topic sama dari client
+// yang sama TIDAK didokumentasikan jelas cukup buat diandalkan (risiko: unsubscribe salah satu
+// consumer ikut motong langganan consumer lain) - lebih aman kasih suffix unik per instance,
+// hindari isu ini sama sekali daripada bergantung ke perilaku SDK yang gak dijamin.
+let ccpChannelCounter = 0;
 
 // WAJIB paginate (CLAUDE.md A.1) - tabel ini sudah >1000 baris non-not_applicable (2710 per
 // 21 Sep 2026), 1 query polos silently ke-cap. Insiden nyata: versi awal Detail Progres (Fase 7)
@@ -45,6 +56,8 @@ export async function fetchCcpMapForPanels(panelIds: number[]): Promise<Record<s
 export function useCcpMap(panelIds: number[]): Record<string, number> {
   const [ccpMap, setCcpMap] = useState<Record<string, number>>({});
   const panelIdsKey = useMemo(() => [...new Set(panelIds)].sort((a, b) => a - b).join(','), [panelIds.join(',')]);
+  const instanceIdRef = useRef<number | undefined>(undefined);
+  if (instanceIdRef.current === undefined) instanceIdRef.current = ++ccpChannelCounter;
 
   useEffect(() => {
     if (!panelIdsKey) { setCcpMap({}); return; }
@@ -64,7 +77,7 @@ export function useCcpMap(panelIds: number[]): Record<string, number> {
         return next;
       });
     };
-    const channel = supabase.channel('realtime-ccp-' + panelIdsKey)
+    const channel = supabase.channel(`realtime-ccp-${instanceIdRef.current}-${panelIdsKey}`)
       .on('postgres_changes', filterClause
         ? { event: 'INSERT', schema: 'public', table: 'component_process_progress', filter: filterClause }
         : { event: 'INSERT', schema: 'public', table: 'component_process_progress' },
