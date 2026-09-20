@@ -5,7 +5,8 @@ import { workOrderService } from '../services/workOrderService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
-import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverall, panelOverall } from '../lib/panelHelpers'
+import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { fetchCcpMapForPanels } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
@@ -42,6 +43,20 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const bomPanelTypesCache=livePanelTypes;
   const getEffectiveCfg=(tipe:string)=>(bomPanelTypesCache?.[tipe]?.wps?.length>0)?bomPanelTypesCache[tipe]:(PANEL_TYPES as any)[tipe];
   const effectivePanelTypes=(bomPanelTypesCache&&Object.keys(bomPanelTypesCache).length>0)?bomPanelTypesCache:PANEL_TYPES;
+  // FASE 10 (21 Sep 2026) - component_process_progress, pola sama Fase 7/9 (fungsi ccp-aware +
+  // fetchCcpMapForPanels sudah dikonsolidasi di panelHelpers.ts/lib/componentProcessProgress.ts,
+  // CLAUDE.md B.1). Dipakai baik buat badge persen tampilan MAUPUN snapshot progress yang dikirim
+  // ke RPC arsip_panel (prosesArsipPanel di bawah) - aman, ccp selalu mirror checklist real-time
+  // (dual-write), bukan snapshot historis-per-tanggal (beda dari kekhawatiran Rencana Harian,
+  // Fase 8 - ini "progress SEKARANG", bukan "progress di tanggal lampau").
+  const [ccpMap,setCcpMap]=useState<Record<string,number>>({});
+  useEffect(()=>{
+    const panelIds=[...new Set(woData.flatMap((w:any)=>(w.panels||[]).map((p:any)=>p.id)))] as number[];
+    let cancelled=false;
+    fetchCcpMapForPanels(panelIds).then(map=>{if(!cancelled)setCcpMap(map);});
+    return()=>{cancelled=true;};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[woData.length]);
   // Qty-per-komponen editor (3 Sep 2026, di-extract ke usePanelQtyEditor.ts - dipakai bareng
   // WoDigitalTab.tsx/Engineering juga). getPanel/getWoContext/applyChecklist di-bind ke woData
   // nested-per-WO punya komponen ini - behavior SAMA PERSIS kayak sebelum di-extract.
@@ -122,7 +137,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     const gagal:string[]=[];
     let sukses=0;
     for(const p of panelsToArsip){
-      const progress=panelOverall(p);
+      const progress=panelOverallCcpAware(p,undefined,ccpMap);
       // BUG FIX (30 Agu 2026): arsip_panel() RPC hard-delete row panels - kena FK constraint
       // permintaan_panel_id_fkey kalau masih ada row permintaan yang nyantol ke panel ini (pola
       // SAMA PERSIS kayak bug WO-delete/cekYatimPiatu di workOrderService.ts). Beda dari kasus WO
@@ -385,7 +400,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         </div>
       )}
       {[...woData].sort((a:any,b:any)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99")).map(wo=>{
-        const pct=woOverall(wo);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
+        const pct=woOverallCcpAware(wo,ccpMap);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
         return(
           <div key={wo.id} ref={(el)=>{woCardRefs.current[wo.id]=el;}}>
           <Card style={{marginBottom:12,borderLeft:`3px solid ${st.color}`,padding:0,overflow:"hidden",
@@ -423,7 +438,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
               </div>
             </div>
             {isExp&&[...(wo.panels||[])].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map(p=>{
-              const pp=panelOverall(p);const isPExp=expandedPanel[p.id];const cfg=getEffectiveCfg(p.tipe);
+              const pp=panelOverallCcpAware(p,undefined,ccpMap);const isPExp=expandedPanel[p.id];const cfg=getEffectiveCfg(p.tipe);
               // Gambar WO (REVISI 5 Sep 2026) - dulu CUMA ada di form Edit WO (klik "✏️ Edit"),
               // gak muncul sama sekali di card list biasa (list->expand langsung ke qty grid,
               // gak lewat dokumen) - ditambah di sini juga, viewer-only sama pola Edit form.
@@ -600,7 +615,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
             {(arsipPanelModal.panels||[]).length===0?(
               <div style={{textAlign:"center" as const,padding:20,color:"#94a3b8",fontSize:12}}>WO ini tidak punya panel.</div>
             ):(arsipPanelModal.panels||[]).map((p:any)=>{
-              const pp=panelOverall(p);
+              const pp=panelOverallCcpAware(p,undefined,ccpMap);
               const checked=selArsipPanelIds.has(p.id);
               return(
                 <label key={p.id} style={{display:"flex",alignItems:"center",gap:10,padding:"8px 10px",
