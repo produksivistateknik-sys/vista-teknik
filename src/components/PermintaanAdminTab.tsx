@@ -195,15 +195,20 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       .filter((w: any) => w.panelCount > 0)
       .sort((a: any, b: any) => (a.wo || '').localeCompare(b.wo || '')),
     [woData])
-  // AJUKAN PERMINTAAN LANGSUNG OLEH ADMIN (16 Sep 2026) - admin Vista Teknik bisa ajukan sendiri
-  // (mis. kebutuhan darurat/administratif), TANPA lewat alur approval operator->admin->Gudang -
-  // status LANGSUNG 'submit' (final, "sudah keluar dari Gudang" - definisi yang sama dipakai
-  // Rekap per Panel di bawah), disetujui_admin_oleh/at DAN updated_by/at (2 tahap yang biasanya
-  // beda orang/waktu - approval admin & proses Gudang) SAMA-SAMA diisi nama admin ini + waktu
-  // sekarang, biar konsisten (bukan salah satu kosong padahal harusnya keduanya "sudah selesai").
-  // sudah_diambil SENGAJA TIDAK ikut di-set true di sini - itu peristiwa fisik terpisah (ada
-  // orang yang benar-benar ambil barangnya), gak boleh diasumsikan otomatis ikut kejadian cuma
-  // karena permintaannya diajukan+diproses via jalur ini.
+  // AJUKAN PERMINTAAN LANGSUNG OLEH ADMIN (16 Sep 2026, DIPERBAIKI 21 Sep 2026) - admin Vista
+  // Teknik bisa ajukan sendiri (mis. kebutuhan darurat/administratif), skip tahap approval
+  // 'menunggu_admin' (admin yang ajukan = otomatis disetujui, disetujui_admin_oleh/at diisi
+  // langsung) - TAPI TETAP WAJIB lewat Gudang buat pemenuhan fisik, PERSIS seperti permintaan
+  // operator biasa yang sudah di-approve (setujui() di atas). Status jadi 'pending' (BUKAN
+  // 'submit' - itu status TERMINAL, cuma boleh ditulis Gudang sendiri sesudah mereka BENERAN
+  // memenuhi barangnya). Versi awal (16 Sep) salah asumsi "admin ajukan = otomatis selesai",
+  // nulis status='submit' + updated_by/at langsung di sini - akibatnya PermintaanGudangTab.tsx
+  // (filter ketat status==='pending') GAK PERNAH nampilin permintaan admin sama sekali, Gudang
+  // gak pernah tau ada permintaan itu. updated_by/updated_at SENGAJA TIDAK diisi di sini (beda
+  // dari versi lama) - itu murni milik Gudang, cuma diisi kalau mereka BENERAN sudah proses.
+  // sudah_diambil SENGAJA TIDAK ikut di-set true - itu peristiwa fisik terpisah (ada orang yang
+  // benar-benar ambil barangnya), gak boleh diasumsikan otomatis ikut kejadian cuma karena
+  // permintaannya diajukan+disetujui via jalur ini.
   const [ajukanModalOpen, setAjukanModalOpen] = useState(false)
   const [ajukanWoSearch, setAjukanWoSearch] = useState('')
   const [ajukanWoId, setAjukanWoId] = useState<number | null>(null)
@@ -276,6 +281,21 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       setAjukanSubmitting(false)
       return
     }
+    // BUG FIX (21 Sep 2026, dilaporkan user - "permintaan dari Admin gak nongol di Gudang") -
+    // dulu status DITULIS LANGSUNG 'submit' di sini ('submit' itu status TERMINAL, cuma boleh
+    // ditulis GUDANG sendiri sesudah mereka BENERAN memenuhi/mengeluarkan barangnya - lihat
+    // PermintaanGudangTab.tsx). PermintaanGudangTab.tsx (jalur TIDAK disentuh) filter ketat
+    // status==="pending" - permintaan dari admin yang lompat langsung ke 'submit' JADI GAK
+    // PERNAH KELIATAN GUDANG SAMA SEKALI, walau datanya sendiri tersimpan sempurna (dicek live:
+    // 3 permintaan admin terbaru semua status=submit, updated_by/at sudah keisi nama admin
+    // padahal field itu seharusnya null sampai GUDANG yang isi).
+    // Dikonfirmasi user: permintaan admin TETAP WAJIB lewat Gudang, sama seperti permintaan
+    // operator - bukan jalur pintas. Fix: status jadi 'pending' (bukan skip ke 'submit'), field
+    // yang ditulis dipersis-samakan dengan setujui() di atas (approval admin ke permintaan
+    // OPERATOR biasa) - cuma status+qty+disetujui_admin_oleh/at, TIDAK isi updated_by/updated_at
+    // (itu murni milik Gudang, isi kalau ditulis di sini bikin baris ini KELIATAN sudah
+    // diproses Gudang padahal belum disentuh sama sekali - dicek live baseline baris pending
+    // asli: updated_by/updated_at selalu null sampai Gudang proses).
     const rows = itemsValid.map(it => ({
       permintaan_id: perm.id,
       komponen_master_id: it.komponenId ? Number(it.komponenId) : null,
@@ -283,9 +303,8 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       qty: Number(it.qty),
       satuan: it.satuanDipilih || null,
       satuan_dipilih: it.satuanDipilih || null,
-      status: 'submit', // skip menunggu_admin/pending sepenuhnya - admin yang ajukan = otomatis disetujui+diproses
+      status: 'pending', // admin = otomatis disetujui (disetujui_admin_oleh/at diisi di bawah), TAPI TETAP lewat Gudang buat pemenuhan fisik seperti permintaan operator
       disetujui_admin_oleh: adminUsername, disetujui_admin_at: nowIso,
-      updated_by: adminUsername, updated_at: nowIso,
       dilihat_operator: true,
     }))
     const { error: itemErr } = await supabase.from('permintaan_item').insert(rows)
@@ -296,7 +315,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     }
     setAjukanSubmitting(false)
     tutupAjukanModal()
-    alert('Permintaan berhasil diajukan & langsung diproses (status Sudah Siap) - tidak perlu approval lagi.')
+    alert('Permintaan berhasil diajukan & langsung disetujui - sekarang menunggu diproses Gudang.')
     if (viewMode === 'riwayat') fetchRiwayat(riwayatTanggal)
   }
 
@@ -1007,7 +1026,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       {ajukanModalOpen && (
         <Modal title="Ajukan Permintaan (Admin)" onClose={tutupAjukanModal} width={640}>
           <div style={{ fontSize: 12, color: '#1d4ed8', marginBottom: 14, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '8px 10px', lineHeight: 1.5 }}>
-            Permintaan yang diajukan lewat sini LANGSUNG berstatus "Sudah Siap" - tidak perlu approval lagi (karena diajukan oleh Admin), otomatis masuk ke Riwayat & Rekap per Panel.
+            Permintaan yang diajukan lewat sini LANGSUNG disetujui (tidak perlu approval lagi karena diajukan oleh Admin) - tapi tetap masuk antrean Gudang buat diproses/disiapkan, sama seperti permintaan biasa.
           </div>
 
           <Lbl>Work Order</Lbl>
@@ -1102,7 +1121,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
           <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
             <Btn color="#94a3b8" outline onClick={tutupAjukanModal} disabled={ajukanSubmitting}>Batal</Btn>
             <Btn color="#1d4ed8" onClick={submitAjukanAdmin} disabled={ajukanSubmitting}>
-              {ajukanSubmitting ? 'Mengirim...' : 'Ajukan & Proses Langsung'}
+              {ajukanSubmitting ? 'Mengirim...' : 'Ajukan & Setujui'}
             </Btn>
           </div>
         </Modal>
