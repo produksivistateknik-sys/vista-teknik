@@ -158,6 +158,18 @@ hasil tiap poin **secara eksplisit** ke user:
    sama — cek `git log` dulu.
 4. Refactor "struktur saja": **jangan perbaiki bug** yang ketemu di tengah jalan
    kecuali diminta. Catat saja bug-nya di laporan.
+5. **`vista-pekerja` auto-deploy ke production begitu push ke `main`** — TIDAK
+   ADA langkah deploy manual terpisah, push = live seketika ke operator
+   sungguhan. SEBELUM push perubahan yang menyentuh **tampilan/alur login atau
+   apa pun yang langsung dilihat/dipakai operator produksi**, **WAJIB**
+   konfirmasi ke user dulu apakah timing-nya sudah tepat untuk live (jangan
+   asumsikan "commit & push seperti biasa" berarti boleh langsung push kalau
+   user belum eksplisit bilang siap/sudah umumkan). Insiden nyata 21 Sep 2026:
+   konsolidasi password sub-bagian Mekanik ter-push ke `main` sesuai instruksi
+   eksekusi, langsung live mengganti layar login operator TANPA sempat
+   diumumkan — harus di-`git revert` mendesak di kedua repo. Perlakukan
+   `vista-teknik` (admin app) dengan kehati-hatian yang sama sampai perilaku
+   deploy-nya juga dikonfirmasi eksplisit.
 
 ---
 
