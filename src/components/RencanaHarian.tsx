@@ -1072,14 +1072,32 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // KELIATAN SAMA SEKALI walau beneran jalan.
                                 const timerAktifList=t.tanggal===getHariKerjaSekarang()?getTimerAktifAll(t.panelId,kode,t.proses):[];
                                 if(timerAktifList.length>0){
+                                  // BUG FIX (21 Sep 2026, dilaporkan user - badge "Plating · 93 menit" nongol
+                                  // 2x padahal riwayat cuma 1 entry) - getTimerAktifAll() balikin SEMUA baris
+                                  // fcs_timer_kerja aktif per kode+proses, TERMASUK kasus BUSBAR yang dikerjakan
+                                  // TIM 2 ORANG (masing-masing pekerja dapet baris timer SENDIRI by design -
+                                  // lihat startTimer() vista-pekerja, demi jam-kerja-per-orang akurat). Dicek
+                                  // live: 215 pasangan kasus 2 pekerja beda mulai timer TAHAP SAMA dalam <=120
+                                  // detik, tersebar di 9 panel busbar - pola UMUM, bukan kasus tunggal. Dulu
+                                  // di-.map() mentah per BARIS - N pekerja di tahap sama = N badge identik.
+                                  // Sekarang di-group per TAHAP dulu (sama seperti getBusbarHistoriHarian di
+                                  // atas, biar 1 sumber logika grouping) - 1 badge per tahap yang beneran
+                                  // beda, durasi dihitung dari mulai TERAWAL di grup itu.
+                                  const groupedTahap=new Map<string,any[]>();
+                                  timerAktifList.forEach((tm:any)=>{
+                                    const tKey=tm.tahap||"_";
+                                    if(!groupedTahap.has(tKey))groupedTahap.set(tKey,[]);
+                                    groupedTahap.get(tKey)!.push(tm);
+                                  });
                                   return(
                                     <div title={busbarTooltip} style={{display:"flex",flexWrap:"wrap" as const,gap:4,justifyContent:"center"}}>
-                                      {timerAktifList.map((tm:any,tmi:number)=>{
-                                        const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(tm.mulai).getTime())/1000));
+                                      {[...groupedTahap.entries()].map(([tahapKey,rows],tmi)=>{
+                                        const mulaiTerawal=rows.reduce((min:string,r:any)=>new Date(r.mulai)<new Date(min)?r.mulai:min,rows[0].mulai);
+                                        const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(mulaiTerawal).getTime())/1000));
                                         const menitBerjalan=Math.floor(totalDetikAktif/60);
                                         const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
-                                        const labelTahapTimer=tm.tahap&&BUSBAR_TAHAP_LABEL[tm.tahap]?`${BUSBAR_TAHAP_LABEL[tm.tahap]} · `:"";
-                                        return <span key={tm.id||tmi} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>🟡 {labelTahapTimer}{labelDurasiAktif}</span>;
+                                        const labelTahapTimer=tahapKey!=="_"&&BUSBAR_TAHAP_LABEL[tahapKey]?`${BUSBAR_TAHAP_LABEL[tahapKey]} · `:"";
+                                        return <span key={tahapKey+"-"+tmi} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>🟡 {labelTahapTimer}{labelDurasiAktif}</span>;
                                       })}
                                     </div>
                                   );
