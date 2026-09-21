@@ -1,7 +1,13 @@
 ﻿import { supabase } from '../lib/supabase'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
-  await supabase.from('activity_log').insert({
+  // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
+  // pernah dicek error-nya (CLAUDE.md A.2). Kalau insert activity_log gagal (RLS/network blip),
+  // operasi pemanggil (termasuk cleanup penghapusan raw_schedule/renhar di saveWOWithSplit di
+  // bawah) tetap lanjut TANPA jejak log sama sekali - persis gejala yang bikin insiden panel
+  // "YD EXPANDER - SIDOARJO 2" susah dilacak (baris raw_schedule hilang total, nol log HAPUS).
+  // console.error minimal, BUKAN throw - kegagalan logging gak boleh gagalin operasi utamanya.
+  const { error } = await supabase.from('activity_log').insert({
     user_name, action, description,
     module: extra?.module || 'wo',
     halaman: extra?.halaman || 'Manajemen WO',
@@ -9,6 +15,7 @@ const logActivity = async (user_name: string, action: string, description: strin
     panel: extra?.panel || '',
     wo_number: extra?.wo_number || '',
   })
+  if (error) console.error('[workOrderService] gagal catat activity_log:', action, error.message)
 }
 
 export const workOrderService = {
@@ -169,6 +176,16 @@ export const workOrderService = {
 
     const idsToDelete = [...existingIds].filter(id => !allIncomingIds.has(id))
     if (idsToDelete.length > 0) {
+      // AUDIT FIX (21 Sep 2026) - dulu penghapusan di blok ini SAMA SEKALI gak tercatat activity_log
+      // sendiri (cuma nebeng di balik 1 baris log umum "EDIT WO" yang ditulis pemanggil, kalau
+      // ditulis) - kalau panel yang MASIH HIDUP kebetulan gak ke-include di groupedPanels (bug UI/
+      // snapshot form yang stale, dsb), baris raw_schedule/renhar/dst-nya ikut kehapus TANPA jejak
+      // sama sekali. Ambil nama panel dulu SEBELUM dihapus, log eksplisit sesudahnya - supaya
+      // insiden serupa "panel hilang dari Raw Schedule" ke depan langsung ketahuan dari Activity Log,
+      // gak perlu investigasi manual lintas tabel lagi.
+      const { data: panelsAkanDihapus } = await supabase.from('panels').select('id,nama').in('id', idsToDelete)
+      const namaList = (panelsAkanDihapus || []).map((p: any) => p.nama).join(', ') || idsToDelete.join(',')
+
       await supabase.from('renhar').delete().in('panel_id', idsToDelete)
       await supabase.from('raw_schedule').delete().in('panel_id', idsToDelete)
       // fcs_schedule step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
@@ -176,6 +193,10 @@ export const workOrderService = {
       await supabase.from('progress_checkpoint_log').delete().in('panel_id', idsToDelete)
       await supabase.from('kendala').delete().in('panel_id', idsToDelete)
       await supabase.from('panels').delete().in('id', idsToDelete)
+
+      await logActivity(uname, 'HAPUS PANEL (EDIT WO)',
+        `Hapus ${idsToDelete.length} panel dari WO ${wo} - ${proyek} (tidak ada di form saat disimpan): ${namaList}. Ikut terhapus: renhar, raw_schedule, fcs_timer_kerja, progress_checkpoint_log, kendala.`,
+        { proyek, wo_number: wo })
     }
 
     // Cache no_pnl max per WO tujuan - panel baru (belum punya id) bisa ke-route ke WO lain
@@ -288,6 +309,16 @@ export const workOrderService = {
           if (beforeDelete) await beforeDelete(idsAmanDihapus)
           const { error: cleanupErr } = await supabase.from(table as any).delete().in('id', idsAmanDihapus)
           if (cleanupErr) throw new Error('Gagal cleanup ' + table + ' yatim piatu WO ' + editWoId + ': ' + cleanupErr.message)
+          // AUDIT FIX (21 Sep 2026) - sama alasannya dengan blok idsToDelete di atas: cleanup
+          // "yatim piatu" ini dulu gak pernah tercatat sendiri di activity_log, cuma nebeng di
+          // balik "EDIT WO". Log eksplisit per tabel + panel_id yang kena, supaya kalau suatu saat
+          // logika "masihHidup" ini salah anggap panel yang beneran masih aktif sebagai yatim
+          // piatu (race/gap yang belum ketauan), ada jejak jelas buat investigasi - bukan cuma
+          // baris hilang tanpa penjelasan seperti insiden YD EXPANDER - SIDOARJO 2.
+          const panelIdsKena = [...new Set(candidates.filter((r: any) => idsAmanDihapus.includes(r.id)).map((r: any) => r.panel_id).filter(Boolean))]
+          await logActivity(uname, 'HAPUS ' + table.toUpperCase() + ' (YATIM PIATU)',
+            `Cleanup ${idsAmanDihapus.length} baris ${table} yatim piatu WO id ${editWoId} (${wo} - ${proyek}) - panel_id terkait: ${panelIdsKena.join(', ') || '-'}`,
+            { proyek, wo_number: wo })
         }
       }
       await cekYatimPiatu('renhar')

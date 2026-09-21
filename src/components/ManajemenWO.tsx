@@ -83,6 +83,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
+  // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - save() manggil
+  // saveWOWithSplit() yang isinya beberapa await berurutan (bisa ~1-2 detik) sebelum akhirnya
+  // setOpen(false). Tombol "Simpan" TIDAK pernah di-disable selama proses itu - 2x klik cepat
+  // (atau double-click gak sengaja) bisa nge-trigger 2 pemanggilan saveWOWithSplit() PARALEL utk
+  // WO yang sama, resiko race di logika cleanup panel/raw_schedule-nya (lihat komentar panjang di
+  // workOrderService.ts). Guard ini cuma cegah DOUBLE-SUBMIT dari sisi UI - gak mengubah/menghapus
+  // data apa pun, murni defensif.
+  const [savingWO,setSavingWO]=useState(false);
   // Gambar WO viewer (9 Sep 2026 fix) - dulu tombol "Lihat" pakai window.open(file_url) LANGSUNG
   // ke URL R2 mentah, bypass total PdfViewer.tsx (yang benar-benar dipakai Engineering di
   // WoDigitalTab.tsx - iframe+proxy /pdf-proxy/* biar PDF cross-origin tampil inline, bukan
@@ -286,6 +294,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   });
 
   const save=async()=>{
+    if(savingWO)return;
+    setSavingWO(true);
+    try{
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     if(editId){
@@ -367,6 +378,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       }
     }
     setOpen(false);
+    }finally{
+      setSavingWO(false);
+    }
   };
   useEffect(()=>{
     setGlobalDirtyPanelIds(new Set(Object.keys(dirtyQty).filter(pid=>Object.keys(dirtyQty[pid]||{}).length>0)));
@@ -771,8 +785,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           )}
 
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-            <Btn outline color="#64748b" onClick={()=>setOpen(false)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"Tambah WO"}</Btn>
+            <Btn outline color="#64748b" onClick={()=>setOpen(false)} disabled={savingWO}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={save} disabled={savingWO} style={savingWO?{opacity:.6,cursor:"not-allowed"}:undefined}>{savingWO?"Menyimpan...":(editId?"Simpan":"Tambah WO")}</Btn>
           </div>
         </Card>
       )}
