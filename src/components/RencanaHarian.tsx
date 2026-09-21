@@ -461,14 +461,32 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         // di tanggal lain/gak ada), beneran basi -> tetap disembunyikan, gak ada perubahan perilaku
         // utk kasus itu (verified live: WM.1/WM.2 panel PP-LANTAI 15B/16B, progressByDate.RENDAM
         // tercatat 2026-09-07, TETAP hilang seperti sebelumnya).
+        // REGRESI KE-3 (21 Sep 2026, investigasi "Overcorrection") - exclude progress>=100 di atas
+        // cuma cek snapshot progressByDate PERSIS di selDate, gak toleransi kasus race auto-geser:
+        // keputusan cascade (digeserKe entry LAMA nunjuk ke selDate) ditulis pagi hari, TAPI
+        // operator nyelesaiin kode itu SORE/MALAM hari yang SAMA - setelah cascade decision itu
+        // tertulis. Entry di selDate masih nyimpen kode itu di komponen[] (gak masuk digeserKe
+        // entry INI, cuma numpang lewat dari entry sebelumnya), tapi progressByDate snapshot-nya
+        // ke-record di tanggal SEBELUM selDate (hari cascade-nya, bukan hari entry ini "mendarat")
+        // - progressHariIni persis di selDate jadi 0, kode ini jatuh di celah antara 2 tanggal,
+        // gak muncul di manapun. Dicek live: 164 kandidat historis, 17 di antaranya kasus nyata
+        // (contoh: FS.1/CAPACITOR BANK/HOTEL JAMBOOLAND JEMBER, selesai 11 Sep tapi entry-nya
+        // "mendarat" di 12 Sep krn kena cascade 10->11->12 - progressByDate cuma punya {"2026-09-
+        // 11":100}, bukan "2026-09-12", jadi kehapus dari kedua tanggal).
+        // Fix: cek RENTANG snapshot antara carriedOverFrom (eksklusif) sampai selDate (inklusif),
+        // bukan cuma persis di selDate - kalau ADA snapshot 100 di rentang leg carry-over INI,
+        // beneran selesai dalam leg ini -> tetap tampil. Snapshot dari SEBELUM carriedOverFrom
+        // (leg lama yang sudah lewat) TETAP gak dihitung - kasus 14/15 Sep (beneran basi) gak
+        // regresi. Diverifikasi: simulasi lama-vs-baru thd 3240 kode-entry live, 3223 identik,
+        // 17 beda - SEMUA 17 ke arah benar (dulu hilang -> sekarang tampil), 0 regresi.
         const kodeAktif=(e.komponen||[]).filter((kode:string)=>{
           if(kode.startsWith("__wiring_"))return true; // token, bukan kode BOM - biarin lolos
           if(e.digeserKe?.[kode])return false; // sudah jejak - jangan tampil sebagai tugas aktif
           if(!e.carriedOverFrom)return true; // entry asli tanggal ini - tampil apapun progressnya
           const progress=panelDataUtama?.checklist?.[kode]?.progress?.[row.proses]||0;
           if(progress<100)return true;
-          const progressHariIni=panelDataUtama?.checklist?.[kode]?.progressByDate?.[row.proses]?.[selDate]||0;
-          return progressHariIni>=100; // 100 persis di selDate = beneran selesai hari ini, bukan basi
+          const byDate=panelDataUtama?.checklist?.[kode]?.progressByDate?.[row.proses]||{};
+          return Object.entries(byDate).some(([tgl,pct])=>Number(pct)>=100&&tgl>e.carriedOverFrom!&&tgl<=selDate);
         });
         if(kodeAktif.length===0)return; // semua kode di entry ini sisa geseran yang udah Done - gak perlu jadi task
         tasks.push({
