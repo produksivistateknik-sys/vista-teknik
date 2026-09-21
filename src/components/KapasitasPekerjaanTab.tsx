@@ -417,9 +417,22 @@ export function KapasitasPekerjaanTab(){
     await fetchBom();
   };
 
+  // BUG FIX (21 Sep 2026) - kelas bug sama persis dgn fetchCap() RawSchedule.tsx (tabel ini
+  // sudah >1000 baris, TANPA .range() diam-diam kepotong tanpa error). Paginasi penuh - lihat
+  // komentar panjang di RawSchedule.tsx buat detail insiden aslinya.
   const fetchOverride=async()=>{
-    const{data}=await supabase.from("fcs_kapasitas_override").select("*").order("tanggal",{ascending:false});
-    setOverrideList(data??[]);
+    let all:any[]=[],from=0;
+    const PAGE=1000;
+    for(;;){
+      const{data,error}=await supabase.from("fcs_kapasitas_override").select("*")
+        .order("tanggal",{ascending:false}).range(from,from+PAGE-1);
+      if(error){console.error("gagal ambil fcs_kapasitas_override:",error);break;}
+      const rows=data??[];
+      all=all.concat(rows);
+      if(rows.length<PAGE)break;
+      from+=PAGE;
+    }
+    setOverrideList(all);
   };
 
   const saveOverride=async()=>{

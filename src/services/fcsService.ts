@@ -698,15 +698,24 @@ export async function setOverrideAndRebalance(params: {
     const { tanggal, jenisPekerjaan, kapasitasMenit, jumlahOrang, createdBy } = params
     const isOrang = PROSES_ORANG_LIST.includes(jenisPekerjaan)
 
-    const { data: existingOv } = await supabase.from('fcs_kapasitas_override')
+    const { data: existingOv, error: existingOvErr } = await supabase.from('fcs_kapasitas_override')
       .select('id').eq('tanggal', tanggal).eq('jenis_pekerjaan', jenisPekerjaan).maybeSingle()
+    if (existingOvErr) throw new Error('Gagal cek kapasitas existing: ' + existingOvErr.message)
     const ovPayload: any = isOrang
       ? { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'orang', jumlah_orang: Number(jumlahOrang) || 0, created_by: createdBy }
       : { tanggal, jenis_pekerjaan: jenisPekerjaan, tipe_kapasitas: 'jam', jam_kerja: (Number(kapasitasMenit) || 0) / 60, efektivitas_pct: 100, created_by: createdBy }
+    // AUDIT FIX (21 Sep 2026, investigasi "WIRING CONTROL 22 Sep gagal diatur") - dulu hasil
+    // insert/update ini SAMA SEKALI gak dicek (CLAUDE.md A.2) - kalau gagal (RLS/constraint/
+    // network), fungsi ini tetap lanjut ke rebalance & akhirnya balikin {success:true} seolah
+    // tersimpan. Root cause insiden asli TERNYATA bukan ini (baris kapasitasnya beneran
+    // tersimpan - bug aslinya di fetchCap() RawSchedule.tsx yang kena batas 1000 baris), tapi
+    // celah ini tetap nyata & perlu ditutup buat kasus serupa ke depan.
     if (existingOv) {
-      await supabase.from('fcs_kapasitas_override').update(ovPayload).eq('id', existingOv.id)
+      const { error: updErr } = await supabase.from('fcs_kapasitas_override').update(ovPayload).eq('id', existingOv.id)
+      if (updErr) throw new Error('Gagal update kapasitas: ' + updErr.message)
     } else {
-      await supabase.from('fcs_kapasitas_override').insert(ovPayload)
+      const { error: insErr } = await supabase.from('fcs_kapasitas_override').insert(ovPayload)
+      if (insErr) throw new Error('Gagal simpan kapasitas: ' + insErr.message)
     }
     const kapasitasBaru = isOrang ? (Number(jumlahOrang) || 0) : (Number(kapasitasMenit) || 0)
 

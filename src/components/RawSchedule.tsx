@@ -255,11 +255,36 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // satunya jalur isi tabelnya (modal "Generate FCS" fcsModal di ManajemenWO.tsx) gak pernah
     // ke-reach dari UI manapun. Dihapus - fcs_kapasitas_override & fcs_process_time TETAP
     // dibaca (dipakai nyata, lihat fcsKapasitas/processTimeList di bawah).
+    // BUG FIX (21 Sep 2026, dilaporkan user - badge "Belum diatur" nyangkut terus utk WIRING
+    // CONTROL 22 Sep padahal sudah berkali-kali di-"Atur") - fcs_kapasitas_override TANPA
+    // .range() eksplisit kena batas default Supabase/PostgREST 1000 baris (tabel ini sudah
+    // 1071 baris per 21 Sep, TERUS bertambah tiap proses×tanggal baru diisi). Dicek live: query
+    // PERSIS yang sama (anon key sama) balikin cuma 1000/1071 baris, TANPA error - dan baris
+    // WIRING CONTROL/2026-09-22 (yang SUDAH tersimpan benar di DB, updated_at berkali-kali)
+    // kebetulan masuk 71 baris yang kepotong. Bukan gagal simpan - data-nya selalu benar,
+    // cuma gak pernah ke-load semua ke fcsKapasitas jadi badge status salah baca "belum diatur".
+    // Kelas bug SAMA PERSIS dengan saga "renhar 1000-row" (lihat memory sesi) - paginasi penuh.
+    const fetchAllKapasitasOverride=async()=>{
+      let all:any[]=[],from=0;
+      const PAGE=1000;
+      for(;;){
+        const{data,error}=await supabase.from("fcs_kapasitas_override")
+          .select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas")
+          .range(from,from+PAGE-1);
+        if(error){console.error("gagal ambil fcs_kapasitas_override:",error);break;}
+        const rows=data??[];
+        all=all.concat(rows);
+        if(rows.length<PAGE)break;
+        from+=PAGE;
+      }
+      return all;
+    };
     const fetchCap=async()=>{
-      const [{data:k},{data:pt}]=await Promise.all([
-        supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas"),
+      const [k,{data:pt,error:ptErr}]=await Promise.all([
+        fetchAllKapasitasOverride(),
         supabase.from("fcs_process_time").select("tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs").eq("is_active",true),
       ]);
+      if(ptErr)console.error("gagal ambil fcs_process_time:",ptErr);
       setFcsKapasitas(k??[]);
       setProcessTimeList(pt??[]);
     };
@@ -2621,6 +2646,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 let cur=new Date(overrideModal.tanggalMulai);
                 const end=new Date(overrideModal.tanggalAkhir);
                 let safety=0;
+                // AUDIT FIX (21 Sep 2026) - dulu res.success===false DIAM-DIAM diabaikan (gak ada
+                // else), allShifted tetap dianggap hasil final yg valid - kalau SEMUA gagal,
+                // modal nutup nunjukin "✅ Kapasitas tersimpan" padahal nol yg beneran tersimpan.
+                // Sekarang kegagalan dikumpulkan & dilaporkan eksplisit ke admin (CLAUDE.md A.2).
+                const gagalList:string[]=[];
                 while(cur<=end&&safety<366){
                   const tgl=cur.toISOString().slice(0,10);
                   for(const proses of overrideModal.proses){
@@ -2635,11 +2665,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       createdBy:uname,
                     });
                     if(res.success)allShifted.push(...res.shifted);
+                    else gagalList.push(`${tgl} — ${proses}: ${res.error||"gagal tanpa keterangan"}`);
                   }
                   cur.setDate(cur.getDate()+1);
                   safety++;
                 }
                 setOverrideSaving(false);
+                if(gagalList.length>0){
+                  alert(`Gagal simpan kapasitas utk ${gagalList.length} kombinasi tanggal/proses:\n\n`+gagalList.join("\n"));
+                }
                 setOverrideProgress("");
                 setOverrideResult(allShifted);
                 if(refetchRaw) await refetchRaw();
