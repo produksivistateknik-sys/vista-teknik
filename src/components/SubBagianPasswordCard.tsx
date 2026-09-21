@@ -10,8 +10,7 @@ export function SubBagianPasswordCard(){
 
   const subBagianIconLocal:Record<string,string>={
     Warehouse:"📦",Assembling:"🔧",QS:"📋",QC:"🔍",
-    Potong:"✂️",Bending:"📐",Stel:"🔩",Finishing:"✨",
-    Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
+    Mekanik:"🔧",Painting:"🎨","Assembling Luar":"⚙️","Assembling Dalam":"🔌",
   };
 
   // Rendam+Painting digabung jadi 1 sub-bagian login "Painting" di Vista Pekerja - "Rendam"
@@ -20,8 +19,13 @@ export function SubBagianPasswordCard(){
   // Vista Pekerja (subBagianPassword.komponen gak punya key ini lagi), fungsinya pindah ke tab
   // "Progress" login "Gudang" (password sendiri, gak lewat sistem sub-bagian ini). Row lama di
   // fcs_sub_bagian_password DIBIARKAN (gak di-DROP), cuma gak ditampilkan di sini lagi.
+  // Potong/Bending/Stel/Finishing digabung jadi 1 sub-bagian login "Mekanik" (21 Sep 2026,
+  // pola SAMA PERSIS Rendam+Painting di atas) - operator navigasi ke 4 proses itu lewat
+  // sub-navigasi grid kartu DALAM 1 sesi (lihat OperatorView.tsx vista-pekerja), bukan 4 login
+  // terpisah lagi. 4 baris lama (Potong/Bending/Stel/Finishing) di fcs_sub_bagian_password
+  // DIBIARKAN dulu (belum di-DROP) - sama kehati-hatian dengan kasus Rendam.
   const SUBBAGIAN_GROUPS:{label:string,icon:string,color:string,members:string[]}[]=[
-    {label:"Mekanik",icon:"🔧",color:"#d97706",members:["Potong","Bending","Stel","Finishing"]},
+    {label:"Mekanik",icon:"🔧",color:"#d97706",members:["Mekanik"]},
     {label:"Painting",icon:"🎨",color:"#7c3aed",members:["Painting"]},
     {label:"Assembling",icon:"⚙️",color:"#059669",members:["Assembling Luar","Assembling Dalam"]},
     {label:"Tracking Komponen",icon:"📦",color:"#0d9488",members:["Assembling","QS","QC"]},
