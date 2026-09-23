@@ -74,6 +74,25 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rejectTarget, setRejectTarget] = useState<any | null>(null)
   const [rejectAlasan, setRejectAlasan] = useState('')
+  // KONFIRMASI AMBIL - PERMINTAAN ADMIN (23 Sep 2026) - reuse PERSIS kolom & logic
+  // sudah_diambil/diambil_oleh/diambil_at (permintaan_item, migration 17 Agu 2026) yang selama
+  // ini cuma dikonfirmasi operator (PermintaanView.tsx, vista-pekerja, tombol "Konfirmasi Sudah
+  // Diambil"). Gap: permintaan divisi='admin' TIDAK PERNAH nongol di riwayat operator manapun
+  // (query mereka scoped .eq("divisi",divisi) sendiri) - begitu Gudang set status='submit',
+  // gak ada UI SAMA SEKALI buat tandai sudah_diambil, field itu permanen false walau barangnya
+  // beneran sudah diambil. SENGAJA cuma untuk baris divisi==='admin' di tab Riwayat (bukan
+  // baris operator biasa yang tampil di sini juga - itu SUDAH punya jalur sendiri di vista-
+  // pekerja, gak perlu tombol duplikat yang malah bisa bikin dua sisi rebutan konfirmasi).
+  const [confirmingAmbilId, setConfirmingAmbilId] = useState<number | null>(null)
+  const konfirmasiAmbilAdmin = async (itemId: number) => {
+    setConfirmingAmbilId(itemId)
+    const { error } = await supabase.from('permintaan_item').update({
+      sudah_diambil: true, diambil_oleh: adminUsername, diambil_at: new Date().toISOString(),
+    }).eq('id', itemId)
+    if (error) { alert('Gagal konfirmasi pengambilan: ' + error.message); setConfirmingAmbilId(null); return }
+    setConfirmingAmbilId(null)
+    fetchRiwayat(riwayatTanggal)
+  }
 
   // KOREKSI QTY (13 Sep 2026, "approval koreksi qty diarahkan ke Admin") - dulu diputuskan siapa
   // pun yang login di divisi peminta (PermintaanView.tsx vista-pekerja, tab "Koreksi", SEKARANG
@@ -852,6 +871,21 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                               ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
                               : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
                           </div>
+                          {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
+                              lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
+                          {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
+                            <button onClick={() => konfirmasiAmbilAdmin(it.id)} disabled={confirmingAmbilId === it.id}
+                              style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 7, border: 'none',
+                                background: confirmingAmbilId === it.id ? '#94a3b8' : '#1d4ed8', color: '#fff', fontWeight: 700, fontSize: 11,
+                                cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                              {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
+                            </button>
+                          )}
+                          {!ditolak && it.perm.divisi === 'admin' && it.sudah_diambil && (
+                            <div style={{ marginTop: 6, fontSize: 10.5, color: '#16a34a', fontWeight: 700 }}>
+                              ✓ Sudah diambil oleh {it.diambil_oleh || '-'} — {fmtDateTime(it.diambil_at)}
+                            </div>
+                          )}
                         </div>
                       )
                     })}
