@@ -31,7 +31,14 @@ export const workOrderService = {
       // tanpa ini urutan array panels per WO gak dijamin konsisten antar-fetch (PostgREST gak
       // ngasih jaminan order default), yang jadi sumber ketidakstabilan tambahan kalau kebetulan
       // ada no_pnl yang duplikat.
-      const { data, error } = await supabase.from('work_orders').select('*, panels(*)').or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false }).order('no_pnl', { foreignTable: 'panels', ascending: true }).range(from, from + pageSize - 1)
+      // deleted_at (23 Sep 2026, audit "deleted_at gak difilter") - RecycleBinTab.tsx menyiratkan
+      // WO bisa di-soft-delete (baca+restore deleted_at IS NOT NULL), tapi TIDAK ADA jalur UI di
+      // app ini yang benar-benar menulis deleted_at ke work_orders (tombol "Hapus" ManajemenWO.tsx
+      // pakai is_archived, bukan deleted_at) - defensif aja, konsisten sama ai-agent/index.ts yang
+      // sudah filter !w.deleted_at di 2 tempat buat tabel yang sama. 0 dampak ke behavior sekarang
+      // (0 baris work_orders yang deleted_at-nya terisi), jaga-jaga kalau jalur soft-delete-nya
+      // suatu saat benar-benar diaktifkan.
+      const { data, error } = await supabase.from('work_orders').select('*, panels(*)').is('deleted_at', null).or('is_archived.is.null,is_archived.eq.false').order('created_at', { ascending: false }).order('no_pnl', { foreignTable: 'panels', ascending: true }).range(from, from + pageSize - 1)
       if (error) throw new Error(error.message)
       all = all.concat(data ?? [])
       if (!data || data.length < pageSize) break

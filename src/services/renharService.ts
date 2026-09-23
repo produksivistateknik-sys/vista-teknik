@@ -45,7 +45,11 @@ export const renharService = {
     let from = 0
     const pageSize = 1000
     while (true) {
-      let q = supabase.from('renhar').select('*').order('tanggal', { ascending: true })
+      // deleted_at (23 Sep 2026, audit "deleted_at gak difilter") - defensif, sama alasan
+      // work_orders/raw_schedule di service lain (RecycleBinTab.tsx menyiratkan renhar bisa
+      // di-soft-delete, tapi TIDAK ADA jalur UI yang benar-benar menulis deleted_at ke tabel ini
+      // saat ini - 0 dampak sekarang, jaga-jaga kalau jalurnya suatu saat diaktifkan).
+      let q = supabase.from('renhar').select('*').is('deleted_at', null).order('tanggal', { ascending: true })
       if (range?.from) q = q.gte('tanggal', range.from)
       if (range?.to) q = q.lte('tanggal', range.to)
       const { data, error } = await q.range(from, from + pageSize - 1)
