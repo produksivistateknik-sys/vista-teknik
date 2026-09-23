@@ -39,6 +39,13 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
     const base=getBestProgressMap(selectedPanel?.checklist?.[kode]);
     const merged={...base};
     ALL_PROSES.forEach((proses:string)=>{
+      // BUG FIX (22 Sep 2026) - komentar di atas ("BUSBAR ... TIDAK disentuh") gak ditegakkan kode
+      // sebelum ini - ccpMap nyimpen BUSBAR per-TAHAP (beberapa baris per kode), fetchCcpMapForPanels
+      // collapse ke 1 key TANPA order by, hasilnya non-deterministik & bisa nunjukin Done padahal
+      // asli belum (lihat panelHelpers.ts komentar getCcpAwarePipelineProgressMap RencanaHarian utk
+      // detail). `base` (checklist, sudah rata-rata benar dari Vista Pekerja) yang dipertahankan -
+      // pola sama persis calcPanelProgressCcpAware & DetailProgress.tsx.
+      if(proses==="BUSBAR")return;
       const key=`${selectedPanelId}|${kode}|${proses}`;
       if(key in ccpMap)merged[proses]=ccpMap[key];
     });

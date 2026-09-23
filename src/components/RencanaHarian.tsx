@@ -76,6 +76,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     const base=getBestProgressMap(cl);
     const merged={...base};
     ALL_PROSES.forEach((pr:string)=>{
+      // BUG FIX (22 Sep 2026, "Status Pipeline" BUSBAR nunjukin Done padahal asli belum -
+      // kasus nyata WO CLS-FONTAINE/CAPACITOR BANK/H-BUS+INCOMING) - component_process_progress
+      // nyimpen BUSBAR per-TAHAP (FABRIKASI/PLATING/HEATSHRINK/PASANG, beberapa baris per kode),
+      // bukan 1 baris gabungan per proses kayak proses lain. ccpMap (fetchCcpMapForPanels) collapse
+      // semua tahap itu ke 1 key TANPA order by - baris mana yang "menang" gak dijamin, bisa nyangkut
+      // ke tahap yang udah 100% walau tahap lain masih 0/belum. `base` (getBestProgressMap, baca
+      // cl.progress.BUSBAR - udah rata-rata benar dari SEMUA tahap, ditulis Vista Pekerja) sudah
+      // akurat - JANGAN ditimpa ccpMap. Pola exclude ini SAMA PERSIS calcPanelProgressCcpAware &
+      // DetailProgress.tsx (CLAUDE.md B.2/B.1, satu sumber logika) - BUSBAR sengaja gak pernah baca
+      // ccpMap dimanapun di codebase ini.
+      if(pr==="BUSBAR")return;
       const key=`${panelId}|${kode}|${pr}`;
       if(key in ccpMap)merged[pr]=ccpMap[key];
     });
