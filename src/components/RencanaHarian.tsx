@@ -267,15 +267,28 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [operatorHistoryData,setOperatorHistoryData]=useState<any[]>([]);
   useEffect(()=>{
     let cancelled=false;
-    supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate).then(({data}:any)=>{
-      if(!cancelled)setOperatorHistoryData(data??[]);
-    });
+    // BUG FIX (23 Sep 2026, ditemukan lewat audit "query gak paginasi") - query ini di-scope
+    // selDate doang (TANPA panel/proses filter kayak komentar di atas bilang), jadi bisa nyampe
+    // >1000 baris kalau volume timer sehari-hari pabrik naik - 293 baris/hari sekarang (aman),
+    // tapi query SAUDARANYA persis di atas (fetchBusbarTahapOperator, sama-sama scope harian dari
+    // fcs_timer_kerja) sudah paginasi penuh sejak awal, cuma yang ini kelewat. Difaktorkan ke 1
+    // fungsi (dipanggil awal + tiap event realtime) biar loop paginasi-nya gak dobel ditulis.
+    const fetchOperatorHistory=async()=>{
+      let all:any[]=[],from=0;
+      while(true){
+        const{data,error}:any=await supabase.from("fcs_timer_kerja")
+          .select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate)
+          .range(from,from+999);
+        if(error)break;
+        all=all.concat(data??[]);
+        if(!data||data.length<1000)break;
+        from+=1000;
+      }
+      if(!cancelled)setOperatorHistoryData(all);
+    };
+    fetchOperatorHistory();
     const ch=supabase.channel("realtime-operator-history-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},()=>{
-        supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate).then(({data}:any)=>{
-          if(!cancelled)setOperatorHistoryData(data??[]);
-        });
-      })
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},fetchOperatorHistory)
       .subscribe();
     return()=>{cancelled=true;supabase.removeChannel(ch);};
   },[selDate]);
