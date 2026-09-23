@@ -380,6 +380,16 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // Kode yang UDAH berstatus jejak (punya digeserKe) di suatu entry - gak boleh dievaluasi ulang
   // buat geser berikutnya sama sekali (jejak "selesai perannya", gak ikut proses geser lagi).
   const isJejakKode = (entry: any, kode: string) => !!(entry?.digeserKe && entry.digeserKe[kode])
+  // BUG FIX (23 Sep 2026, "pengaturan manual ketimpa auto-geser") - drag manual (confirmDrag di
+  // RawSchedule.tsx) sekarang nulis entry.manualPin[kode]=timestamp di entry TUJUAN. Kode
+  // berpenanda ini WAJIB di-skip permanen dari SEMUA evaluasi auto-geser (baik jadi kandidat
+  // "belum selesai, geser maju" DI FASE 1, MAUPUN jadi existingUnit yang bisa ke-displace
+  // kompetisi kapasitas) - keputusan user: manual pin permanen sampai progress kode itu 100%
+  // (begitu 100%, guard pct>=100 yang sudah ada otomatis bikin pin ini gak relevan lagi, gak
+  // perlu dibersihkan eksplisit). Kasus nyata yang jadi pemicu fix ini: MCC PANEL/WIRING
+  // CONTROL WP1 (LUTVAN drag manual ke 16 Sep, lenyap tanpa jejak keesokan paginya - lihat
+  // investigasi 23 Sep 2026).
+  const isManualPinKode = (entry: any, kode: string) => !!(entry?.manualPin && entry.manualPin[kode])
 
   // ================= REVISI (10 Agu 2026): deteksi "ada pengerjaan di hariSumber" =================
   // Sinyal = ada baris fcs_timer_kerja (jalan ATAUPUN udah selesai, gak peduli) buat kombinasi
@@ -413,6 +423,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       const kodeKasus2: string[] = []
       realKode.forEach((kode: string) => {
         if (isJejakKode(e, kode)) return // jejak permanen - gak pernah dievaluasi ulang
+        if (isManualPinKode(e, kode)) return // pin manual - permanen sampai progress 100%
         const cl = checklist[kode]
         const pct = cl?.progress?.[row.proses] || 0
         if (pct >= 100) return
@@ -605,6 +616,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         ;(e.komponen || []).forEach((kode: string) => {
           if (kode.startsWith('__wiring_')) return
           if (isJejakKode(e, kode)) return // jejak - gak ikut kompetisi kapasitas lagi
+          if (isManualPinKode(e, kode)) return // pin manual - gak ikut kompetisi kapasitas, gak bisa didorong
           const cl = checklist[kode]
           // FIX INSIDEN 30 Jul 2026: kode yang progress-nya UDAH 100% gak boleh ikut jadi unit
           // yang "bersaing kapasitas" - satu entry WP bisa nyampur kode selesai+belum-selesai,
@@ -702,7 +714,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // boleh ikut jadi bagian unit yang bersaing kapasitas (dan gak boleh dapet jejak lewat
         // sini kalau tim-nya ke-bump). Kalau SEMUA kode di entry ini udah 100%, realKode kosong,
         // unit-nya otomatis gak kebentuk (baris di bawah).
-        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100)
+        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && !isManualPinKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100)
         if (realKode.length === 0) return
         // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN (bobot dari
         // raw_schedule.bobot_komponen level row + hari kerja aktual dari fcs_timer_kerja),
@@ -801,8 +813,12 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     if (!panel) continue
     const checklist = panel.checklist || {}
     const jejakHariSumber: Record<string, string> = row.busbar_jejak?.[hariSumber] || {}
+    // BUG FIX (23 Sep 2026) - pola sama persis proses lain (isManualPinKode di atas): confirmDragBusbar
+    // (RawSchedule.tsx) nulis busbar_manual_pin[toDate][kode]=timestamp. Permanen sampai progress 100%.
+    const manualPinHariSumber: Record<string, string> = row.busbar_manual_pin?.[hariSumber] || {}
     for (const kode of komponenSumber) {
       if (jejakHariSumber[kode]) continue // sudah jejak - gak dievaluasi ulang
+      if (manualPinHariSumber[kode]) continue // pin manual - permanen sampai progress 100%
       const pct = busbarProgressKode(checklist[kode], panel, kode)
       if (pct >= 100) continue
       if (!busbarMoves[row.id]) busbarMoves[row.id] = []

@@ -961,8 +961,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       kodeDrag.forEach((kode:string)=>{jejakFromDate[kode]=toDate;});
       newBusbarJejak={...newBusbarJejak,[fromDate]:jejakFromDate};
     }
-    setRawData((prev:any[])=>prev.map((r:any)=>r.id!==row.id?r:{...r,busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak}));
-    await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak});
+    // BUG FIX (23 Sep 2026) - pola sama persis confirmDrag (proses biasa/WIRING): stamp
+    // busbar_manual_pin[toDate][kode]=timestamp buat kode yang ikut ter-drag (move MAUPUN copy),
+    // biar auto-geser-harian (FASE 2-BUSBAR) bisa skip kode ini permanen sampai progress 100%.
+    const nowIsoPinBusbar=new Date().toISOString();
+    const newBusbarManualPin={...(row.busbar_manual_pin||{})};
+    const pinAtTarget={...(newBusbarManualPin[toDate]||{})};
+    kodeDrag.forEach((kode:string)=>{pinAtTarget[kode]=nowIsoPinBusbar;});
+    newBusbarManualPin[toDate]=pinAtTarget;
+    setRawData((prev:any[])=>prev.map((r:any)=>r.id!==row.id?r:{...r,busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin}));
+    await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin});
     if(mode==="move"){
       // Sync renhar wp="BUSBAR" - sama logic split/gabung kayak proses lain (lihat confirmDrag).
       const renharBusbar=effectiveRenhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
@@ -1056,12 +1064,31 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         }).filter(Boolean);
         if(sisaDiAsal.length>0)newSch[fromDate]=sisaDiAsal;else delete newSch[fromDate];
       }
+      // BUG FIX (23 Sep 2026, "pengaturan manual ketimpa auto-geser") - drag manual dulu gak
+      // ninggalin penanda apa pun di entry TUJUAN, jadi auto-geser-harian (Edge Function) gak
+      // bisa bedain kode yang barusan diatur manual dari kode basi yang numpuk berhari-hari -
+      // keduanya sama-sama dievaluasi ulang & bisa digeser lagi begitu tanggal itu jadi
+      // hariSumber di run berikutnya (kasus nyata: MCC PANEL/WIRING CONTROL, LUTVAN drag manual
+      // ke 16 Sep, lenyap tanpa jejak keesokan paginya). Sekarang tiap kode yang ikut ter-drag
+      // (move MAUPUN copy) di-stamp `manualPin[kode]=timestamp` di entry tujuan - auto-geser-
+      // harian WAJIB skip kode berpenanda ini (permanen sampai progress 100%, sesuai keputusan
+      // user - lihat isManualPinKode di index.ts Edge Function).
+      const nowIsoPin=new Date().toISOString();
       const existing=newSch[toDate]||[];
       const merged=[...existing];
       entries.forEach(e=>{
+        const kodeAsliDrag=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
         const found=merged.find(m=>m.wp===e.wp);
-        if(found)found.komponen=[...new Set([...found.komponen,...e.komponen])];
-        else merged.push({...e});
+        if(found){
+          found.komponen=[...new Set([...found.komponen,...e.komponen])];
+          const manualPin={...(found.manualPin||{})};
+          kodeAsliDrag.forEach((k:string)=>{manualPin[k]=nowIsoPin;});
+          found.manualPin=manualPin;
+        } else {
+          const manualPin:Record<string,string>={};
+          kodeAsliDrag.forEach((k:string)=>{manualPin[k]=nowIsoPin;});
+          merged.push({...e,manualPin});
+        }
       });
       newSch[toDate]=merged;
       updatedRow={...r,schedule:newSch};
