@@ -55,26 +55,30 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const save=async()=>{
     if(!form.nama.trim())return;
     const uname=getUname();
+    // BUG FIX (23 Sep 2026, ditemukan lewat audit "error Supabase gak dicek") - dulu cuma
+    // destructure {data}, error diabaikan total - kalau update/insert gagal, `data` null,
+    // block if(data){...} di-skip (gak ada activity log, gak ada update state), TAPI form tetap
+    // di-reset di baris terakhir (dulu di luar kedua cabang) - user lihat form kosong lagi kayak
+    // berhasil tersimpan, padahal DB gak berubah sama sekali. Sekarang cek error eksplisit, alert
+    // + return sebelum reset form kalau gagal (form TIDAK di-reset biar user gak kehilangan input).
     if(editId){
-      const{data}=await supabase.from("komponen_stok").update({
+      const{data,error}=await supabase.from("komponen_stok").update({
         nama:form.nama.trim(),kode:form.kode.trim(),stok:Number(form.stok)||0,
         updated_at:new Date().toISOString()
       }).eq("id",editId).select().single();
-      if(data){
-        setStokList(prev=>prev.map(s=>s.id===editId?data:s));
-        await activityLogService.insert({user_name:uname,action:"EDIT KOMPONEN STOK",
-          description:"Edit komponen: "+form.nama+" ("+form.kode+")",module:"stok",halaman:"System"});
-      }
+      if(error){alert("Gagal menyimpan: "+error.message);return;}
+      setStokList(prev=>prev.map(s=>s.id===editId?data:s));
+      await activityLogService.insert({user_name:uname,action:"EDIT KOMPONEN STOK",
+        description:"Edit komponen: "+form.nama+" ("+form.kode+")",module:"stok",halaman:"System"});
       setEditId(null);
     } else {
-      const{data}=await supabase.from("komponen_stok").insert({
+      const{data,error}=await supabase.from("komponen_stok").insert({
         nama:form.nama.trim(),kode:form.kode.trim(),stok:Number(form.stok)||0,created_by:uname
       }).select().single();
-      if(data){
-        setStokList(prev=>[...prev,data]);
-        await activityLogService.insert({user_name:uname,action:"TAMBAH KOMPONEN STOK",
-          description:"Tambah komponen: "+form.nama+" ("+form.kode+") stok awal: "+form.stok,module:"stok",halaman:"System"});
-      }
+      if(error){alert("Gagal menyimpan: "+error.message);return;}
+      setStokList(prev=>[...prev,data]);
+      await activityLogService.insert({user_name:uname,action:"TAMBAH KOMPONEN STOK",
+        description:"Tambah komponen: "+form.nama+" ("+form.kode+") stok awal: "+form.stok,module:"stok",halaman:"System"});
     }
     setForm({nama:"",kode:"",stok:0});
   };

@@ -92,40 +92,45 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   const save=async()=>{
     if(!form.mesin_id||!form.jenis_maintenance.trim())return;
     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
+    // BUG FIX (23 Sep 2026, audit "error Supabase gak dicek") - dulu cuma destructure {data},
+    // error diabaikan - kalau gagal, `data` null, if(data){...} di-skip (gak ada state update/
+    // activity log), TAPI form/modal tetap ke-reset di baris terakhir (dulu di luar kedua
+    // cabang) - user lihat form nutup kayak berhasil tersimpan padahal DB gak berubah.
     if(editId){
-      const{data}=await supabase.from("maintenance_rutin").update({
+      const{data,error}=await supabase.from("maintenance_rutin").update({
         mesin_id:Number(form.mesin_id),jenis_maintenance:form.jenis_maintenance.trim(),
         frekuensi:form.frekuensi,teknisi:form.teknisi,
         terakhir_dilakukan:form.terakhir_dilakukan||null,
         jatuh_tempo:form.jatuh_tempo||null,catatan:form.catatan,
       }).eq("id",editId).select("*,mesin(nama,kode)").single();
-      if(data){
-        setRutinList((p:any[])=>p.map((r:any)=>r.id===editId?data:r));
-        await activityLogService.insert({user_name:uname,action:"EDIT MAINTENANCE RUTIN",
-          description:"Edit jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
-          module:"maintenance",halaman:"Maintenance"});
-      }
+      if(error){alert("Gagal menyimpan: "+error.message);return;}
+      setRutinList((p:any[])=>p.map((r:any)=>r.id===editId?data:r));
+      await activityLogService.insert({user_name:uname,action:"EDIT MAINTENANCE RUTIN",
+        description:"Edit jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
+        module:"maintenance",halaman:"Maintenance"});
     } else {
-      const{data}=await supabase.from("maintenance_rutin").insert({
+      const{data,error}=await supabase.from("maintenance_rutin").insert({
         mesin_id:Number(form.mesin_id),jenis_maintenance:form.jenis_maintenance.trim(),
         frekuensi:form.frekuensi,teknisi:form.teknisi,
         terakhir_dilakukan:form.terakhir_dilakukan||null,
         jatuh_tempo:form.jatuh_tempo||null,catatan:form.catatan,
         is_active:true,
       }).select("*,mesin(nama,kode)").single();
-      if(data){
-        setRutinList((p:any[])=>[...p,data]);
-        await activityLogService.insert({user_name:uname,action:"TAMBAH MAINTENANCE RUTIN",
-          description:"Tambah jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
-          module:"maintenance",halaman:"Maintenance"});
-      }
+      if(error){alert("Gagal menyimpan: "+error.message);return;}
+      setRutinList((p:any[])=>[...p,data]);
+      await activityLogService.insert({user_name:uname,action:"TAMBAH MAINTENANCE RUTIN",
+        description:"Tambah jadwal: "+form.jenis_maintenance+" - "+data.mesin?.nama,
+        module:"maintenance",halaman:"Maintenance"});
     }
     setShowForm(false);setEditId(null);
     setForm({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
   };
   const del=async()=>{
   const item=rutinList.find((r:any)=>r.id===delId);
-  await supabase.from("maintenance_rutin").update({is_active:false}).eq("id",delId);
+  // BUG FIX (23 Sep 2026) - dulu hasil update gak di-destructure SAMA SEKALI (gak ada data
+  // maupun error dibaca) - modal tetap nutup & list tetap ke-filter lokal walau gagal di DB.
+  const{error}=await supabase.from("maintenance_rutin").update({is_active:false}).eq("id",delId);
+  if(error){alert("Gagal menonaktifkan: "+error.message);return;}
   setRutinList((p:any[])=>p.filter((r:any)=>r.id!==delId));
   setDelId(null);
   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
@@ -138,24 +143,28 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
     const nextDate=calcNext(todayStr,item.frekuensi);
     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
     const fileTerpilih=stagedFoto.map(s=>s.file);
-    const{data}=await supabase.from("maintenance_rutin").update({
+    // BUG FIX (23 Sep 2026, audit "error Supabase gak dicek") - dulu cuma destructure {data},
+    // error diabaikan - kalau update gagal, if(data){...} di-skip (jatuh_tempo TIDAK maju, log
+    // dokumentasi TIDAK tercatat), TAPI modal Done tetap nutup (setDoneId(null) di luar cabang) -
+    // user pikir maintenance udah "Done" padahal DB gak berubah. Kalau gagal sekarang: alert,
+    // modal TETAP TERBUKA (setDoneId TIDAK di-null-kan) biar user bisa coba lagi tanpa foto hilang.
+    const{data,error}=await supabase.from("maintenance_rutin").update({
       terakhir_dilakukan:todayStr,
       jatuh_tempo:nextDate,
     }).eq("id",item.id).select("*,mesin(nama,kode)").single();
-    if(data){
-      setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
-      // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin Done.
-      const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${item.id}`):[];
-      await supabase.from("maintenance_rutin_log").insert({
-        rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",foto,
-      });
-      await activityLogService.insert({
-        user_name:uname,
-        action:"MAINTENANCE RUTIN DONE",
-        description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
-        module:"maintenance",halaman:"Maintenance"
-      });
-    }
+    if(error){alert("Gagal menyimpan: "+error.message);setDoneSaving(false);return;}
+    setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
+    // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin Done.
+    const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${item.id}`):[];
+    await supabase.from("maintenance_rutin_log").insert({
+      rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",foto,
+    });
+    await activityLogService.insert({
+      user_name:uname,
+      action:"MAINTENANCE RUTIN DONE",
+      description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
+      module:"maintenance",halaman:"Maintenance"
+    });
     resetStagedFoto();
     setDoneSaving(false);
     setDoneId(null);
