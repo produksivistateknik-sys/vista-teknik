@@ -185,6 +185,15 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     setKoreksiRejectAlasan('')
   }
 
+  // RIWAYAT LENGKAP - disiapkan/diambil/koreksi qty (23 Sep 2026, diminta user setelah fitur
+  // "Konfirmasi Ambil"). Disiapkan oleh reuse permintaan_item.updated_by/updated_at (kolom sudah
+  // ada, ditulis Gudang PERSIS saat mereka submit/penuhi - lihat PermintaanGudangTab.tsx
+  // vista-pekerja). Koreksi qty reuse tabel permintaan_item_koreksi (sudah ada sejak 13 Sep 2026,
+  // dipakai tab "Koreksi Qty" buat approval - Riwayat SEBELUMNYA gak pernah JOIN ke tabel ini sama
+  // sekali, jadi begitu koreksi diputuskan, riwayatnya hilang dari KEDUA tab). Cuma status
+  // 'disetujui' yang ditampilkan (keputusan user) - koreksi yang ditolak gak muncul di sini (tetap
+  // ada historinya sendiri kalau suatu saat dibutuhkan, cuma gak dirender).
+  const [riwayatKoreksiMap, setRiwayatKoreksiMap] = useState<Record<number, any[]>>({})
   const [riwayatTanggal, setRiwayatTanggal] = useState(todayStr())
   const [riwayatSearch, setRiwayatSearch] = useState('')
   const [riwayatStatusFilter, setRiwayatStatusFilter] = useState<'ALL' | 'DISETUJUI' | 'DITOLAK'>('ALL')
@@ -554,6 +563,18 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
           return (tb || '').localeCompare(ta || '')
         })
       setRiwayatItems(merged)
+      // Koreksi qty yang SUDAH disetujui, punya permintaan_item_id salah satu dari item yang
+      // sedang ditampilkan - status='disetujui' saja (keputusan user, koreksi ditolak gak
+      // dirender). Di-map per item, bisa lebih dari 1 koreksi per item (jarang, tapi mungkin).
+      const itemIds = merged.map((it: any) => it.id)
+      const koreksiMap: Record<number, any[]> = {}
+      if (itemIds.length > 0) {
+        const koreksiRows = await fetchAllPaged((from, to) =>
+          supabase.from('permintaan_item_koreksi').select('*').eq('status', 'disetujui')
+            .in('permintaan_item_id', itemIds).range(from, to))
+        koreksiRows.forEach((k: any) => { (koreksiMap[k.permintaan_item_id] ||= []).push(k) })
+      }
+      setRiwayatKoreksiMap(koreksiMap)
     } catch (e: any) {
       alert('Gagal memuat riwayat: ' + e.message)
     }
@@ -871,6 +892,27 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                               ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
                               : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
                           </div>
+                          {/* RIWAYAT LENGKAP (23 Sep 2026) - disiapkan/koreksi qty/diambil, semua reuse kolom
+                              yang sudah ada (lihat komentar riwayatKoreksiMap di atas). Tampil buat SEMUA baris
+                              non-ditolak (bukan cuma divisi==='admin') - ini murni info bacaan, beda dari tombol
+                              Konfirmasi Ambil di bawah yang sengaja dibatasi (itu ACTION, bisa numpuk konfirmasi
+                              dgn operator kalau dibuka juga; info bacaan begini gak punya risiko itu). */}
+                          {!ditolak && it.updated_by && (
+                            <div style={{ fontSize: 11.5, color: '#334155', marginTop: 4 }}>
+                              Disiapkan oleh <strong>{it.updated_by}</strong> — {fmtDateTime(it.updated_at)}
+                            </div>
+                          )}
+                          {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
+                            <div key={k.id} style={{ fontSize: 11.5, color: '#b45309', marginTop: 4 }}>
+                              Qty dikoreksi <strong>{k.qty_lama}{it.satuan ? ` ${it.satuan}` : ''} → {k.qty_diusulkan}{it.satuan ? ` ${it.satuan}` : ''}</strong> oleh {k.diajukan_oleh || '-'} (Gudang) — {fmtDateTime(k.diajukan_at)}
+                              <div style={{ color: '#64748b' }}>Disetujui oleh {k.disetujui_oleh || '-'} — {fmtDateTime(k.diputuskan_at)}{k.alasan ? ` · Alasan: ${k.alasan}` : ''}</div>
+                            </div>
+                          ))}
+                          {!ditolak && it.sudah_diambil && (
+                            <div style={{ marginTop: 4, fontSize: 11.5, color: '#16a34a', fontWeight: 700 }}>
+                              ✓ Sudah diambil oleh {it.diambil_oleh || '-'} — {fmtDateTime(it.diambil_at)}
+                            </div>
+                          )}
                           {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
                               lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
                           {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
@@ -880,11 +922,6 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                                 cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
                               {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
                             </button>
-                          )}
-                          {!ditolak && it.perm.divisi === 'admin' && it.sudah_diambil && (
-                            <div style={{ marginTop: 6, fontSize: 10.5, color: '#16a34a', fontWeight: 700 }}>
-                              ✓ Sudah diambil oleh {it.diambil_oleh || '-'} — {fmtDateTime(it.diambil_at)}
-                            </div>
                           )}
                         </div>
                       )
