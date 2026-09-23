@@ -88,7 +88,17 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       // ccpMap dimanapun di codebase ini.
       if(pr==="BUSBAR")return;
       const key=`${panelId}|${kode}|${pr}`;
-      if(key in ccpMap)merged[pr]=ccpMap[key];
+      if(key in ccpMap){
+        const ccpVal=ccpMap[key];
+        // BUG FIX (23 Sep 2026, temuan "scan ulang" - LVMDP/F3B.7/RENDAM+PAINTING: ccp nyangkut
+        // 100% padahal checklist 50%, dual-write vista-pekerja gagal sinkron di proses NON-BUSBAR
+        // juga, bukan cuma BUSBAR seperti dugaan awal) - generalisasi pola BUSBAR: kalau ccp bilang
+        // "Done" (>=100) TAPI checklist (base, jaring pengaman) bilang belum, JANGAN percaya ccp -
+        // checklist menang. Arah sebaliknya (ccp kosong/lebih rendah dari truth) TETAP pakai ccp
+        // kalau ada (realtime, perilaku lama gak berubah) - itu domain Bug B (baris ccp memang
+        // belum ada/basi-rendah), beda kelas masalah dari ini (ccp basi-TINGGI).
+        if(!(ccpVal>=100&&base[pr]<100))merged[pr]=ccpVal;
+      }
     });
     return merged;
   };

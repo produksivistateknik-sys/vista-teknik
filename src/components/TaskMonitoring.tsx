@@ -47,7 +47,13 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
       // pola sama persis calcPanelProgressCcpAware & DetailProgress.tsx.
       if(proses==="BUSBAR")return;
       const key=`${selectedPanelId}|${kode}|${proses}`;
-      if(key in ccpMap)merged[proses]=ccpMap[key];
+      if(key in ccpMap){
+        const ccpVal=ccpMap[key];
+        // BUG FIX (23 Sep 2026) - lihat komentar lengkap di RencanaHarian.tsx
+        // getCcpAwarePipelineProgressMap. Generalisasi pola BUSBAR ke semua proses: ccp yang
+        // bilang "Done" (>=100) padahal checklist (base) belum, JANGAN dipercaya.
+        if(!(ccpVal>=100&&base[proses]<100))merged[proses]=ccpVal;
+      }
     });
     return merged;
   };

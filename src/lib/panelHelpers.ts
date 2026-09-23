@@ -496,7 +496,15 @@ export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, cc
     const itemsForCalc=relevantActive.length>0?relevantActive:active;
     const vals=itemsForCalc.map(it=>{
       const key=`${panel.id}|${it.kode}|${pr}`;
-      return key in ccpMap?ccpMap[key]:getBestProgress(panel.checklist[it.kode],pr);
+      const truthVal=getBestProgress(panel.checklist[it.kode],pr);
+      if(!(key in ccpMap))return truthVal;
+      const ccpVal=ccpMap[key];
+      // BUG FIX (23 Sep 2026, temuan "scan ulang" - LVMDP/F3B.7/RENDAM+PAINTING: ccp nyangkut
+      // 100% padahal checklist 50%, dual-write vista-pekerja gagal sinkron) - sama pola dgn
+      // RencanaHarian/TaskMonitoring: ccp yang bilang "Done" (>=100) padahal checklist (truthVal)
+      // belum, JANGAN dipercaya - checklist menang. Badge % panel/WO di ManajemenWO/
+      // SummaryProgress/Dashboard pakai fungsi ini, jangan sampai ikut ke-inflate.
+      return(ccpVal>=100&&truthVal<100)?truthVal:ccpVal;
     });
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });

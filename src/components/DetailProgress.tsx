@@ -22,7 +22,12 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   const ccpMap=useCcpMap(panelIds);
   const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>{
     const key=`${panelId}|${kode}|${proses}`;
-    return key in ccpMap?ccpMap[key]:fallback;
+    if(!(key in ccpMap))return fallback;
+    const ccpVal=ccpMap[key];
+    // BUG FIX (23 Sep 2026) - lihat komentar lengkap di RencanaHarian.tsx
+    // getCcpAwarePipelineProgressMap. ccp yang bilang "Done" (>=100) padahal checklist
+    // (fallback) belum, JANGAN dipercaya.
+    return(ccpVal>=100&&fallback<100)?fallback:ccpVal;
   };
 
   const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
