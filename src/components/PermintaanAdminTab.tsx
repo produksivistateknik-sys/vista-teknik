@@ -25,7 +25,7 @@ import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
 const DIVISI_LABEL: Record<string, string> = {
   mekanik: 'Mekanik', painting: 'Painting', assembling: 'Assembling',
   wiring_ctrl: 'Wiring Control', wiring_pwr: 'Wiring Power',
-  qc: 'QC', nameplate: 'Nameplate', komponen: 'Komponen', gudang: 'Gudang',
+  qc: 'QC', nameplate: 'Nameplate', komponen: 'QS', gudang: 'Gudang', // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
   admin: 'Admin', // permintaan yang diajukan LANGSUNG oleh admin (16 Sep 2026, lihat submitAjukanAdmin)
 }
 

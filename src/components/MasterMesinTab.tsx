@@ -16,7 +16,7 @@ const DIVISI_OPTIONS=[
   {value:"wiring_pwr",label:"Wiring Power"},
   {value:"qc",label:"QC"},
   {value:"nameplate",label:"Nameplate"},
-  {value:"komponen",label:"Komponen (Warehouse/QS)"},
+  {value:"komponen",label:"QS"}, // label "Komponen (Warehouse/QS)"->"QS" (23 Sep 2026) - Warehouse sudah dihapus dari divisi ini 14 Agu 2026, key TETAP "komponen"
 ];
 const divisiLabel=(v:string)=>DIVISI_OPTIONS.find(d=>d.value===v)?.label||v;
 
