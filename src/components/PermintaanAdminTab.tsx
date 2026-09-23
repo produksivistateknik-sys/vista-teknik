@@ -873,12 +873,24 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                       yang bikin badge status nempel kanan). */}
                   <div style={{ display: 'flex', flexDirection: 'column' }}>
                     {riwayatGrouped[divisi].map((it: any) => {
-                      const ditolak = it.status === 'ditolak_admin'
+                      // BUG FIX (23 Sep 2026, ditemukan pas "scan ulang cek bug lain") - `ditolak`
+                      // SEBELUMNYA cuma cek status==='ditolak_admin', gak menghitung status==='reject'
+                      // (Gudang menolak - barang gak ada stok dkk, BEDA dari admin menolak approval).
+                      // updated_by/updated_at DIPAKAI BERSAMA oleh submit ("disiapkan") DAN reject
+                      // ("ditolak Gudang") di PermintaanGudangTab.tsx (vista-pekerja) - baris "Disiapkan
+                      // oleh" yang baru ditambahkan kemarin jadi SALAH LABEL kalau cuma cek !ditolak:
+                      // item yang Gudang TOLAK (status=reject) ikut kebaca "!ditolak" (karena bukan
+                      // 'ditolak_admin') terus nampilin "Disiapkan oleh {updated_by}" - padahal orang itu
+                      // MENOLAK, bukan menyiapkan. Dicek live: 21 item nyata kena kasus ini (status=reject
+                      // + disetujui_admin_at terisi, catatan_reject a.l. "salah input"/"Terlalu banyak").
+                      const ditolakAdmin = it.status === 'ditolak_admin'
+                      const ditolakGudang = it.status === 'reject'
+                      const ditolak = ditolakAdmin || ditolakGudang
                       return (
                         <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
                             <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
-                            <Badge label={ditolak ? '✕ Ditolak Admin' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
+                            <Badge label={ditolakAdmin ? '✕ Ditolak Admin' : ditolakGudang ? '✕ Ditolak Gudang' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
                             <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
                           </div>
                           <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
@@ -897,7 +909,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                               non-ditolak (bukan cuma divisi==='admin') - ini murni info bacaan, beda dari tombol
                               Konfirmasi Ambil di bawah yang sengaja dibatasi (itu ACTION, bisa numpuk konfirmasi
                               dgn operator kalau dibuka juga; info bacaan begini gak punya risiko itu). */}
-                          {!ditolak && it.updated_by && (
+                          {it.status === 'submit' && it.updated_by && (
                             <div style={{ fontSize: 11.5, color: '#334155', marginTop: 4 }}>
                               Disiapkan oleh <strong>{it.updated_by}</strong> — {fmtDateTime(it.updated_at)}
                             </div>
