@@ -208,9 +208,17 @@ export const DIVISI_CONFIG = {
   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",  proses:["WIRING CONTROL"]},
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8", proses:["WIRING POWER"]},
+  // QS (23 Sep 2026) - sudah dipakai sebagai sub-bagian login di vista-pekerja (grup "Tracking
+  // Komponen", SubBagianPasswordCard.tsx: members:["Assembling","QS","QC"]) tapi belum pernah
+  // terdaftar di sini, jadi gak bisa di-assign ke pekerja lewat MasterPekerja/MasterPekerjaInline
+  // sama sekali. proses:null - sama seperti admin/engineering/nameplate, gak terikat 1 tahapan
+  // ALL_PROSES (dan field ini sendiri gak pernah dibaca di mana pun di codebase, murni metadata).
+  // Icon 📋 & warna #0d9488 disamakan sama subBagianIconLocal/warna grup "Tracking Komponen" di
+  // SubBagianPasswordCard.tsx biar konsisten visual lintas halaman.
+  qs:         {label:"QS",            icon:"📋", color:"#0d9488",bg:"#f0fdfa",      proses:null},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",      proses:["QC TEST","PACKING"]},
   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",     proses:null},
 };
-export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qc","nameplate","komponen"];
+export const OPERATOR_ROLES = ["mekanik","painting","assembling","wiring_ctrl","wiring_pwr","qs","qc","nameplate","komponen"];
 
 export const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
