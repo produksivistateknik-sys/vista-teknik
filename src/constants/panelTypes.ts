@@ -186,9 +186,15 @@ export const KOMPONEN_PROSES_MAP: Record<string, string[]> = {
 // ─────────────────────────────────────────────────────────────────────────────
 // BUSBAR KOMPONEN per tipe panel
 // ─────────────────────────────────────────────────────────────────────────────
+// BUSDUCT/COUPLE-AN (23 Sep 2026, diminta user) - jenis busbar baru, cuma FS/F3B. COUPLE-AN
+// skip tahap HEATSHRINK (3 tahap: Fabrikasi/Plating/Pasang, pola sama COUPLER/GROUND) -
+// lihat getUrutanTahapBusbar() di vista-pekerja/src/lib/panelHelpers.tsx & trigger DB
+// panels_validate_busbar_cap_progress, KEDUANYA WAJIB disentuh bareng migration ini (harus
+// sama persis, kalau enggak operator bisa kekunci progress PASANG). BUSDUCT full 4 tahap
+// (default, gak masuk daftar pengecualian manapun - gak perlu ubah 2 file itu).
 export const BUSBAR_KOMPONEN:Record<string,string[]> = {
-  FS:      ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"],
-  F3B:     ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"],
+  FS:      ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER","BUSDUCT","COUPLE-AN"],
+  F3B:     ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER","BUSDUCT","COUPLE-AN"],
   WM_MS:   ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
   WM_POLY: ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
 };
@@ -198,6 +204,7 @@ export const BUSBAR_COLORS:Record<string,string>={
   "INCOMING":"#ef4444","OUTGOING":"#3b82f6",
   "NETRAL":"#8b5cf6","GROUND":"#16a34a",
   "COUPLER":"#f97316",
+  "BUSDUCT":"#0ea5e9","COUPLE-AN":"#a855f7",
 };
 
 export const DIVISI_CONFIG = {
