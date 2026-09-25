@@ -455,14 +455,37 @@ export function calcPanelProgress(panel, rawData?:any[]): Record<string, number>
   });
   return prog;
 }
+// BUG FIX (25 Sep 2026, badge "85%" WO 016 BALI TENNIS COURT - 4 panel WM_POLY semua proses
+// relevan 100%, tapi STEL & FINISHING ikut dihitung 0%): calcPanelProgress SUDAH benar exclude
+// komponen yang gak relevan dari rata-rata PER-PROSES (relevantActive di atas), tapi kalau
+// SATU PANEL ini kebetulan gak punya SATUPUN komponen aktif yang relevan ke suatu proses (misal
+// WM_POLY yang gak include WM.4/WM.9 - satu-satunya kode yg mapped ke STEL/FINISHING di
+// bom_proses_relevan), calcPanelProgress fallback ke `active` penuh (biar gak divide-by-zero)
+// dan proses itu jadi 0% PALSU - phantom value ini lolos ikut ke rata-rata OVERALL (panelOverall/
+// woOverall MASIH pakai Object.values() mentah atas SEMUA 13 ALL_PROSES tanpa exclude). Root
+// cause-nya BUKAN di calcPanelProgress (kolom per-proses di UI sudah benar tampil abu-abu/N-A),
+// tapi di sini - OVERALL wajib exclude proses yang genuinely gak applicable ke panel ini, bukan
+// menghitungnya sebagai 0%.
+export function isProsesApplicableForPanel(panel:any, proses:string):boolean{
+  if(proses==="BUSBAR"||proses==="QC TEST"||proses==="PACKING")return true; // whole-panel, selalu applicable
+  const cfg=getEffCfgGlobal(panel.tipe);
+  if(!cfg||!panel.checklist)return false;
+  const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);
+  if(!active.length)return false;
+  return active.some(it=>isKomponenRelevant(it.kode,panel.tipe,proses));
+}
 export function panelOverall(p, rawData?:any[]){
-  const v=Object.values(calcPanelProgress(p,rawData));
+  const prog=calcPanelProgress(p,rawData);
+  const v=Object.entries(prog).filter(([pr])=>isProsesApplicableForPanel(p,pr)).map(([,val])=>val);
   if(!v.length) return 0;
   const sum=v.reduce((acc,n)=>acc+n,0);
   return Math.round(sum/v.length);
 }
 export function woOverall(wo){
-  const vals=(wo.panels??[]).flatMap(p=>Object.values(calcPanelProgress(p)));
+  const vals=(wo.panels??[]).flatMap(p=>{
+    const prog=calcPanelProgress(p);
+    return Object.entries(prog).filter(([pr])=>isProsesApplicableForPanel(p,pr)).map(([,val])=>val);
+  });
   if(!vals.length) return 0;
   const sum=vals.reduce((acc,n)=>acc+n,0);
   return Math.round(sum/vals.length);
@@ -510,14 +533,20 @@ export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, cc
   });
   return prog;
 }
+// Sama fix-nya seperti panelOverall/woOverall di atas - exclude proses yang gak applicable ke
+// panel ini (bukan cuma gak relevan per-komponen), lihat isProsesApplicableForPanel.
 export function panelOverallCcpAware(p:any, rawData:any[]|undefined, ccpMap:Record<string,number>){
-  const v=Object.values(calcPanelProgressCcpAware(p,rawData,ccpMap));
+  const prog=calcPanelProgressCcpAware(p,rawData,ccpMap);
+  const v=Object.entries(prog).filter(([pr])=>isProsesApplicableForPanel(p,pr)).map(([,val])=>val);
   if(!v.length) return 0;
   const sum=v.reduce((acc,n)=>acc+n,0);
   return Math.round(sum/v.length);
 }
 export function woOverallCcpAware(wo:any, ccpMap:Record<string,number>){
-  const vals=(wo.panels??[]).flatMap((p:any)=>Object.values(calcPanelProgressCcpAware(p,undefined,ccpMap)));
+  const vals=(wo.panels??[]).flatMap((p:any)=>{
+    const prog=calcPanelProgressCcpAware(p,undefined,ccpMap);
+    return Object.entries(prog).filter(([pr])=>isProsesApplicableForPanel(p,pr)).map(([,val])=>val);
+  });
   if(!vals.length) return 0;
   const sum=vals.reduce((acc,n)=>acc+n,0);
   return Math.round(sum/vals.length);

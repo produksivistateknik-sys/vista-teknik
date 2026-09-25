@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { woOverallCcpAware, panelOverallCcpAware, calcPanelProgressCcpAware } from '../lib/panelHelpers'
+import { woOverallCcpAware, panelOverallCcpAware, calcPanelProgressCcpAware, isProsesApplicableForPanel } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { PROSES_COLOR, ALL_PROSES } from '../constants/panelTypes'
@@ -156,9 +156,15 @@ export function SummaryProgress({woData}:{woData:any[]}){
           pr!=="QC TEST"&&pr!=="PACKING"&&panelProgressData.some((pd:any)=>pd[pr]!==undefined)
         );
 
-        // Rata-rata per proses
+        // Rata-rata per proses - HANYA panel yang proses ini beneran applicable (25 Sep 2026,
+        // permintaan user: kolom proses yang gak dilewati komponen di panel tsb di-strip "—",
+        // BUKAN dihitung 0% - biar gak ikut narik akumulasi rata-rata WO ini juga, konsisten sama
+        // fix panelOverall/woOverall di panelHelpers.ts).
         const rataProses=(pr:string)=>{
-          const vals=panelProgressData.map((pd:any)=>pd[pr]).filter((v:any)=>v!==undefined) as number[];
+          const vals=panels
+            .map((p:any,i:number)=>({applicable:isProsesApplicableForPanel(p,pr),val:panelProgressData[i][pr]}))
+            .filter((x:any)=>x.applicable&&x.val!==undefined)
+            .map((x:any)=>x.val) as number[];
           if(!vals.length) return undefined;
           return Math.round(vals.reduce((a:number,v:number)=>a+v,0)/vals.length);
         };
@@ -246,7 +252,7 @@ export function SummaryProgress({woData}:{woData:any[]}){
                           <td style={tdS}>
                             <span style={{background:pbg,color:psc,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:600}}>{ps}</span>
                           </td>
-                          {prosesAda.map(pr=><ProsesPctCell key={pr} pct={pd[pr]} proses={pr}/>)}
+                          {prosesAda.map(pr=><ProsesPctCell key={pr} pct={isProsesApplicableForPanel(p,pr)?pd[pr]:undefined} proses={pr}/>)}
                           {(()=>{
                             const qcStatus=p.qc_checklist?._global?.status||"to_do";
                             return(
