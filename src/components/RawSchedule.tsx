@@ -7,7 +7,8 @@ import {
   DIVISI_PROSES, BUSBAR_COLORS, DIVISI_CONFIG, PROSES_ORANG_RAW_GLOBAL,
 } from '../constants/panelTypes'
 import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
-import { markRenharDirty, markRawDirty } from '../lib/globalState'
+import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
+import { withRetry } from '../lib/withRetry'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -970,7 +971,23 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     kodeDrag.forEach((kode:string)=>{pinAtTarget[kode]=nowIsoPinBusbar;});
     newBusbarManualPin[toDate]=pinAtTarget;
     setRawData((prev:any[])=>prev.map((r:any)=>r.id!==row.id?r:{...r,busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin}));
-    await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin});
+    // FIX (25 Sep 2026) - sama persis root cause & fix di confirmDrag (proses biasa) di atas:
+    // updateRaw() gagal gak pernah dicek di sini, dirty timeout buta bisa abis sebelum hasilnya
+    // pasti, rawData optimistic ke-timpa balik diam2 belakangan. Retry + cek hasil + revert +
+    // clearRawDirty begitu hasilnya pasti.
+    try{
+      await withRetry(async()=>{
+        const result=await updateRaw(row.id,{busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin});
+        if(!result?.success)throw new Error(result?.error||"Gagal menyimpan jadwal BUSBAR ke server");
+        return result;
+      });
+    }catch(err:any){
+      clearRawDirty(row.id);
+      setRawData((prev:any[])=>prev.map((r:any)=>r.id===row.id?{...r,busbar_schedule:row.busbar_schedule,busbar_jejak:row.busbar_jejak,busbar_manual_pin:row.busbar_manual_pin}:r));
+      alert("Gagal menyimpan geser jadwal BUSBAR: "+(err?.message||"koneksi bermasalah")+"\n\nTampilan sudah dikembalikan ke posisi semula - coba geser lagi.");
+      return;
+    }
+    clearRawDirty(row.id);
     if(mode==="move"){
       // Sync renhar wp="BUSBAR" - sama logic split/gabung kayak proses lain (lihat confirmDrag).
       const renharBusbar=effectiveRenhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
@@ -1152,7 +1169,30 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
     }
     setDragMode(null);setDragInfo(null);
-    if(updatedRow) await updateRaw(rawId,{schedule:updatedRow.schedule});
+    // FIX (25 Sep 2026, root cause "geser Raw Schedule balik lagi instan") - updateRaw() gagal
+    // (koneksi lambat/putus) TIDAK PERNAH dicek di sini dulu - rawData optimistic di atas cuma
+    // keproteksi sesaat (dirty timeout), begitu itu abis & ada event realtime raw_schedule
+    // apapun, sync debounce App.tsx nimpa balik ke posisi lama TANPA pesan apapun ke user.
+    // Sekarang: retry singkat dulu (withRetry, sama pola vista-pekerja) buat koneksi
+    // lambat/putus sesaat, cek hasilnya - kalau ujung2nya tetap gagal, alert ke user + revert
+    // rawData ke posisi semula SEKARANG JUGA (bukan nunggu ke-timpa diam2 belakangan), dan
+    // clearRawDirty dipanggil begitu hasilnya PASTI (sukses/gagal) - dirty period ngikutin
+    // kenyataan, bukan tebakan waktu.
+    if(updatedRow){
+      try{
+        await withRetry(async()=>{
+          const result=await updateRaw(rawId,{schedule:updatedRow.schedule});
+          if(!result?.success)throw new Error(result?.error||"Gagal menyimpan jadwal ke server");
+          return result;
+        });
+      }catch(err:any){
+        clearRawDirty(rawId);
+        setRawData(prev=>prev.map(r=>r.id===rawId?{...r,schedule:rowForDrag?.schedule||r.schedule}:r));
+        alert("Gagal menyimpan geser jadwal: "+(err?.message||"koneksi bermasalah")+"\n\nTampilan sudah dikembalikan ke posisi semula - coba geser lagi.");
+        return;
+      }
+      clearRawDirty(rawId);
+    }
     // Activity log drag & drop
     const row=rawData.find(r=>r.id===rawId);
     const wpList=entries.map(e=>e.wp).join(", ");
