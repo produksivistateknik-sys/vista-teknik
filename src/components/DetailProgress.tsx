@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
@@ -20,15 +20,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   // nulis progress baru sementara halaman ini udah kebuka.
   const panelIds=[...new Set(woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>p.id)))];
   const ccpMap=useCcpMap(panelIds);
-  const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>{
-    const key=`${panelId}|${kode}|${proses}`;
-    if(!(key in ccpMap))return fallback;
-    const ccpVal=ccpMap[key];
-    // BUG FIX (23 Sep 2026) - lihat komentar lengkap di RencanaHarian.tsx
-    // getCcpAwarePipelineProgressMap. ccp yang bilang "Done" (>=100) padahal checklist
-    // (fallback) belum, JANGAN dipercaya.
-    return(ccpVal>=100&&fallback<100)?fallback:ccpVal;
-  };
+  // Aturan ccp-vs-checklist lewat getCcpAwareValue (panelHelpers.ts, satu sumber logika).
+  const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>getCcpAwareValue(ccpMap,panelId,kode,proses,fallback);
 
   const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
     ...p,

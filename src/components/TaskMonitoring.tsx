@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
+import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
@@ -35,26 +35,12 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
 
   // progressMap "campuran" - ccp menang kalau barisnya ADA, checklist tetap fallback (satu
   // sumber logika, computeProsesStatus TIDAK berubah sama sekali, cuma sumber angkanya digeser).
+  // Aturan per sel (BUSBAR selalu checklist, ccp basi-tinggi gak dipercaya) lewat getCcpAwareValue
+  // (panelHelpers.ts) - sama persis dgn calcPanelProgressCcpAware/DetailProgress/RencanaHarian.
   const getCcpAwareProgressMap=(kode:string)=>{
     const base=getBestProgressMap(selectedPanel?.checklist?.[kode]);
-    const merged={...base};
-    ALL_PROSES.forEach((proses:string)=>{
-      // BUG FIX (22 Sep 2026) - komentar di atas ("BUSBAR ... TIDAK disentuh") gak ditegakkan kode
-      // sebelum ini - ccpMap nyimpen BUSBAR per-TAHAP (beberapa baris per kode), fetchCcpMapForPanels
-      // collapse ke 1 key TANPA order by, hasilnya non-deterministik & bisa nunjukin Done padahal
-      // asli belum (lihat panelHelpers.ts komentar getCcpAwarePipelineProgressMap RencanaHarian utk
-      // detail). `base` (checklist, sudah rata-rata benar dari Vista Pekerja) yang dipertahankan -
-      // pola sama persis calcPanelProgressCcpAware & DetailProgress.tsx.
-      if(proses==="BUSBAR")return;
-      const key=`${selectedPanelId}|${kode}|${proses}`;
-      if(key in ccpMap){
-        const ccpVal=ccpMap[key];
-        // BUG FIX (23 Sep 2026) - lihat komentar lengkap di RencanaHarian.tsx
-        // getCcpAwarePipelineProgressMap. Generalisasi pola BUSBAR ke semua proses: ccp yang
-        // bilang "Done" (>=100) padahal checklist (base) belum, JANGAN dipercaya.
-        if(!(ccpVal>=100&&base[proses]<100))merged[proses]=ccpVal;
-      }
-    });
+    const merged:Record<string,number>={};
+    ALL_PROSES.forEach((proses:string)=>{merged[proses]=getCcpAwareValue(ccpMap,selectedPanelId as number,kode,proses,base[proses]);});
     return merged;
   };
 
@@ -80,21 +66,12 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
     "NOT YET":{bg:"#fef2f2",color:"#dc2626",border:"#fecaca"},
   };
 
-  const progresTotal=(()=>{
-    if(!selectedPanel||!cfg)return 0;
-    const allItems=cfg.wps.flatMap((w:any)=>w.items);
-    let sum=0,count=0;
-    allItems.forEach((it:any)=>{
-      const qty=selectedPanel.checklist?.[it.kode]?.qty||0;
-      if(qty<=0)return;
-      const progressMapIt=getCcpAwareProgressMap(it.kode);
-      ALL_PROSES.forEach((proses:string)=>{
-        if(!isKomponenRelevant(it.kode,selectedPanel.tipe,proses))return;
-        sum+=progressMapIt[proses]||0;count++;
-      });
-    });
-    return count>0?(sum/count):0;
-  })();
+  // FIX (25 Sep 2026, LVMDP WO 066 CLS-FONTAINE: Task Monitoring 67.4% vs Detail Progres 63%) -
+  // dulu rumus sendiri (rata-rata datar per sel komponen x proses): BUSBAR gak ikut sama sekali
+  // (isKomponenRelevant selalu false utk BUSBAR) & QC TEST/PACKING dibaca dari checklist[kode]
+  // yang gak pernah diisi (selalu 0 -> gak akan pernah nyampe 100%). Sekarang helper bersama yang
+  // sama dgn Dashboard/ManajemenWO/SummaryProgress/DetailProgress (bobot rata per proses).
+  const progresTotal=(!selectedPanel||!cfg)?0:panelOverallCcpAware(selectedPanel,rawData,ccpMap);
 
   return(
     <div className="fi">
@@ -141,7 +118,7 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
             </Card>
             <Card style={{background:"#eff6ff",border:"1px solid #bfdbfe"}}>
               <div style={{fontSize:10,fontWeight:700,color:"#2563eb",textTransform:"uppercase" as const}}>Progres Total</div>
-              <div style={{fontSize:16,fontWeight:800,color:"#1d4ed8",marginTop:2}}>{progresTotal.toFixed(1)}%</div>
+              <div style={{fontSize:16,fontWeight:800,color:"#1d4ed8",marginTop:2}}>{progresTotal}%</div>
             </Card>
           </div>
 

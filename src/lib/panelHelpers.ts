@@ -500,6 +500,27 @@ export function woOverall(wo){
 // consumer ke-3 (Dashboard/SummaryProgress) - CLAUDE.md B.1. `ccpMap` di-fetch consumer sendiri
 // lewat fetchCcpMapForPanels() (lib/componentProcessProgress.ts), function di sini TETAP pure
 // (gak nyentuh supabase sendiri).
+
+// SATU aturan "ccp vs checklist" per sel (panel|kode|proses) - dikonsolidasi 25 Sep 2026 dari 4
+// salinan identik (calcPanelProgressCcpAware, TaskMonitoring, DetailProgress, RencanaHarian),
+// CLAUDE.md B.1. `truthVal` = nilai checklist dari sumber yang dipakai caller (sengaja parameter,
+// bukan dihitung di sini - DetailProgress baca cl.progress/qtyProses, yang lain getBestProgress;
+// menyamakan sumber itu perubahan perilaku terpisah, bukan bagian konsolidasi ini). Aturan:
+// - BUSBAR: SELALU truthVal - ccpMap nyimpen BUSBAR per-TAHAP (beberapa baris per kode) yang
+//   di-collapse ke 1 key tanpa order by, gak deterministik (fix 22 Sep 2026).
+// - baris ccp gak ada -> truthVal (checklist tetap fallback).
+// - BUG FIX (23 Sep 2026, temuan "scan ulang" - LVMDP/F3B.7/RENDAM+PAINTING: ccp nyangkut 100%
+//   padahal checklist 50%, dual-write vista-pekerja gagal sinkron): ccp yang bilang "Done" (>=100)
+//   padahal checklist belum, JANGAN dipercaya - checklist menang. Arah sebaliknya (ccp lebih
+//   rendah) TETAP pakai ccp (realtime) - beda kelas masalah (ccp basi-rendah / belum ada baris).
+export function getCcpAwareValue(ccpMap:Record<string,number>, panelId:number|string, kode:string, proses:string, truthVal:number):number{
+  if(proses==="BUSBAR")return truthVal;
+  const key=`${panelId}|${kode}|${proses}`;
+  if(!(key in ccpMap))return truthVal;
+  const ccpVal=ccpMap[key];
+  return(ccpVal>=100&&truthVal<100)?truthVal:ccpVal;
+}
+
 export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, ccpMap:Record<string,number>): Record<string, number> {
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
@@ -517,18 +538,9 @@ export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, cc
     if(pr==="PACKING"){ prog[pr]=panel.packing_done?100:0; return; }
     const relevantActive=active.filter(it=>isKomponenRelevant(it.kode,panel.tipe,pr));
     const itemsForCalc=relevantActive.length>0?relevantActive:active;
-    const vals=itemsForCalc.map(it=>{
-      const key=`${panel.id}|${it.kode}|${pr}`;
-      const truthVal=getBestProgress(panel.checklist[it.kode],pr);
-      if(!(key in ccpMap))return truthVal;
-      const ccpVal=ccpMap[key];
-      // BUG FIX (23 Sep 2026, temuan "scan ulang" - LVMDP/F3B.7/RENDAM+PAINTING: ccp nyangkut
-      // 100% padahal checklist 50%, dual-write vista-pekerja gagal sinkron) - sama pola dgn
-      // RencanaHarian/TaskMonitoring: ccp yang bilang "Done" (>=100) padahal checklist (truthVal)
-      // belum, JANGAN dipercaya - checklist menang. Badge % panel/WO di ManajemenWO/
-      // SummaryProgress/Dashboard pakai fungsi ini, jangan sampai ikut ke-inflate.
-      return(ccpVal>=100&&truthVal<100)?truthVal:ccpVal;
-    });
+    // Badge % panel/WO di ManajemenWO/SummaryProgress/Dashboard/Task Monitoring pakai fungsi ini -
+    // aturan ccp-vs-checklist lewat getCcpAwareValue biar gak ke-inflate ccp basi-tinggi.
+    const vals=itemsForCalc.map(it=>getCcpAwareValue(ccpMap,panel.id,it.kode,pr,getBestProgress(panel.checklist[it.kode],pr)));
     prog[pr]=Math.round(vals.reduce((a,b)=>a+b,0)/vals.length);
   });
   return prog;

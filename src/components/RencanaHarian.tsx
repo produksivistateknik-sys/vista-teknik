@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
-import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, getCcpAwareValue, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
@@ -74,32 +74,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const ccpMap=useCcpMap(ccpPanelIds);
   const getCcpAwarePipelineProgressMap=(panelId:number,kode:string,cl:any)=>{
     const base=getBestProgressMap(cl);
-    const merged={...base};
-    ALL_PROSES.forEach((pr:string)=>{
-      // BUG FIX (22 Sep 2026, "Status Pipeline" BUSBAR nunjukin Done padahal asli belum -
-      // kasus nyata WO CLS-FONTAINE/CAPACITOR BANK/H-BUS+INCOMING) - component_process_progress
-      // nyimpen BUSBAR per-TAHAP (FABRIKASI/PLATING/HEATSHRINK/PASANG, beberapa baris per kode),
-      // bukan 1 baris gabungan per proses kayak proses lain. ccpMap (fetchCcpMapForPanels) collapse
-      // semua tahap itu ke 1 key TANPA order by - baris mana yang "menang" gak dijamin, bisa nyangkut
-      // ke tahap yang udah 100% walau tahap lain masih 0/belum. `base` (getBestProgressMap, baca
-      // cl.progress.BUSBAR - udah rata-rata benar dari SEMUA tahap, ditulis Vista Pekerja) sudah
-      // akurat - JANGAN ditimpa ccpMap. Pola exclude ini SAMA PERSIS calcPanelProgressCcpAware &
-      // DetailProgress.tsx (CLAUDE.md B.2/B.1, satu sumber logika) - BUSBAR sengaja gak pernah baca
-      // ccpMap dimanapun di codebase ini.
-      if(pr==="BUSBAR")return;
-      const key=`${panelId}|${kode}|${pr}`;
-      if(key in ccpMap){
-        const ccpVal=ccpMap[key];
-        // BUG FIX (23 Sep 2026, temuan "scan ulang" - LVMDP/F3B.7/RENDAM+PAINTING: ccp nyangkut
-        // 100% padahal checklist 50%, dual-write vista-pekerja gagal sinkron di proses NON-BUSBAR
-        // juga, bukan cuma BUSBAR seperti dugaan awal) - generalisasi pola BUSBAR: kalau ccp bilang
-        // "Done" (>=100) TAPI checklist (base, jaring pengaman) bilang belum, JANGAN percaya ccp -
-        // checklist menang. Arah sebaliknya (ccp kosong/lebih rendah dari truth) TETAP pakai ccp
-        // kalau ada (realtime, perilaku lama gak berubah) - itu domain Bug B (baris ccp memang
-        // belum ada/basi-rendah), beda kelas masalah dari ini (ccp basi-TINGGI).
-        if(!(ccpVal>=100&&base[pr]<100))merged[pr]=ccpVal;
-      }
-    });
+    // Aturan per sel lewat getCcpAwareValue (panelHelpers.ts) - penjelasan lengkap fix 22 Sep 2026
+    // (BUSBAR per-TAHAP di ccp, kasus WO CLS-FONTAINE/CAPACITOR BANK/H-BUS+INCOMING -> BUSBAR selalu
+    // baca checklist) & 23 Sep 2026 (ccp basi-tinggi LVMDP/F3B.7 gak dipercaya) ada di sana.
+    // Satu sumber logika dgn calcPanelProgressCcpAware/TaskMonitoring/DetailProgress (CLAUDE.md B.1).
+    const merged:Record<string,number>={};
+    ALL_PROSES.forEach((pr:string)=>{merged[pr]=getCcpAwareValue(ccpMap,panelId,kode,pr,base[pr]);});
     return merged;
   };
 
