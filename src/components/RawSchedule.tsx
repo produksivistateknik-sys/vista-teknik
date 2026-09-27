@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Fragment } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment, useSyncExternalStore } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, fetchWiringHariKerjaMap, hariKeNFromMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -24,6 +24,54 @@ function PanelDragHandle({panelId,disabled}:{panelId:number;disabled:boolean}){
     <span ref={setNodeRef} {...listeners} {...attributes} title={disabled?"Sedang menyimpan urutan...":"Seret untuk ubah urutan panel"}
       style={{cursor:disabled?"not-allowed":"grab",touchAction:"none",color:"#94a3b8",fontSize:13,lineHeight:1,padding:"2px 1px",userSelect:"none",flexShrink:0}}>⠿</span>
   );
+}
+
+// Posisi jatuh saat drag disimpan di store kecil ini, BUKAN useState RawSchedule (27 Sep 2026).
+// Terukur: tiap setState di RawSchedule = re-render ±27rb sel tabel ±230ms -> auto-scroll cuma
+// ±3,5 fps. Sekarang yang re-render cuma pelanggan kecil (garis drop, 3 pembatas zona, info di
+// kartu melayang), dan hanya kalau target/posisi garis benar-benar berubah.
+type DropTampil=(TargetDrop&{top:number;left:number;width:number;lintas:boolean})|null;
+type StoreDrop={get:()=>DropTampil;set:(v:DropTampil)=>void;subscribe:(f:()=>void)=>()=>void};
+function buatStoreDrop():StoreDrop{
+  let v:DropTampil=null;
+  const subs=new Set<()=>void>();
+  const sama=(a:DropTampil,b:DropTampil)=>a===b||(!!a&&!!b&&a.zona===b.zona&&a.prevId===b.prevId&&a.nextId===b.nextId
+    &&a.top===b.top&&a.left===b.left&&a.width===b.width&&a.lintas===b.lintas);
+  return{get:()=>v,set:n=>{if(sama(v,n))return;v=n;subs.forEach(f=>f());},subscribe:f=>{subs.add(f);return()=>{subs.delete(f);};}};
+}
+const useDropTampil=(store:StoreDrop)=>useSyncExternalStore(store.subscribe,store.get);
+function GarisDrop({store}:{store:StoreDrop}){
+  const dropTarget=useDropTampil(store);
+  if(!dropTarget)return null;
+  // Spesifikasi prototipe: garis ~2.5px warna aksen + titik bulat di ujung kiri. Lintas zona
+  // (drop akan mengubah prioritas): warna amber + badge kecil "→ jadi Tinggi", biar user
+  // sadar SEBELUM melepas.
+  const warnaGaris=dropTarget.lintas?"#f59e0b":"#2563eb";
+  return(
+    <div style={{position:"absolute",top:dropTarget.top-1.25,left:dropTarget.left,width:dropTarget.width,height:2.5,background:warnaGaris,zIndex:30,pointerEvents:"none",borderRadius:2}}>
+      <span style={{position:"absolute",left:2,top:"50%",width:9,height:9,borderRadius:"50%",background:warnaGaris,transform:"translateY(-50%)",boxShadow:"0 0 0 2px #fff"}}/>
+      {dropTarget.lintas&&(
+        <span style={{position:"absolute",left:18,top:"50%",transform:"translateY(-50%)",background:"#f59e0b",color:"#fff",fontSize:10,fontWeight:800,borderRadius:99,padding:"2px 9px",whiteSpace:"nowrap",boxShadow:"0 1px 4px #0003"}}>
+          → jadi {dropTarget.zona}
+        </span>
+      )}
+    </div>
+  );
+}
+function SelPembatasZona({store,zona,dragAktif,colSpan,children}:{store:StoreDrop;zona:Zona;dragAktif:boolean;colSpan:number;children:any}){
+  const dropTarget=useDropTampil(store);
+  const jadiTujuanLintas=dragAktif&&!!dropTarget?.lintas&&dropTarget?.zona===zona;
+  return(
+    <td colSpan={colSpan} style={{padding:0,borderTop:"2px solid #cbd5e1",borderBottom:"1px solid #e2e8f0",
+      background:jadiTujuanLintas?"#fef3c7":"#f8fafc",outline:jadiTujuanLintas?"2px solid #f59e0b":"none",outlineOffset:-2}}>
+      {children}
+    </td>
+  );
+}
+function InfoLintasZona({store,zonaAsal}:{store:StoreDrop;zonaAsal:Zona}){
+  const dropTarget=useDropTampil(store);
+  if(!dropTarget?.lintas)return null;
+  return <div style={{marginTop:4,fontWeight:800,color:"#b45309"}}>{zonaAsal} ➜ {dropTarget.zona}</div>;
 }
 
 // hitungProyeksiWiring DIPINDAH (5 Sep 2026) ke fcsService.ts biar bisa dipakai bareng
@@ -1231,7 +1279,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // panel -> blok panel kepecah di tampilan, dan renhar DB gak pernah ikut berubah.
   const { orderMap, setOrderMap, error: orderMapError } = useRawPanelOrder();
   const [dragPanelId,setDragPanelId]=useState<number|null>(null);
-  const [dropTarget,setDropTarget]=useState<(TargetDrop&{top:number;left:number;width:number;lintas:boolean})|null>(null);
+  const dropStore=useRef<StoreDrop|null>(null);
+  if(!dropStore.current)dropStore.current=buatStoreDrop();
+  const setDropTarget=dropStore.current.set;
   const [savingUrutan,setSavingUrutan]=useState(false);
   const [menuUrutanPanel,setMenuUrutanPanel]=useState<number|null>(null);
   const [toastUrutan,setToastUrutan]=useState<string|null>(null);
@@ -1390,34 +1440,65 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   };
   useEffect(()=>{
     if(dragPanelId==null)return;
-    let raf=0;
-    const jadwal=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(hitungDropSekarang);};
+    // Pointer gerak / scroll cuma menandai "perlu hitung ulang"; hitungnya di loop rAF tunggal di
+    // bawah (baca geometri dulu, baru auto-scroll menulis scrollTop) - maksimal 1x hitung per frame.
+    let perluHitung=true;
+    const jadwal=()=>{perluHitung=true;};
     const onMove=(e:PointerEvent)=>{pointerYRef.current=e.clientY;jadwal();};
     const cont=tableScrollRef.current;
     window.addEventListener("pointermove",onMove);
-    cont?.addEventListener("scroll",jadwal);
-    jadwal();
+    // Scroll di level MANA PUN (container tabel, .erp-body halaman, ancestor lain) menggeser kotak
+    // baris relatif ke pointer -> hitung ulang. Event scroll gak bubble, tapi fase capture di
+    // window tetap lewat, jadi 1 listener ini menangkap semuanya.
+    window.addEventListener("scroll",jadwal,{capture:true,passive:true});
+    // Selama drag kursor ada di atas kartu melayang (DragOverlay, position:fixed, DI LUAR
+    // container tabel) -> wheel/trackpad nyasar ke kartu itu & gak menggeser tabel. Kartu dibikin
+    // pointer-events:none (lihat <DragOverlay>), kursor "grabbing" dipindah ke body.
+    const cursorLama=document.body.style.cursor;
+    document.body.style.cursor="grabbing";
     // AUTO-SCROLL SENDIRI (spesifikasi prototipe, 27 Sep 2026) - bukan autoScroll bawaan dnd-kit
     // (setInterval 5ms, ambang % tinggi container). Tiap frame (requestAnimationFrame): kalau
     // pointer ≤72px dari tepi atas/bawah area tabel yang TERLIHAT di viewport, scroll container
     // dgn kecepatan proporsional (makin dekat/lewat tepi makin cepat). Scroll-nya sendiri memicu
-    // event "scroll" di atas -> posisi jatuh ikut dihitung ulang.
+    // event "scroll" di atas -> posisi jatuh ikut dihitung ulang. Kalau container sudah mentok di
+    // arah itu, induk scroll-nya (.erp-body) yang digeser - biar bagian tabel di luar viewport tetap terjangkau.
+    // "Halaman" di sini BUKAN window: yang scroll itu .erp-body (overflow-y:auto, globalCss.ts) -
+    // window gak pernah scroll. Cari induk scrollable terdekat, fallback ke dokumen.
+    const cariIndukScroll=(el:HTMLElement|null):HTMLElement=>{
+      for(let e=el?.parentElement;e;e=e.parentElement){
+        const oy=getComputedStyle(e).overflowY;
+        if((oy==="auto"||oy==="scroll")&&e.scrollHeight>e.clientHeight)return e;
+      }
+      return (document.scrollingElement||document.documentElement) as HTMLElement;
+    };
+    const induk=cariIndukScroll(cont);
     const AMBANG_PX=72,MAKS_PX_PER_FRAME=24;
     let rafScroll=0;
     const tick=()=>{
+      if(perluHitung){perluHitung=false;hitungDropSekarang();}
       if(cont){
         const r=cont.getBoundingClientRect();
-        const atas=Math.max(r.top,0),bawah=Math.min(r.bottom,window.innerHeight);
+        const ri=induk===document.scrollingElement?{top:0,bottom:window.innerHeight}:induk.getBoundingClientRect();
+        const atas=Math.max(r.top,ri.top,0),bawah=Math.min(r.bottom,ri.bottom,window.innerHeight);
         const y=pointerYRef.current;
         let v=0;
         if(y<atas+AMBANG_PX)v=-MAKS_PX_PER_FRAME*Math.min(1,(atas+AMBANG_PX-y)/AMBANG_PX);
         else if(y>bawah-AMBANG_PX)v=MAKS_PX_PER_FRAME*Math.min(1,(y-(bawah-AMBANG_PX))/AMBANG_PX);
-        if(v!==0)cont.scrollTop+=v;
+        if(v!==0){
+          const contMentok=v<0?cont.scrollTop<=0:cont.scrollTop+cont.clientHeight>=cont.scrollHeight-1;
+          if(!contMentok)cont.scrollTop+=v;
+          else induk.scrollTop+=v;
+        }
       }
       rafScroll=requestAnimationFrame(tick);
     };
     rafScroll=requestAnimationFrame(tick);
-    return()=>{cancelAnimationFrame(raf);cancelAnimationFrame(rafScroll);window.removeEventListener("pointermove",onMove);cont?.removeEventListener("scroll",jadwal);};
+    return()=>{
+      cancelAnimationFrame(rafScroll);
+      window.removeEventListener("pointermove",onMove);
+      window.removeEventListener("scroll",jadwal,{capture:true});
+      document.body.style.cursor=cursorLama;
+    };
   },[dragPanelId]);
   // Tutup menu ⋮ kalau klik di luar.
   useEffect(()=>{
@@ -2171,19 +2252,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               const ZONA_LABEL:Record<Zona,string>={Tinggi:"▲ TINGGI",Sedang:"● SEDANG",Rendah:"▼ RENDAH"};
               return ZONA_URUTAN.map(z=>{
                 const bz=blokList.filter(b=>b.zona===z);
-                const jadiTujuanLintas=dragPanelId!=null&&!!dropTarget?.lintas&&dropTarget?.zona===z;
                 const warna=(PRIORITAS_COLOR as any)[z]||"#64748b";
                 return(
                   <Fragment key={"zona-"+z}>
                     <tbody ref={el=>{pembatasRefs.current[z]=el;}}>
                       <tr>
-                        <td colSpan={colSpanPenuh} style={{padding:0,borderTop:"2px solid #cbd5e1",borderBottom:"1px solid #e2e8f0",
-                          background:jadiTujuanLintas?"#fef3c7":"#f8fafc",outline:jadiTujuanLintas?"2px solid #f59e0b":"none",outlineOffset:-2}}>
+                        <SelPembatasZona store={dropStore.current!} zona={z} dragAktif={dragPanelId!=null} colSpan={colSpanPenuh}>
                           <div style={{position:"sticky",left:0,display:"inline-flex",alignItems:"center",gap:8,padding:"5px 12px",fontSize:10,fontWeight:800,letterSpacing:.4,color:warna}}>
                             <span>{ZONA_LABEL[z]}</span>
                             <span style={{color:"#94a3b8",fontWeight:600}}>· {bz.length} panel{bz.length===0&&dragPanelId!=null?" (seret panel ke sini)":""}</span>
                           </div>
-                        </td>
+                        </SelPembatasZona>
                       </tr>
                     </tbody>
                     {bz.map(b=>(
@@ -2197,33 +2276,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               });
             })()}
         </table>
-        {dragPanelId!=null&&dropTarget&&(()=>{
-          // Spesifikasi prototipe: garis ~2.5px warna aksen + titik bulat di ujung kiri. Lintas zona
-          // (drop akan mengubah prioritas): warna amber + badge kecil "→ jadi Tinggi", biar user
-          // sadar SEBELUM melepas.
-          const warnaGaris=dropTarget.lintas?"#f59e0b":"#2563eb";
-          return(
-            <div style={{position:"absolute",top:dropTarget.top-1.25,left:dropTarget.left,width:dropTarget.width,height:2.5,background:warnaGaris,zIndex:30,pointerEvents:"none",borderRadius:2}}>
-              <span style={{position:"absolute",left:2,top:"50%",width:9,height:9,borderRadius:"50%",background:warnaGaris,transform:"translateY(-50%)",boxShadow:"0 0 0 2px #fff"}}/>
-              {dropTarget.lintas&&(
-                <span style={{position:"absolute",left:18,top:"50%",transform:"translateY(-50%)",background:"#f59e0b",color:"#fff",fontSize:10,fontWeight:800,borderRadius:99,padding:"2px 9px",whiteSpace:"nowrap",boxShadow:"0 1px 4px #0003"}}>
-                  → jadi {dropTarget.zona}
-                </span>
-              )}
-            </div>
-          );
-        })()}
+        {dragPanelId!=null&&<GarisDrop store={dropStore.current!}/>}
       </div>
-      <DragOverlay dropAnimation={null}>
+      <DragOverlay dropAnimation={null} style={{pointerEvents:"none"}}>
         {dragPanelId!=null&&(()=>{
           const r0=rowsPanelOf(dragPanelId)[0];
           const zonaAsal=zonaDari(r0?.prioritas);
           return(
             <div style={{background:"#fff",border:"1.5px solid #2563eb",borderRadius:10,boxShadow:"0 8px 24px #0f172a33",padding:"8px 12px",fontSize:11,minWidth:220,cursor:"grabbing"}}>
               <div style={{fontWeight:800,color:"#1e293b"}}>⠿ <span style={{fontWeight:600,color:"#64748b"}}>{r0?.proyek} ·</span> {r0?.panel} <span style={{fontWeight:600,color:"#64748b"}}>· {rowsPanelOf(dragPanelId).length} proses</span></div>
-              {dropTarget?.lintas&&(
-                <div style={{marginTop:4,fontWeight:800,color:"#b45309"}}>{zonaAsal} ➜ {dropTarget.zona}</div>
-              )}
+              <InfoLintasZona store={dropStore.current!} zonaAsal={zonaAsal}/>
             </div>
           );
         })()}
