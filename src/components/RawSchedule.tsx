@@ -12,8 +12,8 @@ import { withRetry } from '../lib/withRetry'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
-import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, AutoScrollActivator } from '@dnd-kit/core'
-import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, rankZona, cmpPanelDalamZona, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core'
+import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, cmpPanelDalamZona, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
 
 // Handle geser urutan panel (⠿) di sel PANEL - @dnd-kit (pointer events), SENGAJA bukan HTML5
 // drag: grid tanggal sudah pakai HTML5 draggable/onDragOver/onDrop buat geser jadwal antar
@@ -1397,7 +1397,27 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     window.addEventListener("pointermove",onMove);
     cont?.addEventListener("scroll",jadwal);
     jadwal();
-    return()=>{cancelAnimationFrame(raf);window.removeEventListener("pointermove",onMove);cont?.removeEventListener("scroll",jadwal);};
+    // AUTO-SCROLL SENDIRI (spesifikasi prototipe, 27 Sep 2026) - bukan autoScroll bawaan dnd-kit
+    // (setInterval 5ms, ambang % tinggi container). Tiap frame (requestAnimationFrame): kalau
+    // pointer ≤72px dari tepi atas/bawah area tabel yang TERLIHAT di viewport, scroll container
+    // dgn kecepatan proporsional (makin dekat/lewat tepi makin cepat). Scroll-nya sendiri memicu
+    // event "scroll" di atas -> posisi jatuh ikut dihitung ulang.
+    const AMBANG_PX=72,MAKS_PX_PER_FRAME=24;
+    let rafScroll=0;
+    const tick=()=>{
+      if(cont){
+        const r=cont.getBoundingClientRect();
+        const atas=Math.max(r.top,0),bawah=Math.min(r.bottom,window.innerHeight);
+        const y=pointerYRef.current;
+        let v=0;
+        if(y<atas+AMBANG_PX)v=-MAKS_PX_PER_FRAME*Math.min(1,(atas+AMBANG_PX-y)/AMBANG_PX);
+        else if(y>bawah-AMBANG_PX)v=MAKS_PX_PER_FRAME*Math.min(1,(y-(bawah-AMBANG_PX))/AMBANG_PX);
+        if(v!==0)cont.scrollTop+=v;
+      }
+      rafScroll=requestAnimationFrame(tick);
+    };
+    rafScroll=requestAnimationFrame(tick);
+    return()=>{cancelAnimationFrame(raf);cancelAnimationFrame(rafScroll);window.removeEventListener("pointermove",onMove);cont?.removeEventListener("scroll",jadwal);};
   },[dragPanelId]);
   // Tutup menu ⋮ kalau klik di luar.
   useEffect(()=>{
@@ -1805,7 +1825,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         </div>
       )}
       <DndContext sensors={sensorsUrutan} onDragStart={onDragStartPanel} onDragEnd={onDragEndPanel} onDragCancel={selesaiDrag}
-        autoScroll={{activator:AutoScrollActivator.Pointer,threshold:{x:0,y:0.12},acceleration:12}}>
+        autoScroll={false}>
       <div ref={tableScrollRef} style={{position:"relative",overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
           <thead style={{position:"sticky",top:0,zIndex:10}}>
@@ -1946,12 +1966,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                               const bz=me?blokUrutRef.current.filter(b=>b.zona===me.zona):[];
                               const i=bz.findIndex(b=>b.panelId===Number(curPanelId));
                               const opsi:{k:"atas"|"naik"|"turun"|"bawah";l:string;ok:boolean}[]=[
-                                {k:"atas",l:"⤒ Paling atas zona",ok:i>0},{k:"naik",l:"↑ Naik 1",ok:i>0},
-                                {k:"turun",l:"↓ Turun 1",ok:i>=0&&i<bz.length-1},{k:"bawah",l:"⤓ Paling bawah zona",ok:i>=0&&i<bz.length-1},
+                                {k:"atas",l:"⤒ Pindah ke paling atas kelompok",ok:i>0},{k:"naik",l:"↑ Naik 1",ok:i>0},
+                                {k:"turun",l:"↓ Turun 1",ok:i>=0&&i<bz.length-1},{k:"bawah",l:"⤓ Pindah ke paling bawah kelompok",ok:i>=0&&i<bz.length-1},
                               ];
                               return(
-                                <div style={{position:"absolute",top:"100%",right:0,zIndex:40,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 6px 20px #0f172a26",padding:4,minWidth:160,textAlign:"left" as const}}>
-                                  <div style={{fontSize:9,color:"#94a3b8",padding:"3px 8px",fontWeight:700}}>Dalam zona {me?.zona}</div>
+                                <div style={{position:"absolute",top:"100%",right:0,zIndex:40,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 6px 20px #0f172a26",padding:4,minWidth:210,textAlign:"left" as const}}>
+                                  <div style={{fontSize:9,color:"#94a3b8",padding:"3px 8px",fontWeight:700}}>Dalam kelompok prioritas {me?.zona}</div>
                                   {opsi.map(o=>(
                                     <button key={o.k} disabled={!o.ok||savingUrutan} onClick={()=>pindahViaMenu(Number(curPanelId),o.k)}
                                       style={{display:"block",width:"100%",textAlign:"left" as const,background:"none",border:"none",padding:"5px 8px",fontSize:11,fontWeight:600,borderRadius:5,
@@ -2168,7 +2188,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     </tbody>
                     {bz.map(b=>(
                       <tbody key={"panel-"+b.panelId} ref={el=>{blokRefs.current[b.panelId]=el;}}
-                        style={{opacity:dragPanelId===b.panelId?0.4:1}}>
+                        style={{opacity:dragPanelId===b.panelId?0.35:1}}>
                         {b.items.map(({row,ri})=>renderBaris(row,ri))}
                       </tbody>
                     ))}
@@ -2178,13 +2198,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             })()}
         </table>
         {dragPanelId!=null&&dropTarget&&(()=>{
-          const zonaAsal=zonaDari(rowsPanelOf(dragPanelId)[0]?.prioritas);
+          // Spesifikasi prototipe: garis ~2.5px warna aksen + titik bulat di ujung kiri. Lintas zona
+          // (drop akan mengubah prioritas): warna amber + badge kecil "→ jadi Tinggi", biar user
+          // sadar SEBELUM melepas.
+          const warnaGaris=dropTarget.lintas?"#f59e0b":"#2563eb";
           return(
-            <div style={{position:"absolute",top:dropTarget.top-2,left:dropTarget.left,width:dropTarget.width,height:0,zIndex:30,pointerEvents:"none",
-              borderTop:dropTarget.lintas?"4px dashed #f59e0b":"3px solid #2563eb"}}>
+            <div style={{position:"absolute",top:dropTarget.top-1.25,left:dropTarget.left,width:dropTarget.width,height:2.5,background:warnaGaris,zIndex:30,pointerEvents:"none",borderRadius:2}}>
+              <span style={{position:"absolute",left:2,top:"50%",width:9,height:9,borderRadius:"50%",background:warnaGaris,transform:"translateY(-50%)",boxShadow:"0 0 0 2px #fff"}}/>
               {dropTarget.lintas&&(
-                <span style={{position:"absolute",left:"50%",top:0,transform:"translate(-50%,-60%)",background:"#f59e0b",color:"#fff",fontSize:10,fontWeight:800,borderRadius:99,padding:"2px 10px",whiteSpace:"nowrap",boxShadow:"0 1px 4px #0003"}}>
-                  {rankZona(dropTarget.zona)<rankZona(zonaAsal)?"⬆":"⬇"} Prioritas jadi {dropTarget.zona.toUpperCase()}
+                <span style={{position:"absolute",left:18,top:"50%",transform:"translateY(-50%)",background:"#f59e0b",color:"#fff",fontSize:10,fontWeight:800,borderRadius:99,padding:"2px 9px",whiteSpace:"nowrap",boxShadow:"0 1px 4px #0003"}}>
+                  → jadi {dropTarget.zona}
                 </span>
               )}
             </div>
@@ -2197,7 +2220,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           const zonaAsal=zonaDari(r0?.prioritas);
           return(
             <div style={{background:"#fff",border:"1.5px solid #2563eb",borderRadius:10,boxShadow:"0 8px 24px #0f172a33",padding:"8px 12px",fontSize:11,minWidth:220,cursor:"grabbing"}}>
-              <div style={{fontWeight:800,color:"#1e293b"}}>⠿ {r0?.panel} <span style={{fontWeight:600,color:"#64748b"}}>· {r0?.proyek} · {rowsPanelOf(dragPanelId).length} proses</span></div>
+              <div style={{fontWeight:800,color:"#1e293b"}}>⠿ <span style={{fontWeight:600,color:"#64748b"}}>{r0?.proyek} ·</span> {r0?.panel} <span style={{fontWeight:600,color:"#64748b"}}>· {rowsPanelOf(dragPanelId).length} proses</span></div>
               {dropTarget?.lintas&&(
                 <div style={{marginTop:4,fontWeight:800,color:"#b45309"}}>{zonaAsal} ➜ {dropTarget.zona}</div>
               )}
