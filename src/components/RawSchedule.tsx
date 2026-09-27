@@ -12,6 +12,19 @@ import { withRetry } from '../lib/withRetry'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
+import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable, AutoScrollActivator } from '@dnd-kit/core'
+import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, rankZona, cmpPanelDalamZona, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
+
+// Handle geser urutan panel (⠿) di sel PANEL - @dnd-kit (pointer events), SENGAJA bukan HTML5
+// drag: grid tanggal sudah pakai HTML5 draggable/onDragOver/onDrop buat geser jadwal antar
+// tanggal, dua mekanisme itu gak saling tangkap event. Drag cuma bisa dimulai dari handle ini.
+function PanelDragHandle({panelId,disabled}:{panelId:number;disabled:boolean}){
+  const{attributes,listeners,setNodeRef}=useDraggable({id:`panel-${panelId}`,data:{panelId},disabled});
+  return(
+    <span ref={setNodeRef} {...listeners} {...attributes} title={disabled?"Sedang menyimpan urutan...":"Seret untuk ubah urutan panel"}
+      style={{cursor:disabled?"not-allowed":"grab",touchAction:"none",color:"#94a3b8",fontSize:13,lineHeight:1,padding:"2px 1px",userSelect:"none",flexShrink:0}}>⠿</span>
+  );
+}
 
 // hitungProyeksiWiring DIPINDAH (5 Sep 2026) ke fcsService.ts biar bisa dipakai bareng
 // RencanaHarian.tsx (satu sumber kebenaran, biar daftar proyeksi di dua tempat itu gak pernah
@@ -1210,13 +1223,201 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     });
   };
 
-  const updatePrioritasPanel=async(panelId,val)=>{
-    const toUpdate=rawData.filter(r=>(r.panel_id||r.panelId)===panelId);
-    toUpdate.forEach(r=>markRawDirty(r.id));
-    setRawData(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
-    effectiveRenhar.filter((r:any)=>(r.panel_id||r.panelId)===panelId).forEach((r:any)=>markRenharDirty(r.id));
-    setRenhar(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
-    for(const r of toUpdate){ await updateRaw(r.id,{prioritas:val}); }
+  // ══ Prioritas & urutan panel (27 Sep 2026) - lihat lib/rawPanelOrder.ts ══════════════════
+  // Semua perubahan prioritas (dropdown PRIORITAS maupun geser lintas zona) & urutan lewat SATU
+  // RPC atomik pindah_urutan_panel_raw: prioritas raw_schedule + renhar panel + key urutan dalam 1
+  // transaksi. Dulu dropdown loop updateRaw() per baris proses (±13 request) tanpa cek hasil
+  // (updateRaw gak throw, balikin {success,error}) - gagal di tengah = prioritas campur di satu
+  // panel -> blok panel kepecah di tampilan, dan renhar DB gak pernah ikut berubah.
+  const { orderMap, setOrderMap, error: orderMapError } = useRawPanelOrder();
+  const [dragPanelId,setDragPanelId]=useState<number|null>(null);
+  const [dropTarget,setDropTarget]=useState<(TargetDrop&{top:number;left:number;width:number;lintas:boolean})|null>(null);
+  const [savingUrutan,setSavingUrutan]=useState(false);
+  const [menuUrutanPanel,setMenuUrutanPanel]=useState<number|null>(null);
+  const [toastUrutan,setToastUrutan]=useState<string|null>(null);
+  const toastUrutanTimer=useRef<any>(null);
+  const tampilToastUrutan=(msg:string)=>{
+    setToastUrutan(msg);
+    if(toastUrutanTimer.current)clearTimeout(toastUrutanTimer.current);
+    toastUrutanTimer.current=setTimeout(()=>setToastUrutan(null),4500);
+  };
+  const blokRefs=useRef<Record<number,HTMLElement|null>>({});
+  const pembatasRefs=useRef<Record<string,HTMLElement|null>>({});
+  const blokUrutRef=useRef<{panelId:number;zona:Zona}[]>([]); // panel TERLIHAT urut tampilan, diisi saat render
+  const dragPanelIdRef=useRef<number|null>(null);
+  const dropTargetRef=useRef<TargetDrop|null>(null);
+  const pointerYRef=useRef(0);
+  const namaUserAktif=()=>{
+    let sess:any={};try{sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");}catch{}
+    return user?.name||user?.nama||sess?.nama||"Admin";
+  };
+  const rowsPanelOf=(panelId:number)=>rawData.filter((r:any)=>Number(r.panel_id||r.panelId)===panelId);
+  const semuaPanelInfo=(map:Record<number,string>)=>{
+    const seen=new Map<number,any>();
+    rawData.forEach((r:any)=>{
+      const id=Number(r.panel_id||r.panelId);
+      if(!id||seen.has(id))return;
+      seen.set(id,{panelId:id,zona:zonaDari(r.prioritas),key:map[id]||null});
+    });
+    return[...seen.values()];
+  };
+  // Optimistic prioritas lokal (raw + renhar) + snapshot buat rollback.
+  const terapkanPrioritasLokal=(panelId:number,val:string)=>{
+    const rowsPanel=rowsPanelOf(panelId);
+    const snapRaw=rowsPanel.map((r:any)=>({id:r.id,prioritas:r.prioritas}));
+    const snapRenhar=effectiveRenhar.filter((r:any)=>Number(r.panel_id||r.panelId)===panelId).map((r:any)=>({id:r.id,prioritas:r.prioritas}));
+    rowsPanel.forEach((r:any)=>markRawDirty(r.id));
+    snapRenhar.forEach((r:any)=>markRenharDirty(r.id));
+    setRawData((prev:any[])=>prev.map((r:any)=>Number(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
+    setRenhar((prev:any[])=>prev.map((r:any)=>Number(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
+    return()=>{
+      setRawData((prev:any[])=>prev.map((r:any)=>{const s=snapRaw.find(x=>x.id===r.id);return s?{...r,prioritas:s.prioritas}:r;}));
+      setRenhar((prev:any[])=>prev.map((r:any)=>{const s=snapRenhar.find(x=>x.id===r.id);return s?{...r,prioritas:s.prioritas}:r;}));
+    };
+  };
+  const logUbahPrioritas=async(panelId:number,lama:string,baru:string,sumber:string)=>{
+    const r0=rowsPanelOf(panelId)[0];
+    await activityLogService.insert({
+      user_name:namaUserAktif(),action:"UBAH PRIORITAS",
+      description:`Prioritas ${r0?.panel} (${r0?.proyek}) ${lama} → ${baru} (${sumber})`,
+      module:"raw",halaman:"Raw Schedule",proyek:r0?.proyek||"",panel:r0?.panel||"",
+    });
+  };
+
+  // Dropdown PRIORITAS - posisi di zona baru tetap ngikut order_key panel itu (keputusan user).
+  const updatePrioritasPanel=async(panelIdRaw:any,val:string)=>{
+    const panelId=Number(panelIdRaw);
+    const rowsPanel=rowsPanelOf(panelId);
+    if(!rowsPanel.length)return;
+    const lama=zonaDari(rowsPanel[0].prioritas);
+    if(lama===val)return;
+    const rollback=terapkanPrioritasLokal(panelId,val);
+    const res=await simpanPindahPanel({panelId,orderKey:null,prioritas:val as Zona,materialize:[],user:namaUserAktif()});
+    rowsPanel.forEach((r:any)=>clearRawDirty(r.id));
+    if(!res.ok){
+      rollback();
+      alert(`Gagal mengubah prioritas ${rowsPanel[0].panel}: ${res.message}\n\nPrioritas dikembalikan ke ${lama}.`);
+      return;
+    }
+    await logUbahPrioritas(panelId,lama,val,"dropdown");
+  };
+
+  // Geser panel (drag handle ⠿ / menu ⋮). target = zona + tetangga TERLIHAT di zona itu.
+  const pindahPanel=async(panelId:number,target:TargetPindah)=>{
+    if(savingUrutan)return;
+    const sekarang=tetanggaSekarang(blokUrutRef.current,panelId);
+    if(sekarang&&sekarang.zona===target.zona&&sekarang.prevId===target.prevId&&sekarang.nextId===target.nextId)return; // gak pindah
+    const rowsPanel=rowsPanelOf(panelId);
+    if(!rowsPanel.length)return;
+    const namaPanel=rowsPanel[0].panel;
+    const zonaLama=zonaDari(rowsPanel[0].prioritas);
+    const lintas=zonaLama!==target.zona;
+    const snapKey=orderMap[panelId];
+    const materializedSemua:number[]=[];
+    const pasangKeyLokal=(base:Record<number,string>,h:{orderKey:string;materialize:{panel_id:number;order_key:string}[]})=>{
+      const n={...base,[panelId]:h.orderKey};
+      h.materialize.forEach(m=>{n[m.panel_id]=m.order_key;materializedSemua.push(m.panel_id);});
+      return n;
+    };
+    setSavingUrutan(true);
+    let hasil=hitungKeyPindah(semuaPanelInfo(orderMap),panelId,target);
+    setOrderMap(prev=>pasangKeyLokal(prev,hasil));
+    const rollbackPrioritas=lintas?terapkanPrioritasLokal(panelId,target.zona):null;
+    const simpan=()=>simpanPindahPanel({panelId,orderKey:hasil.orderKey,prioritas:lintas?target.zona:null,materialize:hasil.materialize,user:namaUserAktif()});
+    let res=await simpan();
+    if(!res.ok){
+      // Retry SEKALI pakai key segar dari server - kasus utama: 23505 (user lain barusan nyisip
+      // di celah yang sama, key kembar ditolak unique index). Tampilan gak berubah selama retry.
+      try{
+        const segar=await fetchPanelOrderMap();
+        hasil=hitungKeyPindah(semuaPanelInfo(segar),panelId,target);
+        setOrderMap(pasangKeyLokal(segar,hasil));
+        res=await simpan();
+      }catch(e:any){res={ok:false,message:String(e?.message||e)};}
+    }
+    rowsPanel.forEach((r:any)=>clearRawDirty(r.id));
+    setSavingUrutan(false);
+    if(!res.ok){
+      // RPC atomik -> DB pasti masih keadaan lama; balikin tampilan dalam 1 render.
+      setOrderMap(prev=>{
+        const n={...prev};
+        if(snapKey)n[panelId]=snapKey;else delete n[panelId];
+        materializedSemua.forEach(id=>{delete n[id];});
+        return n;
+      });
+      rollbackPrioritas?.();
+      alert(`Gagal memindahkan ${namaPanel}: ${res.message}\n\nUrutan${lintas?" & prioritas":""} dikembalikan seperti semula.`);
+      return;
+    }
+    if(lintas){
+      tampilToastUrutan(`Prioritas ${namaPanel} diubah: ${zonaLama} → ${target.zona}`);
+      await logUbahPrioritas(panelId,zonaLama,target.zona,"geser urutan panel");
+    }
+  };
+
+  // Menu ⋮ - SENGAJA cuma di dalam zona yang sama (pindah zona cuma lewat drag dgn indikator
+  // amber, atau dropdown PRIORITAS - biar prioritas gak pernah berubah diam-diam lewat "Naik 1").
+  const pindahViaMenu=(panelId:number,aksi:"atas"|"naik"|"turun"|"bawah")=>{
+    setMenuUrutanPanel(null);
+    const me=blokUrutRef.current.find(b=>b.panelId===panelId);
+    if(!me)return;
+    const bz=blokUrutRef.current.filter(b=>b.zona===me.zona).map(b=>b.panelId);
+    const i=bz.indexOf(panelId);
+    let t:TargetPindah|null=null;
+    if(aksi==="atas"&&i>0)t={zona:me.zona,prevId:null,nextId:bz[0]};
+    if(aksi==="naik"&&i>0)t={zona:me.zona,prevId:bz[i-2]??null,nextId:bz[i-1]};
+    if(aksi==="turun"&&i<bz.length-1)t={zona:me.zona,prevId:bz[i+1],nextId:bz[i+2]??null};
+    if(aksi==="bawah"&&i<bz.length-1)t={zona:me.zona,prevId:bz[bz.length-1],nextId:null};
+    if(t)pindahPanel(panelId,t);
+  };
+
+  // ── Drag: posisi jatuh dihitung dari posisi pointer (Y) vs kotak <tbody> tiap panel TERLIHAT &
+  // 3 baris pembatas zona (lihat hitungTargetDrop). Dihitung ulang tiap pointer gerak & tiap
+  // container ke-scroll (auto-scroll mindahin kotak-kotaknya walau pointer diam).
+  const sensorsUrutan=useSensors(useSensor(PointerSensor,{activationConstraint:{distance:5}}));
+  const hitungDropSekarang=()=>{
+    const draggedId=dragPanelIdRef.current;
+    const cont=tableScrollRef.current;
+    if(draggedId==null||!cont)return;
+    const blok=blokUrutRef.current.map(b=>{const el=blokRefs.current[b.panelId];if(!el)return null;const r=el.getBoundingClientRect();return{panelId:b.panelId,zona:b.zona,top:r.top,bottom:r.bottom};}).filter(Boolean) as any[];
+    const pembatas=ZONA_URUTAN.map(z=>{const el=pembatasRefs.current[z];if(!el)return null;const r=el.getBoundingClientRect();return{zona:z,top:r.top,bottom:r.bottom};}).filter(Boolean) as any[];
+    const t=hitungTargetDrop(blok,pembatas,pointerYRef.current,draggedId);
+    dropTargetRef.current=t;
+    if(!t){setDropTarget(null);return;}
+    const cr=cont.getBoundingClientRect();
+    const zonaAsal=zonaDari(rowsPanelOf(draggedId)[0]?.prioritas);
+    setDropTarget({...t,top:t.indicatorY-cr.top+cont.scrollTop,left:cont.scrollLeft,width:cont.clientWidth,lintas:t.zona!==zonaAsal});
+  };
+  useEffect(()=>{
+    if(dragPanelId==null)return;
+    let raf=0;
+    const jadwal=()=>{cancelAnimationFrame(raf);raf=requestAnimationFrame(hitungDropSekarang);};
+    const onMove=(e:PointerEvent)=>{pointerYRef.current=e.clientY;jadwal();};
+    const cont=tableScrollRef.current;
+    window.addEventListener("pointermove",onMove);
+    cont?.addEventListener("scroll",jadwal);
+    jadwal();
+    return()=>{cancelAnimationFrame(raf);window.removeEventListener("pointermove",onMove);cont?.removeEventListener("scroll",jadwal);};
+  },[dragPanelId]);
+  // Tutup menu ⋮ kalau klik di luar.
+  useEffect(()=>{
+    if(menuUrutanPanel==null)return;
+    const tutup=(e:MouseEvent)=>{if(!(e.target as HTMLElement)?.closest?.("[data-menu-urutan]"))setMenuUrutanPanel(null);};
+    window.addEventListener("mousedown",tutup);
+    return()=>window.removeEventListener("mousedown",tutup);
+  },[menuUrutanPanel]);
+  const onDragStartPanel=(e:any)=>{
+    const id=Number(e.active?.data?.current?.panelId);
+    if(!id)return;
+    pointerYRef.current=(e.activatorEvent as PointerEvent)?.clientY??0;
+    dragPanelIdRef.current=id;dropTargetRef.current=null;
+    setMenuUrutanPanel(null);setDropTarget(null);setDragPanelId(id);
+  };
+  const selesaiDrag=()=>{dragPanelIdRef.current=null;dropTargetRef.current=null;setDragPanelId(null);setDropTarget(null);};
+  const onDragEndPanel=()=>{
+    const id=dragPanelIdRef.current,t=dropTargetRef.current;
+    selesaiDrag();
+    if(id!=null&&t)pindahPanel(id,{zona:t.zona,prevId:t.prevId,nextId:t.nextId});
   };
 
   const getMissingRelevantProses=(p:any):string[]=>{
@@ -1598,7 +1799,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         </div>
       )}
 
-      <div ref={tableScrollRef} style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
+      {orderMapError&&(
+        <div style={{fontSize:11,color:"#b91c1c",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
+          ⚠ Urutan panel gagal dimuat ({orderMapError}) - tampilan sementara pakai urutan default (prioritas → panel). Coba muat ulang halaman.
+        </div>
+      )}
+      <DndContext sensors={sensorsUrutan} onDragStart={onDragStartPanel} onDragEnd={onDragEndPanel} onDragCancel={selesaiDrag}
+        autoScroll={{activator:AutoScrollActivator.Pointer,threshold:{x:0,y:0.12},acceleration:12}}>
+      <div ref={tableScrollRef} style={{position:"relative",overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
           <thead style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
@@ -1617,7 +1825,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
             </tr>
           </thead>
-          <tbody>
             {(()=>{
               const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
               const visibleRows=rawData.filter(row=>
@@ -1628,7 +1835,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 const pa=PRIO_ORDER[a.prioritas]??1;const pb=PRIO_ORDER[b.prioritas]??1;
                 if(pa!==pb)return pa-pb;
                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
-                if(aId!==bId)return aId-bId;
+                // Dalam 1 zona prioritas: order_key (geser panel, byte compare) -> panel_id (panel
+                // belum punya key = panel baru, di belakang zona = perilaku lama). Lihat rawPanelOrder.ts.
+                if(aId!==bId)return cmpPanelDalamZona(Number(aId),Number(bId),orderMap);
                 const idx=(pr:string)=>{const i=ALL_PROSES.indexOf(pr);return i<0?999:i;}; // proses penanda (NAMEPLATE/YELLOWMARK) gak ada di ALL_PROSES - taruh di akhir grup panel, bukan di depan
                 const ai=idx(a.proses);const bi=idx(b.proses);
                 return ai-bi;
@@ -1638,7 +1847,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 const pid=String(row.panel_id||row.panelId);
                 panelRowCount[pid]=(panelRowCount[pid]||0)+1;
               });
-              return visibleRows.map((row,ri)=>{
+              // Render 1 baris proses - isi TIDAK diubah (dulu callback visibleRows.map langsung);
+              // sekarang dipanggil per blok panel di bawah supaya tiap panel punya <tbody> sendiri
+              // (target geser urutan panel).
+              const renderBaris=(row:any,ri:number)=>{
                 const pc=PROSES_COLOR[row.proses]||"#64748b";
                 const priColor=PRIORITAS_COLOR[row.prioritas]||"#64748b";
                 const rBg=ri%2===0?"#fff":"#f8fafc";
@@ -1722,7 +1934,34 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     {isNewPanel&&(
                       <>
                         <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:"#fff",minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center" as const,verticalAlign:"middle"}}>{row.proyek}</td>
-                        <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>{row.panel}</td>
+                        <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:menuUrutanPanel===Number(curPanelId)?6:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>
+                          {/* Geser urutan panel: handle ⠿ (drag) + menu ⋮ (pindah cepat dalam zona). */}
+                          <div data-menu-urutan style={{display:"flex",alignItems:"center",gap:3,position:"relative"}}>
+                            <PanelDragHandle panelId={Number(curPanelId)} disabled={savingUrutan}/>
+                            <span style={{flex:1}}>{row.panel}</span>
+                            <button onClick={()=>setMenuUrutanPanel(m=>m===Number(curPanelId)?null:Number(curPanelId))} title="Pindah urutan panel"
+                              style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",fontSize:12,fontWeight:800,padding:"0 2px",lineHeight:1,flexShrink:0}}>⋮</button>
+                            {menuUrutanPanel===Number(curPanelId)&&(()=>{
+                              const me=blokUrutRef.current.find(b=>b.panelId===Number(curPanelId));
+                              const bz=me?blokUrutRef.current.filter(b=>b.zona===me.zona):[];
+                              const i=bz.findIndex(b=>b.panelId===Number(curPanelId));
+                              const opsi:{k:"atas"|"naik"|"turun"|"bawah";l:string;ok:boolean}[]=[
+                                {k:"atas",l:"⤒ Paling atas zona",ok:i>0},{k:"naik",l:"↑ Naik 1",ok:i>0},
+                                {k:"turun",l:"↓ Turun 1",ok:i>=0&&i<bz.length-1},{k:"bawah",l:"⤓ Paling bawah zona",ok:i>=0&&i<bz.length-1},
+                              ];
+                              return(
+                                <div style={{position:"absolute",top:"100%",right:0,zIndex:40,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 6px 20px #0f172a26",padding:4,minWidth:160,textAlign:"left" as const}}>
+                                  <div style={{fontSize:9,color:"#94a3b8",padding:"3px 8px",fontWeight:700}}>Dalam zona {me?.zona}</div>
+                                  {opsi.map(o=>(
+                                    <button key={o.k} disabled={!o.ok||savingUrutan} onClick={()=>pindahViaMenu(Number(curPanelId),o.k)}
+                                      style={{display:"block",width:"100%",textAlign:"left" as const,background:"none",border:"none",padding:"5px 8px",fontSize:11,fontWeight:600,borderRadius:5,
+                                        color:o.ok?"#1e293b":"#cbd5e1",cursor:o.ok?"pointer":"not-allowed"}}>{o.l}</button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </td>
                       </>
                     )}
                     <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center",background:rBg}}>
@@ -1895,11 +2134,84 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     </td>
                   </tr>
                 );
+              };
+
+              // Kelompokkan jadi blok panel (baris 1 panel selalu berurutan krn sort di atas), lalu
+              // render per zona: 1 baris pembatas zona (SELALU ada, termasuk zona kosong/tersembunyi
+              // filter - tetap bisa jadi target drop) + 1 <tbody> per panel.
+              const blokList:{panelId:number;zona:Zona;items:{row:any;ri:number}[]}[]=[];
+              visibleRows.forEach((row,ri)=>{
+                const pid=Number(row.panel_id||row.panelId);
+                const last=blokList[blokList.length-1];
+                if(last&&last.panelId===pid)last.items.push({row,ri});
+                else blokList.push({panelId:pid,zona:zonaDari(row.prioritas),items:[{row,ri}]});
+              });
+              blokUrutRef.current=blokList.map(b=>({panelId:b.panelId,zona:b.zona}));
+              const colSpanPenuh=5+days.length;
+              const ZONA_LABEL:Record<Zona,string>={Tinggi:"▲ TINGGI",Sedang:"● SEDANG",Rendah:"▼ RENDAH"};
+              return ZONA_URUTAN.map(z=>{
+                const bz=blokList.filter(b=>b.zona===z);
+                const jadiTujuanLintas=dragPanelId!=null&&!!dropTarget?.lintas&&dropTarget?.zona===z;
+                const warna=(PRIORITAS_COLOR as any)[z]||"#64748b";
+                return(
+                  <Fragment key={"zona-"+z}>
+                    <tbody ref={el=>{pembatasRefs.current[z]=el;}}>
+                      <tr>
+                        <td colSpan={colSpanPenuh} style={{padding:0,borderTop:"2px solid #cbd5e1",borderBottom:"1px solid #e2e8f0",
+                          background:jadiTujuanLintas?"#fef3c7":"#f8fafc",outline:jadiTujuanLintas?"2px solid #f59e0b":"none",outlineOffset:-2}}>
+                          <div style={{position:"sticky",left:0,display:"inline-flex",alignItems:"center",gap:8,padding:"5px 12px",fontSize:10,fontWeight:800,letterSpacing:.4,color:warna}}>
+                            <span>{ZONA_LABEL[z]}</span>
+                            <span style={{color:"#94a3b8",fontWeight:600}}>· {bz.length} panel{bz.length===0&&dragPanelId!=null?" (seret panel ke sini)":""}</span>
+                          </div>
+                        </td>
+                      </tr>
+                    </tbody>
+                    {bz.map(b=>(
+                      <tbody key={"panel-"+b.panelId} ref={el=>{blokRefs.current[b.panelId]=el;}}
+                        style={{opacity:dragPanelId===b.panelId?0.4:1}}>
+                        {b.items.map(({row,ri})=>renderBaris(row,ri))}
+                      </tbody>
+                    ))}
+                  </Fragment>
+                );
               });
             })()}
-          </tbody>
         </table>
+        {dragPanelId!=null&&dropTarget&&(()=>{
+          const zonaAsal=zonaDari(rowsPanelOf(dragPanelId)[0]?.prioritas);
+          return(
+            <div style={{position:"absolute",top:dropTarget.top-2,left:dropTarget.left,width:dropTarget.width,height:0,zIndex:30,pointerEvents:"none",
+              borderTop:dropTarget.lintas?"4px dashed #f59e0b":"3px solid #2563eb"}}>
+              {dropTarget.lintas&&(
+                <span style={{position:"absolute",left:"50%",top:0,transform:"translate(-50%,-60%)",background:"#f59e0b",color:"#fff",fontSize:10,fontWeight:800,borderRadius:99,padding:"2px 10px",whiteSpace:"nowrap",boxShadow:"0 1px 4px #0003"}}>
+                  {rankZona(dropTarget.zona)<rankZona(zonaAsal)?"⬆":"⬇"} Prioritas jadi {dropTarget.zona.toUpperCase()}
+                </span>
+              )}
+            </div>
+          );
+        })()}
       </div>
+      <DragOverlay dropAnimation={null}>
+        {dragPanelId!=null&&(()=>{
+          const r0=rowsPanelOf(dragPanelId)[0];
+          const zonaAsal=zonaDari(r0?.prioritas);
+          return(
+            <div style={{background:"#fff",border:"1.5px solid #2563eb",borderRadius:10,boxShadow:"0 8px 24px #0f172a33",padding:"8px 12px",fontSize:11,minWidth:220,cursor:"grabbing"}}>
+              <div style={{fontWeight:800,color:"#1e293b"}}>⠿ {r0?.panel} <span style={{fontWeight:600,color:"#64748b"}}>· {r0?.proyek} · {rowsPanelOf(dragPanelId).length} proses</span></div>
+              {dropTarget?.lintas&&(
+                <div style={{marginTop:4,fontWeight:800,color:"#b45309"}}>{zonaAsal} ➜ {dropTarget.zona}</div>
+              )}
+            </div>
+          );
+        })()}
+      </DragOverlay>
+      </DndContext>
+      {toastUrutan&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:"#fffbeb",border:"1.5px solid #f59e0b",color:"#92400e",
+          borderRadius:10,padding:"10px 16px",fontSize:12,fontWeight:700,boxShadow:"0 6px 20px #0003"}}>
+          ⚠ {toastUrutan}
+        </div>
+      )}
 
       {selDate&&(
         <Card style={{marginTop:16,border:"1.5px solid #bfdbfe",background:"#f0f8ff"}} className="su">
