@@ -381,15 +381,25 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // buat geser berikutnya sama sekali (jejak "selesai perannya", gak ikut proses geser lagi).
   const isJejakKode = (entry: any, kode: string) => !!(entry?.digeserKe && entry.digeserKe[kode])
   // BUG FIX (23 Sep 2026, "pengaturan manual ketimpa auto-geser") - drag manual (confirmDrag di
-  // RawSchedule.tsx) sekarang nulis entry.manualPin[kode]=timestamp di entry TUJUAN. Kode
-  // berpenanda ini WAJIB di-skip permanen dari SEMUA evaluasi auto-geser (baik jadi kandidat
-  // "belum selesai, geser maju" DI FASE 1, MAUPUN jadi existingUnit yang bisa ke-displace
-  // kompetisi kapasitas) - keputusan user: manual pin permanen sampai progress kode itu 100%
-  // (begitu 100%, guard pct>=100 yang sudah ada otomatis bikin pin ini gak relevan lagi, gak
-  // perlu dibersihkan eksplisit). Kasus nyata yang jadi pemicu fix ini: MCC PANEL/WIRING
-  // CONTROL WP1 (LUTVAN drag manual ke 16 Sep, lenyap tanpa jejak keesokan paginya - lihat
-  // investigasi 23 Sep 2026).
+  // RawSchedule.tsx) nulis entry.manualPin[kode]=timestamp di entry TUJUAN. Kasus nyata pemicu:
+  // MCC PANEL/WIRING CONTROL WP1 (LUTVAN drag manual ke 16 Sep, lenyap tanpa jejak keesokan
+  // paginya).
+  // REVISI OPSI A (28 Sep 2026, keputusan user) - dulu pin di-skip PERMANEN sampai progress 100%
+  // di semua titik evaluasi -> kode ber-pin yang belum selesai NYANGKUT SELAMANYA di tanggal pin
+  // begitu tanggal itu lewat (Fase 1 cuma baca hariSumber = kemarin, gak pernah nengok balik).
+  // Terbukti: MDB-EL A/WIRING CONTROL FS.4-FS.5 ketahan di 26 Sep sementara RAKIT/PASANG
+  // KOMPONEN panel sama maju; 51 kode ber-pin di semua proses nyangkut 23-26 Sep. Sekarang:
+  // - Pin melindungi kode SELAMA tanggal pin belum lewat: di sisi hariTarget (existingUnits)
+  //   kode ber-pin tetap gak pernah didorong keluar kompetisi kapasitas (inti fix 23 Sep).
+  // - Begitu tanggal pin jadi hariSumber (hari itu udah lewat) & kode belum 100%, kode DIBAWA
+  //   MAJU seperti proses lain - TAPI selalu ninggalin jejak digeserKe di tanggal pin (gak pernah
+  //   pindah senyap walau gak ada timer), biar pengaturan manual gak pernah "lenyap tanpa jejak".
   const isManualPinKode = (entry: any, kode: string) => !!(entry?.manualPin && entry.manualPin[kode])
+  // Kode kandidat (dari hariSumber) yang WAJIB ninggalin jejak: ada pengerjaan hari itu ATAU dulu
+  // di-pin manual di situ (Opsi A). Selain itu pindah senyap (removeOp) seperti sebelumnya.
+  const pinnedDiSumber = new Set<string>() // `${rowId}|${wp}|${kode}`
+  const perluJejakKandidat = (rowId: number, wp: string, proses: string, kode: string) =>
+    pinnedDiSumber.has(`${rowId}|${wp}|${kode}`) || adaPengerjaan(rowId, proses, kode)
 
   // ================= REVISI (10 Agu 2026): deteksi "ada pengerjaan di hariSumber" =================
   // Sinyal = ada baris fcs_timer_kerja (jalan ATAUPUN udah selesai, gak peduli) buat kombinasi
@@ -405,6 +415,18 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // ================= FASE 1: klasifikasi progress per kode =================
   const kandidatJam: Record<string, { rowId: number; wp: string; kode: string; tipePanel: string; woTarget: string; menit: number; kasus: number }[]> = {}
   const kandidatOrang: Record<string, { rowId: number; wp: string; kodeList: string[]; kodeKasus2: string[]; tokenValue: string | null; woTarget: string }[]> = {}
+  // Opsi A (28 Sep 2026): kode yang SAMA (row+kode) sudah live & di-pin manual di hariTarget =
+  // planner sudah menjadwalkannya di situ. Salinan di hariSumber TIDAK ikut kompetisi kapasitas -
+  // kalau ikut, dia bisa ke-cascade lewat hariTarget & jejak hop-nya nandain salinan ber-pin di
+  // hariTarget sebagai jejak (pengaturan manual hari itu ketimpa). Cukup tutup hariSumber: jejak
+  // ke hariTarget (atau pindah senyap), salinan ber-pin di hariTarget gak disentuh sama sekali.
+  const pinnedLiveDiTarget = new Set<string>() // `${rowId}|${kode}`
+  for (const row of rawRows) {
+    for (const e of row.schedule?.[hariTarget] || []) {
+      for (const k of e.komponen || []) if (isManualPinKode(e, k) && !isJejakKode(e, k)) pinnedLiveDiTarget.add(`${row.id}|${k}`)
+    }
+  }
+  let komponenSudahDiTarget = 0
 
   for (const row of rawRows) {
     if (PROSES_DIKECUALIKAN.includes(row.proses)) continue
@@ -423,10 +445,17 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       const kodeKasus2: string[] = []
       realKode.forEach((kode: string) => {
         if (isJejakKode(e, kode)) return // jejak permanen - gak pernah dievaluasi ulang
-        if (isManualPinKode(e, kode)) return // pin manual - permanen sampai progress 100%
         const cl = checklist[kode]
         const pct = cl?.progress?.[row.proses] || 0
         if (pct >= 100) return
+        // Opsi A: pin di hariSumber = tanggal pin udah lewat -> ikut dibawa maju, wajib jejak.
+        if (isManualPinKode(e, kode)) pinnedDiSumber.add(`${row.id}|${e.wp}|${kode}`)
+        if (pinnedLiveDiTarget.has(`${row.id}|${kode}`)) {
+          if (perluJejakKandidat(row.id, e.wp, row.proses, kode)) jejakOp(row.id, hariSumber, e.wp, kode, hariTarget)
+          else removeOp(row.id, hariSumber, e.wp, kode)
+          komponenSudahDiTarget++
+          return
+        }
         const kasus = pct === 0 ? 1 : 2
         // kasus1 (progress 0%) SEKARANG juga ninggalin jejak, sama kayak kasus2 - gak lagi
         // di-remove langsung di sini. Kedua kasus TIDAK di-remove, jejakOp-nya ditentukan di
@@ -461,7 +490,8 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
   // Buat ringkasan hasil ke user (bukan cuma jumlah baris raw_schedule yang kesentuh) - berapa
   // KODE KOMPONEN yang beneran mendarat persis di hariTarget (tujuan langsung) vs yang kedorong
   // ke tanggal lain gara-gara kapasitas hariTarget udah penuh (cascading, bukan overbook).
-  let komponenLangsung = 0
+  // + kode yang sudah terjadwal ber-pin di hariTarget (lihat pinnedLiveDiTarget) - memang "langsung" di hariTarget.
+  let komponenLangsung = komponenSudahDiTarget
   let komponenDidorong = 0
 
   // Balikin finalDate PER unit, plus `hops`: tanggal-tanggal (selain finalDate) yang unit itu
@@ -680,7 +710,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // cuma jejakOp kalau BENERAN ada pengerjaan (timer) di hariSumber. Kalau enggak, pindah
         // senyap (removeOp di hariSumber, addOp tetap ke finalDate) - gak ada yang perlu direkam
         // karena beneran gak ada aktivitas hari itu.
-        if (adaPengerjaan(u.rowId, proses, u.kode!)) {
+        if (perluJejakKandidat(u.rowId, u.wp, proses, u.kode!)) {
           jejakOp(u.rowId, hariSumber, u.wp, u.kode!, p.finalDate)
           hops.forEach((h) => jejakOp(u.rowId, h, u.wp, u.kode!, p.finalDate))
         } else {
@@ -695,7 +725,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     // ke-cascade lagi hari ini), fallback hariTarget kalau entah kenapa gak ketemu placement-nya.
     dedupedKasus2.forEach(({ rowId, wp, kode, existingId }) => {
       const finalDate = placement.get(existingId)?.finalDate || hariTarget
-      if (adaPengerjaan(rowId, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      if (perluJejakKandidat(rowId, wp, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
       else removeOp(rowId, hariSumber, wp, kode)
     })
   }
@@ -772,7 +802,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // cuma kalau BENERAN ada pengerjaan (timer) hariSumber, kalau enggak pindah senyap
         // (removeOp). addOp (mindahin ke finalDate) tetap jalan buat semua kode gak peduli itu.
         u.kodeList!.forEach((kode) => {
-          if (adaPengerjaan(u.rowId, proses, kode)) {
+          if (perluJejakKandidat(u.rowId, u.wp, proses, kode)) {
             jejakOp(u.rowId, hariSumber, u.wp, kode, p.finalDate)
             hops.forEach((h) => jejakOp(u.rowId, h, u.wp, kode, p.finalDate))
           } else {
@@ -787,7 +817,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     // Sama seperti jam-based: selesaikan jejak buat kode yang WP-nya di-dedupe tadi.
     dedupedKasus2Orang.forEach(({ rowId, wp, kode, existingId }) => {
       const finalDate = placement.get(existingId)?.finalDate || hariTarget
-      if (adaPengerjaan(rowId, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
+      if (perluJejakKandidat(rowId, wp, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
       else removeOp(rowId, hariSumber, wp, kode)
     })
   }
@@ -813,16 +843,17 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     if (!panel) continue
     const checklist = panel.checklist || {}
     const jejakHariSumber: Record<string, string> = row.busbar_jejak?.[hariSumber] || {}
-    // BUG FIX (23 Sep 2026) - pola sama persis proses lain (isManualPinKode di atas): confirmDragBusbar
-    // (RawSchedule.tsx) nulis busbar_manual_pin[toDate][kode]=timestamp. Permanen sampai progress 100%.
+    // BUG FIX (23 Sep 2026) - confirmDragBusbar (RawSchedule.tsx) nulis
+    // busbar_manual_pin[toDate][kode]=timestamp. REVISI OPSI A (28 Sep 2026) - pola sama persis
+    // proses lain (lihat isManualPinKode di atas): pin di hariSumber = tanggal pin udah lewat ->
+    // ikut dibawa maju, tapi SELALU ninggalin jejak (bukan pindah senyap).
     const manualPinHariSumber: Record<string, string> = row.busbar_manual_pin?.[hariSumber] || {}
     for (const kode of komponenSumber) {
       if (jejakHariSumber[kode]) continue // sudah jejak - gak dievaluasi ulang
-      if (manualPinHariSumber[kode]) continue // pin manual - permanen sampai progress 100%
       const pct = busbarProgressKode(checklist[kode], panel, kode)
       if (pct >= 100) continue
       if (!busbarMoves[row.id]) busbarMoves[row.id] = []
-      busbarMoves[row.id].push({ fromDate: hariSumber, toDate: hariTarget, kode, pct, jejak: adaPengerjaan(row.id, 'BUSBAR', kode) })
+      busbarMoves[row.id].push({ fromDate: hariSumber, toDate: hariTarget, kode, pct, jejak: !!manualPinHariSumber[kode] || adaPengerjaan(row.id, 'BUSBAR', kode) })
     }
   }
 
