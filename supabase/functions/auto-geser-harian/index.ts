@@ -339,6 +339,36 @@ const buildCtx = async (supabase: any): Promise<Ctx> => {
   return { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap }
 }
 
+// Tanggal < `sebelum` yang masih punya kode AKTIF belum-100% (kriteria SAMA PERSIS kandidat Fase 1:
+// proses gak dikecualikan, bukan token __wiring_, bukan jejak digeserKe, panel ada, progress<100;
+// BUSBAR: di busbar_schedule, bukan busbar_jejak, busbarProgressKode<100). Dipakai "sapu tanggal
+// lampau" di mode catch-up - lihat komentar di Deno.serve.
+const cariTanggalTertinggal = async (supabase: any, sebelum: string, ctx: Ctx): Promise<string[]> => {
+  const rawRows = await fetchAll(supabase, 'raw_schedule', 'id,panel_id,proses,schedule,busbar_schedule,busbar_jejak')
+  const tanggalSet = new Set<string>()
+  for (const row of rawRows) {
+    if (PROSES_DIKECUALIKAN.includes(row.proses)) continue
+    const panel = ctx.panelMap[String(row.panel_id)]
+    if (!panel) continue
+    const checklist = panel.checklist || {}
+    if (row.proses === 'BUSBAR') {
+      for (const [tgl, kodeList] of Object.entries(row.busbar_schedule || {}) as [string, string[]][]) {
+        if (tgl >= sebelum || tanggalSet.has(tgl)) continue
+        const jejak = row.busbar_jejak?.[tgl] || {}
+        if ((kodeList || []).some((k) => !jejak[k] && busbarProgressKode(checklist[k], panel, k) < 100)) tanggalSet.add(tgl)
+      }
+      continue
+    }
+    for (const [tgl, entries] of Object.entries(row.schedule || {}) as [string, any[]][]) {
+      if (tgl >= sebelum || tanggalSet.has(tgl)) continue
+      const ada = (entries || []).some((e: any) => (e.komponen || []).some((k: string) =>
+        !k.startsWith('__wiring_') && !(e.digeserKe && e.digeserKe[k]) && (checklist[k]?.progress?.[row.proses] || 0) < 100))
+      if (ada) tanggalSet.add(tgl)
+    }
+  }
+  return [...tanggalSet].sort()
+}
+
 // ================= LOGIC INTI SATU HARI (FASE 1/2/3) - TIDAK BERUBAH DARI VERSI CRON =================
 // Dipanggil sekali per pasangan (hariSumber,hariTarget) - baik dari loop catch-up multi-hari
 // maupun dari mode debug/backfill satu-hari-spesifik.
@@ -520,8 +550,16 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           // (cascadePlaceNoDisplacement di bawah): kalau gak ketemu slot kosong, JANGAN dipindah
           // sama sekali - biarin di tanggal/entry asal (gak disentuh forEach di caller, lihat
           // `if (!p) return`), cuma dicatat overbookWarnings buat direview manual.
+          // REVISI B1-JAM (28 Sep 2026) - DULU sisa pool dibiarin di tanggal/entry asal tanpa
+          // placement -> catch-up harian maju & gak pernah nengok lagi -> unit STRAND PERMANEN
+          // (terbukti: SDP-MEDIS POTONG WM.7-12 & MDB-EL B BENDING WM.10 nyangkut di 19 Sep krn
+          // Minggu 20 Sep gak punya baris kapasitas sama sekali). Sekarang disamakan dgn B1 WIRING:
+          // sisa pool DIMAJUKAN 1 hari ke mulaiTanggal (= hariTarget, overbook, dicatat warning) -
+          // tetap cuma 1 hari, bukan force-place jauh ke depan seperti bug 14 Agu. Existing yang ikut
+          // pool otomatis tetap di hariTarget (finalDate = tanggal asalnya sendiri, gak ada op).
           const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
-          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit TIDAK dipindah (tetap di tanggal/entry asal, gak dipaksa masuk kemanapun). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
+          pool.forEach((u) => { hasil.set(u.id, { finalDate: mulaiTanggal }); hops.set(u.id, []) })
+          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI ${hariTanpaKonfigBerturut} hari berturut-turut (${tanggalMulaiTanpaKonfig} s/d ${tanggal}) - ${pool.length} unit dimajukan 1 hari ke ${mulaiTanggal} (overbook). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
           pool = []
           break
         }
@@ -552,9 +590,11 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
       tanggal = addDaysStr(tanggal, 1); hari++
     }
     if (pool.length > 0) {
-      // FIX (14 Agu 2026): sama seperti branch tanpa-konfigurasi di atas - dulu force-place di
-      // `tanggal` (hari terakhir walk), sekarang TIDAK dipindah sama sekali (no-displacement).
-      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${mulaiTanggal} - ${pool.length} unit TIDAK dipindah (tetap di tanggal/entry asal, dibiarin overbook di situ, gak dipaksa masuk kemanapun): ${pool.map((u) => u.sortKode).join(',')}`)
+      // FIX (14 Agu 2026): dulu force-place di `tanggal` (hari terakhir walk, bisa 90 hari ke depan).
+      // REVISI B1-JAM (28 Sep 2026): sama seperti branch tanpa-konfigurasi di atas - dimajukan 1
+      // hari ke mulaiTanggal (overbook), bukan ditinggal strand di tanggal asal.
+      pool.forEach((u) => { hasil.set(u.id, { finalDate: mulaiTanggal }); hops.set(u.id, []) })
+      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${mulaiTanggal} - ${pool.length} unit dimajukan 1 hari ke ${mulaiTanggal} (overbook). PERLU REVIEW MANUAL: ${pool.map((u) => u.sortKode).join(',')}`)
     }
     return { hasil, hops }
   }
@@ -1080,13 +1120,35 @@ Deno.serve(async (req) => {
       jumlahHariDiproses++
       cursor = hTarget
     }
+    // SAPU TANGGAL LAMPAU (28 Sep 2026) - loop di atas cuma pernah baca SATU hariSumber per hari,
+    // sekali seumur hidup (checkpoint auto_geser_runs). Kode aktif belum-100% yang ada di tanggal
+    // yang SUDAH lewat checkpoint gak akan pernah dievaluasi lagi -> strand permanen. Terbukti ada
+    // 30 kode begitu (investigasi 28 Sep): entri ditambah manual ke tanggal yang sudah diproses
+    // (mis. Jambooland PASANG KOMPONEN FS.4-5: dibuat 16 Sep di tanggal 14 Sep), sisa kode versi
+    // lama sebelum fix B1/B1-JAM. Di sini: tanggal < hariMulai yang masih punya kode begitu
+    // diproses ulang ke hari ini lewat prosesSatuHari biasa (logika identik, jejak/pindah senyap
+    // sama). HANYA jalan kalau invocation ini sendiri memproses >=1 hari baru - di mode tulis itu
+    // berarti klaim auto_geser_runs-nya menang, jadi 2 klik bersamaan gak pernah nyapu dobel.
+    let jumlahTanggalDisapu = 0
+    if (jumlahHariDiproses > 0 && hariMulai) {
+      const tanggalLampau = await cariTanggalTertinggal(supabase, hariMulai, ctx)
+      for (const d of tanggalLampau) {
+        const hasil = await prosesSatuHari(supabase, d, hariIniWib, dryRun, ctx)
+        perHari.push({ hariSumber: d, hariTarget: hariIniWib, jumlahRowDiproses: hasil.jumlahRowDiproses })
+        jumlahRowDiprosesTotal += hasil.jumlahRowDiproses
+        komponenLangsungTotal += hasil.komponenLangsung
+        komponenDidorongTotal += hasil.komponenDidorong
+        overbookWarningsTotal.push(...hasil.overbookWarnings)
+        jumlahTanggalDisapu++
+      }
+    }
     const jumlahKomponenTotal = komponenLangsungTotal + komponenDidorongTotal
 
     if (!dryRun && triggeredBy && jumlahHariDiproses > 0) {
       await supabase.from('activity_log').insert({
         user_name: triggeredBy,
         action: 'TARIK MANUAL AUTO-GESER',
-        description: `Tarik manual ${jumlahHariDiproses} hari (${hariMulai} s/d ${hariIniWib}), total ${jumlahKomponenTotal} komponen (${komponenLangsungTotal} langsung, ${komponenDidorongTotal} didorong kapasitas)`,
+        description: `Tarik manual ${jumlahHariDiproses} hari (${hariMulai} s/d ${hariIniWib})${jumlahTanggalDisapu > 0 ? ` + sapu ${jumlahTanggalDisapu} tanggal lampau` : ''}, total ${jumlahKomponenTotal} komponen (${komponenLangsungTotal} langsung, ${komponenDidorongTotal} didorong kapasitas)`,
         module: 'rencana', halaman: 'Rencana Harian',
       })
     }
@@ -1107,7 +1169,7 @@ Deno.serve(async (req) => {
     return jsonResponse({
       success: true, dryRun, mode: 'catchup',
       hariMulai, hariTargetAkhir: hariIniWib,
-      jumlahHariDiproses, jumlahRowDiprosesTotal,
+      jumlahHariDiproses, jumlahTanggalDisapu, jumlahRowDiprosesTotal,
       jumlahKomponenTotal, komponenLangsungTotal, komponenDidorongTotal,
       perHari, overbookWarnings: overbookWarningsTotal,
     })
