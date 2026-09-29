@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
-import { DIVISI_PROSES } from '../constants/panelTypes'
+import { bandingDivisiProduksi } from '../lib/urutanDivisi'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -30,18 +30,9 @@ const DIVISI_LABEL: Record<string, string> = {
   admin: 'Admin', // permintaan yang diajukan LANGSUNG oleh admin (16 Sep 2026, lihat submitAjukanAdmin)
 }
 
-// Urutan kelompok divisi di Rekap + tab Menunggu Persetujuan & Riwayat (29 Sep 2026) - SATU sumber: urutan alur produksi dari
-// DIVISI_PROSES (constants/panelTypes, dipakai juga Raw Schedule/Rencana Harian), ditambah
-// 'admin' di akhir (admin juga bisa minta barang, tapi bukan bagian alur fabrikasi). Divisi lain
-// yang gak ada di daftar ini (komponen/QS, gudang, '-' dst) TETAP tampil, ditaruh setelah Admin
-// (urut label A-Z, '-' paling bawah) - jangan sampai ada item yang hilang dari rekap.
-const URUTAN_DIVISI_REKAP: string[] = [...Object.keys(DIVISI_PROSES), 'admin']
-const bandingDivisiRekap = (a: string, b: string) => {
-  const ia = URUTAN_DIVISI_REKAP.indexOf(a), ib = URUTAN_DIVISI_REKAP.indexOf(b)
-  if (ia !== -1 || ib !== -1) return (ia === -1 ? Infinity : ia) - (ib === -1 ? Infinity : ib)
-  if (a === '-' || b === '-') return a === b ? 0 : a === '-' ? 1 : -1
-  return (DIVISI_LABEL[a] || a).localeCompare(DIVISI_LABEL[b] || b)
-}
+// Urutan kelompok divisi di Rekap + tab Menunggu Persetujuan & Riwayat - urutan proses produksi,
+// SATU sumber di lib/urutanDivisi.ts (dipakai juga tabel Maintenance Rutin).
+const bandingDivisiRekap = (a: string, b: string) => bandingDivisiProduksi(a, b, (k) => DIVISI_LABEL[k] || k)
 
 const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<any[]> => {
   let all: any[] = []

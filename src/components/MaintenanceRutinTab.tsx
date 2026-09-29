@@ -5,6 +5,8 @@ import { getLocalDateStr } from '../lib/dateHelpers'
 import { uploadToR2 } from '../lib/r2Client'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
+import { DIVISI_CONFIG } from '../constants/panelTypes'
+import { bandingDivisiProduksi, DIVISI_KOSONG } from '../lib/urutanDivisi'
 
 // Dokumentasi foto/video "Done" (16 Sep 2026, fitur baru) - OPSIONAL, cermin dari pola sama
 // persis yang dipakai MesinPublic.tsx (form "Tandai Selesai" via QR) supaya baris histori
@@ -183,6 +185,26 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   };
   const kepatuhan=rutinList.length>0?Math.round((rutinList.filter((r:any)=>r.terakhir_dilakukan&&r.jatuh_tempo>=today).length/rutinList.length)*100):0;
   const filtered=filterFrek==="ALL"?rutinList:rutinList.filter((r:any)=>r.frekuensi===filterFrek);
+  // Kelompok 2 level Divisi -> Mesin (29 Sep 2026) - MURNI urutan render dari `filtered` yang sama
+  // (data/query gak berubah, filter frekuensi tetap berlaku). Divisi = mesin.divisi (diisi di
+  // Master Mesin) lewat mesinList yang sudah ke-fetch; urutan divisi dari lib/urutanDivisi.ts
+  // (SATU sumber dgn Rekap Permintaan Barang). Mesin gak ketemu/divisi kosong -> grup "Belum
+  // ditentukan" di paling bawah, tetap tampil. Urutan mesin dalam divisi = urutan kemunculan
+  // pertama di data asli, urutan jadwal dalam mesin = urutan asli - gak diurut ulang.
+  const labelDivisi=(k:string)=>k===DIVISI_KOSONG?"Belum ditentukan":(DIVISI_CONFIG as any)[k]?.label||k;
+  const mesinById:Record<string,any>=Object.fromEntries(mesinList.map((m:any)=>[m.id,m]));
+  const grupDivisi=(()=>{
+    const div:Record<string,{urutMesin:string[],mesin:Record<string,{nama:string,kode:string,rows:any[]}>}>={};
+    filtered.forEach((r:any)=>{
+      const m=mesinById[r.mesin_id];
+      const d=(div[m?.divisi||DIVISI_KOSONG]||={urutMesin:[],mesin:{}});
+      const mk=String(r.mesin_id??DIVISI_KOSONG);
+      if(!d.mesin[mk]){d.mesin[mk]={nama:m?.nama||r.mesin?.nama||"—",kode:m?.kode||r.mesin?.kode||"",rows:[]};d.urutMesin.push(mk);}
+      d.mesin[mk].rows.push(r);
+    });
+    return Object.keys(div).sort((a,b)=>bandingDivisiProduksi(a,b,labelDivisi))
+      .map(dk=>({dk,label:labelDivisi(dk),mesin:div[dk].urutMesin.map(mk=>({mk,...div[dk].mesin[mk]}))}));
+  })();
   const thS:any={background:"#1e2330",color:"#c8d0e8",padding:"8px 10px",fontWeight:600,fontSize:10,textAlign:"left",whiteSpace:"nowrap",borderRight:"1px solid #ffffff10"};
   return(
     <div>
@@ -231,13 +253,26 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
       )}
       <div style={{overflowX:"auto",borderRadius:10,border:"1px solid #e2e8f0"}}>
         <table style={{width:"100%",borderCollapse:"collapse",fontSize:12}}>
-          <thead><tr>{["Mesin","Jenis Maintenance","Frekuensi","Teknisi","Terakhir","Jatuh Tempo","Status","Aksi"].map((h:string)=><th key={h} style={thS}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Jenis Maintenance","Frekuensi","Teknisi","Terakhir","Jatuh Tempo","Status","Aksi"].map((h:string)=><th key={h} style={thS}>{h}</th>)}</tr></thead>
           <tbody>
-            {filtered.length===0?(<tr><td colSpan={8} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Belum ada jadwal</td></tr>):
-            filtered.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};const latestLog=getLatestLog(r.id);const logs=getLogsForRutin(r.id);const isExpanded=expandedIds.has(r.id);return[(
+            {filtered.length===0?(<tr><td colSpan={7} style={{textAlign:"center",padding:"32px",color:"#94a3b8"}}>Belum ada jadwal</td></tr>):
+            grupDivisi.map((g:any)=>[(
+              <tr key={"div-"+g.dk}>
+                <td colSpan={7} style={{background:"#0f2555",color:"#fff",fontWeight:800,fontSize:13,padding:"8px 12px"}}>
+                  {g.label}<span style={{fontSize:11,fontWeight:400,opacity:.75,marginLeft:8}}>{g.mesin.length} mesin</span>
+                </td>
+              </tr>
+            ),...g.mesin.map((m:any)=>[(
+              <tr key={"msn-"+g.dk+"-"+m.mk}>
+                <td colSpan={7} style={{background:"#e8eef8",color:"#0f2555",fontWeight:700,fontSize:12,padding:"7px 12px 7px 26px",borderBottom:"1px solid #d6e0f0"}}>
+                  {m.nama}
+                  {m.kode&&<span style={{fontFamily:"monospace",fontSize:10.5,fontWeight:400,color:"#94a3b8",marginLeft:8}}>{m.kode}</span>}
+                  <span style={{fontSize:10.5,fontWeight:400,color:"#64748b",marginLeft:8}}>· {m.rows.length} jadwal</span>
+                </td>
+              </tr>
+            ),...m.rows.map((r:any,i:number)=>{const fc=FC[r.frekuensi]||FC.bulanan;const st=getStatus(r);const bg=i%2===0?"#fff":"#f8fafc";const td:any={padding:"9px 10px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:bg,verticalAlign:"middle"};const latestLog=getLatestLog(r.id);const logs=getLogsForRutin(r.id);const isExpanded=expandedIds.has(r.id);return[(
               <tr key={r.id}>
-                <td style={td}><div style={{fontWeight:700}}>{r.mesin?.nama||"—"}</div><div style={{fontSize:10,color:"#94a3b8",fontFamily:"monospace"}}>{r.mesin?.kode}</div></td>
-                <td style={{...td,fontWeight:600,color:"#475569"}}>{r.jenis_maintenance}</td>
+                <td style={{...td,fontWeight:600,color:"#475569",paddingLeft:40}}>{r.jenis_maintenance}</td>
                 <td style={td}><span style={{background:fc.bg,color:fc.color,border:`1px solid ${fc.border}`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{fc.label}</span></td>
                 <td style={{...td,color:"#64748b"}}>{r.teknisi||"—"}</td>
                 <td style={{...td,fontSize:11,color:"#94a3b8"}}>{r.terakhir_dilakukan||"—"}{latestLog&&<div style={{fontSize:9.5,color:latestLog.completed_via==="qr_worker"?"#7c3aed":"#94a3b8",fontWeight:700,marginTop:1}}>{latestLog.completed_via==="qr_worker"?`via QR (${latestLog.teknisi})`:"Admin ("+latestLog.teknisi+")"}</div>}</td>
@@ -259,7 +294,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
               </tr>
             ),isExpanded&&logs.length>0&&(
               <tr key={r.id+"-hist"}>
-                <td colSpan={8} style={{background:"#f8fafc",padding:"12px 16px",borderBottom:"1px solid #f1f5f9"}}>
+                <td colSpan={7} style={{background:"#f8fafc",padding:"12px 16px",borderBottom:"1px solid #f1f5f9"}}>
                   <div style={{fontSize:10.5,fontWeight:700,color:"#64748b",textTransform:"uppercase",letterSpacing:.4,marginBottom:8}}>📋 Riwayat Dokumentasi ({logs.length})</div>
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {logs.map((l:any)=>{const foto=l.foto||[];return(
@@ -295,7 +330,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
                   </div>
                 </td>
               </tr>
-            )];})}
+            )];})])])}
           </tbody>
         </table>
       </div>
