@@ -704,12 +704,21 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return [...new Set([...nilai,...kolomFilter[k]])].sort((a,b)=>a.localeCompare(b,"id",{numeric:true})).map(v=>({value:v,label:v}));
   };
   // Popover posisi fixed - tutup kalau halaman/tabel di-scroll (posisinya gak ikut gerak).
+  // BUG FIX (29 Sep 2026, dilaporkan user) - listener capture di window ikut nangkep scroll DAFTAR
+  // popover itu sendiri (daftar Komponen bisa ribuan px, wajib di-scroll) -> popover langsung
+  // hilang pas mau milih. Scroll yang asalnya dari DALAM popover diabaikan.
+  const popoverFilterRef=useRef<HTMLDivElement|null>(null);
   useEffect(()=>{
     if(!kolomFilterBuka)return;
+    const tutupKalauScrollLuar=(e:Event)=>{
+      const el=popoverFilterRef.current;
+      if(el&&e.target instanceof Node&&el.contains(e.target))return;
+      setKolomFilterBuka(null);
+    };
     const tutup=()=>setKolomFilterBuka(null);
-    window.addEventListener("scroll",tutup,{capture:true,passive:true});
+    window.addEventListener("scroll",tutupKalauScrollLuar,{capture:true,passive:true});
     window.addEventListener("resize",tutup);
-    return()=>{window.removeEventListener("scroll",tutup,{capture:true});window.removeEventListener("resize",tutup);};
+    return()=>{window.removeEventListener("scroll",tutupKalauScrollLuar,{capture:true});window.removeEventListener("resize",tutup);};
   },[kolomFilterBuka]);
   const ikonFilter=(label:string,k:KolomFilterKey)=>(
     <HeaderFilterIkon label={label} kolom={k} jumlahAktif={kolomFilter[k].length}
@@ -1484,9 +1493,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         return(
           <>
             <div onClick={()=>setKolomFilterBuka(null)} style={{position:"fixed",inset:0,zIndex:998}}/>
-            <div onClick={(e:any)=>e.stopPropagation()}
+            <div ref={popoverFilterRef} onClick={(e:any)=>e.stopPropagation()}
               style={{position:"fixed",left:Math.max(8,Math.min(kolomFilterBuka.x,window.innerWidth-lebar-8)),top:Math.min(kolomFilterBuka.y,window.innerHeight-280),
-                zIndex:999,width:lebar,maxHeight:260,overflowY:"auto",background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,
+                zIndex:999,width:lebar,maxHeight:260,overflowY:"auto",overscrollBehavior:"contain",background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,
                 boxShadow:"0 4px 16px #00000025",padding:6}}>
               <div style={{padding:"4px 8px",fontSize:10,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:.3}}>{JUDUL[k]}</div>
               {terpilih.length>0&&(
