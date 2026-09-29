@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { getLocalDateStr } from '../lib/dateHelpers'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { KerusakanTab } from './KerusakanTab'
 import { MaintenanceRutinTab } from './MaintenanceRutinTab'
 import { isPushSupported, getPushPermissionState, subscribeToPush } from '../lib/pushNotif'
@@ -14,6 +15,11 @@ export function MaintenancePageTab({user}:any){
   const [rutinList,setRutinList]=useState<any[]>([]);
   const [rutinLogList,setRutinLogList]=useState<any[]>([]);
   const [loading,setLoading]=useState(true);
+  // Gagal muat (29 Sep 2026, CLAUDE.md A.2) - dulu `{data}` doang, error ditelan & list diam-diam
+  // jadi kosong. Sekarang: console.error + banner merah + tombol Muat ulang; list yang SUDAH ada
+  // gak ditimpa kosong kalau refetch gagal (biar admin gak ngira datanya hilang).
+  const [loadError,setLoadError]=useState<string|null>(null);
+  const [reloadKey,setReloadKey]=useState(0);
 
   // Banner ajakan aktifkan push notification - cuma muncul kalau: browser dukung, izin belum
   // diputuskan ("default", bukan udah granted/denied), dan user belum pernah nutup banner ini
@@ -39,31 +45,42 @@ export function MaintenancePageTab({user}:any){
     localStorage.setItem(PUSH_BANNER_DISMISS_KEY,"1");
   };
   useEffect(()=>{
+    // Semua query lewat fetchAllPaged (.range per 1000, CLAUDE.md A.1) - maintenance_log &
+    // maintenance_rutin_log itu tabel riwayat yang terus tumbuh; .order("id") = pemutus seri
+    // biar paging deterministik (gak ada row dobel/kelewat antar halaman).
+    const qMesin=()=>fetchAllPaged((from,to)=>supabase.from("mesin").select("*").is("deleted_at",null).order("kode").order("id").range(from,to));
+    const qRutin=()=>fetchAllPaged((from,to)=>supabase.from("maintenance_rutin").select("*,mesin(nama,kode)").eq("is_active",true).order("jatuh_tempo").order("id").range(from,to));
+    const qRutinLog=()=>fetchAllPaged((from,to)=>supabase.from("maintenance_rutin_log").select("*").order("dilakukan_pada",{ascending:false}).order("id",{ascending:false}).range(from,to));
+    const gagal=(bagian:string,e:any)=>{
+      console.error(`[MaintenancePageTab] gagal memuat ${bagian}:`,e);
+      setLoadError(`Gagal memuat ${bagian}: ${e?.message||e}`);
+    };
     const load=async()=>{
-      setLoading(true);
-      const [{data:ms},{data:ml},{data:rl},{data:rll}]=await Promise.all([
-        supabase.from("mesin").select("*").is("deleted_at",null).order("kode"),
-        supabase.from("maintenance_log").select("*,mesin(nama,kode)").order("created_at",{ascending:false}),
-        supabase.from("maintenance_rutin").select("*,mesin(nama,kode)").eq("is_active",true).order("jatuh_tempo"),
-        supabase.from("maintenance_rutin_log").select("*").order("dilakukan_pada",{ascending:false}),
-      ]);
-      setMesinList(ms??[]);setMaintenanceList(ml??[]);setRutinList(rl??[]);setRutinLogList(rll??[]);setLoading(false);
+      setLoading(true);setLoadError(null);
+      try{
+        const [ms,ml,rl,rll]=await Promise.all([
+          qMesin(),
+          fetchAllPaged((from,to)=>supabase.from("maintenance_log").select("*,mesin(nama,kode)").order("created_at",{ascending:false}).order("id",{ascending:false}).range(from,to)),
+          qRutin(),
+          qRutinLog(),
+        ]);
+        setMesinList(ms);setMaintenanceList(ml);setRutinList(rl);setRutinLogList(rll);
+      }catch(e:any){gagal("data maintenance",e);}
+      setLoading(false);
     };load();
     // mesin bisa diedit dari SystemTab (Master Mesin) sementara tab ini kebuka bareng - refetch
     // silent (gak toggle `loading` yang nutup seluruh tab) biar list mesin di sini gak basi.
     const fetchMesin=async()=>{
-      const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode");
-      setMesinList(data??[]);
+      try{setMesinList(await qMesin());}catch(e:any){gagal("daftar mesin",e);}
     };
     // Rutin bisa "Tandai Selesai" dari 2 tempat sekaligus (Vista Teknik ATAU halaman public QR
     // yang di-scan pekerja) - refetch silent biar badge terlambat/jatuh tempo minggu ini di sini
     // auto-update tanpa perlu admin refresh manual, dari mana pun perubahannya datang.
     const fetchRutin=async()=>{
-      const [{data:rl},{data:rll}]=await Promise.all([
-        supabase.from("maintenance_rutin").select("*,mesin(nama,kode)").eq("is_active",true).order("jatuh_tempo"),
-        supabase.from("maintenance_rutin_log").select("*").order("dilakukan_pada",{ascending:false}),
-      ]);
-      setRutinList(rl??[]);setRutinLogList(rll??[]);
+      try{
+        const [rl,rll]=await Promise.all([qRutin(),qRutinLog()]);
+        setRutinList(rl);setRutinLogList(rll);
+      }catch(e:any){gagal("jadwal maintenance rutin",e);}
     };
     const ch=supabase.channel("realtime-mesin-maintenance-page")
       .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
@@ -71,7 +88,7 @@ export function MaintenancePageTab({user}:any){
       .on("postgres_changes",{event:"*",schema:"public",table:"maintenance_rutin_log"},fetchRutin)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
-  },[]);
+  },[reloadKey]);
   const today=getLocalDateStr();
   const terlambat=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<today);
   const mingguIni=rutinList.filter((r:any)=>{
@@ -81,6 +98,13 @@ export function MaintenancePageTab({user}:any){
   });
   return(
     <div className="fi">
+      {loadError&&(
+        <div style={{display:"flex",alignItems:"center",gap:12,padding:"10px 14px",marginBottom:16,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:10}}>
+          <div style={{fontSize:18}}>⚠️</div>
+          <div style={{flex:1,fontSize:12,color:"#991b1b",fontWeight:600}}>{loadError}</div>
+          <button onClick={()=>setReloadKey(k=>k+1)} style={{padding:"6px 14px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontSize:12,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>Muat ulang</button>
+        </div>
+      )}
       {showPushBanner&&(
         <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 16px",marginBottom:16,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:10}}>
           <div style={{fontSize:20}}>🔔</div>
