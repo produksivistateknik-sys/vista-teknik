@@ -276,10 +276,19 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   }, [])
   // Badge "Permintaan Barang" (7 Sep 2026, fitur approval admin) - jumlah item status
   // 'menunggu_admin' yang belum diputuskan sama sekali.
+  // Cek error (29 Sep 2026, CLAUDE.md A.2) - pola sama badge Maintenance di atas: gagal ->
+  // console.error + badge "!", angka lama gak ditimpa 0.
   const [pendingPermintaanCount, setPendingPermintaanCount] = useState(0)
+  const [pendingPermintaanError, setPendingPermintaanError] = useState(false)
   useEffect(() => {
     const fetchPendingPermintaan = async () => {
-      const { count } = await supabase.from('permintaan_item').select('id', { count: 'exact', head: true }).eq('status', 'menunggu_admin')
+      const { count, error } = await supabase.from('permintaan_item').select('id', { count: 'exact', head: true }).eq('status', 'menunggu_admin')
+      if (error) {
+        console.error('[App] gagal hitung badge Permintaan Barang (permintaan_item):', error)
+        setPendingPermintaanError(true)
+        return
+      }
+      setPendingPermintaanError(false)
       setPendingPermintaanCount(count || 0)
     }
     fetchPendingPermintaan()
@@ -659,7 +668,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     ]},
     {group:"SYSTEM",items:[
       ...(["admin"].includes(user?.divisi)?[
-        {id:"permintaan_admin",label:"Permintaan Barang",icon:"ti ti-clipboard-check",badge:pendingPermintaanCount>0?pendingPermintaanCount:null},
+        {id:"permintaan_admin",label:"Permintaan Barang",icon:"ti ti-clipboard-check",badge:pendingPermintaanError?"!":pendingPermintaanCount>0?pendingPermintaanCount:null},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
