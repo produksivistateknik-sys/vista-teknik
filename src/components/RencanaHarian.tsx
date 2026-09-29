@@ -36,6 +36,48 @@ const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
 // cell modal) buat kasus yang identik, satu sumber logika (CLAUDE.md B.1).
 const PROSES_QTY_GRANULAR=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"];
 
+// ── Filter kolom header (29 Sep 2026, view-only) - ikon filter di header Proyek/Nama Panel/
+// Komponen/Status, pola SAMA dgn DatabaseGudangTab.tsx (vista-pekerja): checklist nilai per kolom,
+// AND antar kolom. Cuma nyembunyiin baris saat render - "Rilis Semua" & hitungan "x/y dirilis"
+// SENGAJA gak terpengaruh (keputusan user), sama kayak statusFilter pipeline yang sudah ada.
+// Kategori kolom Status = 6 badge yang BENERAN tampil di sel Status (bukan teks mentah - teksnya
+// memuat persen/menit yang berubah-ubah). Ditentukan SATU fungsi (kategoriStatusHarian di dalam
+// komponen) yang dipakai render sel & filter sekaligus (CLAUDE.md B.1).
+type KategoriStatusHarian="BELUM_DIRILIS"|"TIMER"|"SELESAI"|"SEDANG"|"BELUM"|"TIDAK_DIKERJAKAN";
+const KATEGORI_STATUS_HARIAN:{key:KategoriStatusHarian;label:string}[]=[
+  {key:"BELUM_DIRILIS",label:"Belum Dirilis"},
+  {key:"TIMER",label:"🟡 Timer berjalan"},
+  {key:"SELESAI",label:"✅ Selesai"},
+  {key:"SEDANG",label:"🟡 Sedang Dikerjakan"},
+  {key:"BELUM",label:"🔴 Belum Dikerjakan"},
+  {key:"TIDAK_DIKERJAKAN",label:"⚪ Tidak Dikerjakan (0%)"},
+];
+type KolomFilterKey="proyek"|"panel"|"komponen"|"status";
+type KolomFilterBuka={kolom:KolomFilterKey;x:number;y:number};
+// Label header + ikon filter (menyala + badge jumlah kalau aktif). Popover-nya dirender SEKALI di
+// komponen utama dgn position:fixed dari posisi ikon - tabel dibungkus overflowX:auto, popover
+// absolute di dalamnya bakal kepotong di tabel yang barisnya sedikit.
+function HeaderFilterIkon({label,kolom,jumlahAktif,terbuka,onBuka}:{
+  label:string;kolom:KolomFilterKey;jumlahAktif:number;terbuka:boolean;onBuka:(v:KolomFilterBuka|null)=>void;
+}){
+  return(
+    <span style={{display:"inline-flex",alignItems:"center",gap:5}}>
+      {label}
+      <span role="button" title={`Filter ${label}`}
+        onClick={(e:any)=>{
+          e.stopPropagation();
+          if(terbuka){onBuka(null);return;}
+          const r=e.currentTarget.getBoundingClientRect();
+          onBuka({kolom,x:r.left,y:r.bottom+4});
+        }}
+        style={{cursor:"pointer",position:"relative",display:"inline-flex",alignItems:"center"}}>
+        <i className="ti ti-filter" style={{fontSize:11,color:jumlahAktif>0?"#38bdf8":"#c7d2fe"}}/>
+        {jumlahAktif>0&&<span style={{position:"absolute",top:-5,right:-7,background:"#38bdf8",color:"#0b1220",borderRadius:99,fontSize:8,fontWeight:800,padding:"0 3px",lineHeight:"12px"}}>{jumlahAktif}</span>}
+      </span>
+    </span>
+  );
+}
+
 export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRenhar,updateRenhar,removeRenhar,refetchRaw,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [selDate,setSelDate]=useState(TODAY);
@@ -46,6 +88,21 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [selProses,setSelProses]=useState("ALL");
   const [statusFilter,setStatusFilter]=useState<"ALL"|ProsesStatus>("ALL");
+  // Filter kolom header (29 Sep 2026) - lihat komentar HeaderFilterIkon/KATEGORI_STATUS_HARIAN di
+  // atas. SENGAJA gak direset saat ganti tanggal (keputusan user: view-only, biar bisa mantau
+  // proyek/panel yang sama lintas hari); reset manual lewat popover / "Reset semua".
+  const KOLOM_FILTER_KOSONG:Record<KolomFilterKey,string[]>={proyek:[],panel:[],komponen:[],status:[]};
+  const [kolomFilter,setKolomFilter]=useState<Record<KolomFilterKey,string[]>>(KOLOM_FILTER_KOSONG);
+  const [kolomFilterBuka,setKolomFilterBuka]=useState<KolomFilterBuka|null>(null);
+  const toggleKolomFilter=(k:KolomFilterKey,v:string)=>setKolomFilter(prev=>({...prev,[k]:prev[k].includes(v)?prev[k].filter(x=>x!==v):[...prev[k],v]}));
+  const jumlahKolomFilterAktif=(Object.values(kolomFilter) as string[][]).filter(v=>v.length>0).length;
+  // komponen null = baris yang gak punya komponen BOM (NAMEPLATE/YELLOWMARK) - gak lolos kalau
+  // filter Komponen aktif (bukan komponen yang dipilih).
+  const lolosKolomFilter=(v:{proyek:string;panel:string;komponen:string|null;status:KategoriStatusHarian})=>
+    (kolomFilter.proyek.length===0||kolomFilter.proyek.includes(v.proyek))&&
+    (kolomFilter.panel.length===0||kolomFilter.panel.includes(v.panel))&&
+    (kolomFilter.komponen.length===0||(v.komponen!==null&&kolomFilter.komponen.includes(v.komponen)))&&
+    (kolomFilter.status.length===0||kolomFilter.status.includes(v.status));
   // Accordion histori harian BUSBAR (kolom "Proses") - key `${rawId}_${kode}`, toggle per baris.
   const [expandedBusbarHistori,setExpandedBusbarHistori]=useState<Record<string,boolean>>({});
   const [assignModal,setAssignModal]=useState(null);
@@ -139,6 +196,23 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // banter isi 1, perilaku efektif sama kayak sebelumnya).
   const getTimerAktifAll=(panelId:any,kode:string,proses:string)=>
     timerAktifData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses);
+  // SATU sumber keputusan badge kolom Status (29 Sep 2026, CLAUDE.md B.1) - dipakai render sel
+  // Status DAN filter kolom Status, biar yang difilter PERSIS yang kelihatan. Urutan cek SAMA
+  // PERSIS logika sel sebelumnya (dipindah apa adanya, gak diubah): belum dirilis (bukan jejak) ->
+  // timer aktif (cuma hari kerja sekarang) -> >=100 -> >0 -> jejak 0% -> belum dikerjakan.
+  const kategoriStatusHarian=(t:any,kode:string,panelData:any,sudahRelease:boolean,digeserKeTanggal:string|null)=>{
+    if(!sudahRelease&&!digeserKeTanggal)return{kategori:"BELUM_DIRILIS" as KategoriStatusHarian,pctKerja:0,timerAktifList:[] as any[]};
+    // Snapshot PERMANEN progress persis di tanggal t.tanggal - bukan progress terkini/keseluruhan.
+    const pctKerja=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
+    const timerAktifList=t.tanggal===getHariKerjaSekarang()?getTimerAktifAll(t.panelId,kode,t.proses):[];
+    const kategori:KategoriStatusHarian=timerAktifList.length>0?"TIMER":pctKerja>=100?"SELESAI":pctKerja>0?"SEDANG":digeserKeTanggal?"TIDAK_DIKERJAKAN":"BELUM";
+    return{kategori,pctKerja,timerAktifList};
+  };
+  // Teks sel Komponen (kode - nama) - dipakai sel & opsi/nilai filter kolom Komponen.
+  const labelKomponenHarian=(panelData:any,kode:string)=>{
+    const item=panelData?getEffCfg(panelData.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode):null;
+    return item?.nama?`${kode} - ${item.nama}`:kode;
+  };
 
   // WIRING CONTROL/POWER: "hari kerja ke-N" (dari histori fcs_timer_kerja) dipakai allTasks di
   // bawah buat tau kelanjutan hari kerja mana yang beneran "mendarat" di selDate - fungsi SAMA
@@ -602,6 +676,45 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   };
 
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
+
+  // Opsi filter kolom header (29 Sep 2026) - dari baris yang lagi ditampilkan (tanggal + tab proses
+  // terpilih), BERTINGKAT: Nama Panel ikut menyempit ke Proyek yang dicentang, Komponen ikut Proyek
+  // & Panel. Nilai yang SUDAH dicentang tapi gak ada di data tanggal ini tetap dimunculkan (filter
+  // bertahan lintas tanggal - harus tetap bisa dilepas). Status = 6 kategori TETAP.
+  const barisOpsiFilter=(()=>{
+    const rows:{proyek:string;panel:string;komponen:string|null}[]=[];
+    const semuaPanel=woData.flatMap((w:any)=>w.panels||[]);
+    filteredTasks.forEach((t:any)=>{
+      const panelData=semuaPanel.find((p:any)=>p.id===t.panelId);
+      (t.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")).forEach((k:string)=>{
+        rows.push({proyek:t.proyek||"",panel:t.panel||"",komponen:labelKomponenHarian(panelData,k)});
+      });
+    });
+    npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).forEach((t:any)=>{
+      rows.push({proyek:t.panel?._wo?.proyek||"",panel:t.panel?.nama||"",komponen:null});
+    });
+    return rows;
+  })();
+  const opsiKolomFilter=(k:KolomFilterKey):{value:string;label:string}[]=>{
+    if(k==="status")return KATEGORI_STATUS_HARIAN.map(s=>({value:s.key,label:s.label}));
+    const cocok=barisOpsiFilter.filter(r=>
+      (k==="proyek"||kolomFilter.proyek.length===0||kolomFilter.proyek.includes(r.proyek))&&
+      (k!=="komponen"||kolomFilter.panel.length===0||kolomFilter.panel.includes(r.panel)));
+    const nilai=cocok.map(r=>r[k]).filter((v):v is string=>!!v);
+    return [...new Set([...nilai,...kolomFilter[k]])].sort((a,b)=>a.localeCompare(b,"id",{numeric:true})).map(v=>({value:v,label:v}));
+  };
+  // Popover posisi fixed - tutup kalau halaman/tabel di-scroll (posisinya gak ikut gerak).
+  useEffect(()=>{
+    if(!kolomFilterBuka)return;
+    const tutup=()=>setKolomFilterBuka(null);
+    window.addEventListener("scroll",tutup,{capture:true,passive:true});
+    window.addEventListener("resize",tutup);
+    return()=>{window.removeEventListener("scroll",tutup,{capture:true});window.removeEventListener("resize",tutup);};
+  },[kolomFilterBuka]);
+  const ikonFilter=(label:string,k:KolomFilterKey)=>(
+    <HeaderFilterIkon label={label} kolom={k} jumlahAktif={kolomFilter[k].length}
+      terbuka={kolomFilterBuka?.kolom===k} onBuka={setKolomFilterBuka}/>
+  );
   const byProses=useMemo(()=>{
     // Urutkan Tinggi->Sedang->Rendah (PRIORITAS di panelTypes.ts sudah dalam urutan itu, dipakai
     // sebagai rank - bukan alfabetis) SEBELUM dikelompokkan per proses, berlaku otomatis di semua
@@ -898,6 +1011,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
             </button>
           );
         })}
+        {jumlahKolomFilterAktif>0&&(
+          <span style={{display:"inline-flex",alignItems:"center",gap:6,marginLeft:6,fontSize:11,color:"#0369a1",fontWeight:700}}>
+            <i className="ti ti-filter" style={{fontSize:12}}/>
+            {jumlahKolomFilterAktif} filter kolom aktif
+            <button onClick={()=>{setKolomFilter(KOLOM_FILTER_KOSONG);setKolomFilterBuka(null);}}
+              style={{border:"none",background:"none",color:"#dc2626",fontWeight:700,fontSize:11,cursor:"pointer",padding:0,textDecoration:"underline"}}>
+              Reset semua
+            </button>
+          </span>
+        )}
       </div>
       {filteredTasks.length===0&&npYmMarked.filter((t:any)=>selProses==="ALL"||t.proses===selProses).length===0&&(
         <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
@@ -930,14 +1053,14 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                 <thead>
                   <tr>
                     <th style={{...thS,width:40,textAlign:"center"}}>No</th>
-                    <th style={{...thS,width:130}}>Proyek</th>
-                    <th style={{...thS,width:200}}>Nama Panel</th>
+                    <th style={{...thS,width:130}}>{ikonFilter("Proyek","proyek")}</th>
+                    <th style={{...thS,width:200}}>{ikonFilter("Nama Panel","panel")}</th>
                     <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
                     <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
-                    <th style={{...thS,width:250}}>Komponen</th>
+                    <th style={{...thS,width:250}}>{ikonFilter("Komponen","komponen")}</th>
                     <th style={{...thS,width:70,textAlign:"center"}}>QTY</th>
                     <th style={{...thS,width:160}}>Operator</th>
-                    <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+                    <th style={{...thS,width:110,textAlign:"center"}}>{ikonFilter("Status","status")}</th>
                     <th style={{...thS,width:110,textAlign:"center"}}>Status Pipeline</th>
                     <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
                   </tr>
@@ -963,6 +1086,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
                         const sudahRelease=released.includes(kode);
                         const digeserKeTanggal=t.digeserKe?.[kode]||null;
+                        // Filter kolom header (29 Sep 2026) - kategori Status & teks Komponen dari
+                        // helper yang SAMA dgn sel di bawah (bukan dihitung ulang terpisah).
+                        const statusHarian=kategoriStatusHarian(t,kode,panelData,sudahRelease,digeserKeTanggal);
+                        const komponenLabel=labelKomponenHarian(panelData,kode);
+                        if(!lolosKolomFilter({proyek:t.proyek||"",panel:t.panel||"",komponen:komponenLabel,status:statusHarian.kategori}))return[];
                         // Accordion histori harian BUSBAR (kolom "Proses") - dihitung sekali di sini
                         // (bukan di dalam IIFE kolom Proses) biar bisa dipakai lagi buat baris <tr>
                         // expand tambahan di bawah, gak dihitung dobel.
@@ -1007,7 +1135,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td,textAlign:"center"}}>{t.proses!=="BUSBAR"&&<span style={{background:wc,color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{t.wp}</span>}</td>
                             <td style={{...td,textAlign:"center"}}><span style={{background:priColor+"18",color:priColor,border:`1px solid ${priColor}33`,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700}}>{t.prioritas}</span></td>
                             <td style={{...td}}>
-                              <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{item?.nama?`${kode} - ${item.nama}`:kode}</span>
+                              <span style={{background:"#f1f5f9",borderRadius:4,padding:"2px 7px",fontSize:10,color:"#475569",fontWeight:600}}>{komponenLabel}</span>
                               {t.carriedOverFrom&&(
                                 <span title={"Belum selesai di "+fmtShort(t.carriedOverFrom)+", lanjut ke hari ini"}
                                   style={{marginLeft:5,background:"#fff7ed",border:"1px solid #fed7aa",color:"#c2410c",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>
@@ -1070,13 +1198,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // cascading kapasitas gak pernah dapet rilis manual apapun). Dulu bug:
                                 // !sudahRelease dicek duluan tanpa peduli jejak, jadi histori di tanggal
                                 // hop kelihatan "Belum Dirilis" padahal itu data historis biasa.
-                                if(!sudahRelease&&!digeserKeTanggal){
+                                if(statusHarian.kategori==="BELUM_DIRILIS"){
                                   return <span style={{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>Belum Dirilis</span>;
                                 }
                                 // Snapshot PERMANEN progress persis di tanggal t.tanggal - bukan progress
                                 // terkini/keseluruhan, biar buka tanggal yang sudah lewat tetap nunjukin
                                 // angka yang benar walau kerjaannya udah lanjut/kelar di hari-hari setelahnya.
-                                const pctKerja=getProgressAsOfDate(panelData?.checklist?.[kode],t.proses,t.tanggal);
+                                const pctKerja=statusHarian.pctKerja; // dari kategoriStatusHarian (satu sumber, lihat atas)
                                 // BUSBAR: tambahin label tahap aktif (Fabrikasi/Plating/Heat-Shrink/Pasang)
                                 // kalau datanya ada - proses lain gak punya field ini jadi tetap tampil polos.
                                 const busbarTahapAktif=t.proses==="BUSBAR"?panelData?.checklist?.[kode]?.busbarTahap?.tahapAktif:null;
@@ -1102,8 +1230,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // Heat-Shrink & Pasang jalan tumpang tindih - dicek live 29 kasus overlap
                                 // nyata di histori). Kalau cuma diambil 1 (.find()), timer ke-2 JADI GAK
                                 // KELIATAN SAMA SEKALI walau beneran jalan.
-                                const timerAktifList=t.tanggal===getHariKerjaSekarang()?getTimerAktifAll(t.panelId,kode,t.proses):[];
-                                if(timerAktifList.length>0){
+                                const timerAktifList=statusHarian.timerAktifList;
+                                if(statusHarian.kategori==="TIMER"){
                                   // BUG FIX (21 Sep 2026, dilaporkan user - badge "Plating · 93 menit" nongol
                                   // 2x padahal riwayat cuma 1 entry) - getTimerAktifAll() balikin SEMUA baris
                                   // fcs_timer_kerja aktif per kode+proses, TERMASUK kasus BUSBAR yang dikerjakan
@@ -1134,16 +1262,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                     </div>
                                   );
                                 }
-                                if(pctKerja>=100){
+                                if(statusHarian.kategori==="SELESAI"){
                                   return <span title={busbarTooltip} style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>;
                                 }
-                                if(pctKerja>0){
+                                if(statusHarian.kategori==="SEDANG"){
                                   return <span title={busbarTooltip} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pctKerja}%{labelTahap})</span>;
                                 }
                                 // Jejak 0% (gak sempat disentuh sama sekali di tanggal ini) - status beda
                                 // dari "Belum Dikerjakan" hidup (yang masih actionable hari ini), karena
                                 // ini histori beku, gak akan pernah dikerjakan lagi di tanggal ini.
-                                if(digeserKeTanggal){
+                                if(statusHarian.kategori==="TIDAK_DIKERJAKAN"){
                                   return <span title={busbarTooltip} style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#94a3b8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>⚪ Tidak Dikerjakan (0%)</span>;
                                 }
                                 return <span title={busbarTooltip} style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>;
@@ -1237,10 +1365,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                       </tr>
                     )];
                   });
-                  if(renderedRows.length===0&&statusFilter!=="ALL"){
+                  if(renderedRows.length===0&&(statusFilter!=="ALL"||jumlahKolomFilterAktif>0)){
                     return(
                       <tr><td colSpan={11} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
-                        Tidak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di {proses}.
+                        {jumlahKolomFilterAktif>0
+                          ?`Tidak ada komponen di ${proses} yang cocok dengan filter.`
+                          :`Tidak ada komponen dengan status "${STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di ${proses}.`}
                       </td></tr>
                     );
                   }
@@ -1274,23 +1404,29 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                 <thead>
                   <tr>
                     <th style={{...thS,width:40,textAlign:"center"}}>No</th>
-                    <th style={{...thS,width:130}}>Proyek</th>
-                    <th style={{...thS,width:200}}>Nama Panel</th>
+                    <th style={{...thS,width:130}}>{ikonFilter("Proyek","proyek")}</th>
+                    <th style={{...thS,width:200}}>{ikonFilter("Nama Panel","panel")}</th>
                     <th style={{...thS,width:60,textAlign:"center"}}>WP</th>
                     <th style={{...thS,width:80,textAlign:"center"}}>Prioritas</th>
                     <th style={{...thS,width:250}}>Komponen</th>
                     <th style={{...thS,width:160}}>Operator</th>
-                    <th style={{...thS,width:110,textAlign:"center"}}>Status</th>
+                    <th style={{...thS,width:110,textAlign:"center"}}>{ikonFilter("Status","status")}</th>
                     <th style={{...thS,width:120,textAlign:"center"}}>Aksi</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {tasks.map((t:any,ti:number)=>{
+                  {(()=>{
+                  const barisNpYm=tasks.map((t:any,ti:number)=>{
                     const panel=t.panel;
                     const pct=(isNameplate?panel.nameplate_progress:panel.yellowmark_progress)||0;
                     const foto=(isNameplate?panel.nameplate_photos:panel.yellowmark_photos)||[];
                     const updatedBy=isNameplate?panel.nameplate_updated_by:panel.yellowmark_updated_by;
                     const updatedAt=isNameplate?panel.nameplate_updated_at:panel.yellowmark_updated_at;
+                    // Kategori Status NAMEPLATE/YELLOWMARK (29 Sep 2026) - aturannya BEDA dari tabel
+                    // proses (selesai = 100% DAN ada foto), ditentukan SEKALI di sini & dipakai badge
+                    // + filter kolom. Komponen null: baris ini bukan komponen BOM (penanda panel).
+                    const statusNpYm:KategoriStatusHarian=pct>=100&&foto.length>=1?"SELESAI":pct>0||foto.length>0?"SEDANG":"BELUM";
+                    if(!lolosKolomFilter({proyek:panel._wo?.proyek||"",panel:panel.nama||"",komponen:null,status:statusNpYm}))return null;
                     const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
                     const rBg=ti%2===0?"#fff":"#f8fafc";
                     const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,verticalAlign:"middle" as const};
@@ -1310,9 +1446,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                           ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada progress</span>)}
                         </td>
                         <td style={{...td,textAlign:"center"}}>
-                          {pct>=100&&foto.length>=1?(
+                          {statusNpYm==="SELESAI"?(
                             <span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>✅ Selesai</span>
-                          ):pct>0||foto.length>0?(
+                          ):statusNpYm==="SEDANG"?(
                             <span style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🟡 Sedang Dikerjakan ({pct}%)</span>
                           ):(
                             <span style={{background:"#fef2f2",border:"1px solid #fecaca",color:"#dc2626",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🔴 Belum Dikerjakan</span>
@@ -1321,13 +1457,63 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         <td style={{...td,textAlign:"center",fontSize:10,color:"#94a3b8"}}>{updatedAt?fmtRelatif(updatedAt):"–"}</td>
                       </tr>
                     );
-                  })}
+                  });
+                  if(jumlahKolomFilterAktif>0&&barisNpYm.every((b:any)=>!b)){
+                    return(
+                      <tr><td colSpan={9} style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>
+                        Tidak ada baris {proses} yang cocok dengan filter{kolomFilter.komponen.length>0?" (filter Komponen tidak berlaku untuk penanda panel ini)":""}.
+                      </td></tr>
+                    );
+                  }
+                  return barisNpYm;
+                  })()}
                 </tbody>
               </table>
             </div>
           </div>
         );
       })}
+      {/* Popover filter kolom header (29 Sep 2026) - SATU instance, position:fixed dari posisi ikon
+          yang diklik (lihat HeaderFilterIkon). Overlay transparan buat tutup kalau klik di luar. */}
+      {kolomFilterBuka&&(()=>{
+        const k=kolomFilterBuka.kolom;
+        const opsi=opsiKolomFilter(k);
+        const terpilih=kolomFilter[k];
+        const JUDUL:Record<KolomFilterKey,string>={proyek:"Filter Proyek",panel:"Filter Nama Panel",komponen:"Filter Komponen",status:"Filter Status"};
+        const lebar=240;
+        return(
+          <>
+            <div onClick={()=>setKolomFilterBuka(null)} style={{position:"fixed",inset:0,zIndex:998}}/>
+            <div onClick={(e:any)=>e.stopPropagation()}
+              style={{position:"fixed",left:Math.max(8,Math.min(kolomFilterBuka.x,window.innerWidth-lebar-8)),top:Math.min(kolomFilterBuka.y,window.innerHeight-280),
+                zIndex:999,width:lebar,maxHeight:260,overflowY:"auto",background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,
+                boxShadow:"0 4px 16px #00000025",padding:6}}>
+              <div style={{padding:"4px 8px",fontSize:10,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:.3}}>{JUDUL[k]}</div>
+              {terpilih.length>0&&(
+                <button onClick={()=>setKolomFilter(prev=>({...prev,[k]:[]}))}
+                  style={{width:"100%",padding:"5px 8px",background:"#fef2f2",border:"none",borderRadius:6,color:"#dc2626",fontSize:11,cursor:"pointer",fontFamily:"inherit",textAlign:"left",marginBottom:4}}>
+                  ✕ Reset filter
+                </button>
+              )}
+              {opsi.map(o=>{
+                const isSel=terpilih.includes(o.value);
+                return(
+                  <div key={o.value} onClick={()=>toggleKolomFilter(k,o.value)} title={o.label}
+                    style={{padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:11,display:"flex",alignItems:"center",gap:7,
+                      background:isSel?"#eff6ff":"transparent",color:isSel?"#1d4ed8":"#1e293b"}}>
+                    <span style={{width:13,height:13,borderRadius:3,border:`1.5px solid ${isSel?"#1d4ed8":"#cbd5e1"}`,
+                      background:isSel?"#1d4ed8":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      {isSel&&<i className="ti ti-check" style={{fontSize:9,color:"#fff"}}/>}
+                    </span>
+                    <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{o.label}</span>
+                  </div>
+                );
+              })}
+              {opsi.length===0&&<div style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>Tidak ada nilai</div>}
+            </div>
+          </>
+        );
+      })()}
       {assignModal&&(()=>{
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
         const pekerjaDivisi=pekerja.filter(p=>p.divisi===divisi);
