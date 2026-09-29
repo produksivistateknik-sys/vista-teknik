@@ -5,6 +5,7 @@ import { activityLogService } from '../services/activityLogService'
 import { fmtShort } from '../lib/dateHelpers'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
+import { FotoZoomViewer, fotoMaintenanceKeViewer, type FotoViewer } from './FotoZoomViewer'
 
 const BLANK_FORM={mesin_id:"",judul:"",kendala:"",perbaikan:"",tgl_kendala:"",tgl_perbaikan:"",teknisi:"",status:"open"};
 
@@ -33,6 +34,9 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
     fetchRotasiBatch(urls).then(setRotasiMap);
   },[maintenanceList]);
   const [rotatingUrl,setRotatingUrl]=useState<string|null>(null);
+  // Klik foto kerusakan -> FotoZoomViewer (sama dgn QC: zoom, prev/next, Download), bukan tab baru.
+  const [fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
+  const bukaFotoKerusakan=(m:any,startIndex:number)=>setFotoViewer({fotos:(m.foto||[]).map(fotoMaintenanceKeViewer),startIndex,label:`${m.mesin?.kode||"Kerusakan"}_${m.tgl_kendala||""}`});
   const doRotateThumb=async(e:any,url:string)=>{
     e.preventDefault();e.stopPropagation();
     if(rotatingUrl)return;
@@ -246,7 +250,15 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
               <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap",fontSize:11,color:"#94a3b8"}}>
                 {m.teknisi&&<span>👤 {m.teknisi}</span>}
                 {m.tgl_kendala&&<span>📅 {fmtShort(m.tgl_kendala)}</span>}
-                {foto.length>0&&<span>📷 {foto.length}</span>}
+                {/* Klik "📷 N" -> viewer langsung (29 Sep 2026). Dulu cuma angka; foto-nya sendiri cuma
+                    kerender di bagian "N update" yang tombolnya cuma muncul kalau ada update - laporan
+                    ber-foto tanpa update (mis. #11/#12) fotonya gak bisa dilihat sama sekali. */}
+                {foto.length>0&&(
+                  <button onClick={()=>bukaFotoKerusakan(m,0)}
+                    title="Lihat foto" style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#2563eb",fontWeight:700,padding:0}}>
+                    📷 {foto.length}
+                  </button>
+                )}
                 {jumlahUpdate>0&&(
                   <button onClick={()=>toggleExpand(m.id)} style={{background:"none",border:"none",cursor:"pointer",fontSize:11,color:"#2563eb",fontWeight:700,padding:0}}>
                     {jumlahUpdate} update {isExpanded?"▴":"▾"}
@@ -279,7 +291,8 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
                       {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
                         <div key={fi} style={{position:"relative",width:52,height:52}}>
-                          <a href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/></a>
+                          <img src={f.url} title="Buka foto" onClick={()=>bukaFotoKerusakan(m,fi)}
+                            style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",cursor:"pointer",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
                           <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
                             style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
                             <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>
@@ -294,6 +307,7 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
           );
         })}
       </div>
+      {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
       {delId&&(<Modal title="Hapus Log?" onClose={()=>setDelId(null)} width={360}><div style={{fontSize:13,color:"#475569",marginBottom:20}}>Log ini akan dihapus permanen.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn><Btn color="#dc2626" onClick={del}>Hapus</Btn></div></Modal>)}
     </div>
   );

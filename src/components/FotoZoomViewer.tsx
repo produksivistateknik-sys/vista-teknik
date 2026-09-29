@@ -11,6 +11,12 @@ export type FotoViewer = {
   mime?: string
 }
 
+// Foto Maintenance (rutin_log/kerusakan) disimpan {url,type:"image"|"video",uploaded_at} TANPA
+// `mime` - viewer ini ngenali video dari `mime`, jadi dipetakan di sini (tampilan doang, data
+// gak diubah). Tanpa `type` (foto Kerusakan) = gambar, sama aturan isImageFoto.
+export const fotoMaintenanceKeViewer=(f:{url:string,type?:string,uploaded_at?:string}):FotoViewer=>
+  ({url:f.url,uploaded_at:f.uploaded_at,mime:f.type==="video"?"video/mp4":undefined})
+
 // Viewer gaya ClickUp: prev/next antar foto dalam galeri yang sama, toolbar atas rapi
 // (nama+posisi, Download, Close), scroll-wheel zoom + drag buat geser waktu di-zoom (mouse),
 // pinch dua-jari + drag satu-jari (touch), thumbnail strip di bawah buat lompat foto.

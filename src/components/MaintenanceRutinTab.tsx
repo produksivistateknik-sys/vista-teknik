@@ -5,6 +5,7 @@ import { getLocalDateStr } from '../lib/dateHelpers'
 import { uploadToR2 } from '../lib/r2Client'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
+import { FotoZoomViewer, fotoMaintenanceKeViewer, type FotoViewer } from './FotoZoomViewer'
 import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { bandingDivisiProduksi, DIVISI_KOSONG } from '../lib/urutanDivisi'
 
@@ -61,6 +62,8 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
     fetchRotasiBatch(urls).then(setRotasiMap);
   },[rutinLogList]);
   const [rotatingUrl,setRotatingUrl]=useState<string|null>(null);
+  // Klik thumbnail dokumentasi -> FotoZoomViewer (sama dgn QC: zoom, prev/next, Download), bukan tab baru.
+  const [fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
   const doRotateThumb=async(e:any,url:string)=>{
     e.preventDefault();e.stopPropagation();
     if(rotatingUrl)return;
@@ -308,13 +311,14 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
                           <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                             {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
                               <div key={fi} style={{position:"relative",width:48,height:48}}>
-                                <a href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
+                                <div onClick={()=>setFotoViewer({fotos:foto.map(fotoMaintenanceKeViewer),startIndex:fi,label:`${r.jenis_maintenance||"Maintenance"}_${l.dilakukan_pada||""}`})}
+                                  title={f.type==="video"?"Buka video":"Buka foto"} style={{cursor:"pointer"}}>
                                   {f.type==="video"?(
                                     <video src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
                                   ):(
                                     <img src={f.url} style={{width:48,height:48,borderRadius:6,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
                                   )}
-                                </a>
+                                </div>
                                 <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
                                   style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
                                   <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>
@@ -368,6 +372,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
           <Btn color="#16a34a" onClick={()=>markDone(doneId)} disabled={doneSaving}>{doneSaving?"Menyimpan...":"Selesai"}</Btn>
         </div>
       </Modal>)}
+      {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
       {delId&&(<Modal title="Nonaktifkan?" onClose={()=>setDelId(null)} width={360}><div style={{fontSize:13,color:"#475569",marginBottom:20}}>Jadwal ini akan dinonaktifkan.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn><Btn color="#dc2626" onClick={del}>Nonaktifkan</Btn></div></Modal>)}
     </div>
   );
