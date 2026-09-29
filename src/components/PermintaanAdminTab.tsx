@@ -30,7 +30,7 @@ const DIVISI_LABEL: Record<string, string> = {
   admin: 'Admin', // permintaan yang diajukan LANGSUNG oleh admin (16 Sep 2026, lihat submitAjukanAdmin)
 }
 
-// Urutan kelompok divisi di Rekap (29 Sep 2026) - SATU sumber: urutan alur produksi dari
+// Urutan kelompok divisi di Rekap + tab Menunggu Persetujuan & Riwayat (29 Sep 2026) - SATU sumber: urutan alur produksi dari
 // DIVISI_PROSES (constants/panelTypes, dipakai juga Raw Schedule/Rencana Harian), ditambah
 // 'admin' di akhir (admin juga bisa minta barang, tapi bukan bagian alur fabrikasi). Divisi lain
 // yang gak ada di daftar ini (komponen/QS, gudang, '-' dst) TETAP tampil, ditaruh setelah Admin
@@ -654,7 +654,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     if (!grouped[key]) grouped[key] = []
     grouped[key].push(it)
   })
-  const divisiKeys = Object.keys(grouped).sort()
+  const divisiKeys = Object.keys(grouped).sort(bandingDivisiRekap) // urutan proses produksi, sama Rekap
 
   const riwayatFiltered = riwayatItems.filter((it: any) => {
     if (riwayatStatusFilter === 'DISETUJUI' && it.status === 'ditolak_admin') return false
@@ -670,7 +670,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     if (!riwayatGrouped[key]) riwayatGrouped[key] = []
     riwayatGrouped[key].push(it)
   })
-  const riwayatDivisiKeys = Object.keys(riwayatGrouped).sort()
+  const riwayatDivisiKeys = Object.keys(riwayatGrouped).sort(bandingDivisiRekap) // urutan proses produksi, sama Rekap
 
   const koreksiGrouped: Record<string, any[]> = {}
   koreksiList.forEach((k: any) => {
