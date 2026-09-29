@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
+import { DIVISI_PROSES } from '../constants/panelTypes'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -27,6 +28,19 @@ const DIVISI_LABEL: Record<string, string> = {
   wiring_ctrl: 'Wiring Control', wiring_pwr: 'Wiring Power',
   qc: 'QC', nameplate: 'Nameplate', komponen: 'QS', gudang: 'Gudang', // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
   admin: 'Admin', // permintaan yang diajukan LANGSUNG oleh admin (16 Sep 2026, lihat submitAjukanAdmin)
+}
+
+// Urutan kelompok divisi di Rekap (29 Sep 2026) - SATU sumber: urutan alur produksi dari
+// DIVISI_PROSES (constants/panelTypes, dipakai juga Raw Schedule/Rencana Harian), ditambah
+// 'admin' di akhir (admin juga bisa minta barang, tapi bukan bagian alur fabrikasi). Divisi lain
+// yang gak ada di daftar ini (komponen/QS, gudang, '-' dst) TETAP tampil, ditaruh setelah Admin
+// (urut label A-Z, '-' paling bawah) - jangan sampai ada item yang hilang dari rekap.
+const URUTAN_DIVISI_REKAP: string[] = [...Object.keys(DIVISI_PROSES), 'admin']
+const bandingDivisiRekap = (a: string, b: string) => {
+  const ia = URUTAN_DIVISI_REKAP.indexOf(a), ib = URUTAN_DIVISI_REKAP.indexOf(b)
+  if (ia !== -1 || ib !== -1) return (ia === -1 ? Infinity : ia) - (ib === -1 ? Infinity : ib)
+  if (a === '-' || b === '-') return a === b ? 0 : a === '-' ? 1 : -1
+  return (DIVISI_LABEL[a] || a).localeCompare(DIVISI_LABEL[b] || b)
 }
 
 const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<any[]> => {
@@ -418,6 +432,15 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     return rekapRowsFull.filter(r => r.nama.toLowerCase().includes(q))
   }, [rekapRowsFull, rekapSearch])
 
+  // Kelompok per divisi (29 Sep 2026) - MURNI urutan render dari rekapRowsDisplayed yang sama
+  // (data/query/agregasi gak berubah). Grup diurut pakai bandingDivisiRekap; item DI DALAM grup
+  // tetap urutan asli (A-Z nama). Dipakai tabel layar DAN dokumen print biar tetap WYSIWYG.
+  const rekapGrup = useMemo(() => {
+    const map: Record<string, typeof rekapRowsDisplayed> = {}
+    rekapRowsDisplayed.forEach(r => { (map[r.divisi] ||= []).push(r) })
+    return Object.keys(map).sort(bandingDivisiRekap).map(divisi => ({ divisi, label: DIVISI_LABEL[divisi] || divisi, rows: map[divisi] }))
+  }, [rekapRowsDisplayed])
+
   // Print (REVISI 11 Sep 2026, audit "sidebar ikut ke-print") - dulu window.print() langsung di
   // halaman utama + CSS .no-print buat nyembunyiin toolbar. TERNYATA gak cukup - sidebar/navbar
   // app shell (App.tsx, DI LUAR komponen ini) ikut tercetak karena gak ada CSS print yang
@@ -462,7 +485,10 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   th.num, td.num { text-align: right; }
   th.center, td.center { text-align: center; }
   td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
-  tbody tr:nth-child(even) { background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tbody tr:nth-child(odd):not(.grup) { background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  /* Band nama divisi (1 tbody per divisi) - palet sama tfoot, gak boleh ketinggal sendirian di bawah halaman. */
+  tr.grup td { background: #eff6ff; color: #1e3a8a; font-weight: 800; font-size: 11px; text-transform: uppercase; letter-spacing: 0.4px; padding: 7px 10px; border-bottom: 1px solid #bfdbfe; page-break-after: avoid; break-after: avoid; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tr.grup td span { font-weight: 600; text-transform: none; letter-spacing: 0; color: #64748b; }
   tfoot td { padding: 9px 10px; background: #eff6ff; color: #1e3a8a; font-weight: 700; border-top: 2px solid #1e3a8a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
   .ttd-section { margin-top: 48px; display: flex; justify-content: space-between; gap: 24px; page-break-inside: avoid; }
   .ttd-col { flex: 1; text-align: center; font-size: 12px; }
@@ -485,9 +511,10 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   </div>
   <table>
     <thead><tr><th>Divisi</th><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
-    <tbody>
-      ${rows.map(r => `<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi] || r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
-    </tbody>
+    ${rekapGrup.map(g => `<tbody>
+      <tr class="grup"><td colspan="4">${escapeHtml(g.label)} <span>(${g.rows.length} item)</span></td></tr>
+      ${g.rows.map(r => `<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi] || r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
+    </tbody>`).join('')}
     <tfoot><tr><td colspan="4">Total ${rows.length} jenis item</td></tr></tfoot>
   </table>
   <div class="ttd-section">
@@ -771,9 +798,15 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                       <th style={{ ...rekapThS, textAlign: 'center' }}>Satuan</th>
                     </tr>
                   </thead>
-                  <tbody>
-                    {rekapRowsDisplayed.map((r, ri) => (
-                      <tr key={r.key} style={{ borderBottom: ri < rekapRowsDisplayed.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
+                  {rekapGrup.map((g, gi) => (
+                  <tbody key={g.divisi}>
+                    <tr style={{ background: '#f8fafc', borderTop: gi > 0 ? '1.5px solid #e2e8f0' : 'none', borderBottom: '1px solid #e2e8f0' }}>
+                      <td colSpan={4} style={{ padding: '8px 14px', fontWeight: 800, fontSize: 11, color: '#475569', textTransform: 'uppercase' as const, letterSpacing: 0.4 }}>
+                        {g.label} <span style={{ fontWeight: 600, color: '#94a3b8', textTransform: 'none' as const, letterSpacing: 0 }}>({g.rows.length} item)</span>
+                      </td>
+                    </tr>
+                    {g.rows.map((r, ri) => (
+                      <tr key={r.key} style={{ borderBottom: ri < g.rows.length - 1 ? '1px solid #f1f5f9' : 'none' }}>
                         <td style={{ padding: '11px 14px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap' as const }}>{DIVISI_LABEL[r.divisi] || r.divisi}</td>
                         <td style={{ padding: '11px 14px' }}>
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
@@ -786,6 +819,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
                       </tr>
                     ))}
                   </tbody>
+                  ))}
                   <tfoot>
                     <tr>
                       <td colSpan={4} style={{ padding: '11px 14px', background: '#eff6ff', color: '#1d4ed8', fontWeight: 700, fontSize: 12.5, borderTop: '2px solid #dbeafe' }}>
