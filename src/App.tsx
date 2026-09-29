@@ -251,11 +251,22 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   const { data: kendalaLog, create: createKendala, remove: removeKendala, refetch: refetchKendala } = useKendala()
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
+  // Badge Maintenance (29 Sep 2026, CLAUDE.md A.1/A.2) - dulu select row lalu .length (kepotong
+  // di 1000) & error ditelan (badge diam-diam hilang). Sekarang count exact head:true (gak narik
+  // row sama sekali), dan kalau gagal: console.error + badge "!" - angka lama gak ditimpa 0 biar
+  // jadwal terlambat gak kelihatan "aman" padahal cuma gagal muat.
+  const [maintenanceAlertError, setMaintenanceAlertError] = useState(false)
   useEffect(() => {
     const fetchMaintAlert = async () => {
       const h3 = new Date(); h3.setDate(h3.getDate() + 3)
-      const { data } = await supabase.from('maintenance_rutin').select('id,jatuh_tempo').eq('is_active', true).lte('jatuh_tempo', getLocalDateStr(h3))
-      setMaintenanceOverdueCount(data?.length || 0)
+      const { count, error } = await supabase.from('maintenance_rutin').select('id', { count: 'exact', head: true }).eq('is_active', true).lte('jatuh_tempo', getLocalDateStr(h3))
+      if (error) {
+        console.error('[App] gagal hitung badge Maintenance (maintenance_rutin):', error)
+        setMaintenanceAlertError(true)
+        return
+      }
+      setMaintenanceAlertError(false)
+      setMaintenanceOverdueCount(count || 0)
     }
     fetchMaintAlert()
     const ch = supabase.channel('realtime-maint-alert')
@@ -652,7 +663,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
-        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
