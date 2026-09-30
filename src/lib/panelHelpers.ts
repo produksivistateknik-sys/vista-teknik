@@ -30,13 +30,20 @@ export function getBusbarProgress(panel:any, komponen:string):number{
 // Daftar komponen busbar yang relevan buat panel ini: gabungan yang pernah dijadwalkan di
 // raw_schedule.busbar_schedule (kalau rawData dikasih) + yang punya data progress di
 // checklist + key legacy busbar_progress.
+// BUG FIX (30 Sep 2026, CAPACITOR BANK/LVMDP WO 066 CLS-FONTAINE) - key legacy DULU ikut cuma
+// karena key-nya ada, walau nilainya 0. Vista Pekerja nulis busbar_progress[komp]=0 buat tiap
+// komponen di task saat simpan, jadi komponen yang pernah dijadwal lalu dihapus dari jadwal
+// (tanpa pernah dikerjakan) nyangkut selamanya sbg baris "TO DO" hantu di Task Monitoring/
+// Detail Progres DAN narik rata-rata % BUSBAR panel (mis. 57% padahal semua yg dibutuhkan 100%).
+// Sekarang legacy WAJIB >0, sama syaratnya dgn checklist (komponenBusbarPunyaData).
 export function getPanelBusbarKomponen(panel:any, rawData?:any[]):string[]{
   const master=getBusbarKomponen(panel?.tipe);
   const scheduled=(rawData||[])
     .filter((r:any)=>r.proses==="BUSBAR"&&Number(r.panel_id||r.panelId)===Number(panel?.id))
     .flatMap((r:any)=>Object.values(r.busbar_schedule||{}).flat() as string[]);
   const fromChecklist=master.filter((k:string)=>komponenBusbarPunyaData(panel?.checklist?.[k]));
-  const fromLegacy=Object.keys(panel?.busbar_progress||{});
+  const legacyMap=panel?.busbar_progress||{};
+  const fromLegacy=Object.keys(legacyMap).filter((k:string)=>Number(legacyMap[k])>0);
   return [...new Set([...scheduled,...fromChecklist,...fromLegacy])];
 }
 
