@@ -71,6 +71,11 @@ gak dikerjakan sama sekali gak bikin counter maju, konsisten dengan removeOp di 
 tim/WP = jumlah demand semua komponen di dalamnya (tim tetap pindah bareng seperti proses lain -
 cuma cara hitung kebutuhannya yang berubah, bukan cara pindahnya). Token lama masih ada di data
 existing (histori, dibiarkan) tapi gak dipakai lagi buat hitung kapasitas.
+REVISI OPSI 1 (30 Sep 2026, keputusan user): WIRING CONTROL/POWER TIDAK LAGI lewat cascading
+kapasitas - semua unit langsung mendarat di hariTarget (geser tepat 1 hari seperti RAKIT/PAINTING),
+gak pernah loncat hari. Kebutuhan orang di atas tetap dihitung, tapi cuma buat log activity_log
+"AUTO-GESER: OVERBOOK WIRING" (tanggal, total orang terisi, kapasitas) kalau hariTarget melebihi
+kapasitas - planner yang ratakan manual.
 BUSBAR (10 Sep 2026 - DULU sama sekali gak ke-geser): diproses di blok TERPISAH (FASE 2-BUSBAR +
 FASE 3-BUSBAR) karena datanya di kolom raw_schedule.busbar_schedule (Record<tanggal,string[]>,
 flat, TANPA wp/Entry), bukan raw_schedule.schedule. Progress per komponen busbar dibaca dari
@@ -149,6 +154,8 @@ const MAX_HARI_TANPA_KONFIG = 1
 // POWER nyangkut, Sep 2026). Sekarang unit selalu bergerak maju & ke-evaluasi ulang tiap hari.
 // EXISTING tetap gak pernah didorong (no-displacement utuh). `cascadePlace` asli (jam-based
 // POTONG/BENDING/dst) TIDAK berubah.
+// UPDATE 30 Sep 2026 (Opsi 1): cascadePlaceNoDisplacement DIHAPUS - WIRING sekarang langsung ke
+// hariTarget tanpa cek kapasitas (lihat blok WIRING di prosesSatuHari). Paragraf di atas = histori.
 // Batas berapa hari catch-up boleh diproses dalam SATU invocation - jaga-jaga kalau gap-nya
 // kebetulan sangat panjang (misal cron mati berminggu-minggu), biar gak timeout. Kalau kepotong di
 // sini, tombol tinggal diklik lagi buat lanjut dari titik terakhir (auto_geser_runs jadi checkpoint).
@@ -599,79 +606,10 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     return { hasil, hops }
   }
 
-  // Varian khusus WIRING CONTROL/WIRING POWER - TANPA priority-displacement (lihat komentar
-  // MAX_HARI_TANPA_KONFIG di atas). Existing (unit yang UDAH ADA di hariTargetPin) SELALU dipin
-  // di situ, gak lewat pencarian hari sama sekali. Cuma kandidat baru yang jalan maju satu hari
-  // demi satu hari, mendarat di hari pertama yang sisa kapasitasnya (setelah dikurangi existing +
-  // kandidat lain yang udah diterima hari itu) CUKUP buat demand-nya secara PENUH - gak ada
-  // squeeze/overbook paksa buat NYARI slot.
-  // REVISI B1 (10 Sep 2026): kalau sampai MAX_CASCADE_HARI / ketemu hari tanpa-konfig tetap gak
-  // ketemu slot kosong, kandidat DULU ditinggal tanpa placement (dibiarin di tanggal asal) -
-  // tapi catch-up harian lalu maju & gak pernah nengok tanggal itu lagi -> unit STRAND PERMANEN
-  // di masa lalu (terbukti: 18 WIRING CONTROL + 9 WIRING POWER nyangkut, Sep 2026). Sekarang
-  // kandidat tetap DIMAJUKAN 1 hari ke hariTargetPin (overbook, tercatat di overbookWarnings) -
-  // biar gak pernah hilang dari jendela hidup & ke-evaluasi ulang tiap hari sampai kelar/kapasitas
-  // longgar. Existing TETAP gak pernah digeser (rule no-displacement utuh).
-  const cascadePlaceNoDisplacement = (proses: string, hariTargetPin: string, existingUnits: Unit[], candidateUnitsAwal: Unit[]) => {
-    const hasil = new Map<string, { finalDate: string }>()
-    const hops = new Map<string, string[]>()
-    candidateUnitsAwal.forEach((u) => hops.set(u.id, []))
-
-    // Existing gak pernah dievaluasi buat digeser lewat sini - selalu dipin di hariTargetPin.
-    existingUnits.forEach((u) => hasil.set(u.id, { finalDate: hariTargetPin }))
-    const demandExistingPinned = existingUnits.reduce((s, u) => s + u.demand, 0)
-
-    const committedPerDate: Record<string, number> = { [hariTargetPin]: demandExistingPinned }
-    let pool = candidateUnitsAwal.slice().sort(priorityCompare)
-    let tanggal = hariTargetPin
-    let hari = 0
-    let hariTanpaKonfigBerturut = 0
-
-    while (pool.length > 0 && hari < MAX_CASCADE_HARI) {
-      const cap = getCap(tanggal, proses)
-      if (!cap) {
-        hariTanpaKonfigBerturut++
-        if (hariTanpaKonfigBerturut >= MAX_HARI_TANPA_KONFIG) {
-          const tanggalMulaiTanpaKonfig = addDaysStr(tanggal, -(hariTanpaKonfigBerturut - 1))
-          // B1: majukan 1 hari ke hariTargetPin (bukan ditinggal strand). Existing tetap dipin.
-          pool.forEach((u) => { hasil.set(u.id, { finalDate: hariTargetPin }); hops.set(u.id, []) })
-          overbookWarnings.push(`Kapasitas ${proses} BELUM DIKONFIGURASI mulai ${tanggalMulaiTanpaKonfig} - ${pool.length} unit WIRING dimajukan 1 hari ke ${hariTargetPin} (overbook; existing tidak digeser). PERLU REVIEW MANUAL: isi kapasitas kerja ${proses} untuk tanggal ke depan. Unit: ${pool.map((u) => u.sortKode).join(',')}`)
-          pool = []
-          break
-        }
-        pool.forEach((u) => hops.get(u.id)!.push(tanggal))
-        tanggal = addDaysStr(tanggal, 1); hari++; continue
-      }
-      hariTanpaKonfigBerturut = 0
-      const kapasitasUnit = cap.unit || 0
-      const sisaAwalHari = kapasitasUnit - (committedPerDate[tanggal] || 0)
-      if (sisaAwalHari <= 0) {
-        pool.forEach((u) => hops.get(u.id)!.push(tanggal))
-        tanggal = addDaysStr(tanggal, 1); hari++; continue
-      }
-      let sisa = sisaAwalHari
-      const sisaPool: Unit[] = []
-      pool.forEach((u) => {
-        if (u.demand <= sisa) {
-          hasil.set(u.id, { finalDate: tanggal })
-          committedPerDate[tanggal] = (committedPerDate[tanggal] || 0) + u.demand
-          sisa -= u.demand
-        } else {
-          hops.get(u.id)!.push(tanggal)
-          sisaPool.push(u)
-        }
-      })
-      pool = sisaPool
-      tanggal = addDaysStr(tanggal, 1); hari++
-    }
-    if (pool.length > 0) {
-      // B1: sama alasan dgn branch tanpa-konfig di atas - majukan 1 hari ke hariTargetPin
-      // (overbook, tercatat), JANGAN ditinggal strand. Existing tetap gak digeser.
-      pool.forEach((u) => { hasil.set(u.id, { finalDate: hariTargetPin }); hops.set(u.id, []) })
-      overbookWarnings.push(`Kapasitas ${proses} penuh terus sampai ${MAX_CASCADE_HARI} hari sejak ${hariTargetPin} - ${pool.length} unit WIRING dimajukan 1 hari ke ${hariTargetPin} (overbook; existing tidak digeser). PERLU REVIEW MANUAL: ${pool.map((u) => u.sortKode).join(',')}`)
-    }
-    return { hasil, hops }
-  }
+  // cascadePlaceNoDisplacement (varian WIRING tanpa priority-displacement, 4 Agu 2026 + B1 10 Sep
+  // 2026) DIHAPUS 30 Sep 2026 - WIRING sekarang ditempatkan langsung ke hariTarget (Opsi 1, lihat
+  // blok WIRING di bawah). Kalau suatu saat mau balik ke penempatan berbasis kapasitas, ambil
+  // dari git history commit sebelum perubahan ini.
 
   // -- proses jam-based (semua kecuali WIRING & BUSBAR) --
   for (const [proses, kandidatList] of Object.entries(kandidatJam)) {
@@ -820,7 +758,18 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     })
 
     const semuaUnit = [...existingUnits, ...candUnits]
-    const { hasil: placement, hops: hopsMap } = cascadePlaceNoDisplacement(proses, hariTarget, existingUnits, candUnits)
+    // REVISI OPSI 1 (30 Sep 2026, keputusan user: "WIRING diperlakukan SAMA seperti POTONG/RAKIT
+    // dst - ikut geser terus per hari, jangan loncat hari"). DULU lewat cascadePlaceNoDisplacement:
+    // kandidat baru cari hari pertama yang sisa kapasitas orangnya cukup -> 77% jejak WIRING CONTROL
+    // & 50% WIRING POWER loncat >1 hari (bukti 30 Sep: 30 Sep udah keisi 24.5 org vs kapasitas 5,
+    // kebanyakan pin manual planner, kandidat 29 Sep loncat ke 1 Okt). SEKARANG semua unit langsung
+    // mendarat di hariTarget (persis cabang !adaDataMenit proses jam-based) - kapasitas orang
+    // (bobot_komponen x kebutuhanOrangWiring) TETAP dihitung buat UI & log overbook (lihat
+    // hitungOverbookWiring di bawah), cuma gak lagi nahan/ngedorong penempatan. Existing tetap gak
+    // pernah digeser (sama seperti sebelumnya). Logic pin Opsi A (Fase 1) gak disentuh.
+    const placement = new Map<string, { finalDate: string }>()
+    const hopsMap = new Map<string, string[]>()
+    semuaUnit.forEach((u) => placement.set(u.id, { finalDate: hariTarget }))
 
     semuaUnit.forEach((u) => {
       const p = placement.get(u.id)
@@ -855,11 +804,57 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     })
 
     // Sama seperti jam-based: selesaikan jejak buat kode yang WP-nya di-dedupe tadi.
+    // BUG FIX (30 Sep 2026) - dedupe WIRING per WP (rowId|wp), BUKAN per kode kayak jam-based. DULU
+    // kode di sini cuma dapat jejak/remove di hariSumber tanpa addOp ke tujuan -> kalau entry WP
+    // yang sama di hariTarget gak berisi kode itu (mis. WP1 target cuma FS.4, sumber bawa FS.8),
+    // kode HILANG dari jadwal. Sekarang selalu addOp ke finalDate (addOp idempoten - no-op kalau
+    // kode udah ada di entry tujuan, jadi kasus normal "kode sama di kedua tanggal" gak berubah).
     dedupedKasus2Orang.forEach(({ rowId, wp, kode, existingId }) => {
       const finalDate = placement.get(existingId)?.finalDate || hariTarget
       if (perluJejakKandidat(rowId, wp, proses, kode)) jejakOp(rowId, hariSumber, wp, kode, finalDate)
       else removeOp(rowId, hariSumber, wp, kode)
+      addOp(rowId, finalDate, wp, kode, hariSumber)
     })
+  }
+
+  // ================= OVERBOOK WIRING (Opsi 1, 30 Sep 2026) =================
+  // Kapasitas orang gak lagi nahan penempatan WIRING (lihat blok WIRING di atas) - sebagai
+  // gantinya, hitung isi AKHIR hariTarget per proses WIRING (kode live yang udah ada, TERMASUK yang
+  // ber-pin manual, + kode yang baru mendarat lewat addOp) dan laporkan kalau total kebutuhan orang
+  // > kapasitas. Rumus kebutuhan SAMA PERSIS dgn yang dipakai UI (bobot_komponen x
+  // kebutuhanOrangWiring x hari kerja ke-N). Dihitung buat SEMUA proses WIRING, bukan cuma yang
+  // punya kandidat hari ini (hari yang penuh gara-gara pin doang juga harus ketauan).
+  const overbookWiring: { tanggal: string; proses: string; terisi: number; kapasitas: number | null; jumlahKode: number }[] = []
+  for (const proses of PROSES_ORANG) {
+    let terisi = 0
+    let jumlahKode = 0
+    for (const row of rawRows) {
+      if (row.proses !== proses) continue
+      const panel = panelMap[String(row.panel_id)]
+      if (!panel) continue
+      const checklist = panel.checklist || {}
+      const kodeLive = new Set<string>()
+      for (const e of row.schedule?.[hariTarget] || []) {
+        for (const k of e.komponen || []) {
+          if (k.startsWith('__wiring_') || isJejakKode(e, k)) continue
+          if ((checklist[k]?.progress?.[proses] || 0) >= 100) continue
+          kodeLive.add(k)
+        }
+      }
+      const ops = rowOps[row.id]?.[hariTarget]
+      ops?.add.forEach(({ kode }) => kodeLive.add(kode))
+      ops?.remove.forEach(({ kode }) => kodeLive.delete(kode))
+      ops?.jejak.forEach(({ kode }) => kodeLive.delete(kode))
+      kodeLive.forEach((kode) => {
+        const hariKeN = hariKeNFromMap(hariKerjaMap, String(row.panel_id), kode, proses, hariTarget)
+        terisi += kebutuhanOrangWiring(row.bobot_komponen?.[kode], hariKeN)
+        jumlahKode++
+      })
+    }
+    if (jumlahKode === 0) continue
+    const cap = getCap(hariTarget, proses)
+    const kapasitas = cap ? (cap.unit || 0) : null
+    if (kapasitas === null || terisi > kapasitas) overbookWiring.push({ tanggal: hariTarget, proses, terisi, kapasitas, jumlahKode })
   }
 
   // ================= FASE 2-BUSBAR: klasifikasi (struktur busbar_schedule terpisah) =================
@@ -1057,7 +1052,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
 
   if (overbookWarnings.length > 0) console.warn(overbookWarnings.join('\n'))
 
-  return { jumlahRowDiproses, komponenLangsung, komponenDidorong, overbookWarnings, detail: detailDryRun }
+  return { jumlahRowDiproses, komponenLangsung, komponenDidorong, overbookWarnings, overbookWiring, detail: detailDryRun }
 }
 
 Deno.serve(async (req) => {
@@ -1103,6 +1098,11 @@ Deno.serve(async (req) => {
     let komponenDidorongTotal = 0
     const perHari: { hariSumber: string; hariTarget: string; jumlahRowDiproses: number }[] = []
     const overbookWarningsTotal: string[] = []
+    // Overbook WIRING (Opsi 1) - key tanggal|proses, entri TERAKHIR menang: sapu tanggal lampau bisa
+    // proses hariTarget yang sama (hari ini) berkali-kali, yang terakhir = isi akhir paling lengkap.
+    type OverbookWiring = { tanggal: string; proses: string; terisi: number; kapasitas: number | null; jumlahKode: number }
+    const overbookWiringMap: Record<string, OverbookWiring> = {}
+    const catatOverbookWiring = (list: OverbookWiring[]) => list.forEach((o) => { overbookWiringMap[`${o.tanggal}|${o.proses}`] = o })
 
     while (cursor < hariIniWib && jumlahHariDiproses < MAX_CATCHUP_HARI) {
       const hSumber = cursor
@@ -1117,6 +1117,7 @@ Deno.serve(async (req) => {
       komponenLangsungTotal += hasil.komponenLangsung
       komponenDidorongTotal += hasil.komponenDidorong
       overbookWarningsTotal.push(...hasil.overbookWarnings)
+      catatOverbookWiring(hasil.overbookWiring)
       jumlahHariDiproses++
       cursor = hTarget
     }
@@ -1139,6 +1140,7 @@ Deno.serve(async (req) => {
         komponenLangsungTotal += hasil.komponenLangsung
         komponenDidorongTotal += hasil.komponenDidorong
         overbookWarningsTotal.push(...hasil.overbookWarnings)
+        catatOverbookWiring(hasil.overbookWiring)
         jumlahTanggalDisapu++
       }
     }
@@ -1166,12 +1168,27 @@ Deno.serve(async (req) => {
       })
     }
 
+    // Log overbook WIRING (Opsi 1) - 1 baris activity_log per tanggal+proses, biar bisa ditelusuri
+    // hari mana yang kelebihan beban orang sejak kapasitas gak lagi nahan penempatan WIRING.
+    const overbookWiringList = Object.values(overbookWiringMap)
+    if (!dryRun && overbookWiringList.length > 0) {
+      const { error: logErr } = await supabase.from('activity_log').insert(overbookWiringList.map((o) => ({
+        user_name: triggeredBy || 'System',
+        action: 'AUTO-GESER: OVERBOOK WIRING',
+        description: o.kapasitas === null
+          ? `${o.proses} ${o.tanggal}: terisi ${o.terisi} orang (${o.jumlahKode} kode), kapasitas BELUM DIKONFIGURASI. Isi kapasitas & ratakan manual di Raw Schedule.`
+          : `${o.proses} ${o.tanggal}: terisi ${o.terisi} orang (${o.jumlahKode} kode), kapasitas maks ${o.kapasitas} orang (lebih ${Math.round((o.terisi - o.kapasitas) * 10) / 10}). Ratakan manual di Raw Schedule.`,
+        module: 'rencana', halaman: 'Rencana Harian',
+      })))
+      if (logErr) console.error('Gagal tulis log OVERBOOK WIRING:', logErr)
+    }
+
     return jsonResponse({
       success: true, dryRun, mode: 'catchup',
       hariMulai, hariTargetAkhir: hariIniWib,
       jumlahHariDiproses, jumlahTanggalDisapu, jumlahRowDiprosesTotal,
       jumlahKomponenTotal, komponenLangsungTotal, komponenDidorongTotal,
-      perHari, overbookWarnings: overbookWarningsTotal,
+      perHari, overbookWarnings: overbookWarningsTotal, overbookWiring: overbookWiringList,
     })
   } catch (err: any) {
     return jsonResponse({ success: false, error: err?.message || String(err) }, 500)
