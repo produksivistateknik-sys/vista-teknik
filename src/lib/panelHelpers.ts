@@ -263,6 +263,59 @@ export function initChecklist(tipe, qty=1, customPanelTypes?){
   return c;
 }
 
+// SESUAIKAN CHECKLIST KE TIPE PANEL (1 Okt 2026, bug "WM.2" nyasar di kartu Vista Pekerja) -
+// dulu ganti tipe panel yang SUDAH ADA (Manajemen WO / WO Digital) nyimpen checklist lama apa
+// adanya: key tipe lama (mis. WM.1-WM.12 waktu WM_MS -> FS) tetap qty>0, ikut dianggap komponen
+// relevan lewat fallback KOMPONEN_PROSES_MAP, dan tampil sebagai kartu bernama kode mentah
+// (nama gak ketemu utk tipe baru). Dipanggil di titik simpan workOrderService (1 helper, dipakai
+// semua jalur simpan panel). Aturan:
+// - key kode BOM tipe LAIN yang KOSONG (gak pernah dikerjakan) -> dibuang.
+// - key kode BOM tipe lain yang SUDAH ADA kerjaan -> TIDAK dihapus (riwayat aman), qty-nya di-0
+//   (keluar dari semua daftar yang nyaring qty>0).
+// - kode BOM tipe baru yang belum ada -> ditambah (entry kosong, qty 0 - admin isi sendiri).
+// - key selain kode BOM (pseudo-komponen BUSBAR LINE/NETRAL/dst, "MARKED") TIDAK disentuh.
+// kodePerTipe = Record<tipe_panel, Set<kode_komponen>> dari bom_master. Kalau tipe baru gak punya
+// daftar kode (BOM gagal dibaca / tipe tak dikenal) -> checklist dikembalikan UTUH (gak pernah
+// buang apapun berdasarkan data yang gak lengkap).
+export function checklistEntryPunyaKerja(cl:any):boolean{
+  if(!cl)return false;
+  const adaAngka=(o:any)=>Object.values(o||{}).some((v:any)=>(Number(v)||0)>0);
+  const adaIsiTanggal=(o:any)=>Object.values(o||{}).some((v:any)=>v&&typeof v==="object"&&Object.keys(v).length>0);
+  return adaAngka(cl.progress)||adaAngka(cl.qtyProses)||adaIsiTanggal(cl.progressByDate)||adaIsiTanggal(cl.qtyProsesByDate)
+    ||Object.values(cl.history||{}).some((v:any)=>Array.isArray(v)&&v.length>0)
+    ||(Array.isArray(cl.fotoPemasangan)&&cl.fotoPemasangan.length>0)
+    ||!!cl.pasangKomponenTahap||!!cl.busbarTahap;
+}
+export function sesuaikanChecklistKeTipe(checklist:any,tipeBaru:string,kodePerTipe:Record<string,Set<string>>)
+  :{checklist:any;dibuang:string[];dinolkan:string[];ditambah:string[]}{
+  const kodeTipeBaru=kodePerTipe[tipeBaru];
+  if(!kodeTipeBaru||kodeTipeBaru.size===0)return{checklist,dibuang:[],dinolkan:[],ditambah:[]};
+  const semuaKodeBom=new Set<string>();
+  Object.values(kodePerTipe).forEach(s=>s.forEach(k=>semuaKodeBom.add(k)));
+  const hasil:any={...(checklist||{})};
+  const dibuang:string[]=[],dinolkan:string[]=[],ditambah:string[]=[];
+  Object.keys(hasil).forEach(kode=>{
+    if(!semuaKodeBom.has(kode)||kodeTipeBaru.has(kode))return;
+    if(checklistEntryPunyaKerja(hasil[kode])){
+      if((hasil[kode]?.qty||0)!==0){hasil[kode]={...hasil[kode],qty:0};dinolkan.push(kode);}
+    } else {
+      delete hasil[kode];dibuang.push(kode);
+    }
+  });
+  // qty:0 (BUKAN qty awal pola initChecklist) - ganti tipe gak boleh tiba-tiba bikin semua komponen
+  // tipe baru "dibutuhkan"; admin isi qty-nya sendiri di grid. Pola sama propagateKodeBaruKePanel
+  // (KapasitasPekerjaanTab.tsx) yang juga nambah kode baru ke panel existing dgn qty:0.
+  kodeTipeBaru.forEach(kode=>{
+    if(hasil[kode])return;
+    hasil[kode]={qty:0,qtyProses:{},
+      progress:ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{}),
+      progressByDate:ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}),
+      stepDates:ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{})};
+    ditambah.push(kode);
+  });
+  return{checklist:hasil,dibuang,dinolkan,ditambah};
+}
+
 export function naturalKodeSortGlobal(a,b){
   const parse=(k)=>{
     const m=String(k).match(/^(.*?)(\d+)$/);

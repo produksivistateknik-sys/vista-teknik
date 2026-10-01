@@ -1,4 +1,5 @@
 ﻿import { supabase } from '../lib/supabase'
+import { sesuaikanChecklistKeTipe } from '../lib/panelHelpers'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
@@ -16,6 +17,33 @@ const logActivity = async (user_name: string, action: string, description: strin
     wo_number: extra?.wo_number || '',
   })
   if (error) console.error('[workOrderService] gagal catat activity_log:', action, error.message)
+}
+
+// GANTI TIPE PANEL (1 Okt 2026, bug kartu "WM.2" nyasar di Vista Pekerja) - SATU titik yang dipakai
+// SEMUA jalur update panel existing (savePanels & saveWOWithSplit, dipanggil Manajemen WO & WO
+// Digital). Kalau tipe di DB beda dari tipe yang mau disimpan, checklist disesuaikan lewat helper
+// bersama sesuaikanChecklistKeTipe (lihat aturan di panelHelpers.ts). Mutasi p.checklist in-place
+// sebelum di-update. Tipe gak berubah -> nol efek (gak ada query BOM sama sekali).
+async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string) {
+  const ids = panels.filter(p => p.id).map(p => p.id)
+  if (ids.length === 0) return
+  const { data: lama, error } = await supabase.from('panels').select('id,tipe').in('id', ids)
+  if (error) throw new Error('baca tipe panel lama: ' + error.message)
+  const tipeLama: Record<string, string> = Object.fromEntries((lama || []).map((r: any) => [String(r.id), r.tipe]))
+  const berubah = panels.filter(p => p.id && tipeLama[String(p.id)] && tipeLama[String(p.id)] !== p.tipe)
+  if (berubah.length === 0) return
+  const { data: bom, error: bomErr } = await supabase.from('bom_master').select('tipe_panel,kode_komponen').range(0, 4999)
+  if (bomErr) throw new Error('baca bom_master: ' + bomErr.message)
+  const kodePerTipe: Record<string, Set<string>> = {}
+  ;(bom || []).forEach((b: any) => { (kodePerTipe[b.tipe_panel] ||= new Set()).add(b.kode_komponen) })
+  for (const p of berubah) {
+    const r = sesuaikanChecklistKeTipe(p.checklist || {}, p.tipe, kodePerTipe)
+    p.checklist = r.checklist
+    await logActivity(uname, 'GANTI TIPE PANEL',
+      `Panel ${p.nama}: tipe ${tipeLama[String(p.id)]} -> ${p.tipe}. Checklist disesuaikan - dibuang (kosong): ${r.dibuang.join(',') || '-'}; ` +
+      `qty di-0 (sudah ada progress, data disimpan): ${r.dinolkan.join(',') || '-'}; ditambah: ${r.ditambah.join(',') || '-'}`,
+      { panel: p.nama })
+  }
 }
 
 export const workOrderService = {
@@ -112,7 +140,7 @@ export const workOrderService = {
     return woToDelete
   },
 
-  async savePanels(woId: number, panels: any[]) {
+  async savePanels(woId: number, panels: any[], uname = 'Admin') {
     const { data: existingRows } = await supabase.from('panels').select('id').eq('wo_id', woId)
     const existingIds = new Set((existingRows || []).map((p: any) => p.id))
 
@@ -125,6 +153,7 @@ export const workOrderService = {
       await supabase.from('panels').delete().in('id', idsToDelete)
     }
 
+    await sesuaikanChecklistJikaTipeBerubah(withId, uname)
     for (const p of withId) {
       const { error } = await supabase.from('panels').update({
         no_pnl: p.noPnl || p.no_pnl || 1,
@@ -221,6 +250,7 @@ export const workOrderService = {
       return maxNoPnlCache[targetWoId]
     }
 
+    await sesuaikanChecklistJikaTipeBerubah(groupedPanels.flatMap(g => g.panels), uname)
     for (const g of groupedPanels) {
       let targetWoId = editWoId
       if (g.tanggal && g.tanggal !== mainTarget) {
