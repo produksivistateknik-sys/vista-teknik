@@ -3,6 +3,7 @@ import { supabase } from './supabase'
 import { activityLogService } from '../services/activityLogService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { ALL_PROSES } from '../constants/panelTypes'
+import { checklistEntryPunyaKerja } from './panelHelpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED QTY-PER-KOMPONEN EDITOR (3 Sep 2026, di-extract dari ManajemenWO.tsx)
@@ -150,6 +151,30 @@ export function usePanelQtyEditor({
         konflikList.push(`${nama}: progress sudah dikerjakan ${maxQtyProses}, qty baru cuma ${newQtyFinal}`)
       }
     })
+    // QTY JADI 0 (1 Okt 2026) - kode bakal dihapus dari jadwal hari ini & ke depan
+    // (rawScheduleService.sinkronJadwalSetelahUbahQty). Kalau komponen itu udah pernah dikerjakan
+    // atau timernya lagi jalan, admin WAJIB konfirmasi dulu (bukan diblok - tetap bisa lanjut).
+    const kodeJadiNol = Object.keys(dirty).filter(kode => {
+      const d = (dirty as any)[kode]
+      return d.newQty !== d.oldQty && Math.round(Number(d.newQty) * panelQtyMultiplier) <= 0 && (finalChecklist[kode]?.qty || 0) > 0
+    })
+    if (kodeJadiNol.length > 0) {
+      const { data: timerJalan, error: tErr } = await supabase.from('fcs_timer_kerja').select('kode_komponen,proses').eq('panel_id', panel.id).in('kode_komponen', kodeJadiNol).is('selesai', null)
+      if (tErr) { alert('Gagal cek timer aktif: ' + tErr.message); return }
+      const cfgNol = getEffectiveCfg(panel.tipe)
+      const peringatanNol = kodeJadiNol.map(kode => {
+        const nama = cfgNol?.wps.flatMap((w: any) => w.items).find((it: any) => it.kode === kode)?.nama || kode
+        const timer = (timerJalan || []).filter((t: any) => t.kode_komponen === kode).map((t: any) => t.proses)
+        if (timer.length) return `${nama}: timer ${timer.join('/')} SEDANG JALAN`
+        if (checklistEntryPunyaKerja(finalChecklist[kode])) return `${nama}: sudah pernah dikerjakan`
+        return null
+      }).filter(Boolean)
+      if (peringatanNol.length > 0 && !window.confirm(
+        'Qty komponen berikut jadi 0 dan akan DIHAPUS dari jadwal hari ini & ke depan (Raw Schedule + Rencana Harian):\n\n' +
+        peringatanNol.join('\n') +
+        '\n\nRiwayat progress & jadwal lampau TETAP disimpan. Lanjutkan?'
+      )) return
+    }
     if (konflikList.length > 0) {
       const lanjut = window.confirm(
         'PERINGATAN: qty baru lebih kecil dari progress yang sudah dikerjakan operator untuk:\n\n' +
@@ -160,9 +185,11 @@ export function usePanelQtyEditor({
       if (!lanjut) return
     }
 
+    const qtyLamaAsli: Record<string, number> = {} // qty checklist SEBELUM disimpan (sudah dikali qty panel)
     Object.keys(dirty).forEach(kode => {
       const dirtyEntry = (dirty as any)[kode]
       if (dirtyEntry.newQty === dirtyEntry.oldQty) return
+      qtyLamaAsli[kode] = Number(finalChecklist[kode]?.qty) || 0
       const base = finalChecklist[kode] || {
         qty: 0, qtyProses: {},
         progress: ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: 0 }), {}),
@@ -218,13 +245,19 @@ export function usePanelQtyEditor({
     })
     setDirtyQty(prev => { const n = { ...prev }; delete n[panelId]; return n })
     setOrigChecklist(prev => { const n = { ...prev }; delete n[panelId]; return n })
-    // Sync qty yang udah ke-cache di raw_schedule.schedule (qtyPerKomponen) - komponen yang belum
-    // pernah dijadwalkan tetap dibiarkan (gak bikin entry baru), itu tetap lewat Generate Jadwal.
+    // Sinkron jadwal (1 Okt 2026) - qty jadi 0 dihapus dari jadwal ke depan, qty dari 0 dijadwalkan
+    // ke proses relevan, qty lain disesuaikan angkanya. Satu pintu: sinkronJadwalSetelahUbahQty.
     const qtyChangesForRaw = Object.entries(dirty)
       .filter(([, v]) => (v as any).newQty !== (v as any).oldQty)
-      .map(([kode, v]) => ({ kode, newQty: Math.round(Number((v as any).newQty) * panelQtyMultiplier) }))
+      .map(([kode, v]) => ({ kode, oldQty: qtyLamaAsli[kode] || 0, newQty: Math.round(Number((v as any).newQty) * panelQtyMultiplier) }))
     if (qtyChangesForRaw.length > 0) {
-      await rawScheduleService.syncQtyAfterEdit(panel.id, qtyChangesForRaw)
+      try {
+        await rawScheduleService.sinkronJadwalSetelahUbahQty(panel.id, qtyChangesForRaw, uname)
+      } catch (err: any) {
+        console.error('[saveQtyEdit] qty tersimpan, sinkron jadwal gagal:', err)
+        alert('Qty BERHASIL disimpan, tapi sinkron ke jadwal GAGAL: ' + (err?.message || err) + '\n\nCek Raw Schedule untuk komponen ini, atau simpan ulang qty-nya.')
+        return
+      }
     }
     alert('Qty berhasil disimpan!')
   }

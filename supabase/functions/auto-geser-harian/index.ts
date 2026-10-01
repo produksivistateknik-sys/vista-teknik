@@ -369,7 +369,7 @@ const cariTanggalTertinggal = async (supabase: any, sebelum: string, ctx: Ctx): 
     for (const [tgl, entries] of Object.entries(row.schedule || {}) as [string, any[]][]) {
       if (tgl >= sebelum || tanggalSet.has(tgl)) continue
       const ada = (entries || []).some((e: any) => (e.komponen || []).some((k: string) =>
-        !k.startsWith('__wiring_') && !(e.digeserKe && e.digeserKe[k]) && (checklist[k]?.progress?.[row.proses] || 0) < 100))
+        !k.startsWith('__wiring_') && !(e.digeserKe && e.digeserKe[k]) && (checklist[k]?.progress?.[row.proses] || 0) < 100 && (Number(checklist[k]?.qty) || 0) > 0))
       if (ada) tanggalSet.add(tgl)
     }
   }
@@ -485,6 +485,10 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         const cl = checklist[kode]
         const pct = cl?.progress?.[row.proses] || 0
         if (pct >= 100) return
+        // QTY 0 (1 Okt 2026) - komponen yang gak dibutuhkan lagi (qty di-0 admin) GAK PERNAH dibawa
+        // maju. Dulu cuma dicek progress<100, jadi kode qty 0 di tanggal lampau ditarik lagi ke hari
+        // ini tiap Tarik - "hidup lagi" di jadwal walau udah dihapus (sinkronJadwalSetelahUbahQty).
+        if ((Number(cl?.qty) || 0) <= 0) return
         // Opsi A: pin di hariSumber = tanggal pin udah lewat -> ikut dibawa maju, wajib jejak.
         if (isManualPinKode(e, kode)) pinnedDiSumber.add(`${row.id}|${e.wp}|${kode}`)
         if (pinnedLiveDiTarget.has(`${row.id}|${kode}`)) {
@@ -631,6 +635,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
           // dan tanpa cek ini kode yang 100% ikut kebawa ke-geser/jejak kalau kapasitas hari itu
           // penuh, padahal harusnya gak pernah disentuh (persis kayak guard di Fase 1).
           if ((cl?.progress?.[proses] || 0) >= 100) return
+          if ((Number(cl?.qty) || 0) <= 0) return // qty 0 - bukan kebutuhan, gak ikut kompetisi/geser (1 Okt 2026)
           const qtyTotal = Number(cl?.qty) || 0
           const menit = qtyTotal * getMenitPcs(panel.tipe, kode, proses)
           const id = `ex_${row.id}_${e.wp}_${kode}`
@@ -722,7 +727,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         // boleh ikut jadi bagian unit yang bersaing kapasitas (dan gak boleh dapet jejak lewat
         // sini kalau tim-nya ke-bump). Kalau SEMUA kode di entry ini udah 100%, realKode kosong,
         // unit-nya otomatis gak kebentuk (baris di bawah).
-        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && !isManualPinKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100)
+        const realKode = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_') && !isJejakKode(e, k) && !isManualPinKode(e, k) && (checklist[k]?.progress?.[proses] || 0) < 100 && (Number(checklist[k]?.qty) || 0) > 0)
         if (realKode.length === 0) return
         // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN (bobot dari
         // raw_schedule.bobot_komponen level row + hari kerja aktual dari fcs_timer_kerja),
@@ -838,6 +843,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         for (const k of e.komponen || []) {
           if (k.startsWith('__wiring_') || isJejakKode(e, k)) continue
           if ((checklist[k]?.progress?.[proses] || 0) >= 100) continue
+          if ((Number(checklist[k]?.qty) || 0) <= 0) continue // qty 0 - bukan kebutuhan (1 Okt 2026)
           kodeLive.add(k)
         }
       }

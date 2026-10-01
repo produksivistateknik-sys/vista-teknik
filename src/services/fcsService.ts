@@ -971,7 +971,11 @@ export async function setOverrideAndRebalance(params: {
 // Dipanggil dari tombol "FCS" di card WO - Manajemen WO
 // ============================================================
 async function upsertRawScheduleEntry(
-  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>, generatedBy?: string
+  wo: any, panel: any, proses: string, tanggal: string, wp: string, komponenList: string[], qtyPerKomponen?: Record<string, number>, generatedBy?: string,
+  // hitungMulai (1 Okt 2026, mode kodeFilter) - kalau diisi, anti-duplikat di bawah cuma ngitung
+  // entri LIVE (bukan jejak) di tanggal >= hitungMulai, biar jadwal lama (tanggal lampau/jejak)
+  // dari kode yang qty-nya sempat di-0 gak ngeblok penjadwalan ulangnya.
+  hitungMulai?: string
 ) {
   const { data: existing } = await supabase
     .from('raw_schedule')
@@ -998,8 +1002,10 @@ async function upsertRawScheduleEntry(
       let sudahAda = 0
       Object.entries(scheduleUtkCek).forEach(([tgl, entries]: any) => {
         if (tgl === tanggal) return
+        if (hitungMulai && tgl < hitungMulai) return
         ;(entries as any[]).forEach((e: any) => {
           if (e.wp !== wp || !(e.komponen || []).includes(kode)) return
+          if (hitungMulai && e.digeserKe && e.digeserKe[kode]) return
           sudahAda += e.qtyPerKomponen?.[kode] ?? totalQtyKode
         })
       })
@@ -1066,7 +1072,14 @@ export async function generateAndSaveToRawSchedule(
   woId: number,
   tanggalMulai: string,
   generatedBy: string,
-  panelIds?: number[]
+  panelIds?: number[],
+  // kodeFilter (1 Okt 2026, sinkron qty 0 -> >0) - opsional, Record<panelId, kode[]>. Kalau
+  // diisi: CUMA kode itu yang diproses (kode lain panel yang sama gak disentuh sama sekali), dan
+  // "sudah terjadwal" utk kode itu dihitung dari entri LIVE (bukan jejak) di tanggal >= tanggalMulai
+  // doang - kode yang dulu sempat terjadwal, lalu qty-nya di-0 (dihapus dari jadwal ke depan),
+  // lalu dinaikkan lagi, harus bisa kejadwal ulang. Proses yang progress-nya udah 100% dilewati.
+  // Tanpa kodeFilter perilaku generator PERSIS sama seperti sebelumnya.
+  kodeFilter?: Record<number, string[]>
 ): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
@@ -1225,6 +1238,36 @@ export async function generateAndSaveToRawSchedule(
       })
     })
 
+    // kodeFilter: hitung ulang "sudah ada"/"sudah terjadwal" khusus kode yang difilter - cuma dari
+    // entri live (bukan jejak) di tanggal >= tanggalMulai (lihat komentar parameter di atas).
+    const difilter = (panelId: number, kode: string) => !!kodeFilter && (kodeFilter[panelId] || []).includes(kode)
+    if (kodeFilter) {
+      Object.entries(kodeFilter).forEach(([pid, kodes]) => {
+        kodes.forEach((kode) => {
+          ALL_PROSES.forEach((pr) => {
+            sudahAdaJadwalSet.delete(pid + '|' + pr + '|' + kode)
+            delete sudahTerjadwalQtyMap[pid + '|' + pr + '|' + kode]
+          })
+        })
+      })
+      ;(existingRaw || []).forEach((row: any) => {
+        const kodes = kodeFilter[row.panel_id]
+        if (!kodes || row.deleted_at) return
+        const checklistPanel = ((panels as any[]).find((pp: any) => pp.id === row.panel_id) || {}).checklist || {}
+        Object.entries(row.schedule || {}).forEach(([tgl, entries]: any) => {
+          if (tgl < tanggalMulai) return
+          ;(entries as any[]).forEach((e: any) => {
+            ;(e.komponen || []).forEach((kode: string) => {
+              if (!kodes.includes(kode) || (e.digeserKe && e.digeserKe[kode])) return
+              const key = row.panel_id + '|' + row.proses + '|' + kode
+              sudahAdaJadwalSet.add(key)
+              sudahTerjadwalQtyMap[key] = (sudahTerjadwalQtyMap[key] || 0) + (e.qtyPerKomponen?.[kode] ?? (checklistPanel[kode]?.qty || 0))
+            })
+          })
+        })
+      })
+    }
+
     let count = 0
     const scheduledOk = new Set<string>()
     const getRelevantProsesUrut = (kode: string, tipe: string) => ALL_PROSES.filter((pr) => {
@@ -1243,7 +1286,7 @@ export async function generateAndSaveToRawSchedule(
 
     for (const panel of panels as any[]) {
       const checklist = panel.checklist || {}
-      const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
+      const activeKodes = Object.entries(checklist).filter(([k, v]: any) => (v?.qty || 0) > 0 && (!kodeFilter || difilter(panel.id, k))).map(([k]) => k)
       if (activeKodes.length === 0) continue
 
       for (const prosesSkeleton of ALL_PROSES) {
@@ -1256,7 +1299,7 @@ export async function generateAndSaveToRawSchedule(
         // BUSBAR bukan proses komponen mekanikal, gak ada baris bom_proses_relevan yang valid
         // buat itu). Skeleton BUSBAR yang benar dibuat terpisah di bawah (getBusbarKomponen).
         if (prosesSkeleton === 'BUSBAR') continue
-        const adaRelevan = PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) || activeKodes.some((kode) => {
+        const adaRelevan = (PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) && !kodeFilter) || activeKodes.some((kode) => {
           const mapKey = kode + '|' + panel.tipe
           if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
           return false
@@ -1284,6 +1327,9 @@ export async function generateAndSaveToRawSchedule(
         // di Rencana Harian & modal detail Raw Schedule. Kode ini SUDAH kejadwal lewat proses
         // aslinya masing2 (WIRING CONTROL/POWER, POTONG, dst) - BUSBAR gak perlu jadwal WP sendiri.
         if (WIRING_LIST.includes(proses) || proses === 'BUSBAR') continue
+        // kodeFilter: QC TEST/PACKING itu proses whole-panel (penanda "MARKED"), gak bergantung kode
+        // komponen mana pun - qty satu komponen naik dari 0 gak boleh nambah kode ke baris itu.
+        if (kodeFilter && PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) continue
 
         const relevantKodes = (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses) ? activeKodes : activeKodes.filter((kode) => {
           const mapKey = kode + '|' + panel.tipe
@@ -1312,6 +1358,7 @@ export async function generateAndSaveToRawSchedule(
           kodes.forEach((kode) => {
             const key = panel.id + '|' + proses + '|' + kode
             if (sudahAdaJadwalSet.has(key)) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
+            if (difilter(panel.id, kode) && (checklist[kode]?.progress?.[proses] || 0) >= 100) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
             const totalQty = checklist[kode]?.qty || 0
             const sudahQty = Math.max(sudahTerjadwalQtyMap[key] || 0, qtyProsesSelesaiMap[key] || 0)
             const sisa = Math.max(0, totalQty - sudahQty)
@@ -1365,7 +1412,7 @@ export async function generateAndSaveToRawSchedule(
             }
 
             if (kodeHariIni.length > 0) {
-              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni, generatedBy)
+              await upsertRawScheduleEntry(wo, panel, proses, cur, wp, kodeHariIni, qtyHariIni, generatedBy, kodeFilter ? tanggalMulai : undefined)
               kodeHariIni.forEach((kd) => {
                 if (!sisaQtyBerikutnya[kd]) scheduledOk.add(panel.id + '|' + kd + '|' + proses)
               })
@@ -1396,7 +1443,7 @@ export async function generateAndSaveToRawSchedule(
     // UI Raw Schedule kalau perlu dikoreksi.
     for (const panel of panels as any[]) {
       const checklist = panel.checklist || {}
-      const activeKodes = Object.entries(checklist).filter(([, v]: any) => (v?.qty || 0) > 0).map(([k]) => k)
+      const activeKodes = Object.entries(checklist).filter(([k, v]: any) => (v?.qty || 0) > 0 && (!kodeFilter || difilter(panel.id, k))).map(([k]) => k)
       if (activeKodes.length === 0) continue
 
       for (const proses of WIRING_LIST) {
@@ -1417,17 +1464,24 @@ export async function generateAndSaveToRawSchedule(
         const rowWiringExisting = (existingRaw || []).find((r: any) => r.panel_id === panel.id && r.proses === proses)
         const kodeSudahAda = new Set<string>()
         if (rowWiringExisting) {
-          Object.values(rowWiringExisting.schedule || {}).forEach((entries: any) => {
+          Object.entries(rowWiringExisting.schedule || {}).forEach(([tgl, entries]: any) => {
             ;(entries as any[]).forEach((e: any) => {
-              ;(e.komponen || []).forEach((k: string) => { if (!k.startsWith('__wiring_')) kodeSudahAda.add(k) })
+              ;(e.komponen || []).forEach((k: string) => {
+                if (k.startsWith('__wiring_')) return
+                // kodeFilter: kode yang difilter cuma dianggap "sudah ada" kalau live di >= tanggalMulai
+                if (difilter(panel.id, k) && (tgl < tanggalMulai || (e.digeserKe && e.digeserKe[k]))) return
+                kodeSudahAda.add(k)
+              })
             })
           })
         }
+        // kodeFilter: proses WIRING yang progress-nya udah 100% gak dijadwal ulang
+        relevantKodes.forEach((k) => { if (difilter(panel.id, k) && (checklist[k]?.progress?.[proses] || 0) >= 100) kodeSudahAda.add(k) })
 
         for (const [wp, kodes] of Object.entries(wpGroups)) {
           const kodeBaru = kodes.filter((k) => !kodeSudahAda.has(k))
           if (kodeBaru.length === 0) continue
-          await upsertRawScheduleEntry(wo, panel, proses, tanggalMulai, wp, kodeBaru, undefined, generatedBy)
+          await upsertRawScheduleEntry(wo, panel, proses, tanggalMulai, wp, kodeBaru, undefined, generatedBy, kodeFilter ? tanggalMulai : undefined)
           kodeBaru.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
           count++
         }

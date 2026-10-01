@@ -5,7 +5,7 @@ import { workOrderService } from '../services/workOrderService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
-import { initChecklist, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
@@ -251,7 +251,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   // qtyChangeSink opsional (8 Agu 2026): kumpulin {kode,newQty} per panelId buat sync ke
   // raw_schedule (rawScheduleService.syncQtyAfterEdit) setelah save() sukses - jalur qty PANEL ini
   // dulu gak pernah nyentuh raw_schedule sama sekali, beda dari saveQtyEdit yang udah disinkron.
-  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>,conflictSink?:string[],qtyChangeSink?:Record<string,{kode:string,newQty:number}[]>)=>list.filter(p=>p.nama).map((p,i)=>{
+  const buildNp=(list:any[],freshChecklistMap?:Record<string,any>,conflictSink?:string[],qtyChangeSink?:Record<string,{kode:string,oldQty:number,newQty:number}[]>)=>list.filter(p=>p.nama).map((p,i)=>{
     if((p as any).id){
       const newQty=Number(p.qty)||1;
       const origQty=(p as any)._origQty!==undefined?Number((p as any)._origQty)||1:newQty;
@@ -267,13 +267,16 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           scaledChecklist[kode]={...cl,qty:newKodeQty};
           if(qtyChangeSink&&newKodeQty!==(cl.qty||0)){
             if(!qtyChangeSink[panelIdStr])qtyChangeSink[panelIdStr]=[];
-            qtyChangeSink[panelIdStr].push({kode,newQty:newKodeQty});
+            qtyChangeSink[panelIdStr].push({kode,oldQty:cl.qty||0,newQty:newKodeQty});
           }
           if(conflictSink){
             const maxQtyProses=Math.max(0,...Object.values(cl.qtyProses||{}).map((v:any)=>Number(v)||0));
+            const nama=cfg?.wps?.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
             if(maxQtyProses>newKodeQty){
-              const nama=cfg?.wps?.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
               conflictSink.push(`${p.nama} - ${nama}: progress sudah dikerjakan ${maxQtyProses}, qty baru cuma ${newKodeQty}`);
+            } else if(newKodeQty<=0&&(cl.qty||0)>0&&checklistEntryPunyaKerja(cl)){
+              // Qty jadi 0 (1 Okt 2026) - bakal dihapus dari jadwal ke depan (sinkronJadwalSetelahUbahQty).
+              conflictSink.push(`${p.nama} - ${nama}: qty jadi 0 padahal sudah pernah dikerjakan - akan DIHAPUS dari jadwal hari ini & ke depan`);
             }
           }
         });
@@ -323,7 +326,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           groups[tgl].push(p);
         });
         const konflikListPanel:string[]=[];
-        const qtyChangeSinkPanel:Record<string,{kode:string,newQty:number}[]>={};
+        const qtyChangeSinkPanel:Record<string,{kode:string,oldQty:number,newQty:number}[]>={};
         const groupedPanels=Object.keys(groups).map(tgl=>({tanggal:tgl,panels:buildNp(groups[tgl],freshChecklistMap,konflikListPanel,qtyChangeSinkPanel)}));
         if(konflikListPanel.length>0){
           const lanjutPanel=window.confirm(
@@ -337,9 +340,18 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
         // FITUR (8 Agu 2026): sync qtyPerKomponen di raw_schedule yang udah ada - sama seperti
         // saveQtyEdit, biar jalur qty PANEL ini juga gak ninggalin raw_schedule basi.
+        // REVISI (1 Okt 2026): lewat pintu sinkron bersama - qty jadi 0 dihapus dari jadwal ke
+        // depan, qty dari 0 dijadwalkan, sisanya angka disesuaikan (sama persis jalur grid qty).
+        const gagalSinkron:string[]=[];
         for(const panelIdStr of Object.keys(qtyChangeSinkPanel)){
-          await rawScheduleService.syncQtyAfterEdit(Number(panelIdStr),qtyChangeSinkPanel[panelIdStr]);
+          try{
+            await rawScheduleService.sinkronJadwalSetelahUbahQty(Number(panelIdStr),qtyChangeSinkPanel[panelIdStr],uname);
+          }catch(err:any){
+            console.error('[Edit WO] sinkron jadwal gagal panel '+panelIdStr+':',err);
+            gagalSinkron.push(panelIdStr+': '+(err?.message||err));
+          }
         }
+        if(gagalSinkron.length>0)alert('WO BERHASIL disimpan, tapi sinkron qty ke jadwal GAGAL untuk:\n'+gagalSinkron.join('\n')+'\n\nCek Raw Schedule panel tersebut.');
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
         // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI
