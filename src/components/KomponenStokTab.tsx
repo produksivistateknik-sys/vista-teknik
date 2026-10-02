@@ -14,7 +14,10 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const masuklist=transaksiMasuk(transaksi,stokList);
   const keluarList=transaksiKeluar(transaksi,stokList);
   const [loading,setLoading]=useState(true);
-  const [form,setForm]=useState({nama:"",kode:"",stok:0});
+  const [form,setForm]=useState({nama:"",kode:"",stok:0,bomRef:""});
+  // Acuan BOM (2 Okt 2026, Produksi Stok) - "TIPE|KODE" dari bom_master; tahap batch produksi
+  // stok dibaca dari bom_proses_relevan acuan ini (satu aturan dgn WO).
+  const [bomList,setBomList]=useState<any[]>([]);
   const [editId,setEditId]=useState<any>(null);
   const [search,setSearch]=useState("");
   const [filterKode,setFilterKode]=useState("ALL");
@@ -52,9 +55,12 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const fetchAll=async()=>{
     setLoading(true);
     try{
-      const[s,t]=await Promise.all([stokTransaksiService.ambilStok(),stokTransaksiService.ambilTransaksi()]);
+      const[s,t,bom]=await Promise.all([stokTransaksiService.ambilStok(),stokTransaksiService.ambilTransaksi(),
+        supabase.from("bom_master").select("tipe_panel,kode_komponen,nama_komponen,urutan").order("tipe_panel").order("urutan").range(0,1999)]);
+      if(bom.error)throw new Error("baca bom_master: "+bom.error.message);
       setStokList(s);
       setTransaksi(t);
+      setBomList(bom.data||[]);
     }catch(err:any){
       console.error("[KomponenStok] gagal memuat data:",err);
       alert("Gagal memuat data stok komponen: "+(err?.message||err)+"\n\nRefresh halaman untuk mencoba lagi.");
@@ -75,8 +81,8 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     if(editId){
       // Nama/kode di-update langsung; ANGKA STOK gak lagi ditimpa diam-diam - kalau berubah, dicatat
       // sbg transaksi 'koreksi' lewat RPC (selisihnya dihitung di DB, tercatat atas nama user ini).
-      const{data,error}=await supabase.from("komponen_stok").update({
-        nama:form.nama.trim(),kode:form.kode.trim(),
+      const{data,error}=await sbStok.from("komponen_stok").update({
+        nama:form.nama.trim(),kode:form.kode.trim(),...bomRefKolom(form.bomRef),
         updated_at:new Date().toISOString()
       }).eq("id",editId).select().single();
       if(error){alert("Gagal menyimpan: "+error.message);return;}
@@ -97,19 +103,23 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
         description:"Edit komponen: "+form.nama+" ("+form.kode+")",module:"stok",halaman:"System"});
       setEditId(null);
     } else {
-      const{data,error}=await supabase.from("komponen_stok").insert({
-        nama:form.nama.trim(),kode:form.kode.trim(),stok:Number(form.stok)||0,created_by:uname
+      const{data,error}=await sbStok.from("komponen_stok").insert({
+        nama:form.nama.trim(),kode:form.kode.trim(),...bomRefKolom(form.bomRef),stok:Number(form.stok)||0,created_by:uname
       }).select().single();
       if(error){alert("Gagal menyimpan: "+error.message);return;}
       setStokList(prev=>[...prev,data]);
       await activityLogService.insert({user_name:uname,action:"TAMBAH KOMPONEN STOK",
         description:"Tambah komponen: "+form.nama+" ("+form.kode+") stok awal: "+form.stok,module:"stok",halaman:"System"});
     }
-    setForm({nama:"",kode:"",stok:0});
+    setForm({nama:"",kode:"",stok:0,bomRef:""});
   };
 
-  const startEdit=(s:any)=>{setEditId(s.id);setForm({nama:s.nama,kode:s.kode||"",stok:s.stok});};
-  const cancelEdit=()=>{setEditId(null);setForm({nama:"",kode:"",stok:0});};
+  const startEdit=(s:any)=>{setEditId(s.id);setForm({nama:s.nama,kode:s.kode||"",stok:s.stok,bomRef:s.bom_kode_komponen?s.bom_tipe_panel+"|"+s.bom_kode_komponen:""});};
+  const cancelEdit=()=>{setEditId(null);setForm({nama:"",kode:"",stok:0,bomRef:""});};
+  // Kolom bom_tipe_panel/bom_kode_komponen (migration 20261002030000) belum ada di
+  // supabase-generated.ts - tulis komponen_stok lewat client tanpa tipe. Hapus setelah tipe di-generate ulang.
+  const sbStok:any=supabase;
+  const bomRefKolom=(ref:string)=>{const[t,k]=ref?ref.split("|"):[null,null];return{bom_tipe_panel:t||null,bom_kode_komponen:k||null};};
 
   const tambahMasuk=async()=>{
     if(!showMasuk)return;
@@ -272,6 +282,21 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
             <Lbl>Stok Awal (pcs)</Lbl>
             <Inp type="number" min="0" value={form.stok}
               onChange={(e:any)=>setForm({...form,stok:e.target.value})}/>
+          </div>
+          <div style={{minWidth:200}}>
+            <Lbl>Acuan BOM (Produksi Stok)</Lbl>
+            <select value={form.bomRef} onChange={(e:any)=>setForm({...form,bomRef:e.target.value})}
+              title="Komponen BOM yang prosesnya jadi acuan tahap Produksi Stok item ini"
+              style={{width:200,padding:"9px 12px",borderRadius:8,border:"1.5px solid var(--border-color,#e2e8f0)",background:"var(--input-bg,#f8fafc)",color:"var(--text-primary,#1e293b)",fontSize:13}}>
+              <option value="">— Tidak ada —</option>
+              {["FS",...Array.from(new Set(bomList.map((b:any)=>b.tipe_panel))).filter(t=>t!=="FS")].map(tipe=>(
+                <optgroup key={tipe} label={tipe}>
+                  {bomList.filter((b:any)=>b.tipe_panel===tipe).map((b:any)=>(
+                    <option key={tipe+b.kode_komponen} value={tipe+"|"+b.kode_komponen}>{b.kode_komponen} — {b.nama_komponen}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
           </div>
           <div style={{display:"flex",gap:8}}>
             <Btn color="#1d4ed8" onClick={save}>{editId?"Simpan":"+ Tambah"}</Btn>

@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { KomponenStokTab } from './KomponenStokTab'
+import { ProduksiStokAdminTab } from './ProduksiStokAdminTab'
 
 export function InventarisWrapper({user,activityLog}:any){
   const [invTab,setInvTab]=useState("data");
@@ -15,8 +16,11 @@ export function InventarisWrapper({user,activityLog}:any){
       <div style={{display:"flex",gap:2,marginBottom:14,borderBottom:"1px solid #e2e8f0"}}>
         <button style={btnS(invTab==="data")} onClick={()=>setInvTab("data")}>📋 Data Komponen</button>
         <button style={btnS(invTab==="riwayat")} onClick={()=>setInvTab("riwayat")}>🕒 Riwayat Transaksi</button>
+        <button style={btnS(invTab==="produksi")} onClick={()=>setInvTab("produksi")}>🏭 Produksi Stok</button>
       </div>
-      <KomponenStokTab user={user} activityLog={activityLog} invTab={invTab}/>
+      {invTab==="produksi"
+        ?<ProduksiStokAdminTab user={user}/>
+        :<KomponenStokTab user={user} activityLog={activityLog} invTab={invTab}/>}
     </div>
   );
 }
