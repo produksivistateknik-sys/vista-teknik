@@ -233,7 +233,8 @@ export function ProduksiStokAdminTab({user}:any){
                     <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9"}}>{r.qty_sesi_ini}</td>
                     <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9",color:r.qty_reject_sesi_ini>0?"#dc2626":"#94a3b8"}}>{r.qty_reject_sesi_ini}</td>
                     <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9"}}>{r.operator_nama||"-"}</td>
-                    <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9"}}>{(r.foto_urls||[]).map((u:string,i:number)=><a key={i} href={u} target="_blank" rel="noreferrer" style={{marginRight:6,color:"#1d4ed8"}}>foto {i+1}</a>)}</td>
+                    {/* Foto tidak wajib sejak 2 Okt 2026 (migration 20261002040000) - sesi lama bisa punya foto. */}
+                    <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9"}}>{(r.foto_urls||[]).length===0?<span style={{color:"#cbd5e1"}}>—</span>:(r.foto_urls||[]).map((u:string,i:number)=><a key={i} href={u} target="_blank" rel="noreferrer" style={{marginRight:6,color:"#1d4ed8"}}>foto {i+1}</a>)}</td>
                     <td style={{padding:"6px 10px",borderBottom:"1px solid #f1f5f9",color:"#64748b"}}>{r.catatan||"-"}</td>
                   </tr>))}</tbody>
               </table>
