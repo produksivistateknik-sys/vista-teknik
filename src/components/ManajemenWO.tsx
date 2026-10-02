@@ -7,6 +7,7 @@ import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
 import { sesuaikanProgressKeQtyBaru } from '../lib/progressQtyHelpers'
+import { sinkronCcpSetelahUbahQty } from '../lib/componentProcessProgress'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
@@ -348,6 +349,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         const gagalSinkron:string[]=[];
         for(const panelIdStr of Object.keys(qtyChangeSinkPanel)){
           try{
+            // Persen di component_process_progress ikut disesuaikan (2 Okt 2026) - sama dgn grid Edit Qty.
+            await sinkronCcpSetelahUbahQty(Number(panelIdStr),qtyChangeSinkPanel[panelIdStr],uname);
             await rawScheduleService.sinkronJadwalSetelahUbahQty(Number(panelIdStr),qtyChangeSinkPanel[panelIdStr],uname);
           }catch(err:any){
             console.error('[Edit WO] sinkron jadwal gagal panel '+panelIdStr+':',err);

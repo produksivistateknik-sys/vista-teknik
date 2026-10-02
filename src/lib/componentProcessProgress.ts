@@ -6,6 +6,7 @@
 // upsert/tulis dari operator, ini buat baca/agregasi dari sisi admin).
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from './supabase';
+import { hitungPctSetelahUbahQty, PROSES_TIDAK_DISKALA } from './progressQtyHelpers';
 
 // Counter modul-level buat channel realtime unik per HOOK INSTANCE (bukan cuma per panelIdsKey) -
 // AUDIT (21 Sep 2026): 6 consumer (Task Monitoring/Detail Progres/Rencana Harian/Dashboard/
@@ -91,4 +92,39 @@ export function useCcpMap(panelIds: number[]): Record<string, number> {
   }, [panelIdsKey]);
 
   return ccpMap;
+}
+
+// SINKRON CCP SETELAH QTY KOMPONEN BERUBAH (2 Okt 2026) - pasangan sesuaikanProgressKeQtyBaru
+// (checklist) di lib/progressQtyHelpers.ts. 6 halaman admin MENGUTAMAKAN progress_pct tabel ini
+// (getCcpAwareValue), jadi kalau cuma checklist yang disesuaikan, proses yang belum 100% tetap
+// tampil angka lama (insiden MCC PANEL: Groundplate WIRING CONTROL tampil 75% padahal 54%).
+// - Rumus persen SAMA dgn checklist (hitungPctSetelahUbahQty), tapi dihitung dari angka CCP SENDIRI
+//   (progress_pct & qty_done), bukan disalin dari checklist - CCP yang lebih akurat gak tertimpa.
+// - Status lewat pctKeStatusCcp = cermin pctToStatus vista-pekerja (constraint
+//   ccp_status_progress_consistent). sudah_disimpan_100 jadi false kalau persen turun < 100
+//   (operator menulisnya = pct>=100 saat simpan).
+// - Cuma UPDATE baris yang SUDAH ada; dilewati: tahap != NULL (BUSBAR / tahap Pasang Komponen),
+//   not_applicable, QC TEST/PACKING. Qty ke/dari 0 tidak disentuh (ditangani jalur jadwal).
+const pctKeStatusCcp = (pct: number) => pct >= 100 ? 'done' : pct > 0 ? 'in_progress' : 'not_started';
+
+export async function sinkronCcpSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], updatedBy: string): Promise<number> {
+  const berlaku = changes.filter(c => c.oldQty > 0 && c.newQty > 0 && c.oldQty !== c.newQty)
+  if (!berlaku.length) return 0
+  const { data, error } = await supabase.from('component_process_progress' as any)
+    .select('id,kode_komponen,proses,tahap,status,progress_pct,qty_done,sudah_disimpan_100')
+    .eq('panel_id', panelId).in('kode_komponen', berlaku.map(c => c.kode)).range(0, 4999)
+  if (error) throw new Error('baca component_process_progress: ' + error.message)
+  let n = 0
+  for (const r of ((data as any[]) || [])) {
+    if (r.tahap != null || r.status === 'not_applicable' || r.proses === 'BUSBAR' || PROSES_TIDAK_DISKALA.includes(r.proses)) continue
+    const c = berlaku.find(x => x.kode === r.kode_komponen)!
+    const pct = hitungPctSetelahUbahQty(Number(r.progress_pct) || 0, Number(r.qty_done) || 0, c.oldQty, c.newQty)
+    const status = pctKeStatusCcp(pct)
+    const patch: any = { progress_pct: status === 'not_started' ? 0 : pct, status, qty_total: c.newQty, updated_at: new Date().toISOString(), updated_by: updatedBy }
+    if (pct < 100) patch.sudah_disimpan_100 = false
+    const { error: uErr } = await supabase.from('component_process_progress' as any).update(patch).eq('id', r.id)
+    if (uErr) throw new Error(`update component_process_progress ${r.kode_komponen}/${r.proses}: ${uErr.message}`)
+    n++
+  }
+  return n
 }

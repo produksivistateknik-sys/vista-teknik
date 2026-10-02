@@ -5,6 +5,7 @@ import { rawScheduleService } from '../services/rawScheduleService'
 import { ALL_PROSES } from '../constants/panelTypes'
 import { checklistEntryPunyaKerja } from './panelHelpers'
 import { sesuaikanProgressKeQtyBaru } from './progressQtyHelpers'
+import { sinkronCcpSetelahUbahQty } from './componentProcessProgress'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED QTY-PER-KOMPONEN EDITOR (3 Sep 2026, di-extract dari ManajemenWO.tsx)
@@ -239,6 +240,17 @@ export function usePanelQtyEditor({
     const qtyChangesForRaw = Object.entries(dirty)
       .filter(([, v]) => (v as any).newQty !== (v as any).oldQty)
       .map(([kode, v]) => ({ kode, oldQty: qtyLamaAsli[kode] || 0, newQty: Math.round(Number((v as any).newQty) * panelQtyMultiplier) }))
+    // Sinkron component_process_progress (2 Okt 2026) - 6 halaman admin mengutamakan angka tabel
+    // itu; tanpa ini proses yang belum 100% tetap tampil persen lama. Gagal = qty & checklist SUDAH
+    // tersimpan, cuma tampilan admin yang mungkin basi sampai operator simpan lagi.
+    if (qtyChangesForRaw.length > 0) {
+      try {
+        await sinkronCcpSetelahUbahQty(panel.id, qtyChangesForRaw, uname)
+      } catch (err: any) {
+        console.error('[saveQtyEdit] qty tersimpan, sinkron component_process_progress gagal:', err)
+        alert('Qty BERHASIL disimpan, tapi penyesuaian persen di tabel progress (dipakai Task Monitoring/Detail Progress dll) GAGAL: ' + (err?.message || err) + '\n\nPersen komponen ini di halaman admin bisa tampil angka lama sampai operator menyimpan progress lagi.')
+      }
+    }
     if (qtyChangesForRaw.length > 0) {
       try {
         await rawScheduleService.sinkronJadwalSetelahUbahQty(panel.id, qtyChangesForRaw, uname)

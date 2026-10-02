@@ -24,7 +24,19 @@ import { getBestProgress } from './panelHelpers'
 //   jadwal tersendiri; progress & riwayatnya sengaja dipertahankan).
 // ─────────────────────────────────────────────────────────────────────────────
 
-const PROSES_TIDAK_DISKALA = ['QC TEST', 'PACKING']
+export const PROSES_TIDAK_DISKALA = ['QC TEST', 'PACKING']
+
+// Rumus SATU-SATUNYA persen baru setelah qty berubah - dipakai checklist (di bawah) DAN tabel
+// component_process_progress (lib/componentProcessProgress.ts sinkronCcpSetelahUbahQty), supaya
+// dua sumber yang dibaca halaman admin tidak bisa beda hasil (CLAUDE.md B.1).
+// Unit selesai = TERBESAR dari hitungan unit (qtyDone) dan persen lama x qty lama. Data konsisten
+// (Frame 12/12 = 100%) -> sama persis dgn qtyDone/qtyBaru (12/16 = 75%); hitungan unit yang
+// tertinggal dari persen (Groundplate 5 unit tapi tampil 100% dari 9) -> progress yang sudah tampil
+// tidak pernah dipotong; proses tanpa hitungan unit (WIRING dst) -> proporsional qty lama/qty baru.
+export function hitungPctSetelahUbahQty(pctLama: number, qtyDone: number, qtyLama: number, qtyBaru: number): number {
+  const selesai = Math.max(Number(qtyDone) || 0, ((Number(pctLama) || 0) / 100) * qtyLama)
+  return Math.min(100, Math.round((selesai / qtyBaru) * 100))
+}
 
 export function sesuaikanProgressKeQtyBaru(cl: any, qtyLama: number, qtyBaru: number): any {
   if (!cl || !(qtyLama > 0) || !(qtyBaru > 0) || qtyLama === qtyBaru) return cl
@@ -38,13 +50,7 @@ export function sesuaikanProgressKeQtyBaru(cl: any, qtyLama: number, qtyBaru: nu
     const qtyDone = Number(cl.qtyProses?.[pr]) || 0
     const pctLama = getBestProgress(cl, pr)
     if (!(qtyDone > 0) && !(pctLama > 0)) return
-    // Unit selesai = TERBESAR dari hitungan unit operator (qtyProses) dan persen yang tampil x qty
-    // lama. Data konsisten (Frame 12/12 = 100%) -> sama persis dgn qtyProses/qtyBaru (12/16 = 75%).
-    // qtyProses yang tertinggal dari persen (mis. Groundplate 5 unit tapi tampil 100% dari 9) ->
-    // progress yang sudah tampil tidak pernah dipotong. Proses tanpa qtyProses (WIRING dst) ->
-    // proporsional persen x qty lama / qty baru.
-    const selesai = Math.max(qtyDone, (pctLama / 100) * qtyLama)
-    const pctBaru = Math.min(100, Math.round((selesai / qtyBaru) * 100))
+    const pctBaru = hitungPctSetelahUbahQty(pctLama, qtyDone, qtyLama, qtyBaru)
     progress[pr] = pctBaru
     const hist = history[pr]
     if (Array.isArray(hist) && hist.length > 0) {
