@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { stokTransaksiService, transaksiMasuk, transaksiKeluar } from '../services/stokTransaksiService'
 import { Card, Lbl, Inp, Btn, Modal } from './ui/Primitives'
+import { getLocalDateStr } from '../lib/dateHelpers' // default tanggal Masuk = tanggal lokal (WIB), bukan UTC - dulu toISOString() bikin jam 00-07 WIB keisi tanggal kemarin
 
 // FONDASI STOK (2 Okt 2026) - semua perubahan stok lewat stokTransaksiService.catat (RPC atomik
 // catat_transaksi_stok, tercatat di komponen_stok_transaksi). Riwayat masuk/keluar dibaca dari
@@ -25,7 +26,7 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const [showKeluar,setShowKeluar]=useState<any>(null);
   const [showMasuk,setShowMasuk]=useState<any>(null);
   const [keluarForm,setKeluarForm]=useState({jumlah:1,proyek:"",panel:"",keterangan:""});
-  const [masukForm,setMasukForm]=useState({jumlah:1,tanggal:new Date().toISOString().slice(0,10),keterangan:""});
+  const [masukForm,setMasukForm]=useState({jumlah:1,tanggal:getLocalDateStr(),keterangan:""});
   const [delId,setDelId]=useState<any>(null);
   const [qtySort,setQtySort]=useState<"none"|"asc"|"desc">("none");
   const toggleQtySort=()=>setQtySort(prev=>prev==="none"?"asc":prev==="asc"?"desc":"none");
@@ -144,7 +145,7 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
       module:"stok",halaman:"System"
     });
     setShowMasuk(null);
-    setMasukForm({jumlah:1,tanggal:new Date().toISOString().slice(0,10),keterangan:""});
+    setMasukForm({jumlah:1,tanggal:getLocalDateStr(),keterangan:""});
   };
 
   const keluarkan=async()=>{
@@ -384,7 +385,7 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
                     </td>
                     <td style={{...td,textAlign:"center" as const}}>
                       <div style={{display:"flex",gap:4,justifyContent:"center"}}>
-                        <button onClick={()=>{setShowMasuk(s);setMasukForm({jumlah:1,tanggal:new Date().toISOString().slice(0,10),keterangan:""}); }}
+                        <button onClick={()=>{setShowMasuk(s);setMasukForm({jumlah:1,tanggal:getLocalDateStr(),keterangan:""}); }}
                           style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:5,
                             padding:"3px 7px",cursor:"pointer",fontSize:10,color:"#16a34a",fontWeight:600}}>
                           +Masuk
