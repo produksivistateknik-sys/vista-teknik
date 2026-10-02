@@ -1481,6 +1481,12 @@ export async function generateAndSaveToRawSchedule(
         }
         // kodeFilter: proses WIRING yang progress-nya udah 100% gak dijadwal ulang
         relevantKodes.forEach((k) => { if (difilter(panel.id, k) && (checklist[k]?.progress?.[proses] || 0) >= 100) kodeSudahAda.add(k) })
+        // kodeFilter (2 Okt 2026, opsi A keputusan user): kode yang difilter & sudah terjadwal live /
+        // sudah 100% di proses ini tetap ditandai estafet OK - sama dgn cabang proses biasa. Dulu
+        // dilewati tanpa scheduledOk, jadi WIRING POWER kode itu ikut dilewati diam-diam (insiden
+        // Groundplate MCC PANEL saat qty naik: CONTROL sudah terjadwal -> POWER 71% tidak dijadwal).
+        // Tanpa kodeFilter (tombol FCS biasa) perilaku SENGAJA tidak diubah.
+        relevantKodes.forEach((k) => { if (difilter(panel.id, k) && kodeSudahAda.has(k)) scheduledOk.add(panel.id + '|' + k + '|' + proses) })
 
         for (const [wp, kodes] of Object.entries(wpGroups)) {
           const kodeBaru = kodes.filter((k) => !kodeSudahAda.has(k))
