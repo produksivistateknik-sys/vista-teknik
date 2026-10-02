@@ -1,6 +1,7 @@
 import { supabase as supabaseTyped } from '../lib/supabase'
 import { getLocalDateStr } from '../lib/dateHelpers'
-import { sesuaikanBusbarKeJumlahBaru, hitungPctSetelahUbahQty } from '../lib/progressQtyHelpers'
+import { sesuaikanBusbarKeJumlahBaru } from '../lib/progressQtyHelpers'
+import { sinkronCcpBusbarSetelahUbahJumlah } from '../lib/componentProcessProgress'
 import { activityLogService } from './activityLogService'
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -15,7 +16,6 @@ import { activityLogService } from './activityLogService'
 // Tabel/kolom busbar belum semua ada di tipe generated -> client tanpa tipe di file ini.
 // ─────────────────────────────────────────────────────────────────────────────
 const supabase: any = supabaseTyped
-const pctKeStatusCcp = (pct: number) => pct >= 100 ? 'done' : pct > 0 ? 'in_progress' : 'not_started'
 
 export type ItemPenyesuaianBusbar = { kode: string; jumlahLama: number; jumlahBaru: number }
 
@@ -42,21 +42,8 @@ export async function simpanPenyesuaianBusbar(panelId: number, items: ItemPenyes
   const gagal = berlaku.filter(it => JSON.stringify(cek?.checklist?.[it.kode]?.busbarTahap) !== JSON.stringify(checklist[it.kode].busbarTahap))
   if (gagal.length) throw new Error('verifikasi baca-balik tidak cocok: ' + gagal.map(g => g.kode).join(', '))
 
-  // 2. component_process_progress BUSBAR per tahap (cuma baris yang sudah ada)
-  const { data: ccp, error: ccpErr } = await supabase.from('component_process_progress')
-    .select('id,kode_komponen,tahap,progress_pct,status').eq('panel_id', panelId).eq('proses', 'BUSBAR')
-    .in('kode_komponen', berlaku.map(i => i.kode)).range(0, 999)
-  if (ccpErr) throw new Error('baca component_process_progress BUSBAR: ' + ccpErr.message)
-  for (const r of ccp || []) {
-    if (!r.tahap || r.status === 'not_applicable') continue
-    const it = berlaku.find(i => i.kode === r.kode_komponen)!
-    const pct = hitungPctSetelahUbahQty(Number(r.progress_pct) || 0, 0, it.jumlahLama, it.jumlahBaru)
-    const status = pctKeStatusCcp(pct)
-    const patch: any = { progress_pct: status === 'not_started' ? 0 : pct, status, updated_at: new Date().toISOString(), updated_by: uname }
-    if (pct < 100) patch.sudah_disimpan_100 = false
-    const { error } = await supabase.from('component_process_progress').update(patch).eq('id', r.id)
-    if (error) throw new Error(`update component_process_progress ${r.kode_komponen}/${r.tahap}: ${error.message}`)
-  }
+  // 2. component_process_progress BUSBAR per tahap - lewat SATU pintu penulis CCP Admin
+  await sinkronCcpBusbarSetelahUbahJumlah(panelId, berlaku, uname)
 
   // 3. jadwal langsung hari ini + jejak tanggal lampau (cuma kode yang hasilnya < 100%)
   const hariIni = getLocalDateStr()

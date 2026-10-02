@@ -105,26 +105,59 @@ export function useCcpMap(panelIds: number[]): Record<string, number> {
 //   (operator menulisnya = pct>=100 saat simpan).
 // - Cuma UPDATE baris yang SUDAH ada; dilewati: tahap != NULL (BUSBAR / tahap Pasang Komponen),
 //   not_applicable, QC TEST/PACKING. Qty ke/dari 0 tidak disentuh (ditangani jalur jadwal).
-const pctKeStatusCcp = (pct: number) => pct >= 100 ? 'done' : pct > 0 ? 'in_progress' : 'not_started';
+// SATU-SATUNYA rumus status CCP di sisi Admin (cermin pctToStatus vista-pekerja) & SATU-SATUNYA tempat
+// Admin menulis component_process_progress saat persen diskalakan - dipakai penyesuaian qty komponen
+// (sinkronCcpSetelahUbahQty) DAN Penyesuaian Busbar (sinkronCcpBusbarSetelahUbahJumlah). Jangan
+// tulis tabel ini dari file lain.
+export const pctKeStatusCcp = (pct: number) => pct >= 100 ? 'done' : pct > 0 ? 'in_progress' : 'not_started';
 
-export async function sinkronCcpSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], updatedBy: string): Promise<number> {
-  const berlaku = changes.filter(c => c.oldQty > 0 && c.newQty > 0 && c.oldQty !== c.newQty)
-  if (!berlaku.length) return 0
-  const { data, error } = await supabase.from('component_process_progress' as any)
-    .select('id,kode_komponen,proses,tahap,status,progress_pct,qty_done,sudah_disimpan_100')
-    .eq('panel_id', panelId).in('kode_komponen', berlaku.map(c => c.kode)).range(0, 4999)
-  if (error) throw new Error('baca component_process_progress: ' + error.message)
+async function skalakanBarisCcp(rows: any[], skala: (r: any) => { qtyLama: number; qtyBaru: number; qtyDone: number; qtyTotal?: number } | null, updatedBy: string): Promise<number> {
   let n = 0
-  for (const r of ((data as any[]) || [])) {
-    if (r.tahap != null || r.status === 'not_applicable' || r.proses === 'BUSBAR' || PROSES_TIDAK_DISKALA.includes(r.proses)) continue
-    const c = berlaku.find(x => x.kode === r.kode_komponen)!
-    const pct = hitungPctSetelahUbahQty(Number(r.progress_pct) || 0, Number(r.qty_done) || 0, c.oldQty, c.newQty)
+  for (const r of rows) {
+    const s = skala(r)
+    if (!s) continue
+    const pct = hitungPctSetelahUbahQty(Number(r.progress_pct) || 0, s.qtyDone, s.qtyLama, s.qtyBaru)
     const status = pctKeStatusCcp(pct)
-    const patch: any = { progress_pct: status === 'not_started' ? 0 : pct, status, qty_total: c.newQty, updated_at: new Date().toISOString(), updated_by: updatedBy }
+    const patch: any = { progress_pct: status === 'not_started' ? 0 : pct, status, updated_at: new Date().toISOString(), updated_by: updatedBy }
+    if (s.qtyTotal !== undefined) patch.qty_total = s.qtyTotal
     if (pct < 100) patch.sudah_disimpan_100 = false
-    const { error: uErr } = await supabase.from('component_process_progress' as any).update(patch).eq('id', r.id)
-    if (uErr) throw new Error(`update component_process_progress ${r.kode_komponen}/${r.proses}: ${uErr.message}`)
+    const { error } = await supabase.from('component_process_progress' as any).update(patch).eq('id', r.id)
+    if (error) throw new Error(`update component_process_progress ${r.kode_komponen}/${r.proses}${r.tahap ? '/' + r.tahap : ''}: ${error.message}`)
     n++
   }
   return n
+}
+
+async function bacaBarisCcp(panelId: number, kodes: string[], proses?: string) {
+  let q: any = supabase.from('component_process_progress' as any)
+    .select('id,kode_komponen,proses,tahap,status,progress_pct,qty_done').eq('panel_id', panelId).in('kode_komponen', kodes)
+  if (proses) q = q.eq('proses', proses)
+  const { data, error } = await q.range(0, 4999)
+  if (error) throw new Error('baca component_process_progress: ' + error.message)
+  return (data as any[]) || []
+}
+
+// Komponen biasa: baris tanpa tahap; dilewati BUSBAR, QC TEST/PACKING, not_applicable.
+export async function sinkronCcpSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], updatedBy: string): Promise<number> {
+  const berlaku = changes.filter(c => c.oldQty > 0 && c.newQty > 0 && c.oldQty !== c.newQty)
+  if (!berlaku.length) return 0
+  const rows = await bacaBarisCcp(panelId, berlaku.map(c => c.kode))
+  return skalakanBarisCcp(rows, (r) => {
+    if (r.tahap != null || r.status === 'not_applicable' || r.proses === 'BUSBAR' || PROSES_TIDAK_DISKALA.includes(r.proses)) return null
+    const c = berlaku.find(x => x.kode === r.kode_komponen)!
+    return { qtyLama: c.oldQty, qtyBaru: c.newQty, qtyDone: Number(r.qty_done) || 0, qtyTotal: c.newQty }
+  }, updatedBy)
+}
+
+// BUSBAR (Penyesuaian Busbar): baris per tahap proses BUSBAR; komponen busbar tidak punya qty
+// -> qtyDone 0 (murni proporsional), qty_total tidak diubah.
+export async function sinkronCcpBusbarSetelahUbahJumlah(panelId: number, items: { kode: string; jumlahLama: number; jumlahBaru: number }[], updatedBy: string): Promise<number> {
+  const berlaku = items.filter(i => i.jumlahLama > 0 && i.jumlahBaru > 0 && i.jumlahLama !== i.jumlahBaru)
+  if (!berlaku.length) return 0
+  const rows = await bacaBarisCcp(panelId, berlaku.map(i => i.kode), 'BUSBAR')
+  return skalakanBarisCcp(rows, (r) => {
+    if (!r.tahap || r.status === 'not_applicable') return null
+    const it = berlaku.find(x => x.kode === r.kode_komponen)!
+    return { qtyLama: it.jumlahLama, qtyBaru: it.jumlahBaru, qtyDone: 0 }
+  }, updatedBy)
 }
