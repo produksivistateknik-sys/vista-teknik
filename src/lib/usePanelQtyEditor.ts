@@ -257,10 +257,13 @@ export function usePanelQtyEditor({
       } catch (err: any) {
         console.error('[saveQtyEdit] qty tersimpan, sinkron jadwal gagal:', err)
         alert('Qty BERHASIL disimpan, tapi sinkron ke jadwal GAGAL: ' + (err?.message || err) + '\n\nCek Raw Schedule untuk komponen ini, atau simpan ulang qty-nya.')
-        return
+        return { ringkasan: changes.join(', ') }
       }
     }
     alert('Qty berhasil disimpan!')
+    // Dikembalikan HANYA kalau qty benar-benar tersimpan (2 Okt 2026) - dipakai Manajemen WO untuk
+    // memunculkan popup Penyesuaian Busbar; pemanggil lain (WoDigitalTab) boleh mengabaikan.
+    return { ringkasan: changes.join(', ') }
   }
 
   return {

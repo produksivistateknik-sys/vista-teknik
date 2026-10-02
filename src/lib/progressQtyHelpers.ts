@@ -75,3 +75,52 @@ export function sesuaikanProgressKeQtyBaru(cl: any, qtyLama: number, qtyBaru: nu
   })
   return { ...cl, qty: qtyBaru, progress, history, progressByDate }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BUSBAR (2 Okt 2026) - komponen busbar (H-BUS/INCOMING/.../LINE) TIDAK punya qty (selalu 0), progress
+// murni persen per tahap (checklist[kode].busbarTahap[FABRIKASI|PLATING|HEATSHRINK|PASANG].progress).
+// Saat busbar bertambah, Admin mengisi jumlah sebelum -> sesudah di popup Penyesuaian Busbar
+// (Manajemen WO); tiap tahap diskalakan dgn rumus yang SAMA dgn komponen biasa.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Cermin PERSIS vista-pekerja lib/panelHelpers.tsx hitungProgressBusbarGabungan (repo terpisah,
+// gak bisa share modul) - persen BUSBAR gabungan = rata-rata tahap yang ADA di komponen itu
+// (sebagian komponen tanpa HEATSHRINK), dibulatkan 1 desimal. Kalau rumus operator berubah, ubah ini juga.
+export function hitungProgressBusbarGabungan(busbarTahap: any, urutan: string[]): number {
+  if (!busbarTahap || urutan.length === 0) return 0
+  const total = urutan.reduce((s, t) => s + (busbarTahap[t]?.progress || 0), 0)
+  return Math.round((total / urutan.length) * 10) / 10
+}
+
+export function sesuaikanBusbarKeJumlahBaru(cl: any, jumlahLama: number, jumlahBaru: number): any {
+  if (!cl?.busbarTahap || !(jumlahLama > 0) || !(jumlahBaru > 0) || jumlahLama === jumlahBaru) return cl
+  const urutan = Object.keys(cl.busbarTahap)
+  const busbarTahap: any = {}
+  urutan.forEach((t) => {
+    const lama = Number(cl.busbarTahap[t]?.progress) || 0
+    const baru = hitungPctSetelahUbahQty(lama, 0, jumlahLama, jumlahBaru)
+    busbarTahap[t] = { ...cl.busbarTahap[t], progress: baru, sudahDisimpan100: baru >= 100 ? !!cl.busbarTahap[t]?.sudahDisimpan100 : false }
+  })
+  const gabungan = hitungProgressBusbarGabungan(busbarTahap, urutan)
+  const progress = { ...(cl.progress || {}), BUSBAR: gabungan }
+  const history: any = { ...(cl.history || {}) }
+  const hist = history.BUSBAR
+  if (Array.isArray(hist) && hist.length > 0) {
+    let iTerbaru = 0
+    hist.forEach((h: any, i: number) => { if ((h?.ts || h?.tanggal || '').localeCompare(hist[iTerbaru]?.ts || hist[iTerbaru]?.tanggal || '') > 0) iTerbaru = i })
+    const baru = [...hist]; baru[iTerbaru] = { ...baru[iTerbaru], pct: gabungan }; history.BUSBAR = baru
+  }
+  const progressByDate: any = { ...(cl.progressByDate || {}) }
+  const byDate = progressByDate.BUSBAR
+  if (byDate && Object.keys(byDate).length > 0) {
+    const tgl = Object.keys(byDate).sort()
+    const skala: any = {}
+    tgl.forEach((t) => { skala[t] = hitungPctSetelahUbahQty(Number(byDate[t]) || 0, 0, jumlahLama, jumlahBaru) })
+    skala[tgl[tgl.length - 1]] = gabungan
+    progressByDate.BUSBAR = skala
+  }
+  return { ...cl, busbarTahap, progress, history, progressByDate }
+}
+
+// Komponen busbar yang bisa disesuaikan = punya busbarTahap dgn minimal 1 tahap > 0%.
+export const komponenBusbarPunyaProgress = (cl: any) => !!cl?.busbarTahap && Object.values(cl.busbarTahap).some((v: any) => (Number(v?.progress) || 0) > 0)

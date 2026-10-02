@@ -8,6 +8,9 @@ import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
 import { sesuaikanProgressKeQtyBaru } from '../lib/progressQtyHelpers'
 import { sinkronCcpSetelahUbahQty } from '../lib/componentProcessProgress'
+import { getBusbarKomponen } from '../lib/panelHelpers'
+import { komponenBusbarPunyaProgress } from '../lib/progressQtyHelpers'
+import { PenyesuaianBusbarModal } from './PenyesuaianBusbarModal'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
@@ -119,6 +122,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
     return()=>clearTimeout(t);
   },[highlightWoId,woData]);
   const [arsipModal,setArsipModal]=useState<any>(null);
+  // Penyesuaian Busbar (2 Okt 2026, KHUSUS Admin - WoDigitalTab/Engineering sengaja tidak) - antrian
+  // panel yang perlu ditanya setelah simpan qty (Edit Qty / Edit WO), atau dari tombol "Sesuaikan Busbar".
+  const [busbarAntrian,setBusbarAntrian]=useState<{panelId:number;pemicu:string|null}[]>([]);
+  const panelPunyaBusbar=(p:any)=>!!p&&getBusbarKomponen(p.tipe).some((k:string)=>komponenBusbarPunyaProgress(p.checklist?.[k]));
+  const tanyaBusbar=(panelId:number,pemicu:string|null)=>{
+    const p=woData.flatMap((w:any)=>w.panels||[]).find((x:any)=>Number(x.id)===Number(panelId));
+    if(panelPunyaBusbar(p))setBusbarAntrian(a=>a.some(x=>x.panelId===Number(panelId))?a:[...a,{panelId:Number(panelId),pemicu}]);
+  };
   const [arsipLoading,setArsipLoading]=useState(false);
   const [arsipPanelModal,setArsipPanelModal]=useState<any>(null);
   const [selArsipPanelIds,setSelArsipPanelIds]=useState<Set<number>>(new Set());
@@ -358,6 +369,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           }
         }
         if(gagalSinkron.length>0)alert('WO BERHASIL disimpan, tapi sinkron qty ke jadwal GAGAL untuk:\n'+gagalSinkron.join('\n')+'\n\nCek Raw Schedule panel tersebut.');
+        Object.keys(qtyChangeSinkPanel).forEach(pid=>tanyaBusbar(Number(pid),'qty panel diubah lewat Edit WO'));
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
         // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI
@@ -525,6 +537,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   )}
                   {isPExp&&cfg&&(
                     <div style={{padding:"12px 16px 12px 28px",background:"#fafbff"}}>
+                      {panelPunyaBusbar(p)&&(
+                        <div style={{display:"flex",justifyContent:"flex-end",marginBottom:8}}>
+                          <button onClick={()=>tanyaBusbar(p.id,null)}
+                            style={{padding:"5px 12px",borderRadius:7,border:"1px solid #fcd34d",background:"#fffbeb",color:"#b45309",cursor:"pointer",fontSize:12,fontWeight:700,fontFamily:"inherit"}}>
+                            ⚡ Sesuaikan Busbar
+                          </button>
+                        </div>
+                      )}
                       {cfg.wps.map(wpDef=>(
                         <div key={wpDef.wp} style={{marginBottom:12}}>
                           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
@@ -601,7 +621,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                         style={{padding:"8px 20px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f8fafc",color:"#64748b",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit"}}>
                         Batal
                       </button>
-                      <button onClick={()=>saveQtyEdit(String(p.id))}
+                      <button onClick={async()=>{const r=await saveQtyEdit(String(p.id));if(r)tanyaBusbar(p.id,r.ringkasan);}}
                         style={{padding:"8px 24px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",cursor:"pointer",fontSize:13,fontWeight:700,fontFamily:"inherit",boxShadow:"0 2px 8px #2563eb33"}}>
                         Simpan Perubahan
                       </button>
@@ -614,6 +634,17 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           </div>
         );
       })}
+      {(()=>{
+        const antri=busbarAntrian[0];if(!antri)return null;
+        const woA=woData.find((w:any)=>(w.panels||[]).some((x:any)=>Number(x.id)===antri.panelId));
+        const pA=woA?.panels?.find((x:any)=>Number(x.id)===antri.panelId);
+        if(!woA||!pA)return null;
+        const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+        return <PenyesuaianBusbarModal key={antri.panelId} panel={pA} konteks={{proyek:woA.proyek,woNumber:woA.wo}} pemicu={antri.pemicu}
+          uname={user?.name||user?.nama||sess?.nama||'Admin'}
+          onClose={()=>setBusbarAntrian(a=>a.slice(1))}
+          onSaved={(cl:any)=>setWoData((prev:any)=>prev.map((w:any)=>({...w,panels:(w.panels||[]).map((x:any)=>Number(x.id)===antri.panelId?{...x,checklist:cl}:x)})))}/>;
+      })()}
       {arsipModal&&(
         <Modal title="Arsipkan Work Order?" onClose={()=>{if(!arsipLoading)setArsipModal(null);}} width={420}>
           <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"10px 14px",marginBottom:16,fontSize:12,color:"#92400e",display:"flex",gap:8,alignItems:"flex-start"}}>
