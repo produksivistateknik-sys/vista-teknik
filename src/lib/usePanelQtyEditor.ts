@@ -4,6 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { ALL_PROSES } from '../constants/panelTypes'
 import { checklistEntryPunyaKerja } from './panelHelpers'
+import { sesuaikanProgressKeQtyBaru } from './progressQtyHelpers'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED QTY-PER-KOMPONEN EDITOR (3 Sep 2026, di-extract dari ManajemenWO.tsx)
@@ -76,45 +77,29 @@ export function usePanelQtyEditor({
       if (prev[panelId]) return prev
       return { ...prev, [panelId]: JSON.parse(JSON.stringify(panel.checklist || {})) }
     })
+    // FIX (2 Okt 2026): fungsi ini jalan di SETIAP ketikan - dulu oldQty diambil dari state yang
+    // sudah berubah oleh ketikan sebelumnya (ketik "16" atas qty 12 -> tercatat "1 -> 16" di
+    // qty_change_log/activity_log, dan rasio skala dihitung dari 1). Sekarang oldQty = qty ASLI
+    // sebelum edit dimulai (entri dirty pertama), preview dihitung dari entri checklist asli.
     setDirtyQty(prev => {
-      const oldQty = panel.checklist?.[kode]?.qty ?? 0
+      const oldQty = prev[panelId]?.[kode]?.oldQty ?? (panel.checklist?.[kode]?.qty ?? 0)
       return { ...prev, [panelId]: { ...prev[panelId], [kode]: { newQty: Number(qty) || 0, oldQty } } }
     })
     const nq2 = Number(qty) || 0
-    const oldQty2 = panel.checklist[kode]?.qty || 1
+    const asli = origChecklist[panelId]?.[kode] ?? panel.checklist?.[kode]
+    const qtyAsli = Number(asli?.qty) || 0
     const nc = { ...panel.checklist, [kode]: { ...panel.checklist[kode], qty: nq2 } }
+    if (nq2 > 0 && qtyAsli > 0) {
+      // preview = hasil yang SAMA PERSIS dgn yang disimpan saveQtyEdit (helper bersama)
+      nc[kode] = sesuaikanProgressKeQtyBaru({ ...asli, qty: qtyAsli }, qtyAsli, nq2) || nc[kode]
+      applyChecklist(panelId, nc)
+      return
+    }
     if (nq2 === 0) {
       // qty 0 -> reset semua progress
       nc[kode].progress = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: 0 }), {})
       nc[kode].progressByDate = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: {} }), {})
       nc[kode].history = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: [] }), {})
-    } else if (nq2 !== oldQty2 && oldQty2 > 0) {
-      // qty berubah -> recalculate progress proporsional (termasuk progressByDate biar snapshot
-      // histori tetap konsisten sama progress live, bukan "ketinggalan" di persentase lama)
-      const ratio = oldQty2 / nq2
-      const newProgress: any = {}
-      const newHistory: any = { ...(nc[kode].history || {}) }
-      const newProgressByDate: any = { ...(nc[kode].progressByDate || {}) }
-      ALL_PROSES.forEach((pr: string) => {
-        const oldPct = nc[kode].progress?.[pr] || 0
-        const newPct = Math.min(100, Math.round(oldPct * ratio))
-        newProgress[pr] = newPct
-        if (newHistory[pr] && newHistory[pr].length > 0) {
-          const lastIdx = newHistory[pr].length - 1
-          newHistory[pr] = [...newHistory[pr]]
-          newHistory[pr][lastIdx] = { ...newHistory[pr][lastIdx], pct: newPct, ts: new Date().toISOString() }
-        }
-        if (newProgressByDate[pr]) {
-          const scaledByDate: any = {}
-          Object.entries(newProgressByDate[pr]).forEach(([tgl, pctLama]: any) => {
-            scaledByDate[tgl] = Math.min(100, Math.round((Number(pctLama) || 0) * ratio))
-          })
-          newProgressByDate[pr] = scaledByDate
-        }
-      })
-      nc[kode].progress = newProgress
-      nc[kode].history = newHistory
-      nc[kode].progressByDate = newProgressByDate
     }
     applyChecklist(panelId, nc)
   }
@@ -179,7 +164,7 @@ export function usePanelQtyEditor({
       const lanjut = window.confirm(
         'PERINGATAN: qty baru lebih kecil dari progress yang sudah dikerjakan operator untuk:\n\n' +
         konflikList.join('\n') +
-        '\n\nProgress yang sudah ada TIDAK akan diubah/dipotong otomatis - cuma qty target-nya yang berubah. ' +
+        '\n\nUnit yang sudah dikerjakan TIDAK diubah/dipotong - persen dihitung ulang terhadap qty baru (maks 100%). ' +
         'Operator mungkin perlu koreksi manual di Vista Pekerja setelah ini. Lanjutkan simpan qty baru?'
       )
       if (!lanjut) return
@@ -196,7 +181,11 @@ export function usePanelQtyEditor({
         progressByDate: ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: {} }), {}),
         stepDates: ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: {} }), {}),
       }
-      finalChecklist[kode] = { ...base, qty: Math.round(Number(dirtyEntry.newQty) * panelQtyMultiplier) }
+      const qtyBaruFinal = Math.round(Number(dirtyEntry.newQty) * panelQtyMultiplier)
+      // Persen dihitung ulang dari qty LAMA ASLI di DB (bukan state lokal) lewat helper bersama -
+      // dulu cuma qty yang ditimpa, persen nyangkut di angka lama (insiden MCC PANEL 2 Okt 2026).
+      finalChecklist[kode] = sesuaikanProgressKeQtyBaru({ ...base, qty: qtyLamaAsli[kode] }, qtyLamaAsli[kode], qtyBaruFinal) || { ...base, qty: qtyBaruFinal }
+      finalChecklist[kode] = { ...finalChecklist[kode], qty: qtyBaruFinal }
     })
     const { error } = await supabase.from('panels').update({ checklist: finalChecklist }).eq('id', panel.id)
     if (error) { alert('Gagal menyimpan: ' + error.message); return }
@@ -230,9 +219,9 @@ export function usePanelQtyEditor({
         qtyChangeLogRows.push({
           wo_id: woCtx.id, panel_id: panel.id, proyek: woCtx.proyek || '', panel: panel.nama || '', tipe_panel: panel.tipe || '',
           wp: wpFound?.wp || '', kode_komponen: kode, nama_komponen: nama,
-          qty_lama: (v as any).oldQty, qty_baru: finalVal, changed_by: uname,
+          qty_lama: qtyLamaAsli[kode] ?? (v as any).oldQty, qty_baru: finalVal, changed_by: uname,
         })
-        return nama + ': ' + (v as any).oldQty + ' -> ' + finalVal
+        return nama + ': ' + (qtyLamaAsli[kode] ?? (v as any).oldQty) + ' -> ' + finalVal
       })
     if (qtyChangeLogRows.length > 0) {
       await supabase.from('qty_change_log').insert(qtyChangeLogRows)

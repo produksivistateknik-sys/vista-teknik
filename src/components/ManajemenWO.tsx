@@ -6,6 +6,7 @@ import { rawScheduleService } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
+import { sesuaikanProgressKeQtyBaru } from '../lib/progressQtyHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
@@ -264,7 +265,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         const panelIdStr=String((p as any).id);
         Object.entries(finalChecklist).forEach(([kode,cl]:any)=>{
           const newKodeQty=Math.round((cl.qty||0)*ratio);
-          scaledChecklist[kode]={...cl,qty:newKodeQty};
+          // Persen ikut disesuaikan ke qty baru (2 Okt 2026) - helper yang SAMA dgn grid Edit Qty.
+          scaledChecklist[kode]=sesuaikanProgressKeQtyBaru({...cl},cl.qty||0,newKodeQty)||{...cl,qty:newKodeQty};
+          scaledChecklist[kode]={...scaledChecklist[kode],qty:newKodeQty};
           if(qtyChangeSink&&newKodeQty!==(cl.qty||0)){
             if(!qtyChangeSink[panelIdStr])qtyChangeSink[panelIdStr]=[];
             qtyChangeSink[panelIdStr].push({kode,oldQty:cl.qty||0,newQty:newKodeQty});
@@ -332,7 +335,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           const lanjutPanel=window.confirm(
             'PERINGATAN: qty panel diubah sehingga qty sejumlah komponen ikut berkurang di bawah progress yang sudah dikerjakan operator:\n\n'+
             konflikListPanel.join('\n')+
-            '\n\nProgress yang sudah ada TIDAK akan diubah/dipotong otomatis - cuma qty target-nya yang berubah. '+
+            '\n\nUnit yang sudah dikerjakan TIDAK diubah/dipotong - persen dihitung ulang terhadap qty baru (maks 100%). '+
             'Operator mungkin perlu koreksi manual di Vista Pekerja setelah ini. Lanjutkan simpan?'
           );
           if(!lanjutPanel)return;

@@ -1360,7 +1360,11 @@ export async function generateAndSaveToRawSchedule(
             if (sudahAdaJadwalSet.has(key)) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
             if (difilter(panel.id, kode) && (checklist[kode]?.progress?.[proses] || 0) >= 100) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
             const totalQty = checklist[kode]?.qty || 0
-            const sudahQty = Math.max(sudahTerjadwalQtyMap[key] || 0, qtyProsesSelesaiMap[key] || 0)
+            // kodeFilter (2 Okt 2026, qty naik -> jadwalkan sisa): proses yang dikerjakan tanpa hitungan
+            // unit (qtyProses kosong, mis. RAKIT 100%) dihitung selesainya dari persen x qty, biar sisanya
+            // gak dianggap qty penuh. Tanpa kodeFilter perilaku tetap sama persis.
+            const selesaiDariPersen = difilter(panel.id, kode) ? Math.floor(((Number(checklist[kode]?.progress?.[proses]) || 0) / 100) * totalQty) : 0
+            const sudahQty = Math.max(sudahTerjadwalQtyMap[key] || 0, qtyProsesSelesaiMap[key] || 0, selesaiDariPersen)
             const sisa = Math.max(0, totalQty - sudahQty)
             if (sisa > 0) sisaQty[kode] = sisa
             else scheduledOk.add(panel.id + '|' + kode + '|' + proses)

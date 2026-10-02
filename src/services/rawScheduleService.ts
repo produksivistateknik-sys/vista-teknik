@@ -114,6 +114,40 @@ export const rawScheduleService = {
     }
   },
 
+  // Tandai entri LAMPAU (tanggal < hariIni, belum jejak) kode-kode ini sebagai jejak
+  // digeserKe[kode] = tanggal live paling awal (>= hariIni) kode itu di proses yang sama. Cuma
+  // proses yang PUNYA jadwal live baru yang ditandai - kalau generator gak sempat menjadwalkan (mis.
+  // kapasitas penuh 21 hari), entri lama dibiarkan supaya tetap bisa ditarik Tarik (gak hilang).
+  async tandaiJejakSetelahJadwalUlang(panelId: number, kodes: string[], hariIni: string): Promise<string[]> {
+    const { data: rows, error } = await supabase.from('raw_schedule').select('id,proses,schedule').eq('panel_id', panelId).is('deleted_at', null)
+    if (error) throw new Error('baca raw_schedule (tandai jejak): ' + error.message)
+    const ditandai: string[] = []
+    for (const row of rows || []) {
+      const schedule: any = row.schedule || {}
+      let berubah = false
+      for (const kode of kodes) {
+        const tglLive = Object.keys(schedule).filter(t => t >= hariIni && (schedule[t] || []).some((e: any) => (e.komponen || []).includes(kode) && !(e.digeserKe && e.digeserKe[kode]))).sort()
+        if (!tglLive.length) continue
+        const tujuan = tglLive[0]
+        for (const t of Object.keys(schedule)) {
+          if (t >= hariIni) continue
+          let kena = false
+          const entri = (schedule[t] || []).map((e: any) => {
+            if (!(e.komponen || []).includes(kode) || (e.digeserKe && e.digeserKe[kode])) return e
+            kena = true
+            return { ...e, digeserKe: { ...(e.digeserKe || {}), [kode]: tujuan } }
+          })
+          if (kena) { schedule[t] = entri; berubah = true; ditandai.push(`${row.proses} ${kode} ${t}->${tujuan}`) }
+        }
+      }
+      if (berubah) {
+        const { error: uErr } = await supabase.from('raw_schedule').update({ schedule }).eq('id', row.id)
+        if (uErr) throw new Error('update raw_schedule (tandai jejak): ' + uErr.message)
+      }
+    }
+    return ditandai
+  },
+
   // SINKRON JADWAL SETELAH QTY BERUBAH (1 Okt 2026, diminta user) - SATU pintu yang dipanggil
   // semua jalur edit qty (grid per-komponen usePanelQtyEditor & modal Edit WO ManajemenWO):
   // - qty >0 -> 0  : kode dihapus dari raw_schedule live tanggal >= hari ini + renhar tanggal itu
@@ -121,12 +155,19 @@ export const rawScheduleService = {
   // - qty 0 -> >0  : kode dijadwalkan ke semua proses relevan lewat generator FCS yang SUDAH ADA
   //                  (generateAndSaveToRawSchedule mode kodeFilter - estafet/WP/kapasitas sama
   //                  persis Generate Jadwal; WIRING tanpa bobot_komponen = MEDIUM saat dibaca).
-  // - qty >0 -> >0 : sama seperti sebelumnya, angka qtyPerKomponen disesuaikan (syncQtyAfterEdit).
-  // Persentase progres gak perlu disentuh - dihitung live dari komponen qty>0.
+  // - qty >0 -> TURUN: sama seperti sebelumnya, angka qtyPerKomponen disesuaikan (syncQtyAfterEdit).
+  // - qty >0 -> NAIK (2 Okt 2026, opsi B keputusan user): SISA unit (qty baru - yang sudah dikerjakan
+  //                  - yang sudah terjadwal mulai hari ini) dijadwalkan mulai hari ini lewat generator
+  //                  FCS mode kodeFilter (sama dgn qty 0 -> >0). Entri LAMPAU kode itu lalu ditandai
+  //                  jejak digeserKe[kode] = tanggal jadwal barunya (mekanisme jejak auto-geser), supaya
+  //                  Tarik (sapu tanggal lampau) tidak menarik entri lama itu lagi = tidak dobel.
+  //                  Persen progres kode itu sudah dihitung ulang SEBELUM ini oleh pemanggil
+  //                  (lib/progressQtyHelpers.ts) - generator butuh persen yang benar (skip proses 100%).
   async sinkronJadwalSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], uname = 'Admin') {
     const jadiNol = changes.filter(c => c.oldQty > 0 && c.newQty <= 0).map(c => c.kode)
     const dariNol = changes.filter(c => c.oldQty <= 0 && c.newQty > 0).map(c => c.kode)
-    const tetap = changes.filter(c => c.oldQty > 0 && c.newQty > 0)
+    const tetap = changes.filter(c => c.oldQty > 0 && c.newQty > 0 && c.newQty < c.oldQty)
+    const naik = changes.filter(c => c.oldQty > 0 && c.newQty > c.oldQty).map(c => c.kode)
     if (tetap.length > 0) await this.syncQtyAfterEdit(panelId, tetap.map(c => ({ kode: c.kode, newQty: c.newQty })))
 
     const { data: panel, error: pErr } = await supabase.from('panels').select('id,nama,wo_id').eq('id', panelId).single()
@@ -169,6 +210,13 @@ export const rawScheduleService = {
       const hasil = await generateAndSaveToRawSchedule(panel.wo_id, hariIni, '__force__' + uname, [panelId], { [panelId]: dariNol })
       if (!hasil.success) throw new Error('jadwalkan komponen baru: ' + (hasil.error || 'gagal'))
       await logActivity(uname, 'QTY DARI 0: TAMBAH KE JADWAL', `Panel ${panel.nama}: qty naik dari 0, dijadwalkan mulai ${hariIni} ke proses relevan - ${dariNol.join(', ')} (${hasil.count} entri)`, { panel: panel.nama })
+    }
+
+    if (naik.length > 0 && panel.wo_id) {
+      const hasil = await generateAndSaveToRawSchedule(panel.wo_id, hariIni, '__force__' + uname, [panelId], { [panelId]: naik })
+      if (!hasil.success) throw new Error('jadwalkan sisa qty: ' + (hasil.error || 'gagal'))
+      const jejak = await this.tandaiJejakSetelahJadwalUlang(panelId, naik, hariIni)
+      await logActivity(uname, 'QTY NAIK: JADWALKAN SISA', `Panel ${panel.nama}: qty naik, sisa unit dijadwalkan mulai ${hariIni} - ${naik.join(', ')} (${hasil.count} entri baru, ${jejak.length} entri lama ditandai jejak${jejak.length ? ': ' + jejak.join('; ') : ''})`, { panel: panel.nama })
     }
   },
 }
