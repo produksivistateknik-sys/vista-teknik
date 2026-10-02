@@ -56,6 +56,20 @@ export const stokTransaksiService = {
     const row: any = Array.isArray(data) ? data[0] : data
     return row && row.id != null ? row : null
   },
+
+  // SATU fungsi masuk & SATU fungsi keluar (2 Okt 2026, dipertegas saat menambah form operator
+  // "Gunakan Stok Komponen" di vista-pekerja). Ketiga jalur pengubah stok - form Admin (di sini),
+  // Produksi Stok (SQL produksi_stok_cek_selesai/batal_produksi_stok) & form operator
+  // (vista-pekerja lib/stokTransaksiService.ts catatKeluar) - SEMUA berakhir di RPC
+  // catat_transaksi_stok: kunci baris stok, cek stok TERBARU di dalam kunci, update + catat
+  // transaksi dalam 1 transaksi DB. Keluar > stok saat dieksekusi = ditolak "Stok tidak cukup".
+  catatMasuk(p: { komponenId: number; jumlah: number; keterangan?: string | null; createdBy: string; tanggal?: string }) {
+    return this.catat({ ...p, tipe: 'masuk', sumber: 'manual' })
+  },
+  catatKeluar(p: { komponenId: number; jumlah: number; proyek: string; panel?: string | null; keterangan?: string | null; createdBy: string; tanggal?: string }) {
+    return this.catat({ komponenId: p.komponenId, tipe: 'keluar', jumlah: p.jumlah, sumber: 'manual', referensi: p.proyek,
+      panel: p.panel ?? null, keterangan: p.keterangan ?? null, createdBy: p.createdBy, tanggal: p.tanggal })
+  },
 }
 
 // Pemetaan ke bentuk yang dipakai tampilan lama (biar UI gak berubah):

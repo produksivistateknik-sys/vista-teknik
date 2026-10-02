@@ -130,7 +130,7 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     // transaksi DB. Gantiin pola fresh-read + update bersyarat (race lost-update 5 Sep 2026).
     let t:any;
     try{
-      t=await stokTransaksiService.catat({komponenId:showMasuk.id,tipe:"masuk",jumlah:jml,
+      t=await stokTransaksiService.catatMasuk({komponenId:showMasuk.id,jumlah:jml,
         keterangan:masukForm.keterangan||null,createdBy:uname,tanggal:masukForm.tanggal});
     }catch(err:any){
       alert("Gagal menyimpan stok masuk: "+(err?.message||err));
@@ -157,8 +157,8 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     // apa adanya (mis. "Stok tidak cukup! Stok tersedia: N").
     let t:any;
     try{
-      t=await stokTransaksiService.catat({komponenId:showKeluar.id,tipe:"keluar",jumlah:jml,
-        referensi:keluarForm.proyek.trim(),panel:keluarForm.panel||null,keterangan:keluarForm.keterangan||null,createdBy:uname});
+      t=await stokTransaksiService.catatKeluar({komponenId:showKeluar.id,jumlah:jml,
+        proyek:keluarForm.proyek.trim(),panel:keluarForm.panel||null,keterangan:keluarForm.keterangan||null,createdBy:uname});
     }catch(err:any){
       alert("Gagal menyimpan stok keluar: "+(err?.message||err));
       return;
