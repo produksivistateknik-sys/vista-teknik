@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { Modal } from './ui/Primitives'
+import { stokTransaksiService, transaksiMasuk, transaksiKeluar } from '../services/stokTransaksiService'
 
+// FONDASI STOK (2 Okt 2026) - riwayat masuk/keluar dibaca dari komponen_stok_transaksi lewat
+// service bersama (sama dgn KomponenStokTab), dipetakan ke bentuk lama - tampilan gak berubah.
+// Keluar dulu diparse regex dari teks activity_log (gak pernah kebaca) - sekarang data asli.
 export function StokMonitoringTab({user,activityLog}:any){
   const [stokList,setStokList]=useState<any[]>([]);
-  const [masukList,setMasukList]=useState<any[]>([]);
+  const [transaksi,setTransaksi]=useState<any[]>([]);
+  const masukList=transaksiMasuk(transaksi,stokList);
+  const keluarList=transaksiKeluar(transaksi,stokList);
   const [loading,setLoading]=useState(true);
+  const [errMuat,setErrMuat]=useState<string|null>(null);
   const [search,setSearch]=useState("");
   const [filterKode,setFilterKode]=useState<string[]>([]);
   const [showKodeDD,setShowKodeDD]=useState(false);
@@ -16,20 +23,25 @@ export function StokMonitoringTab({user,activityLog}:any){
     const ch=supabase.channel("realtime-stok-monitor")
       .on("postgres_changes",{event:"*",schema:"public",table:"komponen_stok"},
         ()=>{fetchAll();})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_masuk"},
-        (payload)=>{setMasukList(prev=>prev.some(m=>m.id===payload.new.id)?prev:[payload.new,...prev]);})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_transaksi"},
+        (payload)=>{setTransaksi(prev=>prev.some(t=>t.id===payload.new.id)?prev:[payload.new,...prev]);})
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
+  // A.2 (2 Okt 2026) - dulu error diabaikan, gagal baca tampil "Tidak ada data" tanpa pesan.
   const fetchAll=async()=>{
-    const[{data:s},{data:m}]=await Promise.all([
-      supabase.from("komponen_stok").select("*").order("nama",{ascending:true}),
-      supabase.from("komponen_stok_masuk").select("*").order("tanggal",{ascending:false})
-    ]);
-    setStokList(s??[]);
-    setMasukList(m??[]);
-    setLoading(false);
+    try{
+      const[s,t]=await Promise.all([stokTransaksiService.ambilStok(),stokTransaksiService.ambilTransaksi()]);
+      setStokList(s);
+      setTransaksi(t);
+      setErrMuat(null);
+    }catch(err:any){
+      console.error("[StokMonitoring] gagal memuat data:",err);
+      setErrMuat(err?.message||String(err));
+    }finally{
+      setLoading(false);
+    }
   };
 
   const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-";
@@ -40,13 +52,9 @@ export function StokMonitoringTab({user,activityLog}:any){
   const masukBulanIni=masukList.filter(m=>m.tanggal?.startsWith(bulanIni));
   const totalMasukBulan=masukBulanIni.reduce((a:number,m:any)=>a+m.jumlah,0);
 
-  // Hitung keluar dari activity log bulan ini
-  const riwayatKeluar=(activityLog||[]).filter((l:any)=>l.action==="KELUAR KOMPONEN");
-  const keluarBulanIni=riwayatKeluar.filter((l:any)=>l.created_at?.startsWith(bulanIni));
-  const totalKeluarBulan=keluarBulanIni.reduce((a:number,l:any)=>{
-    const m=l.description?.match(/x(\d+)\s*pcs/);
-    return a+(m?Number(m[1]):0);
-  },0);
+  // Keluar bulan ini - dari tabel transaksi (dulu regex teks activity_log).
+  const keluarBulanIni=keluarList.filter((k:any)=>k.tanggal?.startsWith(bulanIni));
+  const totalKeluarBulan=keluarBulanIni.reduce((a:number,k:any)=>a+k.jumlah,0);
 
   // Terakhir update per komponen
   const getMasukTerakhir=(id:number)=>{
@@ -54,11 +62,8 @@ export function StokMonitoringTab({user,activityLog}:any){
     return m?{tanggal:m.tanggal,jumlah:m.jumlah}:null;
   };
   const getKeluarTerakhir=(id:number)=>{
-    const kode=stokList.find(s=>s.id===id)?.kode;
-    const log=(activityLog||[]).find((l:any)=>l.action==="KELUAR KOMPONEN"&&l.description?.includes("("+kode+")"));
-    if(!log)return null;
-    const m=log.description?.match(/x(\d+)\s*pcs/);
-    return{tanggal:log.created_at?.slice(0,10),jumlah:m?Number(m[1]):0};
+    const k=keluarList.find((x:any)=>x.komponen_id===id); // urut tanggal terbaru dulu
+    return k?{tanggal:k.tanggal,jumlah:k.jumlah}:null;
   };
 
   const kodeList=[...Array.from(new Set(stokList.map((s:any)=>s.kode).filter(Boolean))) as string[]];
@@ -118,27 +123,18 @@ export function StokMonitoringTab({user,activityLog}:any){
           <tbody>
             {keluarBulanIni.length===0?(
               <tr><td colSpan={7} style={{textAlign:"center",padding:24,color:"#94a3b8"}}>Belum ada transaksi keluar bulan ini</td></tr>
-            ):keluarBulanIni.map((l:any,i:number)=>{
-              const mJml=l.description?.match(/x(\d+)\s*pcs/);
-              const mKode=l.description?.match(/\(([^)]+)\)/);
-              const jml=mJml?Number(mJml[1]):0;
-              const kode=mKode?mKode[1]:"-";
-              // BUG FIX (5 Sep 2026, sama pola KomponenStokTab.tsx): dulu .split(" x")[0] - patah
-              // kalau NAMA komponennya sendiri mengandung " x" (mis. "Kabel NYY 3 x 2.5mm").
-              // Sekarang split pakai kode yang sudah ditangkap di atas (" (KODE)") sebagai
-              // pembatas.
-              const strippedNama=l.description?.replace("Keluar: ","")||"";
-              const nama=mKode?strippedNama.split(` (${mKode[1]})`)[0]:strippedNama.split(" (")[0];
+            ):keluarBulanIni.map((k:any,i:number)=>{
+              // Dari tabel transaksi (2 Okt 2026) - dulu nama/kode/jumlah diparse regex dari teks log.
               const td:any={padding:"7px 12px",borderBottom:"1px solid #f1f5f9",fontSize:11,verticalAlign:"middle" as const};
               return(
                 <tr key={i}>
-                  <td style={{...td,color:"#64748b"}}>{fmtDate(l.created_at?.slice(0,10))}</td>
-                  <td style={td}>{kode&&kode!=="-"?<span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>{kode}</span>:<span style={{color:"#cbd5e1"}}>—</span>}</td>
-                  <td style={{...td,fontWeight:600,color:"#1e293b"}}>{nama}</td>
-                  <td style={{...td,textAlign:"center" as const,fontWeight:700,color:"#dc2626"}}>-{jml} pcs</td>
-                  <td style={{...td,color:"#475569"}}>{l.proyek||"—"}</td>
-                  <td style={{...td,color:"#475569"}}>{l.panel||"—"}</td>
-                  <td style={{...td,color:"#64748b"}}>{l.user_name||"—"}</td>
+                  <td style={{...td,color:"#64748b"}}>{fmtDate(k.tanggal)}</td>
+                  <td style={td}>{k.kode&&k.kode!=="-"?<span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:4,padding:"1px 7px",fontSize:10,fontWeight:700}}>{k.kode}</span>:<span style={{color:"#cbd5e1"}}>—</span>}</td>
+                  <td style={{...td,fontWeight:600,color:"#1e293b"}}>{k.nama}</td>
+                  <td style={{...td,textAlign:"center" as const,fontWeight:700,color:"#dc2626"}}>-{k.jumlah} pcs</td>
+                  <td style={{...td,color:"#475569"}}>{k.proyek||"—"}</td>
+                  <td style={{...td,color:"#475569"}}>{k.panel||"—"}</td>
+                  <td style={{...td,color:"#64748b"}}>{k.created_by||"—"}</td>
                 </tr>
               );
             })}
@@ -149,6 +145,7 @@ export function StokMonitoringTab({user,activityLog}:any){
   );
 
   if(loading)return <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat data stok...</div>;
+  if(errMuat)return <div style={{textAlign:"center",padding:40,color:"#b91c1c"}}>Gagal memuat data stok: {errMuat}<br/><span style={{fontSize:11,color:"#94a3b8"}}>Refresh halaman untuk mencoba lagi.</span></div>;
 
   return(
     <div className="fi">

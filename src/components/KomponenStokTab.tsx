@@ -1,11 +1,18 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
+import { stokTransaksiService, transaksiMasuk, transaksiKeluar } from '../services/stokTransaksiService'
 import { Card, Lbl, Inp, Btn, Modal } from './ui/Primitives'
 
+// FONDASI STOK (2 Okt 2026) - semua perubahan stok lewat stokTransaksiService.catat (RPC atomik
+// catat_transaksi_stok, tercatat di komponen_stok_transaksi). Riwayat masuk/keluar dibaca dari
+// tabel transaksi & dipetakan ke bentuk lama (masuklist/keluarList) - tampilan gak berubah.
+// Keluar dulu dihitung dari regex teks activity_log (gak pernah kebaca) - sekarang data asli.
 export function KomponenStokTab({user,activityLog,invTab="data"}:any){
   const [stokList,setStokList]=useState<any[]>([]);
-  const [masuklist,setMasukList]=useState<any[]>([]);
+  const [transaksi,setTransaksi]=useState<any[]>([]);
+  const masuklist=transaksiMasuk(transaksi,stokList);
+  const keluarList=transaksiKeluar(transaksi,stokList);
   const [loading,setLoading]=useState(true);
   const [form,setForm]=useState({nama:"",kode:"",stok:0});
   const [editId,setEditId]=useState<any>(null);
@@ -35,21 +42,25 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
         (payload)=>{setStokList(prev=>prev.some(s=>s.id===payload.new.id)?prev:[...prev,payload.new]);})
       .on("postgres_changes",{event:"DELETE",schema:"public",table:"komponen_stok"},
         (payload)=>{setStokList(prev=>prev.filter(s=>s.id!==payload.old.id));})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_masuk"},
-        (payload)=>{setMasukList(prev=>prev.some(m=>m.id===payload.new.id)?prev:[payload.new,...prev]);})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"komponen_stok_transaksi"},
+        (payload)=>{setTransaksi(prev=>prev.some(t=>t.id===payload.new.id)?prev:[payload.new,...prev]);})
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
+  // A.2 (2 Okt 2026) - dulu error diabaikan, gagal baca tampil "kosong" tanpa pesan.
   const fetchAll=async()=>{
     setLoading(true);
-    const[{data:s},{data:m}]=await Promise.all([
-      supabase.from("komponen_stok").select("*").order("nama",{ascending:true}),
-      supabase.from("komponen_stok_masuk").select("*").order("tanggal",{ascending:false})
-    ]);
-    setStokList(s??[]);
-    setMasukList(m??[]);
-    setLoading(false);
+    try{
+      const[s,t]=await Promise.all([stokTransaksiService.ambilStok(),stokTransaksiService.ambilTransaksi()]);
+      setStokList(s);
+      setTransaksi(t);
+    }catch(err:any){
+      console.error("[KomponenStok] gagal memuat data:",err);
+      alert("Gagal memuat data stok komponen: "+(err?.message||err)+"\n\nRefresh halaman untuk mencoba lagi.");
+    }finally{
+      setLoading(false);
+    }
   };
 
   const save=async()=>{
@@ -62,12 +73,26 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     // berhasil tersimpan, padahal DB gak berubah sama sekali. Sekarang cek error eksplisit, alert
     // + return sebelum reset form kalau gagal (form TIDAK di-reset biar user gak kehilangan input).
     if(editId){
+      // Nama/kode di-update langsung; ANGKA STOK gak lagi ditimpa diam-diam - kalau berubah, dicatat
+      // sbg transaksi 'koreksi' lewat RPC (selisihnya dihitung di DB, tercatat atas nama user ini).
       const{data,error}=await supabase.from("komponen_stok").update({
-        nama:form.nama.trim(),kode:form.kode.trim(),stok:Number(form.stok)||0,
+        nama:form.nama.trim(),kode:form.kode.trim(),
         updated_at:new Date().toISOString()
       }).eq("id",editId).select().single();
       if(error){alert("Gagal menyimpan: "+error.message);return;}
-      setStokList(prev=>prev.map(s=>s.id===editId?data:s));
+      let barisAkhir=data;
+      if((Number(form.stok)||0)!==(Number(data.stok)||0)){
+        try{
+          const t=await stokTransaksiService.catat({komponenId:editId,tipe:"koreksi",jumlah:Number(form.stok)||0,
+            keterangan:"Koreksi stok lewat form edit komponen",createdBy:uname});
+          if(t)barisAkhir={...data,stok:t.stok_sesudah};
+        }catch(err:any){
+          alert("Nama/kode tersimpan, tapi koreksi stok GAGAL: "+(err?.message||err));
+          setStokList(prev=>prev.map(s=>s.id===editId?data:s));
+          return;
+        }
+      }
+      setStokList(prev=>prev.map(s=>s.id===editId?barisAkhir:s));
       await activityLogService.insert({user_name:uname,action:"EDIT KOMPONEN STOK",
         description:"Edit komponen: "+form.nama+" ("+form.kode+")",module:"stok",halaman:"System"});
       setEditId(null);
@@ -91,36 +116,21 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     const jml=Number(masukForm.jumlah)||0;
     if(jml<=0){alert("Jumlah harus lebih dari 0!");return;}
     const uname=getUname();
-    // Fresh-read stok TERBARU dari DB dulu (BUG FIX 5 Sep 2026 - race condition lost-update) -
-    // dulu newStok dihitung dari snapshot showMasuk.stok yang diambil pas modal dibuka, kalau 2
-    // staf proses stok komponen yang sama nyaris bersamaan, transaksi kedua nimpa balik transaksi
-    // pertama pakai angka basi. .eq("stok",freshStok) di update bawah jadi conditional write -
-    // kalau ternyata ada yang ubah stok LAGI persis di jendela sempit antara fresh-read ini dan
-    // update, update gak kena baris manapun (updated jadi null), ketahuan lewat cek di bawah
-    // (bukan diam-diam ke-skip kayak sebelumnya).
-    const{data:freshRow,error:freshErr}=await supabase.from("komponen_stok").select("stok").eq("id",showMasuk.id).single();
-    if(freshErr||!freshRow){alert("Gagal membaca stok terbaru: "+(freshErr?.message||"komponen tidak ditemukan")+"\n\nCoba lagi.");return;}
-    const freshStok=freshRow.stok;
-    const newStok=freshStok+jml;
-    // Update stok
-    const{data:updated}=await supabase.from("komponen_stok").update({
-      stok:newStok,updated_at:new Date().toISOString()
-    }).eq("id",showMasuk.id).eq("stok",freshStok).select().single();
-    if(!updated){
-      alert("Gagal menyimpan: stok komponen ini baru saja diubah oleh transaksi lain. Silakan buka ulang dan coba lagi.");
+    // RPC atomik (2 Okt 2026) - kunci baris + update stok + catat transaksi 'masuk' dalam 1
+    // transaksi DB. Gantiin pola fresh-read + update bersyarat (race lost-update 5 Sep 2026).
+    let t:any;
+    try{
+      t=await stokTransaksiService.catat({komponenId:showMasuk.id,tipe:"masuk",jumlah:jml,
+        keterangan:masukForm.keterangan||null,createdBy:uname,tanggal:masukForm.tanggal});
+    }catch(err:any){
+      alert("Gagal menyimpan stok masuk: "+(err?.message||err));
       return;
     }
-    // Insert riwayat masuk
-    const{data:masuk}=await supabase.from("komponen_stok_masuk").insert({
-      komponen_id:showMasuk.id,nama:showMasuk.nama,
-      jumlah:jml,tanggal:masukForm.tanggal,
-      keterangan:masukForm.keterangan,created_by:uname
-    }).select().single();
-    setStokList(prev=>prev.map(s=>s.id===showMasuk.id?updated:s));
-    if(masuk) setMasukList(prev=>[masuk,...prev]);
+    setStokList(prev=>prev.map(s=>s.id===showMasuk.id?{...s,stok:t.stok_sesudah,updated_at:new Date().toISOString()}:s));
+    setTransaksi(prev=>prev.some(x=>x.id===t.id)?prev:[t,...prev]);
     await activityLogService.insert({
       user_name:uname,action:"MASUK KOMPONEN",
-      description:`Masuk: ${showMasuk.nama} (${showMasuk.kode||"-"}) +${jml} pcs — ${masukForm.keterangan||"-"}. Stok: ${newStok}`,
+      description:`Masuk: ${showMasuk.nama} (${showMasuk.kode||"-"}) +${jml} pcs — ${masukForm.keterangan||"-"}. Stok: ${t.stok_sesudah}`,
       module:"stok",halaman:"System"
     });
     setShowMasuk(null);
@@ -133,23 +143,21 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     if(jml<=0){alert("Jumlah harus lebih dari 0!");return;}
     if(!keluarForm.proyek.trim()){alert("Proyek harus diisi!");return;}
     const uname=getUname();
-    // Fresh-read + conditional update - sama pola/alasan kayak tambahMasuk() di atas.
-    const{data:freshRow,error:freshErr}=await supabase.from("komponen_stok").select("stok").eq("id",showKeluar.id).single();
-    if(freshErr||!freshRow){alert("Gagal membaca stok terbaru: "+(freshErr?.message||"komponen tidak ditemukan")+"\n\nCoba lagi.");return;}
-    const freshStok=freshRow.stok;
-    if(jml>freshStok){alert("Stok tidak cukup! Stok tersedia: "+freshStok);return;}
-    const newStok=freshStok-jml;
-    const{data}=await supabase.from("komponen_stok").update({
-      stok:newStok,updated_at:new Date().toISOString()
-    }).eq("id",showKeluar.id).eq("stok",freshStok).select().single();
-    if(!data){
-      alert("Gagal menyimpan: stok komponen ini baru saja diubah oleh transaksi lain. Silakan buka ulang dan coba lagi.");
+    // RPC atomik - cek "stok cukup" sekarang di DB (baris dikunci), pesan error dari DB diteruskan
+    // apa adanya (mis. "Stok tidak cukup! Stok tersedia: N").
+    let t:any;
+    try{
+      t=await stokTransaksiService.catat({komponenId:showKeluar.id,tipe:"keluar",jumlah:jml,
+        referensi:keluarForm.proyek.trim(),panel:keluarForm.panel||null,keterangan:keluarForm.keterangan||null,createdBy:uname});
+    }catch(err:any){
+      alert("Gagal menyimpan stok keluar: "+(err?.message||err));
       return;
     }
-    setStokList(prev=>prev.map(s=>s.id===showKeluar.id?data:s));
+    setStokList(prev=>prev.map(s=>s.id===showKeluar.id?{...s,stok:t.stok_sesudah,updated_at:new Date().toISOString()}:s));
+    setTransaksi(prev=>prev.some(x=>x.id===t.id)?prev:[t,...prev]);
     await activityLogService.insert({
       user_name:uname,action:"KELUAR KOMPONEN",
-      description:`Keluar: ${showKeluar.nama} (${showKeluar.kode||"-"}) x${jml} pcs → Proyek: ${keluarForm.proyek}, Panel: ${keluarForm.panel||"-"}, Ket: ${keluarForm.keterangan||"-"}. Sisa: ${newStok}`,
+      description:`Keluar: ${showKeluar.nama} (${showKeluar.kode||"-"}) x${jml} pcs → Proyek: ${keluarForm.proyek}, Panel: ${keluarForm.panel||"-"}, Ket: ${keluarForm.keterangan||"-"}. Sisa: ${t.stok_sesudah}`,
       module:"stok",halaman:"System",proyek:keluarForm.proyek,panel:keluarForm.panel
     });
     setShowKeluar(null);
@@ -158,10 +166,15 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
 
   const hapus=async()=>{
     const item=stokList.find(s=>s.id===delId);
-    await supabase.from("komponen_stok_masuk").delete().eq("komponen_id",delId);
-    await supabase.from("komponen_stok").delete().eq("id",delId);
+    // A.2 (2 Okt 2026) - dulu kedua delete gak dicek error-nya, UI langsung buang baris walau DB
+    // gagal. Riwayat transaksi ikut terhapus otomatis (FK ON DELETE CASCADE) - sama perilakunya
+    // dgn riwayat masuk lama yang juga dihapus di sini. komponen_stok_masuk = tabel lama.
+    const{error:mErr}=await supabase.from("komponen_stok_masuk").delete().eq("komponen_id",delId);
+    if(mErr){alert("Gagal menghapus riwayat masuk lama: "+mErr.message);return;}
+    const{error}=await supabase.from("komponen_stok").delete().eq("id",delId);
+    if(error){alert("Gagal menghapus komponen: "+error.message);return;}
     setStokList(prev=>prev.filter(s=>s.id!==delId));
-    setMasukList(prev=>prev.filter(m=>m.komponen_id!==delId));
+    setTransaksi(prev=>prev.filter(t=>t.komponen_id!==delId));
     setDelId(null);
     const uname=getUname();
     await activityLogService.insert({user_name:uname,action:"HAPUS KOMPONEN STOK",
@@ -170,22 +183,15 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
 
   // Hitung total masuk & keluar per komponen
   const getMasukTotal=(id:number)=>masuklist.filter(m=>m.komponen_id===id).reduce((a:number,m:any)=>a+m.jumlah,0);
-  const getKeluarTotal=(id:number)=>{
-    const log=(activityLog||[]).filter((l:any)=>l.action==="KELUAR KOMPONEN"&&l.description?.includes("("+stokList.find(s=>s.id===id)?.kode+")"));
-    return log.reduce((a:number,l:any)=>{
-      const m=l.description?.match(/x(\d+)\s*pcs/);
-      return a+(m?Number(m[1]):0);
-    },0);
-  };
+  // Keluar dari tabel transaksi (2 Okt 2026) - dulu regex teks activity_log, gak pernah kebaca.
+  const getKeluarTotal=(id:number)=>keluarList.filter(k=>k.komponen_id===id).reduce((a:number,k:any)=>a+k.jumlah,0);
   const getMasukTerakhir=(id:number)=>{
     const m=masuklist.filter(x=>x.komponen_id===id)[0];
     return m?{tanggal:m.tanggal,jumlah:m.jumlah}:null;
   };
   const getKeluarTerakhir=(id:number)=>{
-    const log=(activityLog||[]).find((l:any)=>l.action==="KELUAR KOMPONEN"&&l.description?.includes("("+stokList.find(s=>s.id===id)?.kode+")"));
-    if(!log)return null;
-    const m=log.description?.match(/x(\d+)\s*pcs/);
-    return{tanggal:log.created_at?.slice(0,10),jumlah:m?Number(m[1]):0};
+    const k=keluarList.find(x=>x.komponen_id===id); // transaksi sudah urut tanggal terbaru dulu
+    return k?{tanggal:k.tanggal,jumlah:k.jumlah}:null;
   };
 
   const kodeList=["ALL",...Array.from(new Set(stokList.map((s:any)=>s.kode).filter(Boolean)))];
@@ -204,23 +210,12 @@ export function KomponenStokTab({user,activityLog,invTab="data"}:any){
     nama:m.nama,tipe:"masuk",jumlah:m.jumlah,
     keterangan:m.keterangan||"-",panel:"-",oleh:m.created_by||"-"
   }));
-  const riwayatKeluar=(activityLog||[]).filter((l:any)=>l.action==="KELUAR KOMPONEN").map((l:any)=>{
-    const mJml=l.description?.match(/x(\d+)\s*pcs/);
-    const mKode=l.description?.match(/\(([^)]+)\)/);
-    // BUG FIX (5 Sep 2026): dulu .split(" x")[0] - patah kalau NAMA komponennya sendiri
-    // mengandung " x" (mis. "Kabel NYY 3 x 2.5mm"), berhenti di kemunculan pertama padahal
-    // itu bagian dari nama, bukan pembatas "x{jumlah} pcs". Sekarang split pakai kode yang
-    // sudah ditangkap di atas (" (KODE)") sebagai pembatas - jauh lebih spesifik/gak ambigu.
-    const stripped=l.description?.replace("Keluar: ","")||"";
-    const nama=mKode?stripped.split(` (${mKode[1]})`)[0]:stripped.split(" (")[0];
-    return{
-      tanggal:l.created_at?.slice(0,10),
-      kode:mKode?mKode[1]:"-",
-      nama,
-      tipe:"keluar",jumlah:mJml?Number(mJml[1]):0,
-      keterangan:l.description,panel:l.panel||"-",oleh:l.user_name
-    };
-  });
+  // Keluar dari tabel transaksi (2 Okt 2026) - dulu diparse regex dari teks activity_log.
+  // keterangan dirangkai mirip teks log lama biar kolom Keterangan tetap informatif.
+  const riwayatKeluar=keluarList.map((k:any)=>({
+    tanggal:k.tanggal,kode:k.kode,nama:k.nama,tipe:"keluar",jumlah:k.jumlah,
+    keterangan:`Proyek: ${k.proyek||"-"}${k.keterangan?" — "+k.keterangan:""}`,panel:k.panel||"-",oleh:k.created_by||"-"
+  }));
   const riwayat=[...riwayatMasuk,...riwayatKeluar]
     .filter(r=>{
       const matchTipe=filterTipe==="ALL"||(filterTipe==="masuk"&&r.tipe==="masuk")||(filterTipe==="keluar"&&r.tipe==="keluar");
