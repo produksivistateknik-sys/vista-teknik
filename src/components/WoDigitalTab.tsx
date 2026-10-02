@@ -169,8 +169,12 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   // panel->per-kode di sini, beda dari Manajemen WO yang punya buildNp+konfirmasi konflik sendiri -
   // form Engineering ini SENGAJA dipangkas, sesuai task). Panel baru -> checklist di-generate fresh
   // dari BOM (initChecklist), SAMA PERSIS cara Manajemen WO bikin panel baru.
+  // FIX (2 Okt 2026, insiden WO 069 CLS FONTAINE 30 Sep): panel existing TIDAK mengirim checklist -
+  // dulu salinan saat form DIBUKA ditulis ulang utuh saat Simpan, menimpa progress yang disimpan
+  // operator selama form terbuka (14 komponen PAINTING 100% jadi 0%). workOrderService sekarang
+  // mempertahankan checklist di DB kalau checklist tidak dikirim (ganti tipe tetap baca dari DB).
   const buildPanelsForSave=()=>formPanels.map((p:any)=>p.id?({
-    id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,checklist:p.checklist||{},
+    id:p.id,noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,checklist:undefined,
     catatan:p.catatan||"",jumlahCell:Number(p.jumlahCell)||0,tanggal:p.tanggal,
   }):({
     noPnl:p.noPnl,nama:p.nama,tipe:p.tipe,qty:Number(p.qty)||1,

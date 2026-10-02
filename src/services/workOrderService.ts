@@ -27,9 +27,12 @@ const logActivity = async (user_name: string, action: string, description: strin
 async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string) {
   const ids = panels.filter(p => p.id).map(p => p.id)
   if (ids.length === 0) return
-  const { data: lama, error } = await supabase.from('panels').select('id,tipe').in('id', ids)
+  const { data: lama, error } = await supabase.from('panels').select('id,tipe,checklist').in('id', ids)
   if (error) throw new Error('baca tipe panel lama: ' + error.message)
   const tipeLama: Record<string, string> = Object.fromEntries((lama || []).map((r: any) => [String(r.id), r.tipe]))
+  // Pemanggil yang TIDAK mengirim checklist (WO Digital/Engineering sejak 2 Okt 2026) -> pakai
+  // checklist segar dari DB, bukan salinan saat form dibuka.
+  const checklistDb: Record<string, any> = Object.fromEntries((lama || []).map((r: any) => [String(r.id), r.checklist]))
   const berubah = panels.filter(p => p.id && tipeLama[String(p.id)] && tipeLama[String(p.id)] !== p.tipe)
   if (berubah.length === 0) return
   const { data: bom, error: bomErr } = await supabase.from('bom_master').select('tipe_panel,kode_komponen').range(0, 4999)
@@ -37,7 +40,7 @@ async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string) {
   const kodePerTipe: Record<string, Set<string>> = {}
   ;(bom || []).forEach((b: any) => { (kodePerTipe[b.tipe_panel] ||= new Set()).add(b.kode_komponen) })
   for (const p of berubah) {
-    const r = sesuaikanChecklistKeTipe(p.checklist || {}, p.tipe, kodePerTipe)
+    const r = sesuaikanChecklistKeTipe((p.checklist !== undefined ? p.checklist : checklistDb[String(p.id)]) || {}, p.tipe, kodePerTipe)
     p.checklist = r.checklist
     await logActivity(uname, 'GANTI TIPE PANEL',
       `Panel ${p.nama}: tipe ${tipeLama[String(p.id)]} -> ${p.tipe}. Checklist disesuaikan - dibuang (kosong): ${r.dibuang.join(',') || '-'}; ` +
@@ -160,7 +163,10 @@ export const workOrderService = {
         nama: p.nama,
         tipe: p.tipe,
         qty: p.qty || 1,
-        checklist: p.checklist || {},
+        // FIX (2 Okt 2026, insiden WO 069 CLS FONTAINE): checklist panel EXISTING cuma ditulis kalau
+        // pemanggil mengirimnya. WO Digital (Engineering) sengaja tidak mengirim -> progress operator
+        // yang tersimpan selama form terbuka tidak tertimpa salinan lama.
+        ...(p.checklist !== undefined ? { checklist: p.checklist } : {}),
         catatan: p.catatan || "",
         tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
         jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
@@ -270,7 +276,9 @@ export const workOrderService = {
           jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
         }
         if (p.id) {
-          const { error } = await supabase.from('panels').update(row).eq('id', p.id)
+          // Panel existing tanpa checklist dari pemanggil -> kolom checklist TIDAK ditulis (lihat savePanels).
+          const { checklist: _ck, ...rowTanpaChecklist } = row
+          const { error } = await supabase.from('panels').update(p.checklist !== undefined ? row : rowTanpaChecklist).eq('id', p.id)
           if (error) throw new Error(error.message)
           // FIX (5 Agu 2026): raw_schedule/renhar/fcs_schedule nyimpen wo_id-nya SENDIRI, cache
           // terpisah dari panels.wo_id di atas (panel_id-nya sendiri gak pernah berubah, cuma
