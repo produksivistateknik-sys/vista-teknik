@@ -1,5 +1,5 @@
-import { useState, useEffect } from 'react'
 import { useWoEngineeringBroadcast, type WoEngineeringEvent } from '../lib/useWoEngineeringBroadcast'
+import { useKartuMengambang } from '../lib/useKartuMengambang'
 
 // Banner broadcast "WO diubah Engineering" (17 Sep 2026, REDESAIN VISUAL - lihat komentar lama
 // di git log kalau perlu histori bentuk sebelumnya: dulu bar tipis full-width solid, sekarang
@@ -32,22 +32,10 @@ export function WoEngineeringBanner({akun,topOffset=0}:{akun:string|null,topOffs
 }
 
 function WoEngineeringCard({event,onRead}:{event:WoEngineeringEvent,onRead:(id:number)=>void}){
-  // Animasi masuk: mount dengan transform/opacity di posisi "off" (translateY(-24px) opacity 0),
-  // 1 frame kemudian (requestAnimationFrame) pindah ke posisi final - transisi CSS yang jalan
-  // di antara 2 state ini yang bikin efek slide-down+fade-in, ease-out 320ms.
-  const[visible,setVisible]=useState(false)
-  // Animasi keluar: klik "Sudah Dibaca" TIDAK langsung markAsRead (itu bakal bikin kartu ilang
-  // seketika, gak sempat keliatan animasinya) - set closing dulu (slide-up+fade-out, ease-in
-  // 250ms), markAsRead beneran dipanggil di setTimeout SETELAH durasi animasi itu kelar.
-  const[closing,setClosing]=useState(false)
-  useEffect(()=>{
-    const raf=requestAnimationFrame(()=>setVisible(true))
-    return()=>cancelAnimationFrame(raf)
-  },[])
-  const handleRead=()=>{
-    setClosing(true)
-    setTimeout(()=>onRead(event.id),260)
-  }
+  // Animasi masuk (slide-down+fade-in) & keluar (slide-up+fade-out, markAsRead dipanggil SETELAH
+  // animasi kelar) - dipindah ke lib/useKartuMengambang.ts (2 Okt 2026) supaya toast Sesi Produksi
+  // Stok pakai gerak yang identik; nilai transform/transisi sama persis dgn versi inline lama.
+  const{gaya:gayaAnimasi,tutup:handleRead}=useKartuMengambang(()=>onRead(event.id),"atas")
   const jenisLabel=event.jenis_perubahan==="tambah"?"Ditambahkan":event.jenis_perubahan==="batal"?"Dibatalkan":"Diedit"
   const waktuRelatif=(()=>{
     const diffMin=Math.round((Date.now()-new Date(event.created_at).getTime())/60000)
@@ -59,12 +47,7 @@ function WoEngineeringCard({event,onRead}:{event:WoEngineeringEvent,onRead:(id:n
   })()
   return(
     <div style={{
-      pointerEvents:closing?"none" as const:"auto" as const,
-      transform:closing?"translateY(-16px)":visible?"translateY(0)":"translateY(-24px)",
-      opacity:closing?0:visible?1:0,
-      transition:closing
-        ?"transform 250ms cubic-bezier(0.4,0,1,1), opacity 250ms cubic-bezier(0.4,0,1,1)"
-        :"transform 320ms cubic-bezier(0.16,1,0.3,1), opacity 320ms ease-out",
+      ...gayaAnimasi,
       background:"rgba(67,56,202,0.85)",backdropFilter:"blur(14px) saturate(160%)",
       WebkitBackdropFilter:"blur(14px) saturate(160%)",
       border:"1px solid rgba(255,255,255,0.2)",borderRadius:16,

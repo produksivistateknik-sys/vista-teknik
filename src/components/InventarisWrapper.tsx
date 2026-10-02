@@ -1,9 +1,16 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { KomponenStokTab } from './KomponenStokTab'
 import { ProduksiStokAdminTab } from './ProduksiStokAdminTab'
+import { EVENT_BUKA_SESI_PRODUKSI_STOK, adaPermintaanBukaSesi } from '../lib/navProduksiStok'
 
 export function InventarisWrapper({user,activityLog}:any){
-  const [invTab,setInvTab]=useState("data");
+  // Tombol "Lihat" toast Sesi Produksi Stok -> langsung tab Produksi Stok (lib/navProduksiStok.ts).
+  const [invTab,setInvTab]=useState(()=>adaPermintaanBukaSesi()?"produksi":"data");
+  useEffect(()=>{
+    const buka=()=>setInvTab("produksi");
+    window.addEventListener(EVENT_BUKA_SESI_PRODUKSI_STOK,buka);
+    return()=>window.removeEventListener(EVENT_BUKA_SESI_PRODUKSI_STOK,buka);
+  },[]);
   const btnS=(active:boolean):any=>({
     padding:"8px 18px",fontSize:12,fontWeight:active?700:500,
     color:active?"#1d4ed8":"#64748b",cursor:"pointer",

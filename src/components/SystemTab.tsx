@@ -8,13 +8,20 @@ import { MasterUserTab } from './MasterUserTab'
 import { MasterMesinTab } from './MasterMesinTab'
 import { MasterPekerja } from './MasterPekerja'
 import { InventarisWrapper } from './InventarisWrapper'
+import { EVENT_BUKA_SESI_PRODUKSI_STOK, adaPermintaanBukaSesi } from '../lib/navProduksiStok'
 import { KapasitasPekerjaanTab } from './KapasitasPekerjaanTab'
 import { RecycleBinTab } from './RecycleBinTab'
 import { TimerAktifTab } from './TimerAktifTab'
 import { AppDocumentationTab } from './AppDocumentationTab'
 
 export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
-  const [subTab,setSubTab]=useState("masteruser");
+  // Tombol "Lihat" toast Sesi Produksi Stok -> langsung sub-tab Stok (lib/navProduksiStok.ts).
+  const [subTab,setSubTab]=useState(()=>adaPermintaanBukaSesi()?"stok":"masteruser");
+  useEffect(()=>{
+    const buka=()=>setSubTab("stok");
+    window.addEventListener(EVENT_BUKA_SESI_PRODUKSI_STOK,buka);
+    return()=>window.removeEventListener(EVENT_BUKA_SESI_PRODUKSI_STOK,buka);
+  },[]);
   const [admins,setAdmins]=useState([]);
   const [mesinList,setMesinList]=useState([]);
   const [maintenanceList,setMaintenanceList]=useState([]);

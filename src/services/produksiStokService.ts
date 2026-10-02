@@ -45,4 +45,20 @@ export const produksiStokService = {
     rpc('ubah_target_produksi_stok', { p_batch_id: batchId, p_target_qty: targetQty, p_oleh: oleh }),
   batal: (batchId: number, oleh: string, alasan: string | null) =>
     rpc('batal_produksi_stok', { p_batch_id: batchId, p_oleh: oleh, p_alasan: alasan }),
+  // Sesi berjalan (2 Okt 2026, migration 20261002050000) - SATU sumber data panel "Sesi Produksi
+  // Stok Aktif" & toast Admin (lib/useSesiProduksiStokAktif.ts). Sesi terbuka = selesai_at NULL.
+  async ambilSesiAktif() {
+    const sesi = await ambilSemua((a, b) => supabase.from('produksi_stok_sesi').select('*').is('selesai_at', null).order('mulai_at').range(a, b))
+    const bids = [...new Set(sesi.map((s: any) => s.batch_id))]
+    const batch = bids.length ? await ambilSemua((a, b) => supabase.from('produksi_stok_batch').select('id,komponen_id').in('id', bids).range(a, b)) : []
+    const kids = [...new Set(batch.map((x: any) => x.komponen_id))]
+    const komponen = kids.length ? await ambilSemua((a, b) => supabase.from('komponen_stok').select('id,nama,kode').in('id', kids).range(a, b)) : []
+    return sesi.map((s: any) => {
+      const bt = batch.find((x: any) => x.id === s.batch_id)
+      const k = bt ? komponen.find((x: any) => x.id === bt.komponen_id) : null
+      return { ...s, komponen_nama: k?.nama || '(komponen tidak ditemukan)', komponen_kode: k?.kode || null }
+    })
+  },
+  tutupSesi: (sesiId: number, oleh: string) =>
+    rpc('stop_sesi_produksi_stok', { p_sesi_id: sesiId, p_cara: 'tutup_admin', p_oleh: oleh }),
 }

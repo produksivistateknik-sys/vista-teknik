@@ -41,6 +41,8 @@ import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
 import { GlobalSearch } from './components/GlobalSearch'
 import { WoEngineeringBanner } from './components/WoEngineeringBanner'
+import { SesiProduksiStokToast } from './components/SesiProduksiStokToast'
+import { mintaBukaSesiProduksiStok } from './lib/navProduksiStok'
 
 const TrackingView = lazy(() => import('./components/TrackingView').then(m => ({ default: m.TrackingView })))
 const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
@@ -732,6 +734,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         </div>
       )}
       <WoEngineeringBanner akun={user?.username?`teknik:${user.username}`:null} topOffset={(hasNewVersion||hasDateRolled)?40:0}/>
+      {/* Toast sesi Produksi Stok baru (2 Okt 2026) - KHUSUS divisi admin (yg bisa buka Database >
+          Stok), "Lihat" -> tab Database > Stok > Produksi Stok, panel sesi aktif di-scroll ke layar. */}
+      {user?.divisi==="admin"&&<SesiProduksiStokToast onLihat={()=>{setTab("masteruser");mintaBukaSesiProduksiStok();}}/>}
       {ctxMenu&&(
         <div
           onClick={(e:any)=>e.stopPropagation()}

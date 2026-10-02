@@ -4,6 +4,7 @@ import { produksiStokService } from '../services/produksiStokService'
 import { stokTransaksiService } from '../services/stokTransaksiService'
 import { activityLogService } from '../services/activityLogService'
 import { Card, Lbl, Inp, Sel, Btn, Modal } from './ui/Primitives'
+import { SesiProduksiStokPanel } from './SesiProduksiStokPanel'
 
 // PRODUKSI STOK - ADMIN (2 Okt 2026). Produksi komponen setengah jadi SENGAJA utk stok, TERPISAH
 // TOTAL dari WO/Raw Schedule. Tahap tiap batch diambil dari aturan proses WO (bom_proses_relevan
@@ -135,6 +136,7 @@ export function ProduksiStokAdminTab({user}:any){
 
   return(
     <div className="fi">
+      <SesiProduksiStokPanel user={user}/>
       <Card style={{marginBottom:14}}>
         <div style={{fontWeight:700,fontSize:14,color:"#1e293b",marginBottom:4}}>🏭 Buat Batch Produksi Stok</div>
         <div style={{fontSize:11,color:"#94a3b8",marginBottom:12}}>Produksi komponen setengah jadi untuk stok - terpisah dari WO. Tahap mengikuti aturan proses Master Data untuk komponen BOM acuan item ini.</div>
