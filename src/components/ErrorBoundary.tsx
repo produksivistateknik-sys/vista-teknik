@@ -9,6 +9,7 @@ import { activityLogService } from '../services/activityLogService'
 
 const CHUNK_ERROR_PATTERN = /Failed to fetch dynamically imported module|Loading chunk .* failed|error loading dynamically imported module|ChunkLoadError|Importing a module script failed/i
 const RELOAD_GUARD_KEY = 'vista_teknik_chunk_reload_attempt'
+const JEDA_AUTO_RELOAD_MS = 2 * 60 * 1000
 
 function isChunkLoadError(error: Error): boolean {
   return error.name === 'ChunkLoadError' || CHUNK_ERROR_PATTERN.test(error.message || '')
@@ -72,10 +73,16 @@ export class ErrorBoundary extends Component<Props, State> {
     if (isChunk) {
       // Auto-reload SEKALI aja - kalau setelah reload errornya masih sama (deploy beneran
       // rusak, bukan cuma chunk basi), jangan loop reload selamanya, tampilkan fallback manual.
+      // Penanda = waktu percobaan terakhir (3 Okt 2026), bukan '1' permanen sesi: error chunk
+      // berikutnya di sesi yang sama (deploy lain, > JEDA_AUTO_RELOAD_MS kemudian) tetap
+      // auto-reload; dalam jeda itu tetap fallback tombol, jadi gak bisa loop.
       let sudahCoba = false
-      try { sudahCoba = sessionStorage.getItem(RELOAD_GUARD_KEY) === '1' } catch { /* noop */ }
+      try {
+        const t = Number(sessionStorage.getItem(RELOAD_GUARD_KEY))
+        sudahCoba = t > 0 && Date.now() - t < JEDA_AUTO_RELOAD_MS
+      } catch { /* noop */ }
       if (!sudahCoba) {
-        try { sessionStorage.setItem(RELOAD_GUARD_KEY, '1') } catch { /* noop */ }
+        try { sessionStorage.setItem(RELOAD_GUARD_KEY, String(Date.now())) } catch { /* noop */ }
         this.setState({ reloading: true })
         bersihkanCacheChunk(error).finally(() => setTimeout(() => window.location.reload(), 300))
       }
