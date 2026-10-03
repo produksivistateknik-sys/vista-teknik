@@ -91,7 +91,7 @@ export function MomFatUploadPanel({ uname, onSelesai, onBatal }: { uname: string
   };
 
   const sibuk = tahap !== "";
-  const inp = { width: "100%", padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-color,#e2e8f0)", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" as const, background: "var(--card-bg,#fff)", color: "var(--text-primary,#1e293b)" };
+  const inp = { width: "100%", textAlign: "left" as const, padding: "9px 12px", borderRadius: 8, border: "1px solid var(--border-color,#e2e8f0)", fontSize: 13, fontFamily: "inherit", boxSizing: "border-box" as const, background: "var(--card-bg,#fff)", color: "var(--text-primary,#1e293b)" };
   return (
     <Card style={{ marginBottom: 16 }}>
       <div style={{ fontWeight: 800, fontSize: 14, color: "var(--text-primary,#1e293b)", marginBottom: 4 }}>📄 Upload MOM FAT</div>

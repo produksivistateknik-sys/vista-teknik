@@ -199,7 +199,7 @@ export function MomFatTab({user}:{user?:any}={}){
                   </div>
                 </div>
                 {isExp&&(
-                  <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)"}}>
+                  <div style={{padding:"14px 16px",borderTop:"1px solid var(--border-color,#f1f5f9)",textAlign:"left"}}>
                     <div style={{display:"flex",alignItems:"center",gap:10,background:"var(--bg-secondary,#f8fafc)",
                       borderRadius:10,padding:"10px 12px",marginBottom:14}}>
                       <i className="ti ti-file-description" style={{fontSize:20,color:"#64748b",flexShrink:0}}/>
@@ -231,9 +231,9 @@ export function MomFatTab({user}:{user?:any}={}){
                               {editPoin?.id===p.id?(
                                 <input autoFocus value={editPoin.teks} onChange={e=>setEditPoin({id:p.id,teks:e.target.value})} onBlur={()=>simpanEditPoin(p)}
                                   onKeyDown={e=>{if(e.key==="Enter")(e.target as HTMLInputElement).blur();if(e.key==="Escape")setEditPoin(null);}}
-                                  style={{width:"100%",padding:"5px 8px",borderRadius:6,border:"1.5px solid #2563eb",fontSize:12.5,fontFamily:"inherit",boxSizing:"border-box"}}/>
+                                  style={{width:"100%",textAlign:"left",padding:"5px 8px",borderRadius:6,border:"1.5px solid #2563eb",fontSize:12.5,fontFamily:"inherit",boxSizing:"border-box"}}/>
                               ):(
-                                <div onClick={()=>setEditPoin({id:p.id,teks:p.teks})} title="Klik untuk mengedit teks poin" style={{fontSize:12.5,color:p.selesai?"#16a34a":"var(--text-primary,#1e293b)",textDecoration:p.selesai?"line-through":"none",cursor:"text"}}>{p.teks}</div>
+                                <div onClick={()=>setEditPoin({id:p.id,teks:p.teks})} title="Klik untuk mengedit teks poin" style={{textAlign:"left",fontSize:12.5,color:p.selesai?"#16a34a":"var(--text-primary,#1e293b)",textDecoration:p.selesai?"line-through":"none",cursor:"text"}}>{p.teks}</div>
                               )}
                               {p.dicentang_oleh&&<div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>✓ {p.dicentang_oleh}{p.dicentang_at&&" · "+new Date(p.dicentang_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"})}</div>}
                               {(p.foto||[]).length>0&&(
