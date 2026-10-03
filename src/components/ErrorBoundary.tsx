@@ -14,6 +14,29 @@ function isChunkLoadError(error: Error): boolean {
   return error.name === 'ChunkLoadError' || CHUNK_ERROR_PATTERN.test(error.message || '')
 }
 
+// FIX LOOP (3 Okt 2026): reload biasa gak mempan kalau file chunk-nya sudah tercemar di cache
+// browser (index.html tersimpan atas nama file .js, cache HTTP immutable 1 tahun + cache service
+// worker) - tab terakhir (mis. MOM FAT) dibuka lagi -> gagal lagi -> loop. Sebelum reload: ambil
+// ulang file yang gagal dengan cache:'reload' (menimpa cache HTTP) + hapus cache service worker.
+async function bersihkanCacheChunk(error: Error | null) {
+  try {
+    const url = (error?.message || '').match(/https?:\/\/\S+?\.js/)?.[0]
+    if (url) await fetch(url, { cache: 'reload' }).catch(() => {})
+  } catch { /* noop */ }
+  try {
+    if ('caches' in window) {
+      const ks = await caches.keys()
+      await Promise.all(ks.map(k => caches.delete(k)))
+    }
+  } catch { /* noop */ }
+  try {
+    if ('serviceWorker' in navigator) {
+      const regs = await navigator.serviceWorker.getRegistrations()
+      await Promise.all(regs.map(r => r.update().catch(() => {})))
+    }
+  } catch { /* noop */ }
+}
+
 // Best-effort log ke activity_log - kalau ini sendiri gagal (misal belum ada koneksi/auth),
 // jangan sampai ganggu proses recovery UI, makanya di-try-catch total dan gak di-await di caller.
 async function logErrorBestEffort(error: Error, errorInfo: ErrorInfo, isChunk: boolean) {
@@ -54,14 +77,15 @@ export class ErrorBoundary extends Component<Props, State> {
       if (!sudahCoba) {
         try { sessionStorage.setItem(RELOAD_GUARD_KEY, '1') } catch { /* noop */ }
         this.setState({ reloading: true })
-        setTimeout(() => window.location.reload(), 900)
+        bersihkanCacheChunk(error).finally(() => setTimeout(() => window.location.reload(), 300))
       }
     }
   }
 
   handleReload = () => {
     try { sessionStorage.removeItem(RELOAD_GUARD_KEY) } catch { /* noop */ }
-    window.location.reload()
+    this.setState({ reloading: true })
+    bersihkanCacheChunk(this.state.error).finally(() => window.location.reload())
   }
 
   render() {

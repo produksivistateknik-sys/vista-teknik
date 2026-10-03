@@ -1,4 +1,6 @@
-const CACHE_NAME = 'vista-teknik-shell-v2';
+// v3 (3 Okt 2026): cache v2 dibuang saat activate - bisa berisi index.html yang tersimpan atas
+// nama file chunk JS (insiden loop "Versi baru tersedia" di MOM FAT Admin).
+const CACHE_NAME = 'vista-teknik-shell-v3';
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -31,14 +33,24 @@ self.addEventListener('fetch', (event) => {
   if (isHashedAsset) {
     // Nama file dari Vite punya hash konten (mis. index-abc123.js) - begitu ke-cache gak akan
     // pernah stale, aman cache-first biar gak download ulang tiap buka.
+    // FIX LOOP (3 Okt 2026): dulu file /assets/ yang belum ada di edge (pas deploy baru lagi
+    // nyebar) dibalas index.html status 200 - ikut ke-cache di sini & di cache HTTP (immutable
+    // 1 tahun) atas nama file JS, import() gagal TERUS walau sudah reload. Sekarang balasan HTML
+    // utk asset gak pernah dipakai/di-cache: dibuang, diambil ulang lewat jaringan (cache:'reload'
+    // = lewati & timpa cache HTTP yang tercemar).
+    const bukanHtml = (res) => !((res.headers.get('content-type') || '').includes('text/html'));
     event.respondWith(
-      caches.match(req).then((cached) => cached || fetch(req).then((res) => {
-        if (res && res.ok) {
+      caches.match(req).then(async (cached) => {
+        if (cached && bukanHtml(cached)) return cached;
+        if (cached) caches.open(CACHE_NAME).then((c) => c.delete(req));
+        let res = await fetch(req);
+        if (res && res.ok && !bukanHtml(res)) res = await fetch(req.url, { cache: 'reload', credentials: 'same-origin' });
+        if (res && res.ok && bukanHtml(res)) {
           const clone = res.clone();
           caches.open(CACHE_NAME).then((c) => c.put(req, clone));
         }
         return res;
-      }))
+      })
     );
     return;
   }
