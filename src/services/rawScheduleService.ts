@@ -163,7 +163,12 @@ export const rawScheduleService = {
   //                  Tarik (sapu tanggal lampau) tidak menarik entri lama itu lagi = tidak dobel.
   //                  Persen progres kode itu sudah dihitung ulang SEBELUM ini oleh pemanggil
   //                  (lib/progressQtyHelpers.ts) - generator butuh persen yang benar (skip proses 100%).
-  async sinkronJadwalSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], uname = 'Admin') {
+  async sinkronJadwalSetelahUbahQty(panelId: number, changes: { kode: string; oldQty: number; newQty: number }[], uname = 'Admin'): Promise<{ belumFcs: boolean }> {
+    // FCS CUKUP SEKALI (3 Okt 2026, insiden WO 053 HOTEL JAMBOOLAND: 19 panel baru di-edit qty SEBELUM
+    // FCS -> jadwal otomatis cuma utk kode yang qty-nya berubah, baris STEL/FINISHING/QC TEST/PACKING
+    // tidak pernah dibuat). Panel yang BELUM punya baris raw_schedule sama sekali = belum di-FCS ->
+    // jadwal otomatis DILEWATI total; jadwalnya dibuat lengkap lewat tombol FCS (sekali).
+    if (!(await this.panelSudahDiFcs(panelId))) return { belumFcs: true }
     const jadiNol = changes.filter(c => c.oldQty > 0 && c.newQty <= 0).map(c => c.kode)
     const dariNol = changes.filter(c => c.oldQty <= 0 && c.newQty > 0).map(c => c.kode)
     const tetap = changes.filter(c => c.oldQty > 0 && c.newQty > 0 && c.newQty < c.oldQty)
@@ -218,5 +223,58 @@ export const rawScheduleService = {
       const jejak = await this.tandaiJejakSetelahJadwalUlang(panelId, naik, hariIni)
       await logActivity(uname, 'QTY NAIK: JADWALKAN SISA', `Panel ${panel.nama}: qty naik, sisa unit dijadwalkan mulai ${hariIni} - ${naik.join(', ')} (${hasil.count} entri baru, ${jejak.length} entri lama ditandai jejak${jejak.length ? ': ' + jejak.join('; ') : ''})`, { panel: panel.nama })
     }
+    // Setiap perubahan qty juga MELENGKAPI proses yang belum punya baris di panel ini (mis. qty Box
+    // naik dari 0 di tipe yang butuh STEL, padahal baris STEL belum pernah ada).
+    if (panel.wo_id) await this.lengkapiProsesPanel(panel.wo_id, [panelId], uname)
+    return { belumFcs: false }
+  },
+
+  // Panel sudah di-FCS = sudah punya minimal 1 baris raw_schedule (aktif maupun terhapus).
+  async panelSudahDiFcs(panelId: number): Promise<boolean> {
+    const { data, error } = await supabase.from('raw_schedule').select('id').eq('panel_id', panelId).limit(1)
+    if (error) throw new Error('cek jadwal panel: ' + error.message)
+    return (data || []).length > 0
+  },
+
+  // LENGKAPI proses yang belum punya baris (generator FCS mode hanyaProsesBaru - baris yang sudah
+  // ada, termasuk yang isinya dihapus planner, TIDAK disentuh). Mulai hari ini.
+  async lengkapiProsesPanel(woId: number, panelIds: number[], uname: string): Promise<number> {
+    if (!panelIds.length) return 0
+    const hariIni = getLocalDateStr()
+    const hasil = await generateAndSaveToRawSchedule(woId, hariIni, '__force__' + uname, panelIds, undefined, { hanyaProsesBaru: true })
+    if (!hasil.success && hasil.error !== 'Tidak ada panel yang dipilih') throw new Error('lengkapi proses jadwal: ' + (hasil.error || 'gagal'))
+    if (hasil.count > 0) await logActivity(uname, 'LENGKAPI PROSES JADWAL', `Proses yang belum punya baris dilengkapi mulai ${hariIni} untuk panel #${panelIds.join(', #')} (${hasil.count} entri)`)
+    return hasil.count
+  },
+
+  // PANEL BARU di WO yang SUDAH di-FCS (3 Okt 2026) - dipanggil setelah Simpan Edit WO (Manajemen WO
+  // & WO Digital). Dicek PER RECORD WO (wo_id), BUKAN per nomor WO: batch pengiriman baru dgn nomor
+  // sama (Tambah WO / split tanggal ke WO baru) tetap butuh FCS sekali. Kalau record WO itu sudah
+  // punya jadwal (minimal 1 panel ber-baris raw_schedule), panelnya yang belum punya baris langsung
+  // dijadwalkan lengkap mulai hari ini (generator FCS biasa). WO yang belum pernah di-FCS tidak disentuh.
+  async jadwalkanPanelBaruSetelahEditWo(woNumber: string, proyek: string, uname: string): Promise<string[]> {
+    const { data: wos, error: wErr } = await supabase.from('work_orders').select('id').eq('wo', woNumber).eq('proyek', proyek)
+    if (wErr) throw new Error('baca WO: ' + wErr.message)
+    const woIds = (wos || []).map((w: any) => w.id)
+    if (!woIds.length) return []
+    const { data: panels, error: pErr } = await supabase.from('panels').select('id,nama,wo_id').in('wo_id', woIds).is('deleted_at', null).range(0, 4999)
+    if (pErr) throw new Error('baca panel: ' + pErr.message)
+    if (!(panels || []).length) return []
+    const { data: rows, error: rErr } = await supabase.from('raw_schedule').select('panel_id').in('panel_id', panels!.map((p: any) => p.id)).range(0, 9999)
+    if (rErr) throw new Error('baca raw_schedule: ' + rErr.message)
+    const punyaBaris = new Set((rows || []).map((r: any) => r.panel_id))
+    const woSudahFcs = new Set(panels!.filter((p: any) => punyaBaris.has(p.id)).map((p: any) => p.wo_id))
+    const baru = panels!.filter((p: any) => !punyaBaris.has(p.id) && woSudahFcs.has(p.wo_id))
+    if (!baru.length) return []
+    const hariIni = getLocalDateStr()
+    const dijadwalkan: string[] = []
+    for (const woId of [...new Set(baru.map((p: any) => p.wo_id))]) {
+      const ids = baru.filter((p: any) => p.wo_id === woId).map((p: any) => p.id)
+      const hasil = await generateAndSaveToRawSchedule(woId, hariIni, '__force__' + uname, ids)
+      if (!hasil.success) throw new Error('jadwalkan panel baru: ' + (hasil.error || 'gagal'))
+      dijadwalkan.push(...baru.filter((p: any) => ids.includes(p.id)).map((p: any) => p.nama))
+    }
+    await logActivity(uname, 'PANEL BARU: TAMBAH KE JADWAL', `WO ${woNumber} - ${proyek}: panel baru dijadwalkan otomatis mulai ${hariIni} - ${dijadwalkan.join(', ')}`, { proyek })
+    return dijadwalkan
   },
 }

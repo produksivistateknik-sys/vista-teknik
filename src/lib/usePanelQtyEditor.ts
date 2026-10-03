@@ -251,16 +251,19 @@ export function usePanelQtyEditor({
         alert('Qty BERHASIL disimpan, tapi penyesuaian persen di tabel progress (dipakai Task Monitoring/Detail Progress dll) GAGAL: ' + (err?.message || err) + '\n\nPersen komponen ini di halaman admin bisa tampil angka lama sampai operator menyimpan progress lagi.')
       }
     }
+    let belumFcs = false
     if (qtyChangesForRaw.length > 0) {
       try {
-        await rawScheduleService.sinkronJadwalSetelahUbahQty(panel.id, qtyChangesForRaw, uname)
+        const sj = await rawScheduleService.sinkronJadwalSetelahUbahQty(panel.id, qtyChangesForRaw, uname)
+        belumFcs = sj.belumFcs
       } catch (err: any) {
         console.error('[saveQtyEdit] qty tersimpan, sinkron jadwal gagal:', err)
         alert('Qty BERHASIL disimpan, tapi sinkron ke jadwal GAGAL: ' + (err?.message || err) + '\n\nCek Raw Schedule untuk komponen ini, atau simpan ulang qty-nya.')
         return { ringkasan: changes.join(', ') }
       }
     }
-    alert('Qty berhasil disimpan!')
+    // FCS cukup sekali (3 Okt 2026): panel yang belum punya jadwal tidak dijadwalkan otomatis.
+    alert(belumFcs ? 'Qty berhasil disimpan!\n\nPanel ini BELUM punya jadwal di Raw Schedule - jalankan tombol FCS sekali untuk membuat jadwal lengkap. Setelah itu perubahan qty berikutnya otomatis tersambung ke jadwal.' : 'Qty berhasil disimpan!')
     // Dikembalikan HANYA kalau qty benar-benar tersimpan (2 Okt 2026) - dipakai Manajemen WO untuk
     // memunculkan popup Penyesuaian Busbar; pemanggil lain (WoDigitalTab) boleh mengabaikan.
     return { ringkasan: changes.join(', ') }

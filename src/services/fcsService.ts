@@ -1079,7 +1079,14 @@ export async function generateAndSaveToRawSchedule(
   // doang - kode yang dulu sempat terjadwal, lalu qty-nya di-0 (dihapus dari jadwal ke depan),
   // lalu dinaikkan lagi, harus bisa kejadwal ulang. Proses yang progress-nya udah 100% dilewati.
   // Tanpa kodeFilter perilaku generator PERSIS sama seperti sebelumnya.
-  kodeFilter?: Record<number, string[]>
+  kodeFilter?: Record<number, string[]>,
+  // opsi.hanyaProsesBaru (3 Okt 2026, "FCS cukup sekali, perubahan apapun tersambung otomatis") -
+  // LENGKAPI saja: proses yang SUDAH punya baris raw_schedule utk panel itu (termasuk baris
+  // terhapus / isinya pernah dihapus planner lewat Hapus WP) DILEWATI total - cuma proses yang
+  // belum punya baris sama sekali yang dibuat & dijadwalkan (kasus STEL/FINISHING/QC/PACKING WO 053
+  // yang tidak pernah dibuat). Proses yang dilewati tetap ditandai estafet OK supaya proses
+  // sesudahnya (mis. STEL setelah BENDING) tetap bisa dijadwalkan. Tanpa opsi -> perilaku sama.
+  opsi?: { hanyaProsesBaru?: boolean }
 ): Promise<{ success: boolean; count: number; error?: string }> {
   try {
     const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
@@ -1108,7 +1115,21 @@ export async function generateAndSaveToRawSchedule(
     const kodeToWp: Record<string, string> = {}
     ;(bomRows || []).forEach((b: any) => { kodeToWp[b.tipe_panel + '|' + b.kode_komponen] = b.wp })
 
-    const { data: relevanRows } = await supabase.from('bom_proses_relevan').select('*')
+    // FIX (3 Okt 2026, CLAUDE.md A.1) - 2 tabel referensi ini dulu dibaca tanpa .range():
+    // fcs_kapasitas_override sudah 1078 baris -> cuma 1000 pertama kebaca, kapasitas Oktober hampir
+    // semua "hilang" -> generator mendorong jadwal ke hari ke-21 (temuan saat investigasi STEL WO 053).
+    // bom_proses_relevan (584) dipaginate sekalian sebelum menyusul tembus 1000.
+    const ambilSemuaBaris = async (tabel: string) => {
+      let semua: any[] = []
+      for (let dari = 0; ; dari += 1000) {
+        const { data, error } = await supabase.from(tabel as any).select('*').range(dari, dari + 999)
+        if (error) throw new Error(`baca ${tabel}: ${error.message}`)
+        semua = semua.concat(data || [])
+        if (!data || data.length < 1000) break
+      }
+      return semua
+    }
+    const relevanRows = await ambilSemuaBaris('bom_proses_relevan')
     const relevanSet = new Set<string>()
     const hasMappingSet = new Set<string>()
     ;(relevanRows || []).forEach((r: any) => {
@@ -1122,7 +1143,7 @@ export async function generateAndSaveToRawSchedule(
       menitMap[p.tipe_panel + '|' + p.kode_komponen + '|' + p.jenis_pekerjaan] = Number(p.menit_per_pcs) || 0
     })
 
-    const { data: kapRows } = await supabase.from('fcs_kapasitas_override').select('*')
+    const kapRows = await ambilSemuaBaris('fcs_kapasitas_override')
     const kapMap: Record<string, any> = {}
     ;(kapRows || []).forEach((k: any) => { kapMap[k.tanggal + '|' + k.jenis_pekerjaan] = k })
 
@@ -1146,6 +1167,14 @@ export async function generateAndSaveToRawSchedule(
     }
 
     const WIRING_LIST = ["WIRING CONTROL","WIRING POWER"]
+    // Baris yang SUDAH ada SEBELUM generator ini jalan (dibaca dari existingRaw, sebelum skeleton
+    // dibuat di bawah) - dipakai opsi.hanyaProsesBaru.
+    const barisSudahAda = new Set<string>((existingRaw || []).map((r: any) => r.panel_id + '|' + r.proses))
+    const lewatiProsesLama = (panelId: number, proses: string, kodes: string[]) => {
+      if (!opsi?.hanyaProsesBaru || !barisSudahAda.has(panelId + '|' + proses)) return false
+      kodes.forEach((k) => scheduledOk.add(panelId + '|' + k + '|' + proses))
+      return true
+    }
     // QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - jangan
     // digantungkan ke mapping bom_proses_relevan per kode komponen (komponen/tipe_panel baru
     // yang belum di-setup lewat wizard proses-relevan bakal diam-diam gak pernah dapet baris
@@ -1337,6 +1366,7 @@ export async function generateAndSaveToRawSchedule(
           return false
         })).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
         if (relevantKodes.length === 0) continue
+        if (lewatiProsesLama(panel.id, proses, relevantKodes)) continue
 
         const wpGroups: Record<string, string[]> = {}
         relevantKodes.forEach((kode) => {
@@ -1357,7 +1387,11 @@ export async function generateAndSaveToRawSchedule(
           let sisaQty: Record<string, number> = {}
           kodes.forEach((kode) => {
             const key = panel.id + '|' + proses + '|' + kode
-            if (sudahAdaJadwalSet.has(key)) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
+            // kodeFilter (3 Okt 2026): kode yang difilter TIDAK di-skip cuma karena "sudah ada jadwal" -
+            // qty bisa naik melebihi qty yang terjadwal (mis. entri besok qtyPerKomponen 1, qty naik
+            // 1 -> 3). Sisa dihitung dari qty di bawah (entri tanpa qtyPerKomponen = qty penuh, jadi
+            // tidak dobel). Tanpa kodeFilter perilaku sama persis.
+            if (sudahAdaJadwalSet.has(key) && !difilter(panel.id, kode)) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
             if (difilter(panel.id, kode) && (checklist[kode]?.progress?.[proses] || 0) >= 100) { scheduledOk.add(panel.id + '|' + kode + '|' + proses); return }
             const totalQty = checklist[kode]?.qty || 0
             // kodeFilter (2 Okt 2026, qty naik -> jadwalkan sisa): proses yang dikerjakan tanpa hitungan
@@ -1457,6 +1491,7 @@ export async function generateAndSaveToRawSchedule(
           return false
         }).filter((kode) => isEstafetOk(panel.id, kode, panel.tipe, proses))
         if (relevantKodes.length === 0) continue
+        if (lewatiProsesLama(panel.id, proses, relevantKodes)) continue
 
         const wpGroups: Record<string, string[]> = {}
         relevantKodes.forEach((kode) => {

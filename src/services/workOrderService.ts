@@ -1,5 +1,6 @@
 ﻿import { supabase } from '../lib/supabase'
 import { sesuaikanChecklistKeTipe } from '../lib/panelHelpers'
+import { rawScheduleService } from './rawScheduleService'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
@@ -24,9 +25,13 @@ const logActivity = async (user_name: string, action: string, description: strin
 // Digital). Kalau tipe di DB beda dari tipe yang mau disimpan, checklist disesuaikan lewat helper
 // bersama sesuaikanChecklistKeTipe (lihat aturan di panelHelpers.ts). Mutasi p.checklist in-place
 // sebelum di-update. Tipe gak berubah -> nol efek (gak ada query BOM sama sekali).
-async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string) {
+// Return: per panel id, perubahan qty akibat ganti tipe {kode, oldQty, newQty} - dipakai untuk
+// sinkron jadwal SETELAH panel tersimpan (sinkronJadwalGantiTipe), 3 Okt 2026.
+type PerubahanQty = { kode: string; oldQty: number; newQty: number }
+async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string): Promise<Record<number, PerubahanQty[]>> {
+  const hasilPerubahan: Record<number, PerubahanQty[]> = {}
   const ids = panels.filter(p => p.id).map(p => p.id)
-  if (ids.length === 0) return
+  if (ids.length === 0) return hasilPerubahan
   const { data: lama, error } = await supabase.from('panels').select('id,tipe,checklist').in('id', ids)
   if (error) throw new Error('baca tipe panel lama: ' + error.message)
   const tipeLama: Record<string, string> = Object.fromEntries((lama || []).map((r: any) => [String(r.id), r.tipe]))
@@ -34,18 +39,36 @@ async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string) {
   // checklist segar dari DB, bukan salinan saat form dibuka.
   const checklistDb: Record<string, any> = Object.fromEntries((lama || []).map((r: any) => [String(r.id), r.checklist]))
   const berubah = panels.filter(p => p.id && tipeLama[String(p.id)] && tipeLama[String(p.id)] !== p.tipe)
-  if (berubah.length === 0) return
+  if (berubah.length === 0) return hasilPerubahan
   const { data: bom, error: bomErr } = await supabase.from('bom_master').select('tipe_panel,kode_komponen').range(0, 4999)
   if (bomErr) throw new Error('baca bom_master: ' + bomErr.message)
   const kodePerTipe: Record<string, Set<string>> = {}
   ;(bom || []).forEach((b: any) => { (kodePerTipe[b.tipe_panel] ||= new Set()).add(b.kode_komponen) })
   for (const p of berubah) {
-    const r = sesuaikanChecklistKeTipe((p.checklist !== undefined ? p.checklist : checklistDb[String(p.id)]) || {}, p.tipe, kodePerTipe)
+    const clLama = (p.checklist !== undefined ? p.checklist : checklistDb[String(p.id)]) || {}
+    const r = sesuaikanChecklistKeTipe(clLama, p.tipe, kodePerTipe)
     p.checklist = r.checklist
+    hasilPerubahan[p.id] = [
+      ...[...r.dibuang, ...r.dinolkan].map(k => ({ kode: k, oldQty: Number(clLama[k]?.qty) || 0, newQty: 0 })),
+      ...r.ditambah.map(k => ({ kode: k, oldQty: 0, newQty: Number(r.checklist[k]?.qty) || 0 })),
+    ].filter(c => c.oldQty !== c.newQty)
     await logActivity(uname, 'GANTI TIPE PANEL',
       `Panel ${p.nama}: tipe ${tipeLama[String(p.id)]} -> ${p.tipe}. Checklist disesuaikan - dibuang (kosong): ${r.dibuang.join(',') || '-'}; ` +
       `qty di-0 (sudah ada progress, data disimpan): ${r.dinolkan.join(',') || '-'}; ditambah: ${r.ditambah.join(',') || '-'}`,
       { panel: p.nama })
+  }
+  return hasilPerubahan
+}
+
+// GANTI TIPE -> JADWAL (3 Okt 2026, "FCS cukup sekali") - kode tipe lama dihapus dari jadwal hari ini
+// & ke depan, kode tipe baru dijadwalkan, proses yang belum punya baris dilengkapi. Satu pintu
+// sinkronJadwalSetelahUbahQty (panel yang belum di-FCS otomatis dilewati di sana).
+async function sinkronJadwalGantiTipe(panelId: number, changes: PerubahanQty[] | undefined, uname: string) {
+  if (!changes || !changes.length) return
+  try {
+    await rawScheduleService.sinkronJadwalSetelahUbahQty(panelId, changes, uname)
+  } catch (err: any) {
+    throw new Error('Panel tersimpan, tapi sinkron jadwal setelah ganti tipe GAGAL: ' + (err?.message || err) + ' - cek Raw Schedule panel ini.')
   }
 }
 
@@ -156,7 +179,7 @@ export const workOrderService = {
       await supabase.from('panels').delete().in('id', idsToDelete)
     }
 
-    await sesuaikanChecklistJikaTipeBerubah(withId, uname)
+    const perubahanTipe = await sesuaikanChecklistJikaTipeBerubah(withId, uname)
     for (const p of withId) {
       const { error } = await supabase.from('panels').update({
         no_pnl: p.noPnl || p.no_pnl || 1,
@@ -172,6 +195,7 @@ export const workOrderService = {
         jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
       }).eq('id', p.id)
       if (error) throw new Error(error.message)
+      await sinkronJadwalGantiTipe(p.id, perubahanTipe[p.id], uname)
     }
 
     if (withoutId.length > 0) {
@@ -256,7 +280,7 @@ export const workOrderService = {
       return maxNoPnlCache[targetWoId]
     }
 
-    await sesuaikanChecklistJikaTipeBerubah(groupedPanels.flatMap(g => g.panels), uname)
+    const perubahanTipe = await sesuaikanChecklistJikaTipeBerubah(groupedPanels.flatMap(g => g.panels), uname)
     for (const g of groupedPanels) {
       let targetWoId = editWoId
       if (g.tanggal && g.tanggal !== mainTarget) {
@@ -280,6 +304,7 @@ export const workOrderService = {
           const { checklist: _ck, ...rowTanpaChecklist } = row
           const { error } = await supabase.from('panels').update(p.checklist !== undefined ? row : rowTanpaChecklist).eq('id', p.id)
           if (error) throw new Error(error.message)
+          await sinkronJadwalGantiTipe(p.id, perubahanTipe[p.id], uname)
           // FIX (5 Agu 2026): raw_schedule/renhar/fcs_schedule nyimpen wo_id-nya SENDIRI, cache
           // terpisah dari panels.wo_id di atas (panel_id-nya sendiri gak pernah berubah, cuma
           // wo_id yang barusan di-update). Dulu cache ini gak pernah ikut disinkronkan pas panel

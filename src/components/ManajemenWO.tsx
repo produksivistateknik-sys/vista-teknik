@@ -370,6 +370,14 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         }
         if(gagalSinkron.length>0)alert('WO BERHASIL disimpan, tapi sinkron qty ke jadwal GAGAL untuk:\n'+gagalSinkron.join('\n')+'\n\nCek Raw Schedule panel tersebut.');
         Object.keys(qtyChangeSinkPanel).forEach(pid=>tanyaBusbar(Number(pid),'qty panel diubah lewat Edit WO'));
+        // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
+        try{
+          const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
+          if(panelBaruTerjadwal.length>0)alert('Panel baru otomatis dijadwalkan mulai hari ini di Raw Schedule: '+panelBaruTerjadwal.join(', ')+'\n\nJangan lupa Distribusi ke Rencana Harian.');
+        }catch(err:any){
+          console.error('[Edit WO] WO tersimpan, penjadwalan panel baru gagal:',err);
+          alert('WO BERHASIL disimpan, tapi penjadwalan otomatis panel baru GAGAL: '+(err?.message||err)+'\n\nJalankan FCS untuk panel baru tersebut.');
+        }
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
         // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI

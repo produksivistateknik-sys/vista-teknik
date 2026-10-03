@@ -142,8 +142,16 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
 
   useEffect(()=>{
     const fetchCap=async()=>{
-      const {data:k}=await supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas");
-      setFcsKapasitas(k??[]);
+      // FIX (3 Okt 2026, CLAUDE.md A.1/A.2) - tabel ini sudah 1078 baris; dulu tanpa .range() (cuma
+      // 1000 pertama, kapasitas Oktober hilang) & error diabaikan.
+      let k:any[]=[];
+      for(let dari=0;;dari+=1000){
+        const{data,error}=await supabase.from("fcs_kapasitas_override").select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas").range(dari,dari+999);
+        if(error){console.error("gagal ambil fcs_kapasitas_override:",error);return;}
+        k=k.concat(data||[]);
+        if(!data||data.length<1000)break;
+      }
+      setFcsKapasitas(k);
     };
     fetchCap();
     const ch=supabase.channel("realtime-fcs-cap-raw-rencana")
