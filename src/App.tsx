@@ -1102,7 +1102,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
-              {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab/></Suspense></div>}
+              {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}
               {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
