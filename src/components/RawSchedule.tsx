@@ -510,7 +510,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // Depan" mengganti weekStart. Sekarang grid adalah 1 kanvas tanggal kontinu ACUAN_TANGGAL +-
   // RENTANG_VIRTUAL_HARI (praktis tanpa batas), posisi tanggal = aritmetika murni (lebar kolom
   // tetap). Yang DIRENDER cuma kolom terlihat + BUFFER_KOLOM di kiri-kanan; sisanya 1 sel spacer
-  // kiri & 1 kanan per baris. Kartu Capacity Utilization TIDAK lagi ikut state ini (mingguBerjalan).
+  // kiri & 1 kanan per baris. Kartu Capacity Utilization TIDAK ikut state ini (mingguKapasitas, navigasi sendiri).
   const LEBAR_TETAP_KOLOM_TANGGAL=160; // tetap (table-layout:fixed) - wajib utk virtualisasi baris & kolom
   const LEBAR_STICKY_KIRI=80+150+110+90; // PROYEK + PANEL + PROSES + PRIORITAS
   const LEBAR_STICKY_KANAN=40;
@@ -551,7 +551,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const c=tableScrollRef.current;if(!c)return;
     c.scrollLeft=Math.max(0,(tanggalKeIdx(d)-KOLOM_SEBELUM_HARI_INI)*LEBAR_TETAP_KOLOM_TANGGAL);
   };
-  const geserHari=(n:number)=>{const c=tableScrollRef.current;if(c)c.scrollLeft+=n*LEBAR_TETAP_KOLOM_TANGGAL;};
   // Posisi awal: hari ini (sekali saat mount).
   useEffect(()=>{lompatKeTanggal(TODAY);
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -579,14 +578,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return()=>{c.removeEventListener("scroll",jadwal);window.removeEventListener("resize",jadwal);ro?.disconnect();if(raf)cancelAnimationFrame(raf);};
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
-  // Kartu Capacity Utilization: SELALU minggu kalender berjalan (Senin-Minggu dari TODAY),
-  // independen dari posisi scroll grid (dulu days.slice(0,7) = 2 minggu lalu sejak 23 Jul).
-  const mingguBerjalan=useMemo(()=>{
+  // Kartu Capacity Utilization: punya navigasi minggu SENDIRI (tombol Minggu Lalu/Ini/Depan di
+  // header kartu), default minggu kalender berjalan (Senin-Minggu dari TODAY). Independen dari
+  // posisi scroll grid (dulu days.slice(0,7) = 2 minggu lalu sejak 23 Jul).
+  const SENIN_MINGGU_INI=useMemo(()=>{
     const[y,m,d]=TODAY.split("-").map(Number);
     const dow=new Date(y,m-1,d).getDay(); // 0=Minggu
-    const senin=addDays(TODAY,-((dow+6)%7));
-    return Array.from({length:7},(_,i)=>addDays(senin,i));
+    return addDays(TODAY,-((dow+6)%7));
   },[]);
+  const [seninKapasitas,setSeninKapasitas]=useState<string>(SENIN_MINGGU_INI);
+  const mingguKapasitas=useMemo(()=>Array.from({length:7},(_,i)=>addDays(seninKapasitas,i)),[seninKapasitas]);
 
   // renhar TAMBAHAN (audit egress 6 Sep 2026) - prop `renhar` cuma window default 90 hari
   // lalu/30 hari depan (dibagi bareng RencanaHarian/OutstandingView/TrackingPekerja, lihat
@@ -1803,9 +1804,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>geserHari(-7)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
-          <button onClick={()=>lompatKeTanggal(TODAY)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:"#eff3ff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
-          <button onClick={()=>geserHari(7)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+          <button onClick={()=>lompatKeTanggal(TODAY)} title="Geser grid kembali ke hari ini (grid bisa di-scroll bebas ke tanggal mana pun)" style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:"#eff3ff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
           <span ref={labelRentangRef} style={{fontSize:11,fontWeight:600,color:"#475569",marginLeft:4}}/>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -1953,10 +1952,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:capacityCollapsed?0:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6,userSelect:"none" as const}}>
             <span style={{fontSize:10,transition:"transform .15s",transform:capacityCollapsed?"rotate(-90deg)":"rotate(0deg)",display:"inline-block"}}>▾</span>
             ⚡ Capacity Utilization {filterProses.length>0?"— "+filterProses.join(", "):"(semua proses)"} <span style={{fontWeight:400,fontSize:9,color:"#94a3b8"}}>(dari Raw Schedule)</span>
+            <div onClick={e=>e.stopPropagation()} style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:6,textTransform:"none" as const,letterSpacing:0,cursor:"default"}}>
+              <span style={{fontSize:11,fontWeight:600,color:"#475569",marginRight:2}}>{getDayLabel(mingguKapasitas[0])} – {getDayLabel(mingguKapasitas[6])}</span>
+              <button onClick={()=>setSeninKapasitas(addDays(seninKapasitas,-7))} style={{height:24,padding:"0 10px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
+              <button onClick={()=>setSeninKapasitas(SENIN_MINGGU_INI)} style={{height:24,padding:"0 10px",borderRadius:5,border:"0.5px solid #3b5bdb",background:seninKapasitas===SENIN_MINGGU_INI?"#eff3ff":"#fff",color:"#3b5bdb",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Ini</button>
+              <button onClick={()=>setSeninKapasitas(addDays(seninKapasitas,7))} style={{height:24,padding:"0 10px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+            </div>
           </div>
           {!capacityCollapsed&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
-            {mingguBerjalan.map(d=>{
+            {mingguKapasitas.map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","FINISHING","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
