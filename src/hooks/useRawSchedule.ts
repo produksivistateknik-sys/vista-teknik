@@ -2,6 +2,7 @@
 import { rawScheduleService } from '../services/rawScheduleService'
 import { supabase } from '../lib/supabase'
 import { samakanReferensi } from '../lib/samakanReferensi'
+import { pantauStatusRealtime } from '../lib/statusRealtime'
 import { GLOBAL_DIRTY_RAW_IDS } from '../lib/globalState'
 
 export function useRawSchedule() {
@@ -39,6 +40,10 @@ export function useRawSchedule() {
 
   useEffect(() => {
     fetch()
+    // Status realtime dipantau (4 Okt 2026, lib/statusRealtime.ts): tersambung ulang setelah
+    // putus -> ambil ulang penuh sekali (event selama putus terlewat). App.tsx memakai status ini
+    // utk melewati heartbeat 60 dtk selama koneksi sehat.
+    const pantau = pantauStatusRealtime('raw', () => { fetch() })
     const channel = supabase
       .channel('realtime-raw')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'raw_schedule' },
@@ -50,8 +55,8 @@ export function useRawSchedule() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'raw_schedule' },
         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+      .subscribe(pantau.callback)
+    return () => { pantau.lepas(); supabase.removeChannel(channel) }
   }, [fetch])
 
   const create = async (payload: any) => {

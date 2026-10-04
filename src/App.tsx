@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef, Fragment, lazy, Suspense, memo, type ReactNode } from 'react';
 import { samakanReferensi } from './lib/samakanReferensi';
+import { realtimeSemuaSehat } from './lib/statusRealtime';
 import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
@@ -397,35 +398,45 @@ const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw
 // di-refresh manual. visibilitychange nutup celah ini: begitu tab aktif lagi, paksa fetch ulang
 // data utama biar nyamain balik ke DB terkini, gak nunggu realtime nyambung sendiri (kalaupun
 // nyambung, ada window basi di antaranya).
+// (4 Okt 2026, hemat lalu lintas) Ambil ulang data utama HANYA kalau perlu - lihat
+// lib/statusRealtime.ts. Hook menandai status tiap channel realtime & ambil ulang sendiri begitu
+// tersambung kembali setelah putus. Di sini:
+// - tab aktif lagi: ambil ulang kalau tab tersembunyi >= 60 dtk ATAU ada channel tidak sehat
+//   (alt-tab sebentar tidak lagi memicu ambil ulang 3 tabel penuh);
+// - heartbeat 60 dtk: dilewati selama SEMUA channel sehat, kecuali jaring pengaman ambil ulang
+//   penuh tiap 10 menit (event yang hilang walau koneksi tampak sehat). Channel tidak sehat
+//   (putus/error/belum tersambung) -> tetap tiap 60 dtk persis seperti dulu.
+// Dirty-tracking (window 15 dtk) & samakanReferensi tidak berubah.
+const CHANNEL_DATA_UTAMA=["renhar","raw","wo"];
+const JEDA_PENGAMAN_MS=10*60*1000;
+const terakhirAmbilPenuhRef=useRef(Date.now());
+const tersembunyiSejakRef=useRef<number|null>(null);
+const ambilUlangDataUtama=()=>{
+  terakhirAmbilPenuhRef.current=Date.now();
+  refetchRenhar?.();
+  refetchRaw?.();
+  refetchWO?.();
+};
 useEffect(()=>{
   const onVisible=()=>{
-    if(document.visibilityState==="visible"){
-      refetchRenhar?.();
-      refetchRaw?.();
-      refetchWO?.();
-    }
+    if(document.visibilityState!=="visible"){tersembunyiSejakRef.current=Date.now();return;}
+    const lama=tersembunyiSejakRef.current;
+    tersembunyiSejakRef.current=null;
+    const lamaTersembunyi=lama==null||Date.now()-lama>=60000;
+    if(lamaTersembunyi||!realtimeSemuaSehat(CHANNEL_DATA_UTAMA))ambilUlangDataUtama();
   };
   document.addEventListener("visibilitychange",onVisible);
   return ()=>document.removeEventListener("visibilitychange",onVisible);
+// eslint-disable-next-line react-hooks/exhaustive-deps
 },[refetchRenhar,refetchRaw,refetchWO]);
 
-// Heartbeat: refetch paksa tiap 60 detik TERLEPAS dari visibilitychange - koneksi realtime bisa
-// diam2 putus (hiccup jaringan dll) walau tab TETAP aktif terus-menerus/gak pernah di-background,
-// jadi visibilitychange di atas gak selalu kepicu buat nutup celah itu. Ini jaring pengaman
-// terakhir: walau realtime beneran mati tanpa app-nya sadar, data gak akan pernah basi lebih
-// dari ~1 menit - dirty-tracking (window 15 detik) tetap ngelindungin tulisan lokal yang baru
-// aja terjadi, heartbeat ini cuma nutup celah SETELAH window itu abis kalau realtime gak nyusul.
 useEffect(()=>{
   const iv=setInterval(()=>{
-    // Skip kalau tab browser lagi di-background (audit egress Agu 2026) - AMAN, gak ngurangin
-    // jaminan "basi maks ~1 menit" di atas, karena begitu tab aktif lagi, visibilitychange
-    // handler di atas LANGSUNG force-refetch tanpa nunggu interval ini. Yang dihindari cuma
-    // heartbeat sia-sia tiap 60 detik selama tab ditinggal di background (admin pindah ke
-    // aplikasi lain/window lain), yang sebelumnya tetep jalan terus tanpa ada yang lihat.
+    // Tab di background: lewati (begitu aktif lagi, handler visibilitychange di atas yang menilai).
     if(document.visibilityState!=="visible")return;
-    refetchRenhar?.();
-    refetchRaw?.();
-    refetchWO?.();
+    const sehat=realtimeSemuaSehat(CHANNEL_DATA_UTAMA);
+    if(sehat&&Date.now()-terakhirAmbilPenuhRef.current<JEDA_PENGAMAN_MS)return;
+    ambilUlangDataUtama();
   },60000);
   return ()=>clearInterval(iv);
 },[refetchRenhar,refetchRaw,refetchWO]);

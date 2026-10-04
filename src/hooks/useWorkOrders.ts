@@ -2,6 +2,7 @@
 import { workOrderService } from '../services/workOrderService'
 import { supabase } from '../lib/supabase'
 import { samakanReferensi } from '../lib/samakanReferensi'
+import { pantauStatusRealtime } from '../lib/statusRealtime'
 
 export function useWorkOrders() {
   const [data, setData] = useState<any[]>([])
@@ -27,8 +28,20 @@ export function useWorkOrders() {
     }
   }, [])
 
+  // Ambil ulang setelah tersambung kembali - channel work_orders & panels biasanya pulih
+  // bersamaan; digabung (jeda 1 dtk) supaya cukup 1x ambil ulang, bukan 2x.
+  const resyncTimerRef = useRef<any>(null)
+  const resyncSetelahTersambung = useCallback(() => {
+    if (resyncTimerRef.current) clearTimeout(resyncTimerRef.current)
+    resyncTimerRef.current = setTimeout(() => { resyncTimerRef.current = null; fetch() }, 1000)
+  }, [fetch])
+
   useEffect(() => {
     fetch()
+    // Status realtime dipantau (4 Okt 2026, lib/statusRealtime.ts): tersambung ulang setelah
+    // putus -> ambil ulang penuh sekali (event selama putus terlewat). App.tsx memakai status ini
+    // utk melewati heartbeat 60 dtk selama koneksi sehat.
+    const pantau = pantauStatusRealtime('wo', resyncSetelahTersambung)
     const channel = supabase
       .channel('realtime-wo')
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'work_orders' },
@@ -40,9 +53,9 @@ export function useWorkOrders() {
       .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'work_orders' },
         (payload) => { setData(prev => prev.filter(r => r.id !== payload.old.id)) }
       )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
-  }, [fetch])
+      .subscribe(pantau.callback)
+    return () => { pantau.lepas(); supabase.removeChannel(channel) }
+  }, [fetch, resyncSetelahTersambung])
 
   // Channel TERPISAH khusus panels (audit egress 6 Sep 2026) - dulu digabung 1 channel sama
   // work_orders TANPA filter, jadi panel APAPUN berubah di seluruh pabrik (checklist bisa
@@ -61,6 +74,7 @@ export function useWorkOrders() {
   useEffect(() => {
     if (!panelIdsKey) return
     const filterClause = panelIdsKey.split(',').length <= 100 ? `id=in.(${panelIdsKey})` : undefined
+    const pantau = pantauStatusRealtime('wo-panels', resyncSetelahTersambung)
     const channel = supabase
       .channel('realtime-wo-panels')
       .on('postgres_changes', filterClause ? { event: 'UPDATE', schema: 'public', table: 'panels', filter: filterClause } : { event: 'UPDATE', schema: 'public', table: 'panels' },
@@ -96,8 +110,9 @@ export function useWorkOrders() {
           })))
         }
       )
-      .subscribe()
-    return () => { supabase.removeChannel(channel) }
+      .subscribe(pantau.callback)
+    return () => { pantau.lepas(); supabase.removeChannel(channel) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [panelIdsKey])
 
   const getUname = () => {
