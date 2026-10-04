@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, Fragment, useSyncExternalStore } from 'react'
+import { useState, useMemo, useEffect, useRef, Fragment, useSyncExternalStore, memo, type ReactNode } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, fetchWiringHariKerjaMap, hariKeNFromMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -18,6 +18,14 @@ import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, cmpPanelDalamZona, hitu
 // Handle geser urutan panel (⠿) di sel PANEL - @dnd-kit (pointer events), SENGAJA bukan HTML5
 // drag: grid tanggal sudah pakai HTML5 draggable/onDragOver/onDrop buat geser jadwal antar
 // tanggal, dua mekanisme itu gak saling tangkap event. Drag cuma bisa dimulai dari handle ini.
+// PERFORMA (4 Okt 2026, paket 4) - 1 baris proses Raw Schedule (+-44 sel tanggal) di-memo: render
+// ulang HANYA kalau salah satu `deps` berubah (lihat depsBaris di RawSchedule). Isi baris tetap
+// dari renderBaris yang sama (closure terbaru dipakai tiap kali deps berubah). Handler di dalam
+// baris lewat aksiRef (selalu fungsi terbaru) - baris yang render-nya dilewati tidak memanggil
+// fungsi dari render lama (state basi).
+const BarisRawMemo=memo(({render}:{render:()=>ReactNode;deps:any[]})=><>{render()}</>,
+  (a,b)=>a.deps.length===b.deps.length&&a.deps.every((x,i)=>Object.is(x,b.deps[i])));
+
 function PanelDragHandle({panelId,disabled}:{panelId:number;disabled:boolean}){
   const{attributes,listeners,setNodeRef}=useDraggable({id:`panel-${panelId}`,data:{panelId},disabled});
   return(
@@ -1561,6 +1569,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
   };
 
+  // PERFORMA (4 Okt 2026, paket 4) - lihat BarisRawMemo. Diisi ulang tiap render = selalu terbaru.
+  const aksiRef=useRef<any>({});
+  aksiRef.current={handleCellClick,onDragOver,onDrop,onDragStart,onDragEnd,handleContextMenu,updatePrioritasPanel,pindahViaMenu,getEntriesTanpaSelesai};
+  // Panel per id (cocok Number(id), ambil yang PERTAMA - sama persis woData.flatMap(...).find(...)
+  // yang dipakai di baris), dulu dicari ulang per sel/per entry di setiap render grid.
+  const panelById=useMemo(()=>{
+    const m=new Map<number,any>();
+    woData.forEach((w:any)=>(w.panels||[]).forEach((p:any)=>{const k=Number(p.id);if(!m.has(k))m.set(k,p);}));
+    return m;
+  },[woData]);
+
   const dateTasks=useMemo(()=>{
     if(!selDate)return[];
     const tasks:any[]=[];
@@ -1977,7 +1996,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   if(!PROSES_ORANG_RAW.includes(row.proses))return{};
                   const map:Record<string,{kode:string;wp:string;hariKeN:number;orang:number}[]>={};
                   const panelIdRow=row.panel_id||row.panelId;
-                  const panelDataRow=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelIdRow));
+                  const panelDataRow=panelById.get(Number(panelIdRow));
                   Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
                     (liveEntries||[]).forEach((e:any)=>{
                       (e.komponen||[]).forEach((kode:string)=>{
@@ -2014,7 +2033,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                           )}
                           {ki===0&&(
                             <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
-                              <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+                              <select value={row.prioritas||"Sedang"} onChange={e=>aksiRef.current.updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                                 style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
                                 {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
                               </select>
@@ -2054,7 +2073,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 <div style={{position:"absolute",top:"100%",right:0,zIndex:40,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 6px 20px #0f172a26",padding:4,minWidth:210,textAlign:"left" as const}}>
                                   <div style={{fontSize:9,color:"#94a3b8",padding:"3px 8px",fontWeight:700}}>Dalam kelompok prioritas {me?.zona}</div>
                                   {opsi.map(o=>(
-                                    <button key={o.k} disabled={!o.ok||savingUrutan} onClick={()=>pindahViaMenu(Number(curPanelId),o.k)}
+                                    <button key={o.k} disabled={!o.ok||savingUrutan} onClick={()=>aksiRef.current.pindahViaMenu(Number(curPanelId),o.k)}
                                       style={{display:"block",width:"100%",textAlign:"left" as const,background:"none",border:"none",padding:"5px 8px",fontSize:11,fontWeight:600,borderRadius:5,
                                         color:o.ok?"#1e293b":"#cbd5e1",cursor:o.ok?"pointer":"not-allowed"}}>{o.l}</button>
                                   ))}
@@ -2069,7 +2088,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap"}}>{row.proses}</span>
                     </td>
                     <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center",background:rBg}}>
-                      <select value={row.prioritas||"Sedang"} onChange={e=>updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
+                      <select value={row.prioritas||"Sedang"} onChange={e=>aksiRef.current.updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                         style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
                       </select>
@@ -2097,16 +2116,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const isDraggableEntry=!rentangInfo;
                       const isPast=d<TODAY;
                       return(
-                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
-                          onDragOver={e=>onDragOver(e,row.id,d)}
-                          onDrop={e=>onDrop(e,row.id,d)}
+                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                          onDragOver={e=>aksiRef.current.onDragOver(e,row.id,d)}
+                          onDrop={e=>aksiRef.current.onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
                           {row.proses==="BUSBAR"?(()=>{
                             // BUSBAR gak lewat `entries`/`row.schedule` sama sekali - branch sendiri,
                             // baca busbar_schedule (list aktif) + busbar_jejak (marker histori read-only).
                             if(busbarEntries.length===0){
                               return(
-                                <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                                <div onContextMenu={(e:any)=>aksiRef.current.handleContextMenu(row.id,d,e)}
                                   style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
                                   onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
                                   onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
@@ -2114,7 +2133,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 </div>
                               );
                             }
-                            const panelDataForBusbar=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(row.panel_id||row.panelId));
+                            const panelDataForBusbar=panelById.get(Number(row.panel_id||row.panelId));
                             const checklistForBusbar=panelDataForBusbar?.checklist||{};
                             const busbarJejakHariIni:Record<string,string>=row.busbar_jejak?.[d]||{};
                             // Cuma kode progress<100% & belum jejak yang ikut ke-drag - 100% (selesai)
@@ -2127,9 +2146,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             const isDraggableBusbar=kodeDraggable.length>0;
                             return(
                               <div draggable={isDraggableBusbar}
-                                onDragStart={e=>{if(isDraggableBusbar)onDragStart(e,row.id,d,[{wp:"BUSBAR",komponen:kodeDraggable}]);}}
-                                onDragEnd={onDragEnd}
-                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                                onDragStart={e=>{if(isDraggableBusbar)aksiRef.current.onDragStart(e,row.id,d,[{wp:"BUSBAR",komponen:kodeDraggable}]);}}
+                                onDragEnd={()=>aksiRef.current.onDragEnd()}
+                                onContextMenu={(e:any)=>aksiRef.current.handleContextMenu(row.id,d,e)}
                                 style={{display:"flex",gap:2,flexWrap:"wrap" as const,justifyContent:"center",cursor:isDraggableBusbar?"grab":"pointer",padding:"3px",borderRadius:6}}>
                                 {busbarEntries.map((b:string)=>{
                                   const jejakTujuan=busbarJejakHariIni[b];
@@ -2158,9 +2177,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             );
                           })():(entries.length>0||projectedHariIni.length>0)?(
                             PROSES_ORANG_RAW.includes(row.proses)?(
-                              <div onClick={(e:any)=>{e.stopPropagation();handleCellClick(row.id,d,e);}}
-                                onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
-                                draggable={entries.length>0} onDragStart={e=>{if(entries.length>0)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
+                              <div onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}}
+                                onContextMenu={(e:any)=>aksiRef.current.handleContextMenu(row.id,d,e)}
+                                draggable={entries.length>0} onDragStart={e=>{if(entries.length>0)aksiRef.current.onDragStart(e,row.id,d,aksiRef.current.getEntriesTanpaSelesai(row,entries));}} onDragEnd={()=>aksiRef.current.onDragEnd()}
                                 style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"4px 6px",borderRadius:6,cursor:entries.length>0?"grab":"default"}}>
                                 {entries.map((entry:any)=>(entry.komponen||[]).map((kode:string)=>{
                                     if(kode.startsWith("__wiring_"))return null;
@@ -2171,7 +2190,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const hariKeNKode=hariKeNFromMap(wiringHariKerjaMap,panelIdKomp,kode,row.proses,d);
                                   const jmlOrang=kebutuhanOrangWiring(bobotKode,hariKeNKode);
                                   const wc=WP_COLOR[entry.wp]||"#64748b";
-                                  const panelDataForTelat=woData.flatMap((w:any)=>w.panels||[]).find((pp:any)=>Number(pp.id)===Number(panelIdKomp));
+                                  const panelDataForTelat=panelById.get(Number(panelIdKomp));
                                   const progressUntukTelat=panelDataForTelat?.checklist?.[kode]?.progress?.[row.proses]||0;
                                   const sudahSelesaiKomp=progressUntukTelat>=100;
                                   const isTelat=d<TODAY&&progressUntukTelat<100;
@@ -2207,8 +2226,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 ))}
                               </div>
                             ):(
-                            <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)onDragStart(e,row.id,d,getEntriesTanpaSelesai(row,entries));}} onDragEnd={onDragEnd}
-                               onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                            <div draggable={isDraggableEntry} onDragStart={e=>{if(isDraggableEntry)aksiRef.current.onDragStart(e,row.id,d,aksiRef.current.getEntriesTanpaSelesai(row,entries));}} onDragEnd={()=>aksiRef.current.onDragEnd()}
+                               onContextMenu={(e:any)=>aksiRef.current.handleContextMenu(row.id,d,e)}
                               style={{display:"flex",flexWrap:"wrap",gap:3,justifyContent:"center",cursor:isDraggableEntry?"grab":"pointer",padding:"3px",borderRadius:6,border:isSelDate?"1px solid #bfdbfe":"1px solid transparent"}}>
                               {entries.map(e=>{
                                 const status=getTaskStatus(row,d,e.wp,e.komponen);
@@ -2220,7 +2239,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             </div>
                             )
                           ):(
-                            <div onContextMenu={(e:any)=>handleContextMenu(row.id,d,e)}
+                            <div onContextMenu={(e:any)=>aksiRef.current.handleContextMenu(row.id,d,e)}
                               style={{width:"100%",minHeight:32,borderRadius:6,cursor:"pointer",border:"1px dashed #e2e8f0",display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",color:"#e2e8f0",fontSize:16,transition:"all .15s",padding:"2px"}}
                               onMouseEnter={(e:any)=>{e.currentTarget.style.borderColor="#94a3b8";e.currentTarget.style.color="#94a3b8";}}
                               onMouseLeave={(e:any)=>{e.currentTarget.style.borderColor="#e2e8f0";e.currentTarget.style.color="#e2e8f0";}}>
@@ -2235,6 +2254,23 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     </td>
                   </tr>
                 );
+              };
+
+              // Semua yang dibaca renderBaris & bisa berubah (dicek 4 Okt 2026): row, posisinya (warna
+              // selang-seling, awal blok panel, rowSpan), panel milik baris ini (checklist/tipe), days,
+              // selDate, livePanelTypes (nama komponen), wiringHariKerjaMap, savingUrutan, menu urutan,
+              // sel yang di-drag-over/dipilih/disalin DI BARIS INI. Fungsi lain di baris murni dari ini.
+              const kunciSel=(cells:any[],rawId:any)=>cells.filter((c:any)=>c.rawId===rawId).map((c:any)=>c.date).join(",");
+              const depsBaris=(row:any,ri:number)=>{
+                const pid=row.panel_id||row.panelId;
+                const prevRow=visibleRows[ri-1];
+                const isNewPanel=!prevRow||(prevRow.panel_id||prevRow.panelId)!==pid;
+                const menuTerbuka=menuUrutanPanel===Number(pid);
+                return[row,ri%2,isNewPanel,isNewPanel&&ri>0,panelRowCount[String(pid)]||1,panelById.get(Number(pid)),
+                  days,selDate,livePanelTypes,wiringHariKerjaMap,savingUrutan,
+                  menuTerbuka?{}:false, // menu terbuka membaca blokUrutRef -> selalu render ulang
+                  dragOverCell?.rawId===row.id?dragOverCell.date:null,
+                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id)];
               };
 
               // Kelompokkan jadi blok panel (baris 1 panel selalu berurutan krn sort di atas), lalu
@@ -2268,7 +2304,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     {bz.map(b=>(
                       <tbody key={"panel-"+b.panelId} ref={el=>{blokRefs.current[b.panelId]=el;}}
                         style={{opacity:dragPanelId===b.panelId?0.35:1}}>
-                        {b.items.map(({row,ri})=>renderBaris(row,ri))}
+                        {b.items.map(({row,ri})=><BarisRawMemo key={row.id} render={()=>renderBaris(row,ri)} deps={depsBaris(row,ri)}/>)}
                       </tbody>
                     ))}
                   </Fragment>
