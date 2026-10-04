@@ -511,7 +511,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // tombolnya sendiri sebenernya udah bisa mundur tanpa batas, cuma window render-nya yang
   // sebelumnya cuma maju bikin serasa "mentok" begitu discroll manual sampai ujung kiri.
   const HARI_SEBELUM_WEEKSTART=14;
-  const LEBAR_KOLOM_TANGGAL=120;
+  const LEBAR_KOLOM_TANGGAL=120; // dipakai rumus posisi scroll awal (perilaku lama dipertahankan)
+  // Lebar TETAP kolom tanggal (4 Okt 2026, paket 5, table-layout:fixed) - virtualisasi cuma merender
+  // sebagian baris, lebar otomatis jadi berubah-ubah saat scroll. 160 ~ kolom terlebar versi lama (166).
+  const LEBAR_TETAP_KOLOM_TANGGAL=160;
   const tableScrollRef=useRef<HTMLDivElement>(null);
   const days=useMemo(()=>Array.from({length:44},(_,i)=>addDays(weekStart,i-HARI_SEBELUM_WEEKSTART)),[weekStart]);
 
@@ -1437,7 +1440,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const draggedId=dragPanelIdRef.current;
     const cont=tableScrollRef.current;
     if(draggedId==null||!cont)return;
-    const blok=blokUrutRef.current.map(b=>{const el=blokRefs.current[b.panelId];if(!el)return null;const r=el.getBoundingClientRect();return{panelId:b.panelId,zona:b.zona,top:r.top,bottom:r.bottom};}).filter(Boolean) as any[];
+    // Virtualisasi (paket 5): panel yang tidak dirender (di luar layar) TETAP diikutkan pakai posisi
+    // model (posisiRef, koordinat konten container) - hitungTargetDrop menentukan tetangga dari
+    // urutan daftar ini, jadi daftar wajib lengkap supaya prevId/nextId tidak salah.
+    const crKonten=cont.getBoundingClientRect();
+    const asalKonten=crKonten.top+cont.clientTop-cont.scrollTop;
+    const blok=blokUrutRef.current.map(b=>{
+      const el=blokRefs.current[b.panelId];
+      if(el){const r=el.getBoundingClientRect();return{panelId:b.panelId,zona:b.zona,top:r.top,bottom:r.bottom};}
+      const p=posisiRef.current.get("panel-"+b.panelId);if(!p)return null;
+      return{panelId:b.panelId,zona:b.zona,top:asalKonten+p.top,bottom:asalKonten+p.bottom};
+    }).filter(Boolean) as any[];
     const pembatas=ZONA_URUTAN.map(z=>{const el=pembatasRefs.current[z];if(!el)return null;const r=el.getBoundingClientRect();return{zona:z,top:r.top,bottom:r.bottom};}).filter(Boolean) as any[];
     const t=hitungTargetDrop(blok,pembatas,pointerYRef.current,draggedId);
     dropTargetRef.current=t;
@@ -1568,6 +1581,66 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(totalPanelDitambah===0){alert("Semua proses panel yang dipilih sudah ada!");}
     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
   };
+
+  // ── VIRTUALISASI GRID (4 Okt 2026, paket 5) ─────────────────────────────────────────────────
+  // Grid dulu merender SEMUA panel (+-900 baris x 44 hari = 128 rb node DOM). Sekarang per BLOK
+  // PANEL (semua baris 1 panel utuh, rowSpan aman): blok di luar layar container tabel (+- OVERSCAN)
+  // diganti 1 <tbody> spacer setinggi blok itu. SELALU dirender: 3 pembatas zona, panel yang
+  // sedang di-drag & panel yang menu urutannya terbuka. Tinggi blok diukur (ResizeObserver) &
+  // di-cache; yang belum pernah tampil pakai rata-rata tinggi baris. posisiRef = model posisi
+  // semua item (dipakai hitungDropSekarang utk panel di luar layar - urutan tetangga tetap lengkap).
+  const OVERSCAN_PX=1500;
+  const [jendela,setJendela]=useState<{atas:number;bawah:number}>({atas:0,bawah:4000});
+  const jendelaRef=useRef(jendela);jendelaRef.current=jendela;
+  const tinggiRef=useRef<Map<string,number>>(new Map());
+  const posisiRef=useRef<Map<string,{top:number;bottom:number}>>(new Map());
+  const [versiUkur,setVersiUkur]=useState(0);
+  const roUkurRef=useRef<ResizeObserver|null>(null);
+  const elKeKunci=useRef(new WeakMap<Element,string>());
+  const kunciKeEl=useRef(new Map<string,Element>());
+  const rafUkurRef=useRef(0);
+  if(!roUkurRef.current&&typeof ResizeObserver!=="undefined"){
+    roUkurRef.current=new ResizeObserver(entries=>{
+      let berubah=false;
+      for(const e of entries){
+        const k=elKeKunci.current.get(e.target);if(!k)continue;
+        const h=(e.target as HTMLElement).getBoundingClientRect().height;
+        if(h<=0)continue; // tab tersembunyi (display:none) - jangan timpa ukuran asli
+        const lama=tinggiRef.current.get(k);
+        if(lama===undefined||Math.abs(lama-h)>0.5){tinggiRef.current.set(k,h);berubah=true;}
+      }
+      if(berubah&&!rafUkurRef.current)rafUkurRef.current=requestAnimationFrame(()=>{rafUkurRef.current=0;setVersiUkur(v=>v+1);});
+    });
+  }
+  const daftarUkur=(k:string,el:Element|null)=>{
+    const ro=roUkurRef.current;if(!ro)return;
+    const lama=kunciKeEl.current.get(k);
+    if(lama===el)return;
+    if(lama){ro.unobserve(lama);kunciKeEl.current.delete(k);}
+    if(el){elKeKunci.current.set(el,k);kunciKeEl.current.set(k,el);ro.observe(el);}
+  };
+  useEffect(()=>()=>{roUkurRef.current?.disconnect();if(rafUkurRef.current)cancelAnimationFrame(rafUkurRef.current);},[]);
+  // Jendela render = area terlihat container tabel +- OVERSCAN_PX; dihitung ulang saat scroll/resize,
+  // state cuma diganti kalau area terlihat sudah mendekati tepi jendela (bukan tiap frame scroll).
+  useEffect(()=>{
+    const c=tableScrollRef.current;if(!c)return;
+    let raf=0;
+    const hitung=()=>{
+      raf=0;
+      const st=c.scrollTop,ch=c.clientHeight;
+      if(ch<=0)return; // tersembunyi
+      const j=jendelaRef.current;
+      if(st-OVERSCAN_PX/2>=j.atas&&st+ch+OVERSCAN_PX/2<=j.bawah)return;
+      setJendela({atas:Math.max(0,st-OVERSCAN_PX),bawah:st+ch+OVERSCAN_PX});
+    };
+    const jadwal=()=>{if(!raf)raf=requestAnimationFrame(hitung);};
+    c.addEventListener("scroll",jadwal,{passive:true});
+    window.addEventListener("resize",jadwal);
+    const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(jadwal):null;
+    ro?.observe(c);
+    jadwal();
+    return()=>{c.removeEventListener("scroll",jadwal);window.removeEventListener("resize",jadwal);ro?.disconnect();if(raf)cancelAnimationFrame(raf);};
+  },[]);
 
   // PERFORMA (4 Okt 2026, paket 4) - lihat BarisRawMemo. Diisi ulang tiap render = selalu terbaru.
   const aksiRef=useRef<any>({});
@@ -1927,22 +2000,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       <DndContext sensors={sensorsUrutan} onDragStart={onDragStartPanel} onDragEnd={onDragEndPanel} onDragCancel={selesaiDrag}
         autoScroll={false}>
       <div ref={tableScrollRef} style={{position:"relative",overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
-          <thead style={{position:"sticky",top:0,zIndex:10}}>
+        <table style={{width:"100%",borderCollapse:"collapse",fontSize:9,tableLayout:"fixed"}}>
+          <thead ref={el=>daftarUkur("thead",el)} style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
-              <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
-              <th style={{...thS,textAlign:"left",minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
-              <th style={{...thS,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
-              <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
+              <th style={{...thS,textAlign:"left",width:80,minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
+              <th style={{...thS,textAlign:"left",width:150,minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
+              <th style={{...thS,width:110,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
+              <th style={{...thS,width:90,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
                 </th>
               ))}
-              <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
+              <th style={{...thS,width:40,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
             </tr>
           </thead>
             {(()=>{
@@ -2286,12 +2359,42 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               blokUrutRef.current=blokList.map(b=>({panelId:b.panelId,zona:b.zona}));
               const colSpanPenuh=5+days.length;
               const ZONA_LABEL:Record<Zona,string>={Tinggi:"▲ TINGGI",Sedang:"● SEDANG",Rendah:"▼ RENDAH"};
+              // Model posisi (paket 5, lihat VIRTUALISASI GRID): koordinat konten container, urut tampilan.
+              void versiUkur; // dihitung ulang tiap ukuran blok berubah
+              let totalUkur=0,barisUkur=0;
+              // Kunci cache tinggi = minggu tampil + baris yang tampil di blok itu: tinggi blok berubah
+              // kalau filter proses/proyek mengubah isi blok atau minggu diganti - jangan pakai ulang
+              // tinggi dari kondisi lain (dulu: lepas filter -> tinggi total grid jadi separuh).
+              const kunciUkur=(b:{panelId:number;items:{row:any}[]})=>"panel|"+(days[0]||"")+"|"+b.items.map(it=>it.row.id).join(",");
+              blokList.forEach(b=>{const h=tinggiRef.current.get(kunciUkur(b));if(h!==undefined){totalUkur+=h;barisUkur+=b.items.length;}});
+              const tinggiPerBaris=barisUkur>0?totalUkur/barisUkur:40;
+              const posisi=new Map<string,{top:number;bottom:number}>();
+              let yModel=tinggiRef.current.get("thead")??0;
+              ZONA_URUTAN.forEach(z=>{
+                const kp="zona-"+z;const hp=tinggiRef.current.get(kp)??28;
+                posisi.set(kp,{top:yModel,bottom:yModel+hp});yModel+=hp;
+                blokList.forEach(b=>{
+                  if(b.zona!==z)return;
+                  const k="panel-"+b.panelId;const h=tinggiRef.current.get(kunciUkur(b))??b.items.length*tinggiPerBaris;
+                  posisi.set(k,{top:yModel,bottom:yModel+h});yModel+=h;
+                });
+              });
+              posisiRef.current=posisi;
+              const dirender=(b:{panelId:number;items:{row:any}[]})=>{
+                if(b.panelId===dragPanelId||b.panelId===menuUrutanPanel)return true;
+                // Panel asal drag WP (HTML5) wajib tetap ada di DOM sampai drag selesai - kalau ter-unmount
+                // di tengah drag, onDragEnd tidak pernah terpanggil & dragInfo basi (lihat komentar onDragEnd).
+                const di:any=dragInfo;
+                if(di&&b.items.some(it=>it.row.id===di.rawId))return true;
+                const p=posisi.get("panel-"+b.panelId);
+                return !p||(p.bottom>=jendela.atas&&p.top<=jendela.bawah);
+              };
               return ZONA_URUTAN.map(z=>{
                 const bz=blokList.filter(b=>b.zona===z);
                 const warna=(PRIORITAS_COLOR as any)[z]||"#64748b";
                 return(
                   <Fragment key={"zona-"+z}>
-                    <tbody ref={el=>{pembatasRefs.current[z]=el;}}>
+                    <tbody ref={el=>{pembatasRefs.current[z]=el;daftarUkur("zona-"+z,el);}}>
                       <tr>
                         <SelPembatasZona store={dropStore.current!} zona={z} dragAktif={dragPanelId!=null} colSpan={colSpanPenuh}>
                           <div style={{position:"sticky",left:0,display:"inline-flex",alignItems:"center",gap:8,padding:"5px 12px",fontSize:10,fontWeight:800,letterSpacing:.4,color:warna}}>
@@ -2301,12 +2404,33 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         </SelPembatasZona>
                       </tr>
                     </tbody>
-                    {bz.map(b=>(
-                      <tbody key={"panel-"+b.panelId} ref={el=>{blokRefs.current[b.panelId]=el;}}
-                        style={{opacity:dragPanelId===b.panelId?0.35:1}}>
-                        {b.items.map(({row,ri})=><BarisRawMemo key={row.id} render={()=>renderBaris(row,ri)} deps={depsBaris(row,ri)}/>)}
-                      </tbody>
-                    ))}
+                    {(()=>{
+                      // Blok berurutan yang tidak dirender digabung jadi 1 spacer setinggi total model-nya.
+                      const potongan:ReactNode[]=[];
+                      let spasi=0,kunciSpasi="";
+                      const tutupSpasi=()=>{
+                        if(spasi<=0)return;
+                        potongan.push(<tbody key={"spasi-"+kunciSpasi} aria-hidden="true" data-spasi-virtual=""><tr><td colSpan={colSpanPenuh} style={{height:spasi,padding:0,border:"none"}}/></tr></tbody>);
+                        spasi=0;
+                      };
+                      bz.forEach(b=>{
+                        if(dirender(b)){
+                          tutupSpasi();
+                          potongan.push(
+                            <tbody key={"panel-"+b.panelId} ref={el=>{blokRefs.current[b.panelId]=el;daftarUkur(kunciUkur(b),el);}}
+                              style={{opacity:dragPanelId===b.panelId?0.35:1}}>
+                              {b.items.map(({row,ri})=><BarisRawMemo key={row.id} render={()=>renderBaris(row,ri)} deps={depsBaris(row,ri)}/>)}
+                            </tbody>
+                          );
+                        }else{
+                          const p=posisi.get("panel-"+b.panelId)!;
+                          if(spasi===0)kunciSpasi=String(b.panelId);
+                          spasi+=p.bottom-p.top;
+                        }
+                      });
+                      tutupSpasi();
+                      return potongan;
+                    })()}
                   </Fragment>
                 );
               });
