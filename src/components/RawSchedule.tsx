@@ -88,7 +88,6 @@ function InfoLintasZona({store,zonaAsal}:{store:StoreDrop;zonaAsal:Zona}){
 
 export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
-  const [weekStart,setWeekStart]=useState(TODAY);
   const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
   const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
@@ -506,17 +505,88 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }).filter(Boolean);
   };
 
-  // Render juga HARI_SEBELUM_WEEKSTART hari SEBELUM weekStart (bukan cuma maju), biar scroll
-  // mouse/trackpad ke kiri langsung nemu riwayat tanpa harus klik "‹ Minggu Lalu" dulu -
-  // tombolnya sendiri sebenernya udah bisa mundur tanpa batas, cuma window render-nya yang
-  // sebelumnya cuma maju bikin serasa "mentok" begitu discroll manual sampai ujung kiri.
-  const HARI_SEBELUM_WEEKSTART=14;
-  const LEBAR_KOLOM_TANGGAL=120; // dipakai rumus posisi scroll awal (perilaku lama dipertahankan)
-  // Lebar TETAP kolom tanggal (4 Okt 2026, paket 5, table-layout:fixed) - virtualisasi cuma merender
-  // sebagian baris, lebar otomatis jadi berubah-ubah saat scroll. 160 ~ kolom terlebar versi lama (166).
-  const LEBAR_TETAP_KOLOM_TANGGAL=160;
+  // ── KOLOM TANGGAL: SCROLL BEBAS + VIRTUALISASI KOLOM (4 Okt 2026) ──────────────────────────
+  // Dulu: state weekStart (=TODAY) + jendela tetap 44 hari (weekStart-14 s/d +29), "Minggu Lalu/
+  // Depan" mengganti weekStart. Sekarang grid adalah 1 kanvas tanggal kontinu ACUAN_TANGGAL +-
+  // RENTANG_VIRTUAL_HARI (praktis tanpa batas), posisi tanggal = aritmetika murni (lebar kolom
+  // tetap). Yang DIRENDER cuma kolom terlihat + BUFFER_KOLOM di kiri-kanan; sisanya 1 sel spacer
+  // kiri & 1 kanan per baris. Kartu Capacity Utilization TIDAK lagi ikut state ini (mingguBerjalan).
+  const LEBAR_TETAP_KOLOM_TANGGAL=160; // tetap (table-layout:fixed) - wajib utk virtualisasi baris & kolom
+  const LEBAR_STICKY_KIRI=80+150+110+90; // PROYEK + PANEL + PROSES + PRIORITAS
+  const LEBAR_STICKY_KANAN=40;
+  const RENTANG_VIRTUAL_HARI=3650; // +-10 tahun dari ACUAN_TANGGAL
+  const BUFFER_KOLOM=14;
+  const KOLOM_SEBELUM_HARI_INI=3; // lompat ke tanggal X: X tampil di kolom ke-4 (3 hari sebelumnya terlihat)
+  const ACUAN_TANGGAL=TODAY;
+  const TOTAL_KOLOM=RENTANG_VIRTUAL_HARI*2+1;
+  const msHari=(d:string)=>{const[y,m,dd]=d.split("-").map(Number);return Date.UTC(y,m-1,dd);};
+  const ACUAN_MS=msHari(ACUAN_TANGGAL);
+  const tanggalKeIdx=(d:string)=>Math.round((msHari(d)-ACUAN_MS)/86400000)+RENTANG_VIRTUAL_HARI;
+  const idxKeTanggal=(i:number)=>addDays(ACUAN_TANGGAL,i-RENTANG_VIRTUAL_HARI);
   const tableScrollRef=useRef<HTMLDivElement>(null);
-  const days=useMemo(()=>Array.from({length:44},(_,i)=>addDays(weekStart,i-HARI_SEBELUM_WEEKSTART)),[weekStart]);
+  const labelRentangRef=useRef<HTMLSpanElement>(null);
+  const kolomTerlihat=(sl:number,cw:number)=>{
+    const lebarTgl=Math.max(LEBAR_TETAP_KOLOM_TANGGAL,cw-LEBAR_STICKY_KIRI-LEBAR_STICKY_KANAN);
+    const pertama=Math.max(0,Math.floor(sl/LEBAR_TETAP_KOLOM_TANGGAL));
+    const terakhir=Math.min(TOTAL_KOLOM-1,pertama+Math.ceil(lebarTgl/LEBAR_TETAP_KOLOM_TANGGAL)-1);
+    return{pertama,terakhir};
+  };
+  const idxHariIni=tanggalKeIdx(TODAY);
+  const [jendelaKolom,setJendelaKolom]=useState<{awal:number;akhir:number}>(()=>({
+    awal:Math.max(0,idxHariIni-KOLOM_SEBELUM_HARI_INI-BUFFER_KOLOM),
+    akhir:Math.min(TOTAL_KOLOM-1,idxHariIni-KOLOM_SEBELUM_HARI_INI+12+BUFFER_KOLOM),
+  }));
+  const jendelaKolomRef=useRef(jendelaKolom);jendelaKolomRef.current=jendelaKolom;
+  // Kolom asal drag WP (HTML5) ikut dirender sampai drag selesai (jendela diperlebar kontinu) -
+  // kalau ter-unmount di tengah drag, onDragEnd gak terpanggil & dragInfo basi.
+  const idxAsalDrag=(dragInfo as any)?.fromDate?tanggalKeIdx((dragInfo as any).fromDate):null;
+  const awalRender=idxAsalDrag!=null?Math.min(jendelaKolom.awal,idxAsalDrag):jendelaKolom.awal;
+  const akhirRender=idxAsalDrag!=null?Math.max(jendelaKolom.akhir,idxAsalDrag):jendelaKolom.akhir;
+  const days=useMemo(()=>{const a:string[]=[];for(let i=awalRender;i<=akhirRender;i++)a.push(idxKeTanggal(i));return a;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[awalRender,akhirRender]);
+  const lebarSpasiKiri=awalRender*LEBAR_TETAP_KOLOM_TANGGAL;
+  const lebarSpasiKanan=(TOTAL_KOLOM-1-akhirRender)*LEBAR_TETAP_KOLOM_TANGGAL;
+  const lompatKeTanggal=(d:string)=>{
+    const c=tableScrollRef.current;if(!c)return;
+    c.scrollLeft=Math.max(0,(tanggalKeIdx(d)-KOLOM_SEBELUM_HARI_INI)*LEBAR_TETAP_KOLOM_TANGGAL);
+  };
+  const geserHari=(n:number)=>{const c=tableScrollRef.current;if(c)c.scrollLeft+=n*LEBAR_TETAP_KOLOM_TANGGAL;};
+  // Posisi awal: hari ini (sekali saat mount).
+  useEffect(()=>{lompatKeTanggal(TODAY);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  // Jendela kolom dihitung ulang saat scroll/resize; state cuma diganti kalau area terlihat sudah
+  // mendekati tepi buffer. Label rentang terlihat ditulis langsung ke DOM (tanpa render ulang).
+  useEffect(()=>{
+    const c=tableScrollRef.current;if(!c)return;
+    let raf=0;
+    const hitung=()=>{
+      raf=0;
+      const cw=c.clientWidth;if(cw<=0)return; // tersembunyi
+      const{pertama,terakhir}=kolomTerlihat(c.scrollLeft,cw);
+      if(labelRentangRef.current)labelRentangRef.current.textContent=getDayLabel(idxKeTanggal(pertama))+" – "+getDayLabel(idxKeTanggal(terakhir));
+      const j=jendelaKolomRef.current;
+      if(pertama-BUFFER_KOLOM/2>=j.awal&&terakhir+BUFFER_KOLOM/2<=j.akhir)return;
+      setJendelaKolom({awal:Math.max(0,pertama-BUFFER_KOLOM),akhir:Math.min(TOTAL_KOLOM-1,terakhir+BUFFER_KOLOM)});
+    };
+    const jadwal=()=>{if(!raf)raf=requestAnimationFrame(hitung);};
+    c.addEventListener("scroll",jadwal,{passive:true});
+    window.addEventListener("resize",jadwal);
+    const ro=typeof ResizeObserver!=="undefined"?new ResizeObserver(jadwal):null;
+    ro?.observe(c);
+    jadwal();
+    return()=>{c.removeEventListener("scroll",jadwal);window.removeEventListener("resize",jadwal);ro?.disconnect();if(raf)cancelAnimationFrame(raf);};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+  // Kartu Capacity Utilization: SELALU minggu kalender berjalan (Senin-Minggu dari TODAY),
+  // independen dari posisi scroll grid (dulu days.slice(0,7) = 2 minggu lalu sejak 23 Jul).
+  const mingguBerjalan=useMemo(()=>{
+    const[y,m,d]=TODAY.split("-").map(Number);
+    const dow=new Date(y,m-1,d).getDay(); // 0=Minggu
+    const senin=addDays(TODAY,-((dow+6)%7));
+    return Array.from({length:7},(_,i)=>addDays(senin,i));
+  },[]);
 
   // renhar TAMBAHAN (audit egress 6 Sep 2026) - prop `renhar` cuma window default 90 hari
   // lalu/30 hari depan (dibagi bareng RencanaHarian/OutstandingView/TrackingPekerja, lihat
@@ -527,12 +597,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const renharWindow=useMemo(()=>getRenharWindowRange(),[]);
   const [renharExtra,setRenharExtra]=useState<any[]>([]);
   useEffect(()=>{
+    // (4 Okt 2026) rentang = kolom yang SEDANG dirender (terlihat + buffer, ikut scroll bebas);
+    // jeda 300 ms supaya scroll cepat tidak memicu fetch beruntun.
     const rangeFrom=days[0],rangeTo=days[days.length-1];
     const needsExtra=rangeFrom<renharWindow.from||rangeTo>renharWindow.to;
     if(!needsExtra){setRenharExtra([]);return;}
     let cancelled=false;
-    renharService.getAll({from:rangeFrom,to:rangeTo}).then(rows=>{if(!cancelled)setRenharExtra(rows);});
-    return()=>{cancelled=true;};
+    const t=setTimeout(()=>{
+      renharService.getAll({from:rangeFrom,to:rangeTo}).then(rows=>{if(!cancelled)setRenharExtra(rows);})
+        .catch(err=>console.error("gagal ambil renhar tambahan "+rangeFrom+" s/d "+rangeTo+":",err));
+    },300);
+    return()=>{cancelled=true;clearTimeout(t);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[days[0],days[days.length-1],renharWindow]);
   const effectiveRenhar=useMemo(()=>{
@@ -540,11 +615,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const idsInExtra=new Set(renharExtra.map((r:any)=>r.id));
     return[...renharExtra,...renhar.filter((r:any)=>!idsInExtra.has(r.id))];
   },[renhar,renharExtra]);
-  useEffect(()=>{
-    // Posisikan scroll persis di kolom weekStart (bukan di ujung kiri window yang sekarang
-    // mundur 14 hari) - biar tampilan awal/abis klik Minggu Lalu-Depan tetap sama kayak dulu.
-    if(tableScrollRef.current)tableScrollRef.current.scrollLeft=HARI_SEBELUM_WEEKSTART*LEBAR_KOLOM_TANGGAL;
-  },[weekStart]);
   const isSunday=(d:string)=>new Date(d).getDay()===0;
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
 
@@ -609,9 +679,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setCtxMenu(null);
     if(e.shiftKey&&lastSelected){
       // Select range - hanya di row yang sama (seperti spreadsheet horizontal)
-      const allDays=days;
-      const startDayIdx=allDays.indexOf(lastSelected.date);
-      const endDayIdx=allDays.indexOf(date);
+      // Indeks tanggal lewat aritmetika (4 Okt 2026) - kolom divirtualisasi, tanggal di luar
+      // kolom yang dirender tetap valid.
+      const startDayIdx=tanggalKeIdx(lastSelected.date);
+      const endDayIdx=tanggalKeIdx(date);
       const minDay=Math.min(startDayIdx,endDayIdx);
       const maxDay=Math.max(startDayIdx,endDayIdx);
       // Jika row berbeda, select semua row di antara keduanya
@@ -623,7 +694,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       const newSelected:any[]=[];
       for(let r=minRow;r<=maxRow;r++){
         for(let d=minDay;d<=maxDay;d++){
-          newSelected.push({rawId:rows[r].id,date:allDays[d]});
+          newSelected.push({rawId:rows[r].id,date:idxKeTanggal(d)});
         }
       }
       setSelectedCells(newSelected);
@@ -701,24 +772,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const pasteToCell=async(targetRawId:number,targetDate:string)=>{
     if(!copiedCells.length)return;
-    const allDays=days;
-    const targetDayIdx=allDays.indexOf(targetDate);
-    if(targetDayIdx===-1)return;
+    // Indeks tanggal lewat aritmetika (4 Okt 2026) - dulu days.indexOf: tujuan di luar jendela
+    // 44 hari diam-diam dilewati (paste terpotong). Sekarang berlaku untuk tanggal mana pun.
+    const targetDayIdx=tanggalKeIdx(targetDate);
     const targetRowIdx=rawData.findIndex(r=>r.id===targetRawId);
     const srcRowIds=[...new Set(copiedCells.map((c:any)=>c.rawId))];
-    const minSrcDayIdx=Math.min(...copiedCells.map((c:any)=>allDays.indexOf(c.date)));
+    const minSrcDayIdx=Math.min(...copiedCells.map((c:any)=>tanggalKeIdx(c.date)));
     const minSrcRowIdx=Math.min(...srcRowIds.map((id:any)=>rawData.findIndex(r=>r.id===id)));
     const batchUpdates:Record<number,any>={};
     for(const cell of copiedCells){
-      const srcDayIdx=allDays.indexOf(cell.date);
+      const srcDayIdx=tanggalKeIdx(cell.date);
       const srcRowIdx=rawData.findIndex(r=>r.id===cell.rawId);
       const dayOffset=srcDayIdx-minSrcDayIdx;
       const rowOffset=srcRowIdx-minSrcRowIdx;
       const destDayIdx=targetDayIdx+dayOffset;
       const destRowIdx=targetRowIdx+rowOffset;
-      if(destDayIdx<0||destDayIdx>=allDays.length)continue;
+      if(destDayIdx<0||destDayIdx>=TOTAL_KOLOM)continue;
       if(destRowIdx<0||destRowIdx>=rawData.length)continue;
-      const destDate=allDays[destDayIdx];
+      const destDate=idxKeTanggal(destDayIdx);
       const destRow=rawData[destRowIdx];
       if(!destRow)continue;
       if(!batchUpdates[destRow.id]){
@@ -1732,9 +1803,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     <div className="fi">
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14,flexWrap:"wrap",gap:10}}>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
-          <button onClick={()=>setWeekStart(addDays(weekStart,-7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
-          <button onClick={()=>setWeekStart(TODAY)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:weekStart===TODAY?"#eff3ff":"#fff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
-          <button onClick={()=>setWeekStart(addDays(weekStart,7))} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+          <button onClick={()=>geserHari(-7)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>‹ Minggu Lalu</button>
+          <button onClick={()=>lompatKeTanggal(TODAY)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #3b5bdb",background:"#eff3ff",color:"#3b5bdb",cursor:"pointer",fontSize:11,fontWeight:500,fontFamily:"inherit"}}>Hari Ini</button>
+          <button onClick={()=>geserHari(7)} style={{height:28,padding:"0 12px",borderRadius:5,border:"0.5px solid #d1d5db",background:"#fff",color:"#374151",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>Minggu Depan ›</button>
+          <span ref={labelRentangRef} style={{fontSize:11,fontWeight:600,color:"#475569",marginLeft:4}}/>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
             <button onClick={()=>setAddModal(true)} style={{height:28,padding:"0 14px",borderRadius:5,border:"none",background:"#3b5bdb",color:"#fff",fontSize:11,fontWeight:500,cursor:"pointer",fontFamily:"inherit"}}>+ Tambah Panel</button>
@@ -1884,7 +1956,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           </div>
           {!capacityCollapsed&&(
           <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
-            {days.slice(0,7).map(d=>{
+            {mingguBerjalan.map(d=>{
               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","FINISHING","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
               const perProses:{nama:string;terpakai:number;kapasitas:number;adaOverride:boolean;satuan:string}[]=prosesToShow.map((pr:string)=>{
                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
@@ -2000,13 +2072,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       <DndContext sensors={sensorsUrutan} onDragStart={onDragStartPanel} onDragEnd={onDragEndPanel} onDragCancel={selesaiDrag}
         autoScroll={false}>
       <div ref={tableScrollRef} style={{position:"relative",overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
-        <table style={{width:"100%",borderCollapse:"collapse",fontSize:9,tableLayout:"fixed"}}>
+        <table style={{width:LEBAR_STICKY_KIRI+TOTAL_KOLOM*LEBAR_TETAP_KOLOM_TANGGAL+LEBAR_STICKY_KANAN,borderCollapse:"collapse",fontSize:9,tableLayout:"fixed"}}>
           <thead ref={el=>daftarUkur("thead",el)} style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
               <th style={{...thS,textAlign:"left",width:80,minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
               <th style={{...thS,textAlign:"left",width:150,minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
               <th style={{...thS,width:110,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
               <th style={{...thS,width:90,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
+              <th aria-hidden="true" style={{width:lebarSpasiKiri,padding:0,border:"none",background:"#1e3a8a"}}/>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
                   style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
@@ -2015,6 +2088,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
                 </th>
               ))}
+              <th aria-hidden="true" style={{width:lebarSpasiKanan,padding:0,border:"none",background:"#1e3a8a"}}/>
               <th style={{...thS,width:40,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
             </tr>
           </thead>
@@ -2166,11 +2240,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
                       </select>
                     </td>
+                    <td aria-hidden="true" style={{padding:0,border:"none"}}/>
                     {days.map(d=>{
                       const rentangInfo=getRentangInfoUntukTanggal(row,d);
-                      if(rentangInfo&&!rentangInfo.isStart)return null;
+                      // Kolom divirtualisasi: rentang yang mulainya di kiri kolom pertama yang
+                      // dirender, dimulai dari kolom pertama itu (supaya sel baris tidak bergeser).
+                      const awalRentang=!!rentangInfo&&(rentangInfo.isStart||d===days[0]);
+                      if(rentangInfo&&!awalRentang)return null;
                       let colSpanCount=1;
-                      if(rentangInfo&&rentangInfo.isStart){
+                      if(rentangInfo&&awalRentang){
                         colSpanCount=days.filter(dd=>dd>=rentangInfo.mulai&&dd<=rentangInfo.selesai).length;
                       }
                       const entries=row.schedule?.[d]||[];
@@ -2322,6 +2400,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                         </td>
                       );
                     })}
+                    <td aria-hidden="true" style={{padding:0,border:"none"}}/>
                     <td style={{...td,textAlign:"center",position:"sticky",right:0,zIndex:2}}>
                       
                     </td>
@@ -2357,15 +2436,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 else blokList.push({panelId:pid,zona:zonaDari(row.prioritas),items:[{row,ri}]});
               });
               blokUrutRef.current=blokList.map(b=>({panelId:b.panelId,zona:b.zona}));
-              const colSpanPenuh=5+days.length;
+              const colSpanPenuh=7+days.length; // 4 sticky kiri + spacer kiri + tanggal + spacer kanan + ✕
               const ZONA_LABEL:Record<Zona,string>={Tinggi:"▲ TINGGI",Sedang:"● SEDANG",Rendah:"▼ RENDAH"};
               // Model posisi (paket 5, lihat VIRTUALISASI GRID): koordinat konten container, urut tampilan.
               void versiUkur; // dihitung ulang tiap ukuran blok berubah
               let totalUkur=0,barisUkur=0;
-              // Kunci cache tinggi = minggu tampil + baris yang tampil di blok itu: tinggi blok berubah
-              // kalau filter proses/proyek mengubah isi blok atau minggu diganti - jangan pakai ulang
-              // tinggi dari kondisi lain (dulu: lepas filter -> tinggi total grid jadi separuh).
-              const kunciUkur=(b:{panelId:number;items:{row:any}[]})=>"panel|"+(days[0]||"")+"|"+b.items.map(it=>it.row.id).join(",");
+              // Kunci cache tinggi = baris yang tampil di blok itu: tinggi blok berubah kalau filter
+              // proses/proyek mengubah isi blok - jangan pakai ulang tinggi dari kondisi filter lain
+              // (dulu: lepas filter -> tinggi total grid jadi separuh). SENGAJA tanpa tanggal kolom
+              // (scroll bebas, 4 Okt 2026): kalau ikut tanggal, tiap geser horizontal semua blok di
+              // luar layar balik ke tinggi rata-rata -> tinggi grid melompat & posisi vertikal loncat
+              // ke panel lain. Tinggi terukur terakhir blok itu = perkiraan terbaik, dikoreksi begitu
+              // blok dirender lagi.
+              const kunciUkur=(b:{panelId:number;items:{row:any}[]})=>"panel|"+b.items.map(it=>it.row.id).join(",");
               blokList.forEach(b=>{const h=tinggiRef.current.get(kunciUkur(b));if(h!==undefined){totalUkur+=h;barisUkur+=b.items.length;}});
               const tinggiPerBaris=barisUkur>0?totalUkur/barisUkur:40;
               const posisi=new Map<string,{top:number;bottom:number}>();
