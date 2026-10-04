@@ -1,21 +1,28 @@
-﻿import { useState, useEffect, useCallback, useMemo } from 'react'
+﻿import { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { workOrderService } from '../services/workOrderService'
 import { supabase } from '../lib/supabase'
+import { samakanReferensi } from '../lib/samakanReferensi'
 
 export function useWorkOrders() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const sudahMuatRef = useRef(false)
 
   const fetch = useCallback(async () => {
     try {
-      setLoading(true)
+      // PERFORMA (4 Okt 2026): loading cuma true di muat PERTAMA - dulu tiap refetch (heartbeat
+      // 60 dtk/visibilitychange) membalik loading true->false = 2 render ulang App + semua tab
+      // walau datanya sama. Satu-satunya pemakai flag ini guard sinkron di App.tsx.
+      if (!sudahMuatRef.current) setLoading(true)
       setError(null)
       const result = await workOrderService.getAll()
-      setData(result)
+      // Isi identik dgn hasil fetch; bagian yang tidak berubah memakai objek lama (lihat samakanReferensi).
+      setData(prev => samakanReferensi(prev, result))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
     } finally {
+      sudahMuatRef.current = true
       setLoading(false)
     }
   }, [])
@@ -62,7 +69,9 @@ export function useWorkOrders() {
           // habis event realtime apapun ke panel itu (misal generate FCS nulis synced_proses),
           // padahal no_pnl di DB tetap benar - itu bikin badge nomor panel salah/kosong walau
           // urutan sort-nya (yang emang pakai no_pnl) tetap benar. Akar bug "nomor panel geser-geser".
-          setData(prev => prev.map(wo => ({
+          // PERFORMA (4 Okt 2026): cuma WO yang memuat panel ini yang dibuat ulang - dulu SEMUA
+          // objek WO diganti tiap update panel dari operator (isi hasil tetap sama persis).
+          setData(prev => prev.map(wo => !(wo.panels || []).some((p: any) => p.id === payload.new.id) ? wo : ({
             ...wo,
             panels: (wo.panels || []).map((p: any) =>
               p.id === payload.new.id ? { ...p, ...payload.new, noPnl: payload.new.no_pnl } : p
@@ -81,7 +90,7 @@ export function useWorkOrders() {
       )
       .on('postgres_changes', filterClause ? { event: 'DELETE', schema: 'public', table: 'panels', filter: filterClause } : { event: 'DELETE', schema: 'public', table: 'panels' },
         (payload) => {
-          setData(prev => prev.map(wo => ({
+          setData(prev => prev.map(wo => !(wo.panels || []).some((p: any) => p.id === payload.old.id) ? wo : ({
             ...wo,
             panels: (wo.panels || []).filter((p: any) => p.id !== payload.old.id)
           })))

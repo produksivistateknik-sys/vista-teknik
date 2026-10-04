@@ -1,30 +1,38 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { supabase } from '../lib/supabase'
+import { samakanReferensi } from '../lib/samakanReferensi'
 import { GLOBAL_DIRTY_RAW_IDS } from '../lib/globalState'
 
 export function useRawSchedule() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const sudahMuatRef = useRef(false)
 
   const fetch = useCallback(async () => {
     try {
-      setLoading(true)
+      // PERFORMA (4 Okt 2026): loading cuma true di muat PERTAMA - dulu tiap refetch (heartbeat
+      // 60 dtk/visibilitychange) membalik loading true->false = 2 render ulang App + semua tab
+      // walau datanya sama. Satu-satunya pemakai flag ini guard sinkron di App.tsx.
+      if (!sudahMuatRef.current) setLoading(true)
       setError(null)
       const result = await rawScheduleService.getAll()
       // Sama kayak useRenhar.fetch() - jangan biarkan refetch total ini nimpa baris yang lagi
       // dirty (baru aja ditulis lokal), biar konsisten sama proteksi di App.tsx.
+      // samakanReferensi (4 Okt 2026): isi identik dgn hasil merge lama di bawah, bagian yang
+      // tidak berubah memakai objek lama -> refetch tanpa perubahan tidak memicu render.
       setData(prev => {
-        if (GLOBAL_DIRTY_RAW_IDS.size === 0) return result
+        if (GLOBAL_DIRTY_RAW_IDS.size === 0) return samakanReferensi(prev, result)
         const prevMap: Record<string, any> = {}
         prev.forEach(r => { prevMap[String(r.id)] = r })
-        return result.map((r: any) =>
-          GLOBAL_DIRTY_RAW_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r)
+        return samakanReferensi(prev, result.map((r: any) =>
+          GLOBAL_DIRTY_RAW_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r))
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
     } finally {
+      sudahMuatRef.current = true
       setLoading(false)
     }
   }, [])

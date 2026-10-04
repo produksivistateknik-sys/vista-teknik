@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, Fragment, lazy, Suspense } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment, lazy, Suspense, memo, type ReactNode } from 'react';
+import { samakanReferensi } from './lib/samakanReferensi';
 import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
@@ -68,6 +69,13 @@ const MomFatTab = lazy(() => import('./components/MomFatTab').then(m => ({ defau
 const WoDigitalTab = lazy(() => import('./components/WoDigitalTab').then(m => ({ default: m.WoDigitalTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+// PERFORMA (4 Okt 2026, audit lambat) - tab yang pernah dibuka tetap mounted (display:none, lihat
+// visitedTabs) dan dulu IKUT render ulang tiap App render (Raw Schedule saja 128 rb node DOM).
+// Selama tersembunyi, render dari App dilewati; begitu dibuka lagi langsung dirender dengan props
+// TERBARU (state internal & realtime milik tab tetap jalan seperti biasa). Dipakai khusus tab
+// read-heavy yang diaudit: Raw Schedule, Summary Progress, Detail Progress.
+const TabKeepAlive = memo(({children}:{aktif:boolean,children:ReactNode})=><>{children}</>,
+  (_lama,baru)=>!baru.aktif);
 
 // Peta child->parent accordion sidebar "Report Produksi" (30 Agu 2026) - statis, gak
 // tergantung `user`/permission (itu cuma nentuin item MANA yang keliatan, bukan struktur
@@ -463,14 +471,16 @@ useEffect(() => {
   if (!woLoading) {
     if (woSyncTimerRef.current) clearTimeout(woSyncTimerRef.current);
     woSyncTimerRef.current = setTimeout(() => {
+      // samakanReferensi (4 Okt 2026, performa): isi tetap persis woList/hasil merge di bawah,
+      // bagian yang tidak berubah memakai objek lama -> tab yang tidak terdampak tidak render ulang.
       if(GLOBAL_DIRTY_PANEL_IDS.size===0){
-        setWoData(woList);
+        setWoData(prev=>samakanReferensi(prev,woList));
         return;
       }
       setWoData(prev=>{
         const prevPanelMap:Record<string,any>={};
         prev.forEach((wo:any)=>(wo.panels||[]).forEach((p:any)=>{prevPanelMap[String(p.id)]=p;}));
-        return woList.map((wo:any)=>({
+        return samakanReferensi(prev,woList.map((wo:any)=>({
           ...wo,
           panels:(wo.panels||[]).map((p:any)=>{
             if(GLOBAL_DIRTY_PANEL_IDS.has(String(p.id))&&prevPanelMap[String(p.id)]){
@@ -478,7 +488,7 @@ useEffect(() => {
             }
             return p;
           }),
-        }));
+        })));
       });
     }, 1200);
   }
@@ -505,7 +515,7 @@ useEffect(() => {
     if (renharSyncTimerRef.current) clearTimeout(renharSyncTimerRef.current);
     renharSyncTimerRef.current = setTimeout(() => {
       if(GLOBAL_DIRTY_RENHAR_IDS.size===0){
-        setRenhar(renharListRef.current);
+        setRenhar((prev:any[])=>samakanReferensi(prev,renharListRef.current));
         return;
       }
       // Row yang lagi dirty (baru aja ditulis lokal, misal abis klik Rilis) dipertahankan versi
@@ -524,7 +534,7 @@ useEffect(() => {
         prev.forEach((r:any)=>{
           if(GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
         });
-        return merged;
+        return samakanReferensi(prev,merged);
       });
     }, 1200);
   }
@@ -537,7 +547,7 @@ useEffect(() => {
     if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current);
     rawSyncTimerRef.current = setTimeout(() => {
       if(GLOBAL_DIRTY_RAW_IDS.size===0){
-        setRawData(rawListRef.current);
+        setRawData((prev:any[])=>samakanReferensi(prev,rawListRef.current));
         return;
       }
       setRawData((prev:any[])=>{
@@ -552,12 +562,23 @@ useEffect(() => {
         prev.forEach((r:any)=>{
           if(GLOBAL_DIRTY_RAW_IDS.has(String(r.id))&&!freshIds.has(String(r.id)))merged.push(r);
         });
-        return merged;
+        return samakanReferensi(prev,merged);
       });
     }, 1200);
   }
   return () => { if (rawSyncTimerRef.current) clearTimeout(rawSyncTimerRef.current); };
 }, [rawList, rawLoading])
+
+// PERFORMA (4 Okt 2026): dulu rawData.filter(...woData.some...) ditulis langsung di JSX 3 tab
+// (Raw Schedule/Outstanding/Rencana Harian) -> array BARU tiap App render, O(raw x WO). Sekarang
+// dihitung sekali; hanya dihitung ulang kalau rawData atau DAFTAR id WO berubah. Isi sama persis
+// (baris raw yang wo_id-nya ada di woData).
+const woIdKey=useMemo(()=>woData.map((w:any)=>w.id).join(","),[woData]);
+const rawDataWoAktif=useMemo(()=>{
+  const ids=new Set(woData.map((w:any)=>w.id));
+  return rawData.filter((r:any)=>ids.has(r.wo_id));
+// eslint-disable-next-line react-hooks/exhaustive-deps
+},[rawData,woIdKey]);
 
 if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user)return <Login sessionMismatchNotice={sessionMismatch?"Sesi login di perangkat/tab ini sudah digantikan oleh login lain. Silakan login ulang untuk melanjutkan.":undefined} onLogin={u=>{
@@ -1088,13 +1109,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
               {visitedTabs.includes("permintaan_admin")&&<div style={{display:tab==="permintaan_admin"?"block":"none"}}><Suspense fallback={TabFallback}><PermintaanAdminTab user={user} woData={woData}/></Suspense></div>}
-              {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><TabKeepAlive aktif={tab==="summary"}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><TabKeepAlive aktif={tab==="detail"}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
+              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><TabKeepAlive aktif={tab==="raw"}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("raw_sandbox")&&<div style={{display:tab==="raw_sandbox"?"block":"none"}}><Suspense fallback={TabFallback}><RawScheduleSandbox/></Suspense></div>}
-              {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRaw={refetchRaw} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawDataWoAktif} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRaw={refetchRaw} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}

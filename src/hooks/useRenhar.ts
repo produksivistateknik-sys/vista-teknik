@@ -1,6 +1,7 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+﻿import { useState, useEffect, useCallback, useRef } from 'react'
 import { renharService } from '../services/renharService'
 import { supabase } from '../lib/supabase'
+import { samakanReferensi } from '../lib/samakanReferensi'
 import { GLOBAL_DIRTY_RENHAR_IDS } from '../lib/globalState'
 import { getRenharWindowRange } from '../lib/dateHelpers'
 
@@ -8,10 +9,14 @@ export function useRenhar() {
   const [data, setData] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
+  const sudahMuatRef = useRef(false)
 
   const fetch = useCallback(async () => {
     try {
-      setLoading(true)
+      // PERFORMA (4 Okt 2026): loading cuma true di muat PERTAMA - dulu tiap refetch (heartbeat
+      // 60 dtk/visibilitychange) membalik loading true->false = 2 render ulang App + semua tab
+      // walau datanya sama. Satu-satunya pemakai flag ini guard sinkron di App.tsx.
+      if (!sudahMuatRef.current) setLoading(true)
       setError(null)
       // Window default (audit egress 6 Sep 2026, lihat dateHelpers.ts) - bukan fetch semua
       // histori lagi. RawSchedule.tsx & TrackingPekerja.tsx fetch tambahan sendiri kalau
@@ -22,16 +27,19 @@ export function useRenhar() {
       // ketimpa versi hasil select yang mungkin urutan sampainya di client gak sinkron sama commit
       // DB-nya. Ini nutup celah yang dulu kelewat: dirty-tracking di App.tsx cuma jaga proses
       // merge renharList->renhar, tapi gak jaga fetch() ini yang replace total `data` di hook.
+      // samakanReferensi (4 Okt 2026): isi identik dgn hasil merge lama di bawah, bagian yang
+      // tidak berubah memakai objek lama -> refetch tanpa perubahan tidak memicu render.
       setData(prev => {
-        if (GLOBAL_DIRTY_RENHAR_IDS.size === 0) return result
+        if (GLOBAL_DIRTY_RENHAR_IDS.size === 0) return samakanReferensi(prev, result)
         const prevMap: Record<string, any> = {}
         prev.forEach(r => { prevMap[String(r.id)] = r })
-        return result.map((r: any) =>
-          GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r)
+        return samakanReferensi(prev, result.map((r: any) =>
+          GLOBAL_DIRTY_RENHAR_IDS.has(String(r.id)) && prevMap[String(r.id)] ? prevMap[String(r.id)] : r))
       })
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error')
     } finally {
+      sudahMuatRef.current = true
       setLoading(false)
     }
   }, [])

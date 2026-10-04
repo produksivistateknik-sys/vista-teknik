@@ -1,8 +1,63 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
+
+// PERFORMA (4 Okt 2026): style & ProsesPctCell dipindah ke luar komponen - dulu didefinisikan
+// DI DALAM render, React menganggap ProsesPctCell tipe komponen BARU tiap render sehingga semua
+// sel progress (+ tooltip histori) dibongkar-pasang ulang. Isi/tampilan tidak berubah.
+const thS={background:"#1e3a8a",color:"#fff",fontWeight:600,padding:"7px 10px",
+  textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
+  letterSpacing:.3,borderBottom:"1px solid #ffffff18",whiteSpace:"nowrap" as const,
+  borderRight:"1px solid rgba(255,255,255,.1)"};
+const thSL={...thS,textAlign:"left" as const};
+const tdS={padding:"6px 10px",borderBottom:"1px solid #f5f7fa",
+  color:"#374151",verticalAlign:"middle" as const,fontSize:11,
+  borderRight:"1px solid #f5f7fa",textAlign:"center" as const};
+const tdSL={...tdS,textAlign:"left" as const};
+
+const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
+  if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
+  const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
+  const isDone=pct===100;
+  const history=cl?.history?.[proses]||[];
+  const pctFinal=pct!==undefined&&pct!==null?pct:getBestProgress(cl,proses);
+  return(
+    <td style={tdS} className="hist-cell">
+      <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
+        <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
+          <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
+        </div>
+        <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+        {history.length>0&&(
+          <div className="hist-tooltip" style={{
+            opacity:0,visibility:"hidden" as const,
+            position:"absolute" as const,bottom:"100%",left:"50%",
+            transform:"translateX(-50%)",
+            background:"#1e293b",color:"#f1f5f9",
+            borderRadius:8,padding:"8px 12px",
+            fontSize:10,whiteSpace:"nowrap" as const,
+            zIndex:999,marginBottom:6,
+            boxShadow:"0 4px 16px #00000030",
+            transition:"opacity .15s",
+            minWidth:180,
+          }}>
+
+            {[...history].sort((a:any,b:any)=>a.tanggal?.localeCompare(b.tanggal)).map((h:any,hi:number)=>(
+              <div key={hi} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"2px 0",borderBottom:hi<history.length-1?"1px solid #334155":"none"}}>
+                <span style={{color:"#94a3b8"}}>📅 {new Date(h.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
+                <span style={{color:"#fbbf24"}}>Shift {h.shift}</span>
+                <span style={{color:h.pct>=100?"#4ade80":h.pct>0?"#fb923c":"#94a3b8",fontWeight:700}}>{h.pct}%</span>
+              </div>
+            ))}
+            <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
+          </div>
+        )}
+      </div>
+    </td>
+  );
+};
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
@@ -23,20 +78,29 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   // Aturan ccp-vs-checklist lewat getCcpAwareValue (panelHelpers.ts, satu sumber logika).
   const ccpAwarePct=(panelId:number,kode:string,proses:string,fallback:number):number=>getCcpAwareValue(ccpMap,panelId,kode,proses,fallback);
 
-  const allPanels=woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
+  // PERFORMA (4 Okt 2026): dulu dihitung ulang tiap render, plus panelOverallCcpAware dipanggil 5x
+  // per panel (filter/avg/selesai/terlambat/kartu). Sekarang sekali per perubahan data/ccp - fungsi
+  // yang dipanggil SAMA (panelHelpers.ts), hasil identik.
+  const allPanels=useMemo(()=>woData.flatMap(wo=>(wo.panels||[]).map((p:any)=>({
     ...p,
     wo:wo.wo,
     woId:wo.id,
     proyek:wo.proyek,
     target:wo.target,
     pd:calcPanelProgressCcpAware(p,rawData,ccpMap),
-  })));
+  }))),[woData,rawData,ccpMap]);
+  const overallMap=useMemo(()=>{
+    const m=new Map<any,number>();
+    allPanels.forEach((p:any)=>m.set(p,panelOverallCcpAware(p,rawData,ccpMap)));
+    return m;
+  },[allPanels,rawData,ccpMap]);
+  const overallPanel=(p:any)=>overallMap.get(p)??panelOverallCcpAware(p,rawData,ccpMap);
 
   // Urut berdasar target tanggal terdekat (7 Sep 2026) - dulu gak ada sort sama sekali. Sama
   // persis pola ManajemenWO.tsx/SummaryProgress.tsx - p.target di sini = target WO induknya
   // (lihat allPanels di atas), jadi panel dari WO paling mendesak naik ke atas.
   const filtered=allPanels.filter(p=>{
-    const pct=panelOverallCcpAware(p,rawData,ccpMap);
+    const pct=overallPanel(p);
     const s=pct===100?"selesai":isDelayed(p.target)?"terlambat":isUrgent(p.target)?"mendesak":"ontrack";
     const matchS=statusFilter.length===0||statusFilter.includes(s);
     const matchWO=woFilter==="semua"||p.wo===woFilter;
@@ -48,15 +112,6 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
     return matchS&&matchWO&&matchPanel&&matchQ;
   }).sort((a,b)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99"));
 
-  const thS={background:"#1e3a8a",color:"#fff",fontWeight:600,padding:"7px 10px",
-    textAlign:"center" as const,fontSize:9,textTransform:"uppercase" as const,
-    letterSpacing:.3,borderBottom:"1px solid #ffffff18",whiteSpace:"nowrap" as const,
-    borderRight:"1px solid rgba(255,255,255,.1)"};
-  const thSL={...thS,textAlign:"left" as const};
-  const tdS={padding:"6px 10px",borderBottom:"1px solid #f5f7fa",
-    color:"#374151",verticalAlign:"middle" as const,fontSize:11,
-    borderRight:"1px solid #f5f7fa",textAlign:"center" as const};
-  const tdSL={...tdS,textAlign:"left" as const};
 
   if(!woData.length) return(
     <div style={{textAlign:"center",padding:"60px 20px",color:"#94a3b8"}}>
@@ -66,51 +121,10 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
   );
 
   const totalPanel=allPanels.length;
-  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+panelOverallCcpAware(p,rawData,ccpMap),0)/totalPanel):0;
-  const selesai=allPanels.filter(p=>panelOverallCcpAware(p,rawData,ccpMap)===100).length;
-  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&panelOverallCcpAware(p,rawData,ccpMap)<100).length;
+  const avgOverall=totalPanel?Math.round(allPanels.reduce((a,p)=>a+overallPanel(p),0)/totalPanel):0;
+  const selesai=allPanels.filter(p=>overallPanel(p)===100).length;
+  const terlambat=allPanels.filter(p=>isDelayed(p.target)&&overallPanel(p)<100).length;
 
-  const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
-    if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
-    const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
-    const isDone=pct===100;
-    const history=cl?.history?.[proses]||[];
-    const pctFinal=pct!==undefined&&pct!==null?pct:getBestProgress(cl,proses);
-    return(
-      <td style={tdS} className="hist-cell">
-        <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
-          <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
-            <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
-          </div>
-          <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
-          {history.length>0&&(
-            <div className="hist-tooltip" style={{
-              opacity:0,visibility:"hidden" as const,
-              position:"absolute" as const,bottom:"100%",left:"50%",
-              transform:"translateX(-50%)",
-              background:"#1e293b",color:"#f1f5f9",
-              borderRadius:8,padding:"8px 12px",
-              fontSize:10,whiteSpace:"nowrap" as const,
-              zIndex:999,marginBottom:6,
-              boxShadow:"0 4px 16px #00000030",
-              transition:"opacity .15s",
-              minWidth:180,
-            }}>
-
-              {[...history].sort((a:any,b:any)=>a.tanggal?.localeCompare(b.tanggal)).map((h:any,hi:number)=>(
-                <div key={hi} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"2px 0",borderBottom:hi<history.length-1?"1px solid #334155":"none"}}>
-                  <span style={{color:"#94a3b8"}}>📅 {new Date(h.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
-                  <span style={{color:"#fbbf24"}}>Shift {h.shift}</span>
-                  <span style={{color:h.pct>=100?"#4ade80":h.pct>0?"#fb923c":"#94a3b8",fontWeight:700}}>{h.pct}%</span>
-                </div>
-              ))}
-              <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
-            </div>
-          )}
-        </div>
-      </td>
-    );
-  };
 
   const prosesAda=PROSES_LIST.filter(pr=>allPanels.some(p=>p.pd[pr]!==undefined&&p.pd[pr]>=0));
 
@@ -190,7 +204,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
           Tidak ada data yang sesuai filter
         </div>
       ):filtered.map((p:any,pi:number)=>{
-        const ppct=panelOverallCcpAware(p,rawData,ccpMap);
+        const ppct=overallPanel(p);
         const d=daysUntil(p.target);
         const late=isDelayed(p.target);
         const urg=isUrgent(p.target);
