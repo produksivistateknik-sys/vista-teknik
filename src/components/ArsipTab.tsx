@@ -8,6 +8,7 @@ import { FotoZoomViewer } from './FotoZoomViewer'
 import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { buildDayColumns, colIndexForDate, gambarTimelineGanttPdf, type BarisGanttPdf } from '../lib/ganttArsipPdf'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
@@ -181,43 +182,27 @@ export function ArsipTab({user,refetchWO}:any){
     setGanttLoading(false);
   };
 
-  // Kelompokkan tanggal jadi kolom HARIAN (16 Sep 2026, revisi dari kolom mingguan sebelumnya -
-  // 1 kolom Week dulu mewakili 7 hari sekaligus, jadi proses yang start di hari beda dalam
-  // minggu yang sama numpuk di 1 kolom yang sama). weekIdx tetap dihitung per kolom (day 1-7=Wk1,
-  // 8-14=Wk2, dst - restart tiap bulan baru) buat dipakai ngelompokkan header tingkat "Week N".
-  const buildDayColumns=(rangeStart:string,rangeEnd:string)=>{
-    const start=new Date(rangeStart);start.setHours(0,0,0,0);
-    const end=new Date(rangeEnd);end.setHours(0,0,0,0);
-    const cols:{year:number,month:number,day:number,weekIdx:number}[]=[];
-    const cur=new Date(start);
-    while(cur<=end){
-      cols.push({year:cur.getFullYear(),month:cur.getMonth(),day:cur.getDate(),weekIdx:Math.floor((cur.getDate()-1)/7)});
-      cur.setDate(cur.getDate()+1);
-    }
-    return cols;
-  };
-  const colIndexForDate=(cols:{year:number,month:number,day:number}[],iso:string)=>{
-    const d=new Date(iso);
-    const y=d.getFullYear(),m=d.getMonth(),day=d.getDate();
-    return cols.findIndex(c=>c.year===y&&c.month===m&&c.day===day);
-  };
+  // buildDayColumns/colIndexForDate (kolom HARIAN Gantt) dipindah ke lib/ganttArsipPdf.ts (5 Okt 2026)
+  // tanpa perubahan - dipakai bareng tampilan web di bawah & timeline PDF.
   const fmtTglFull=(iso:string|null|undefined)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"-";
   const BULAN_LABEL=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
   // Baris export PDF/Excel: sama persis data yang dipakai buat render Gantt, cuma dirapikan jadi
   // baris datar (Busbar dipecah per tahap yang punya data, sama seperti sub-badge di layar).
+  // (5 Okt 2026) + iso & warna per baris - timeline PDF digambar dari baris YANG SAMA dgn tabel
+  // "Proses | Tanggal Mulai" (tidak mungkin beda data). Warna = GANTT_ROWS/GANTT_BUSBAR_TAHAP_COLOR (web).
   const buildGanttExportRows=(starts:Record<string,string|null>,busbarTahap:Record<string,string|null>)=>{
-    const rows:{proses:string,tanggalMulai:string}[]=[];
+    const rows:BarisGanttPdf[]=[];
     GANTT_ROWS.forEach(r=>{
       if(r.key==="BUSBAR"){
         const adaTahap=BUSBAR_TAHAP_URUTAN.some(t=>busbarTahap[t]);
-        if(!adaTahap){rows.push({proses:"Busbar",tanggalMulai:"Belum ada data"});return;}
+        if(!adaTahap){rows.push({proses:"Busbar",tanggalMulai:"Belum ada data",iso:null,color:r.color});return;}
         BUSBAR_TAHAP_URUTAN.forEach(t=>{
-          if(busbarTahap[t])rows.push({proses:`Busbar - ${BUSBAR_TAHAP_LABEL[t]}`,tanggalMulai:fmtTglFull(busbarTahap[t])});
+          if(busbarTahap[t])rows.push({proses:`Busbar - ${BUSBAR_TAHAP_LABEL[t]}`,tanggalMulai:fmtTglFull(busbarTahap[t]),iso:busbarTahap[t],color:GANTT_BUSBAR_TAHAP_COLOR[t]?.color||r.color});
         });
         return;
       }
-      rows.push({proses:r.label,tanggalMulai:starts[r.key]?fmtTglFull(starts[r.key]):"Belum ada data"});
+      rows.push({proses:r.label,tanggalMulai:starts[r.key]?fmtTglFull(starts[r.key]):"Belum ada data",iso:starts[r.key]||null,color:r.color});
     });
     return rows;
   };
@@ -231,7 +216,9 @@ export function ArsipTab({user,refetchWO}:any){
     const rows=buildGanttExportRows(starts,busbarTahap);
     autoTable(doc,{startY:30,head:[["Proses","Tanggal Mulai"]],body:rows.map(r=>[r.proses,r.tanggalMulai]),
       styles:{fontSize:9},headStyles:{fillColor:[29,78,216]}});
-    const afterY=(doc as any).lastAutoTable.finalY+10;
+    // Visualisasi timeline (5 Okt 2026) di antara tabel tanggal mulai & Catatan Kendala.
+    let afterY=gambarTimelineGanttPdf(doc,rows,(doc as any).lastAutoTable.finalY+10);
+    if(afterY>doc.internal.pageSize.getHeight()-30){doc.addPage();afterY=20;}
     doc.setFontSize(12);
     doc.text("Catatan Kendala per Divisi",14,afterY);
     if(kendala.length===0){
