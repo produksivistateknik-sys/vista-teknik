@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { getLocalDateStr } from '../lib/dateHelpers'
-import { uploadToR2 } from '../lib/r2Client'
+import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, BATAS_VIDEO_MB, type FotoGagal } from '../lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
 import { FotoZoomViewer, fotoMaintenanceKeViewer, type FotoViewer } from './FotoZoomViewer'
@@ -15,22 +15,7 @@ import { bandingDivisiProduksi, DIVISI_KOSONG } from '../lib/urutanDivisi'
 // atau QR - lihat komentar lebih lengkap di MesinPublic.tsx soal kenapa diduplikasi kecil
 // (bukan di-share) di 2 tempat.
 const MAX_FOTO_MB=100;
-function extFromFile(file:File):string{
-  const dot=file.name.lastIndexOf(".");
-  if(dot>0&&dot<file.name.length-1)return file.name.slice(dot+1).toLowerCase();
-  return file.type.startsWith("video/")?"mp4":"jpg";
-}
-async function uploadDokumentasi(files:File[],keyPrefix:string){
-  const hasil:{url:string,type:"image"|"video",uploaded_at:string}[]=[];
-  for(const file of files){
-    const key=`${keyPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${extFromFile(file)}`;
-    try{
-      const url=await uploadToR2(file,key,file.type||"application/octet-stream");
-      hasil.push({url,type:file.type.startsWith("video/")?"video":"image",uploaded_at:new Date().toISOString()});
-    }catch{/* 1 file gagal upload gak boleh gagalin submit Done - lewati, lanjut file lain */}
-  }
-  return hasil;
-}
+// Upload & urutan simpan sekarang di lib/maintenanceRutinSelesai.ts (5 Okt 2026, dipakai bareng QR).
 
 export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogList,user,today,terlambat,mingguIni}:any){
   const [form,setForm]=useState({mesin_id:"",jenis_maintenance:"",frekuensi:"mingguan",teknisi:"",terakhir_dilakukan:"",jatuh_tempo:"",catatan:""});
@@ -43,6 +28,14 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   // modal dibuka/ditutup/berhasil submit.
   const [stagedFoto,setStagedFoto]=useState<{file:File,previewUrl:string}[]>([]);
   const [doneSaving,setDoneSaving]=useState(false);
+  // Status unggah dokumentasi setelah "Selesai" tersimpan (5 Okt 2026) - lihat lib/maintenanceRutinSelesai.ts.
+  const [unggahDone,setUnggahDone]=useState<{logId:number;rutinId:number;terkirim:number;total:number;gagal:FotoGagal[];berjalan:boolean}|null>(null);
+  useEffect(()=>{
+    if(!unggahDone?.berjalan)return;
+    const cegah=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue="Foto masih diunggah - yakin tinggalkan halaman?";return e.returnValue;};
+    window.addEventListener("beforeunload",cegah);
+    return()=>window.removeEventListener("beforeunload",cegah);
+  },[unggahDone?.berjalan]);
   // Accordion histori dokumentasi (17 Sep 2026, Phase A - lihat Phase B: kolom
   // maintenance_rutin_log.foto). rutinLogList SUDAH di-fetch penuh di parent
   // (MaintenancePageTab.tsx) + auto-refresh via realtime tiap ada INSERT/UPDATE
@@ -78,10 +71,11 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
     if(!fileList||fileList.length===0)return;
     const tolak:string[]=[];
     const dipilih=Array.from(fileList).filter(f=>{
-      if(f.size>MAX_FOTO_MB*1024*1024){tolak.push(f.name);return false;}
+      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MB:MAX_FOTO_MB;
+      if(f.size>batas*1024*1024){tolak.push(f.name+" ("+(f.size/1024/1024).toFixed(0)+" MB, maks "+batas+" MB)");return false;}
       return true;
     }).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
-    if(tolak.length>0)alert(`File berikut dilewati (lebih dari ${MAX_FOTO_MB}MB):\n${tolak.join("\n")}`);
+    if(tolak.length>0)alert(`File berikut dilewati karena terlalu besar:\n${tolak.join("\n")}`);
     setStagedFoto(prev=>[...prev,...dipilih]);
   };
   const batalkanFotoStaged=(idx:number)=>{
@@ -142,37 +136,37 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
   await activityLogService.insert({user_name:user?.name||user?.nama||sess?.nama||"Admin",action:"NONAKTIF MAINTENANCE RUTIN",description:"Nonaktifkan jadwal: "+(item?.jenis_maintenance||"-")+" - "+(item?.mesin?.nama||"-"),module:"maintenance",halaman:"Maintenance"});
 };
 
+  const tutupDone=()=>{resetStagedFoto();setUnggahDone(null);setDoneSaving(false);setDoneId(null);};
+  const jalankanUnggahDone=async(logId:number,rutinId:number,files:File[])=>{
+    setUnggahDone({logId,rutinId,terkirim:0,total:files.length,gagal:[],berjalan:true});
+    const hasil=await unggahFotoKeLogMaintenance(logId,rutinId,files,(terkirim,total)=>
+      setUnggahDone(prev=>prev?{...prev,terkirim,total}:prev));
+    if(hasil.gagal.length===0){tutupDone();return;}
+    setUnggahDone({logId,rutinId,terkirim:hasil.terkirim,total:files.length,gagal:hasil.gagal,berjalan:false});
+  };
   const markDone=async(item:any)=>{
     setDoneSaving(true);
     const todayStr=getLocalDateStr();
     const nextDate=calcNext(todayStr,item.frekuensi);
     const uname=user?.name||user?.nama||JSON.parse(localStorage.getItem("vista_admin_session")||"{}")?.nama||"Admin";
     const fileTerpilih=stagedFoto.map(s=>s.file);
-    // BUG FIX (23 Sep 2026, audit "error Supabase gak dicek") - dulu cuma destructure {data},
-    // error diabaikan - kalau update gagal, if(data){...} di-skip (jatuh_tempo TIDAK maju, log
-    // dokumentasi TIDAK tercatat), TAPI modal Done tetap nutup (setDoneId(null) di luar cabang) -
-    // user pikir maintenance udah "Done" padahal DB gak berubah. Kalau gagal sekarang: alert,
-    // modal TETAP TERBUKA (setDoneId TIDAK di-null-kan) biar user bisa coba lagi tanpa foto hilang.
-    const{data,error}=await supabase.from("maintenance_rutin").update({
-      terakhir_dilakukan:todayStr,
-      jatuh_tempo:nextDate,
-    }).eq("id",item.id).select("*,mesin(nama,kode)").single();
-    if(error){alert("Gagal menyimpan: "+error.message);setDoneSaving(false);return;}
-    setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?data:r));
-    // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin Done.
-    const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${item.id}`):[];
-    await supabase.from("maintenance_rutin_log").insert({
-      rutin_id:item.id,dilakukan_pada:todayStr,teknisi:uname,completed_via:"admin",foto,
-    });
-    await activityLogService.insert({
-      user_name:uname,
-      action:"MAINTENANCE RUTIN DONE",
-      description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
-      module:"maintenance",halaman:"Maintenance"
-    });
-    resetStagedFoto();
-    setDoneSaving(false);
-    setDoneId(null);
+    // (5 Okt 2026) Jadwal & log disimpan LEBIH DULU lewat helper bersama (gagal -> alert, modal tetap
+    // terbuka, jadwal dikembalikan); foto diunggah SETELAHNYA & ditempel ke log yg sama.
+    let hasil:{rutinBaru:any;logId:number};
+    try{
+      hasil=await simpanSelesaiMaintenanceRutin({rutin:item,teknisi:uname,via:"admin",tanggal:todayStr,jatuhTempoBaru:nextDate,selectRutin:"*,mesin(nama,kode)"});
+    }catch(err:any){alert("Gagal menyimpan: "+(err?.message||"koneksi bermasalah"));setDoneSaving(false);return;}
+    setRutinList((p:any[])=>p.map((r:any)=>r.id===item.id?hasil.rutinBaru:r));
+    try{
+      await activityLogService.insert({
+        user_name:uname,
+        action:"MAINTENANCE RUTIN DONE",
+        description:"Selesai: "+item.jenis_maintenance+" - "+item.mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate+(fileTerpilih.length?" ("+fileTerpilih.length+" file dokumentasi)":""),
+        module:"maintenance",halaman:"Maintenance"
+      });
+    }catch(err){console.error("activity_log MAINTENANCE RUTIN DONE gagal:",err);}
+    if(fileTerpilih.length===0){tutupDone();return;}
+    await jalankanUnggahDone(hasil.logId,item.id,fileTerpilih);
   };
   // SATU SUMBER LOGIKA (CLAUDE.md B.1) - semua log utk 1 rutin_id, terbaru dulu. Dipakai getLatestLog
   // (kolom Terakhir, "via QR"/"Admin") DAN accordion Riwayat Dokumentasi (17 Sep 2026) - jangan
@@ -338,7 +332,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
           </tbody>
         </table>
       </div>
-      {doneId&&(<Modal title="Tandai Selesai?" onClose={()=>{setDoneId(null);resetStagedFoto();}} width={400}>
+      {doneId&&(<Modal title="Tandai Selesai?" onClose={()=>{if(unggahDone?.berjalan||doneSaving)return;tutupDone();}} width={400}>
         <div style={{fontSize:13,color:"#475569",marginBottom:8}}><strong>{doneId.jenis_maintenance}</strong> — {doneId.mesin?.nama}</div>
         <div style={{fontSize:12,color:"#064e3b",background:"#f0fdf4",borderRadius:8,padding:"10px 12px",marginBottom:14}}>Jadwal berikutnya otomatis dihitung dari hari ini.</div>
         {/* Dokumentasi OPSIONAL (16 Sep 2026) - sama persis konsepnya kayak form "Tandai Selesai" QR (MesinPublic.tsx). */}
@@ -367,10 +361,27 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
             </div>
           )}
         </div>
+        {unggahDone?(
+          <div style={{fontSize:12,lineHeight:1.5}}>
+            {unggahDone.berjalan?(
+              <div style={{color:"#1d4ed8",fontWeight:700,marginBottom:10}}>✓ Selesai tersimpan · mengunggah foto {Math.min(unggahDone.terkirim+1,unggahDone.total)}/{unggahDone.total}…</div>
+            ):(
+              <>
+                <div style={{color:"#b45309",fontWeight:700}}>✓ Selesai tersimpan · {unggahDone.gagal.length} dari {unggahDone.total} foto gagal terkirim{unggahDone.terkirim>0?" ("+unggahDone.terkirim+" sudah tersimpan)":""}</div>
+                <div style={{color:"#94a3b8",fontSize:11,marginBottom:12}}>{unggahDone.gagal.map(g=>g.file.name+": "+g.alasan).join(" · ")}</div>
+                <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+                  <Btn outline color="#64748b" onClick={tutupDone}>Tutup tanpa foto</Btn>
+                  <Btn color="#1d4ed8" onClick={()=>jalankanUnggahDone(unggahDone.logId,unggahDone.rutinId,unggahDone.gagal.map(g=>g.file))}>Coba lagi</Btn>
+                </div>
+              </>
+            )}
+          </div>
+        ):(
         <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
-          <Btn outline color="#64748b" onClick={()=>{setDoneId(null);resetStagedFoto();}} disabled={doneSaving}>Batal</Btn>
+          <Btn outline color="#64748b" onClick={tutupDone} disabled={doneSaving}>Batal</Btn>
           <Btn color="#16a34a" onClick={()=>markDone(doneId)} disabled={doneSaving}>{doneSaving?"Menyimpan...":"Selesai"}</Btn>
         </div>
+        )}
       </Modal>)}
       {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
       {delId&&(<Modal title="Nonaktifkan?" onClose={()=>setDelId(null)} width={360}><div style={{fontSize:13,color:"#475569",marginBottom:20}}>Jadwal ini akan dinonaktifkan.</div><div style={{display:"flex",gap:10,justifyContent:"flex-end"}}><Btn outline color="#64748b" onClick={()=>setDelId(null)}>Batal</Btn><Btn color="#dc2626" onClick={del}>Nonaktifkan</Btn></div></Modal>)}

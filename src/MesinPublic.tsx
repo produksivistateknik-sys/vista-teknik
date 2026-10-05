@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
-import { uploadToR2 } from './lib/r2Client'
+import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, BATAS_VIDEO_MB, type FotoGagal } from './lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch } from './lib/mediaRotasi'
 import { useVersionCheck } from './lib/versionCheck'
 
@@ -27,22 +27,7 @@ function calcNext(d:string,f:string){
 // dukung video juga (bukan cuma foto), jadi ekstensi file R2 key diambil dari nama file asli
 // (bukan di-hardcode .jpg kayak KerusakanTab - biar video gak kesimpen dengan ekstensi salah).
 const MAX_FOTO_MB=100
-function extFromFile(file:File):string{
-  const dot=file.name.lastIndexOf(".")
-  if(dot>0&&dot<file.name.length-1)return file.name.slice(dot+1).toLowerCase()
-  return file.type.startsWith("video/")?"mp4":"jpg"
-}
-async function uploadDokumentasi(files:File[],keyPrefix:string){
-  const hasil:{url:string,type:"image"|"video",uploaded_at:string}[]=[]
-  for(const file of files){
-    const key=`${keyPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${extFromFile(file)}`
-    try{
-      const url=await uploadToR2(file,key,file.type||"application/octet-stream")
-      hasil.push({url,type:file.type.startsWith("video/")?"video":"image",uploaded_at:new Date().toISOString()})
-    }catch{/* 1 file gagal upload gak boleh gagalin submit "Selesai" - lewati, lanjut file lain */}
-  }
-  return hasil
-}
+// Upload & urutan simpan sekarang di lib/maintenanceRutinSelesai.ts (5 Okt 2026, dipakai bareng admin).
 
 export default function MesinPublic(){
   // Deteksi tab basi (17 Sep 2026, BUG FIX - dilaporkan user: sesi upload dokumentasi
@@ -100,10 +85,11 @@ export default function MesinPublic(){
     if(!fileList||fileList.length===0)return
     const tolak:string[]=[]
     const dipilih=Array.from(fileList).filter(f=>{
-      if(f.size>MAX_FOTO_MB*1024*1024){tolak.push(f.name);return false}
+      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MB:MAX_FOTO_MB
+      if(f.size>batas*1024*1024){tolak.push(f.name+" ("+(f.size/1024/1024).toFixed(0)+" MB, maks "+batas+" MB)");return false}
       return true
     }).map(file=>({file,previewUrl:URL.createObjectURL(file)}))
-    if(tolak.length>0)alert(`File berikut dilewati (lebih dari ${MAX_FOTO_MB}MB):\n${tolak.join("\n")}`)
+    if(tolak.length>0)alert(`File berikut dilewati karena terlalu besar:\n${tolak.join("\n")}`)
     setStagedFoto(prev=>[...prev,...dipilih])
   }
   const batalkanFotoStaged=(idx:number)=>{
@@ -117,6 +103,19 @@ export default function MesinPublic(){
   // seketika (optimistic, sebelum round-trip server kelar) supaya item langsung hilang, bukan
   // nongol jadi status "Selesai". Direset kalau item beneran jatuh tempo lagi (reload halaman).
   const [selesaiHariIniIds,setSelesaiHariIniIds]=useState<Set<any>>(new Set())
+  // Status "Tandai Selesai" per jadwal (5 Okt 2026) - item TIDAK lagi langsung hilang: tetap tampil
+  // dgn status sampai foto selesai terkirim (insiden BAK DEGREASING: item hilang duluan, halaman
+  // ditinggal saat upload masih jalan, log & foto tidak pernah tersimpan). Catatan selesai sudah
+  // aman sejak fase "mengunggah" (log disimpan lebih dulu).
+  type ProsesSelesai={fase:"menyimpan"|"mengunggah"|"gagal_foto";logId?:number;terkirim:number;total:number;gagal:FotoGagal[];rutinBaru?:any}
+  const [prosesSelesai,setProsesSelesai]=useState<Record<string,ProsesSelesai>>({})
+  const adaYangBerjalan=Object.values(prosesSelesai).some(p=>p.fase==="menyimpan"||p.fase==="mengunggah")
+  useEffect(()=>{
+    if(!adaYangBerjalan)return
+    const cegah=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue="Foto masih diunggah - yakin tinggalkan halaman?";return e.returnValue}
+    window.addEventListener("beforeunload",cegah)
+    return()=>window.removeEventListener("beforeunload",cegah)
+  },[adaYangBerjalan])
   // Log kerusakan mana yang lagi diperluas (detail lengkap) dan berapa banyak yang ditampilkan
   // duluan (batasi awal, "Lihat lebih banyak" nambah - semua log tetap bisa diakses).
   const [expandedLogId,setExpandedLogId]=useState<any>(null)
@@ -158,48 +157,49 @@ export default function MesinPublic(){
     await fetchRutinLog((r??[]).map((x:any)=>x.id))
   }
 
+  // Selesai penuh: item hilang dari daftar jadwal (sama spt dulu), jadwal di state diganti versi baru.
+  const tuntaskan=(rutinId:any,rutinBaru:any)=>{
+    setSelesaiHariIniIds(prev=>new Set(prev).add(rutinId))
+    if(rutinBaru)setRutinList((prev:any[])=>prev.map((x:any)=>x.id===rutinId?rutinBaru:x))
+    setProsesSelesai(prev=>{const n={...prev};delete n[rutinId];return n})
+  }
+  const jalankanUnggah=async(rutinId:any,logId:number,files:File[],rutinBaru:any)=>{
+    setProsesSelesai(prev=>({...prev,[rutinId]:{fase:"mengunggah",logId,terkirim:0,total:files.length,gagal:[],rutinBaru}}))
+    const hasil=await unggahFotoKeLogMaintenance(logId,rutinId,files,(terkirim,total)=>
+      setProsesSelesai(prev=>prev[rutinId]?{...prev,[rutinId]:{...prev[rutinId],terkirim,total}}:prev))
+    await fetchRutinLog(rutinList.map((x:any)=>x.id))
+    if(hasil.gagal.length===0){tuntaskan(rutinId,rutinBaru);return}
+    setProsesSelesai(prev=>({...prev,[rutinId]:{fase:"gagal_foto",logId,terkirim:hasil.terkirim,total:files.length,gagal:hasil.gagal,rutinBaru}}))
+  }
+
   const tandaiSelesai=async(rutin:any)=>{
     if(!pekerjaPilih)return
     setMenyimpan(true)
-    // Optimistic - hilang dari daftar SEKETIKA, gak nunggu server (termasuk upload foto/video,
-    // yang bisa makan waktu lumayan di koneksi pabrik) dulu.
-    setSelesaiHariIniIds(prev=>new Set(prev).add(rutin.id))
-    setSelesaiFormId(null)
     const pekerjaTerpilih=pekerjaPilih
-    setPekerjaPilih("")
-    // Tangkep staged foto SEBELUM di-reset (form ditutup optimistic di atas) - sama pola kayak
-    // pekerjaTerpilih, biar state UI bebas dipakai form berikutnya walau upload+insert di bawah
-    // masih jalan di background.
     const fileTerpilih=stagedFoto.map(s=>s.file)
-    resetStagedFoto()
+    setProsesSelesai(prev=>({...prev,[rutin.id]:{fase:"menyimpan",terkirim:0,total:fileTerpilih.length,gagal:[]}}))
     const todayStr=getLocalDateStr()
     const nextDate=calcNext(todayStr,rutin.frekuensi)
-    const{data,error}=await supabase.from("maintenance_rutin").update({
-      terakhir_dilakukan:todayStr,
-      jatuh_tempo:nextDate,
-    }).eq("id",rutin.id).select("*").single()
-    if(!error&&data){
-      // Upload OPSIONAL - foto/video gagal/gak dipilih sama sekali TETAP gak boleh gagalin
-      // "Tandai Selesai" (jadwal & log tetap tercatat, cuma tanpa dokumentasi).
-      const foto=fileTerpilih.length>0?await uploadDokumentasi(fileTerpilih,`maintenance-rutin/${rutin.id}`):[]
-      await supabase.from("maintenance_rutin_log").insert({
-        rutin_id:rutin.id,dilakukan_pada:todayStr,teknisi:pekerjaTerpilih,completed_via:"qr_worker",foto,
-      })
-      // Refetch biar entri yang baru aja diinsert langsung nongol di Log Maintenance Rutin -
-      // pakai rutinList TERKINI (bukan snapshot lama) biar id jadwal yang lagi gak due juga ikut.
-      await fetchRutinLog(rutinList.map((x:any)=>x.id))
-      await supabase.from("activity_log").insert({
-        user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
-        description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate,
-        module:"maintenance",halaman:"Mesin Public (QR)",
-      })
-      setRutinList((prev:any[])=>prev.map((x:any)=>x.id===rutin.id?data:x))
-    } else {
-      // Gagal simpan - batalkan penyembunyian optimistic, biar item muncul lagi & bisa dicoba ulang.
-      setSelesaiHariIniIds(prev=>{const n=new Set(prev);n.delete(rutin.id);return n})
-      alert("Gagal menyimpan - coba lagi.")
+    let hasil:{rutinBaru:any;logId:number}
+    try{
+      hasil=await simpanSelesaiMaintenanceRutin({rutin,teknisi:pekerjaTerpilih,via:"qr_worker",tanggal:todayStr,jatuhTempoBaru:nextDate})
+    }catch(err:any){
+      console.error("Tandai Selesai (QR) gagal disimpan:",err)
+      setProsesSelesai(prev=>{const n={...prev};delete n[rutin.id];return n})
+      alert("Gagal menyimpan - coba lagi.\n\n"+(err?.message||"koneksi bermasalah"))
+      setMenyimpan(false)
+      return // form & foto yang dipilih TETAP ada, tinggal tekan Konfirmasi lagi
     }
-    setMenyimpan(false)
+    // Catatan selesai SUDAH tersimpan - form boleh ditutup.
+    setSelesaiFormId(null);setPekerjaPilih("");resetStagedFoto();setMenyimpan(false)
+    const{error:eAkt}=await supabase.from("activity_log").insert({
+      user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
+      description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate+(fileTerpilih.length?" ("+fileTerpilih.length+" file dokumentasi)":""),
+      module:"maintenance",halaman:"Mesin Public (QR)",
+    })
+    if(eAkt)console.error("activity_log MAINTENANCE RUTIN DONE (QR) gagal:",eAkt)
+    if(fileTerpilih.length===0){await fetchRutinLog(rutinList.map((x:any)=>x.id));tuntaskan(rutin.id,hasil.rutinBaru);return}
+    await jalankanUnggah(rutin.id,hasil.logId,fileTerpilih,hasil.rutinBaru)
   }
 
   const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-"
@@ -253,7 +253,7 @@ export default function MesinPublic(){
   // atau sudah lewat) DAN belum ditandai selesai barusan di sesi ini - begitu ditandai selesai,
   // hilang dari sini, baru muncul lagi kalau jadwal berikutnya (dari frekuensinya) jatuh tempo lagi.
   const todayStr=getLocalDateStr()
-  const rutinDue=rutinList.filter((r:any)=>r.jatuh_tempo&&r.jatuh_tempo<=todayStr&&!selesaiHariIniIds.has(r.id))
+  const rutinDue=rutinList.filter((r:any)=>(r.jatuh_tempo&&r.jatuh_tempo<=todayStr&&!selesaiHariIniIds.has(r.id))||prosesSelesai[r.id])
 
   return(
     <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"Inter,sans-serif",paddingBottom:32}}>
@@ -332,7 +332,27 @@ export default function MesinPublic(){
                   </div>
                   <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
                 </div>
-                {formTerbuka?(
+                {prosesSelesai[r.id]&&prosesSelesai[r.id].fase!=="menyimpan"?(()=>{
+                  const p=prosesSelesai[r.id]
+                  return(
+                    <div style={{marginTop:8,marginLeft:18,fontSize:11,lineHeight:1.5}}>
+                      {p.fase==="mengunggah"?(
+                        <div style={{color:"#1d4ed8",fontWeight:700}}>✓ Tersimpan · mengunggah foto {Math.min(p.terkirim+1,p.total)}/{p.total}… <span style={{fontWeight:500,color:"#64748b"}}>jangan tutup halaman dulu</span></div>
+                      ):(
+                        <div>
+                          <div style={{color:"#b45309",fontWeight:700}}>✓ Selesai tersimpan · {p.gagal.length} dari {p.total} foto gagal terkirim{p.terkirim>0?" ("+p.terkirim+" foto sudah tersimpan)":""}</div>
+                          <div style={{color:"#94a3b8",fontSize:10}}>{p.gagal.map(g=>g.file.name+": "+g.alasan).join(" · ")}</div>
+                          <div style={{display:"flex",gap:6,marginTop:6}}>
+                            <button onClick={()=>jalankanUnggah(r.id,p.logId!,p.gagal.map(g=>g.file),p.rutinBaru)}
+                              style={{background:"#1d4ed8",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Coba lagi</button>
+                            <button onClick={()=>tuntaskan(r.id,p.rutinBaru)}
+                              style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Lewati foto</button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })():formTerbuka?(
                   <div style={{marginTop:8,marginLeft:18}}>
                     <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
                       <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
