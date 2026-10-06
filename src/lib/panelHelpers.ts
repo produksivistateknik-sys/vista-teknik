@@ -251,6 +251,19 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
   return "TO DO";
 }
 
+// QC TEST & PACKING = PENANDA PER PANEL (6 Okt 2026, bug Task Monitoring vs Detail Progres) -
+// status aslinya cuma ada di level panel: panels.qc_checklist._global.status & panels.packing_done
+// (ditulis QCChecklistTab Vista Pekerja). checklist[kode].progress["QC TEST"/"PACKING"] TIDAK
+// PERNAH diisi (0 entri di data live) - jangan hitung status 2 proses ini per komponen lewat
+// computeProsesStatus. Gating PACKING = sama persis tombol Packing di QCChecklistTab (terkunci
+// sampai QC complete). Satu sumber utk Task Monitoring & Detail Progres.
+export function statusPenandaPanel(panel:any,proses:"QC TEST"|"PACKING"):ProsesStatus{
+  const qc=panel?.qc_checklist?._global?.status||"to_do";
+  if(proses==="QC TEST")return qc==="complete"?"DONE":qc==="in_progress"?"IN PROGRESS":"TO DO";
+  if(panel?.packing_done)return "DONE";
+  return qc==="complete"?"TO DO":"NOT YET";
+}
+
 export function initChecklist(tipe, qty=1, customPanelTypes?){
   const cfg=(customPanelTypes&&customPanelTypes[tipe])?customPanelTypes[tipe]:PANEL_TYPES[tipe]; if(!cfg) return {};
   const c={};

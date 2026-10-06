@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue } from '../lib/panelHelpers'
+import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
@@ -290,7 +290,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                       const ai=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
                       return ai.length>0;
                     });
-                    const qcStatus=p.qc_checklist?._global?.status||"to_do";
+                    // QC/PACKING = penanda per panel - helper SAMA dgn Task Monitoring (statusPenandaPanel).
+                    const qcStatus=statusPenandaPanel(p,"QC TEST"),packingStatus=statusPenandaPanel(p,"PACKING");
                   return wps.map((wp:any)=>{
                     const wpColor=(WP_COLOR as any)[wp.wp]||"#94a3b8";
                     const activeItems=wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0);
@@ -323,8 +324,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                             <>
                               <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.nameplate_progress||0}%</td>
                               <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.yellowmark_progress||0}%</td>
-                              <td style={{...tdS,fontWeight:700,color:qcStatus==="complete"?"#16a34a":qcStatus==="in_progress"?"#d97706":"#94a3b8"}} rowSpan={totalRowsPanel}>{qcStatus==="complete"?"Selesai":qcStatus==="in_progress"?"Proses":"Belum"}</td>
-                              <td style={{...tdS,fontWeight:700,color:p.packing_done?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.packing_done?"Selesai":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:qcStatus==="DONE"?"#16a34a":qcStatus==="IN PROGRESS"?"#d97706":"#94a3b8"}} rowSpan={totalRowsPanel}>{qcStatus==="DONE"?"Selesai":qcStatus==="IN PROGRESS"?"Proses":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:packingStatus==="DONE"?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{packingStatus==="DONE"?"Selesai":"Belum"}</td>
                             </>
                           )}
                         </tr>

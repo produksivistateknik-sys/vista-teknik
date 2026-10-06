@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
+import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, statusPenandaPanel, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
@@ -73,6 +73,22 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
   // sama dgn Dashboard/ManajemenWO/SummaryProgress/DetailProgress (bobot rata per proses).
   const progresTotal=(!selectedPanel||!cfg)?0:panelOverallCcpAware(selectedPanel,rawData,ccpMap);
 
+  const itemsAktif=(selectedPanel&&cfg)?cfg.wps.flatMap((wp:any)=>wp.items).filter((item:any)=>(selectedPanel.checklist?.[item.kode]?.qty||0)>0):[];
+  const bk=selectedPanel?getPanelBusbarKomponen(selectedPanel,rawData):[];
+  // FIX (6 Okt 2026, QC TEST beda antara Task Monitoring & Detail Progres) - QC TEST/PACKING itu
+  // PENANDA PER PANEL, dulu dibaca per komponen dari checklist[kode].progress yang gak pernah diisi
+  // (selalu TO DO/NOT YET). Sekarang 1 sel gabungan setinggi semua baris (rowSpan, sama seperti
+  // Detail Progres), status dari statusPenandaPanel (panelHelpers.ts) - sumber sama dgn Detail Progres.
+  const PROSES_PENANDA_PANEL=["QC TEST","PACKING"];
+  const selPenandaPanel=(proses:string)=>{
+    const status=statusPenandaPanel(selectedPanel,proses as "QC TEST"|"PACKING");
+    return(
+      <td key={proses} rowSpan={Math.max(1,itemsAktif.length+bk.length)} title="Status per panel (bukan per komponen)" style={{padding:4,textAlign:"center" as const,verticalAlign:"middle" as const,background:"#fff",borderLeft:"1px solid #e2e8f0"}}>
+        <span style={{background:statusStyle[status].bg,color:statusStyle[status].color,border:`1px solid ${statusStyle[status].border}`,padding:"3px 9px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>{status}</span>
+      </td>
+    );
+  };
+
   return(
     <div className="fi">
       <div style={{fontWeight:800,fontSize:20,color:"#0f172a",marginBottom:4}}>Task Monitoring</div>
@@ -133,13 +149,12 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
                 </tr>
               </thead>
               <tbody>
-                {cfg.wps.flatMap((wp:any)=>wp.items).map((item:any,ii:number)=>{
-                  const qty=selectedPanel.checklist?.[item.kode]?.qty||0;
-                  if(qty<=0)return null;
+                {itemsAktif.map((item:any,ii:number)=>{
                   return(
                     <tr key={item.kode}>
                       <td style={{padding:"6px 10px",fontWeight:600,color:"#1e293b",background:ii%2===0?"#fff":"#f8fafc",position:"sticky" as const,left:0,zIndex:1}}>{item.nama}</td>
                       {ALL_PROSES.map((proses:string,prosesIdx:number)=>{
+                        if(PROSES_PENANDA_PANEL.includes(proses))return ii===0?selPenandaPanel(proses):null;
                         const st=getStatus(item.kode,prosesIdx);
                         return(
                           <td key={proses} style={{padding:4,textAlign:"center" as const,background:ii%2===0?"#fff":"#f8fafc"}}>
@@ -157,7 +172,6 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
                 {/* Baris pseudo-komponen BUSBAR (LINE/NETRAL/GROUND/dst) - progress dibaca via
                     getBusbarProgress, sumber SAMA dgn Raw Schedule & Detail Progres. */}
                 {(()=>{
-                  const bk=getPanelBusbarKomponen(selectedPanel,rawData);
                   if(!bk.length)return null;
                   return bk.map((k:string,bi:number)=>{
                     const pct=getBusbarProgress(selectedPanel,k);
@@ -173,7 +187,9 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
                     return(
                       <tr key={"busbar-"+k}>
                         <td title={tahapTooltip} style={{padding:"6px 10px",fontWeight:600,color:"#0e7490",background:bi%2===0?"#f0fdfe":"#ecfeff",position:"sticky" as const,left:0,zIndex:1,cursor:tahapTooltip?"help":undefined}}>🔌 {k}</td>
-                        {ALL_PROSES.map((proses:string)=>(
+                        {ALL_PROSES.map((proses:string)=>PROSES_PENANDA_PANEL.includes(proses)
+                          ?(itemsAktif.length===0&&bi===0?selPenandaPanel(proses):null)
+                          :(
                           <td key={proses} style={{padding:4,textAlign:"center" as const,background:bi%2===0?"#f0fdfe":"#ecfeff"}}>
                             {proses==="BUSBAR"&&(
                               <span title={tahapTooltip} style={{background:statusStyle[status].bg,color:statusStyle[status].color,border:`1px solid ${statusStyle[status].border}`,padding:"3px 9px",borderRadius:5,fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const}}>

@@ -1048,15 +1048,19 @@ async function upsertRawScheduleEntry(
 }
 
 async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
-  const { data: existing } = await supabase
+  // Cek error (6 Okt 2026) - dulu gagal baca diam-diam dianggap "belum ada" lalu insert, gagal insert
+  // diam-diam bikin baris proses hilang tanpa jejak. Sekarang dilempar -> ditangkap catch generator
+  // (success:false + pesan ke planner).
+  const { data: existing, error: errCek } = await supabase
     .from('raw_schedule')
     .select('id')
     .eq('wo_id', wo.id)
     .eq('panel_id', panel.id)
     .eq('proses', proses)
     .maybeSingle()
+  if (errCek) throw new Error(`Gagal cek baris ${proses} panel ${panel.nama}: ${errCek.message}`)
   if (!existing) {
-    await supabase.from('raw_schedule').insert({
+    const { error: errInsert } = await supabase.from('raw_schedule').insert({
       wo_id: wo.id,
       panel_id: panel.id,
       proyek: wo.proyek,
@@ -1065,6 +1069,7 @@ async function ensureSkeletonRow(wo: any, panel: any, proses: string) {
       prioritas: 'Sedang',
       schedule: {},
     })
+    if (errInsert) throw new Error(`Gagal membuat baris ${proses} panel ${panel.nama}: ${errInsert.message}`)
   }
 }
 
@@ -1356,9 +1361,13 @@ export async function generateAndSaveToRawSchedule(
         // di Rencana Harian & modal detail Raw Schedule. Kode ini SUDAH kejadwal lewat proses
         // aslinya masing2 (WIRING CONTROL/POWER, POTONG, dst) - BUSBAR gak perlu jadwal WP sendiri.
         if (WIRING_LIST.includes(proses) || proses === 'BUSBAR') continue
-        // kodeFilter: QC TEST/PACKING itu proses whole-panel (penanda "MARKED"), gak bergantung kode
-        // komponen mana pun - qty satu komponen naik dari 0 gak boleh nambah kode ke baris itu.
-        if (kodeFilter && PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) continue
+        // QC TEST/PACKING itu PENANDA PER PANEL ("MARKED", dipasang planner lewat klik sel di Raw
+        // Schedule) - generator cuma bikin baris kosongnya (skeleton di atas), TIDAK PERNAH menjadwalkan
+        // per komponen/per WP. FIX (6 Okt 2026): dulu cuma di-skip kalau kodeFilter; tanpa kodeFilter
+        // jalur per-komponen di bawah tetap jalan & lolos estafet utk 625/773 pasangan panel-kode live
+        // (proses sebelum QC TEST = RAKIT/PASANG KOMPONEN yg memang dijadwalkan) -> entri ber-WP nyasar
+        // di baris penanda.
+        if (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) continue
 
         const relevantKodes = (PROSES_TANPA_MAPPING_KOMPONEN.includes(proses) ? activeKodes : activeKodes.filter((kode) => {
           const mapKey = kode + '|' + panel.tipe
