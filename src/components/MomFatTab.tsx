@@ -5,6 +5,8 @@ import { Card, Badge, PBar } from "./ui/Primitives";
 import { MomFatUploadPanel } from "./MomFatUploadPanel";
 import { deleteFromR2, extractR2Key } from "../lib/r2Client";
 import { activityLogService } from "../services/activityLogService";
+import { ThumbMedia } from './ui/ThumbMedia'
+import { isVideoFoto } from '../lib/mediaThumb'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MOM FAT (30 Agu 2026) - Report Produksi > MOM FAT. REVISI ALUR (3 Okt 2026, diminta user):
@@ -241,7 +243,7 @@ export function MomFatTab({user}:{user?:any}={}){
                                   {p.foto.map((f:any,fi:number)=>(
                                     <div key={fi} onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}
                                       style={{aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
-                                      <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                                      <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
                                     </div>
                                   ))}
                                 </div>

@@ -2,7 +2,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { getLocalDateStr } from '../lib/dateHelpers'
-import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, BATAS_VIDEO_MB, type FotoGagal } from '../lib/maintenanceRutinSelesai'
+import { BATAS_VIDEO_MENTAH_MB } from '../lib/siapkanMedia'
+import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, type FotoGagal } from '../lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
 import { FotoZoomViewer, fotoMaintenanceKeViewer, type FotoViewer } from './FotoZoomViewer'
@@ -71,7 +72,7 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
     if(!fileList||fileList.length===0)return;
     const tolak:string[]=[];
     const dipilih=Array.from(fileList).filter(f=>{
-      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MB:MAX_FOTO_MB;
+      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MENTAH_MB:MAX_FOTO_MB;
       if(f.size>batas*1024*1024){tolak.push(f.name+" ("+(f.size/1024/1024).toFixed(0)+" MB, maks "+batas+" MB)");return false;}
       return true;
     }).map(file=>({file,previewUrl:URL.createObjectURL(file)}));

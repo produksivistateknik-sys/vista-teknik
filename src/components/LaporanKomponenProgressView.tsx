@@ -2,6 +2,8 @@ import { useState, useMemo } from 'react'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
+import { ThumbMedia } from './ui/ThumbMedia'
+import { isVideoFoto, ekstensiMedia } from '../lib/mediaThumb'
 
 export type TugasKomponenProgress = {
   field: string
@@ -47,7 +49,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
 
   const fotoKpPanel=(panel:any):FotoZipItem[]=>{
     const fotoList=panel[tugas.fotoField]||[]
-    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`foto_${fi+1}.jpg`}))
+    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`foto_${fi+1}.${ekstensiMedia(f)}`}))
   }
 
   const downloadZipPanelKp=async(panel:any)=>{
@@ -158,7 +160,7 @@ export function LaporanKomponenProgressView({woData,tugas}:{woData:any[],tugas:T
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
               {foto.map((f:any,fi:number)=>(
                 <div key={fi} onClick={()=>setLightbox({fotos:foto,index:fi,label:`${tugas.label}_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="kp-foto-print">
-                  <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
+                  <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                   <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                 </div>
               ))}

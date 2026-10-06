@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
-import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, BATAS_VIDEO_MB, type FotoGagal } from './lib/maintenanceRutinSelesai'
+import { ThumbMedia } from './components/ui/ThumbMedia'
+import { BATAS_VIDEO_MENTAH_MB } from './lib/siapkanMedia'
+import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, type FotoGagal } from './lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch } from './lib/mediaRotasi'
 import { useVersionCheck } from './lib/versionCheck'
 
@@ -85,7 +87,7 @@ export default function MesinPublic(){
     if(!fileList||fileList.length===0)return
     const tolak:string[]=[]
     const dipilih=Array.from(fileList).filter(f=>{
-      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MB:MAX_FOTO_MB
+      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MENTAH_MB:MAX_FOTO_MB
       if(f.size>batas*1024*1024){tolak.push(f.name+" ("+(f.size/1024/1024).toFixed(0)+" MB, maks "+batas+" MB)");return false}
       return true
     }).map(file=>({file,previewUrl:URL.createObjectURL(file)}))
@@ -491,7 +493,7 @@ export default function MesinPublic(){
                       {foto.length>0&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
                           {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
-                            <a key={fi} href={f.url} target="_blank" rel="noreferrer"><img src={f.url} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/></a>
+                            <a key={fi} href={f.url} target="_blank" rel="noreferrer" style={{display:"block",width:56,height:56,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></a>
                           );})}
                         </div>
                       )}

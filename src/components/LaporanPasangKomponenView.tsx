@@ -3,6 +3,8 @@ import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../l
 import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal, computeProsesStatus, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
+import { ThumbMedia } from './ui/ThumbMedia'
+import { isVideoFoto, ekstensiMedia } from '../lib/mediaThumb'
 
 const STATUS_LABEL_PK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
@@ -77,7 +79,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
 
   const fotoPkPanel=(panel:any):FotoZipItem[]=>{
     const fotoList=panel.pasang_komponen_photos||[]
-    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`foto_${fi+1}.jpg`}))
+    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`foto_${fi+1}.${ekstensiMedia(f)}`}))
   }
 
   const downloadZipPanelPk=async(panel:any)=>{
@@ -228,7 +230,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
               {foto.map((f:any,fi:number)=>(
                 <div key={fi} onClick={()=>setLightbox({fotos:foto,index:fi,label:`PasangKomponen_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="pk-foto-print">
-                  <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
+                  <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                   <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                 </div>
               ))}

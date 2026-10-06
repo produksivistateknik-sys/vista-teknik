@@ -13,3 +13,7 @@ export type MediaFoto={url:string,mime?:string,name?:string,uploaded_by?:string,
 export const isVideoFoto=(f:MediaFoto):boolean=>!!f.mime&&f.mime.startsWith("video/")
 export const isImageFoto=(f:MediaFoto):boolean=>!f.mime||f.mime.startsWith("image/")
 export const isGenericFoto=(f:MediaFoto):boolean=>!!f.mime&&!f.mime.startsWith("image/")&&!f.mime.startsWith("video/")
+// Ekstensi file utk nama unduhan (6 Okt 2026, dukungan video) - diambil dari URL R2 (key selalu
+// berakhiran ekstensi asli: .jpg/.mp4/...), dulu nama unduhan di-hardcode ".jpg" sehingga video
+// terunduh sebagai .jpg.
+export const ekstensiMedia=(f:MediaFoto):string=>{const m=/\.([a-z0-9]{2,5})(?:[?#]|$)/i.exec(f.url||"");return m?m[1].toLowerCase():(isVideoFoto(f)?"mp4":"jpg")}

@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 import { downloadFotoTunggal, sanitizeNamaFile } from '../lib/downloadHelpers'
-import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
+import { isVideoFoto, isGenericFoto, ekstensiMedia } from '../lib/mediaThumb'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 
 export type FotoViewer = {
@@ -14,8 +14,8 @@ export type FotoViewer = {
 // Foto Maintenance (rutin_log/kerusakan) disimpan {url,type:"image"|"video",uploaded_at} TANPA
 // `mime` - viewer ini ngenali video dari `mime`, jadi dipetakan di sini (tampilan doang, data
 // gak diubah). Tanpa `type` (foto Kerusakan) = gambar, sama aturan isImageFoto.
-export const fotoMaintenanceKeViewer=(f:{url:string,type?:string,uploaded_at?:string}):FotoViewer=>
-  ({url:f.url,uploaded_at:f.uploaded_at,mime:f.type==="video"?"video/mp4":undefined})
+export const fotoMaintenanceKeViewer=(f:{url:string,type?:string,mime?:string,name?:string,uploaded_at?:string}):FotoViewer=>
+  ({url:f.url,uploaded_at:f.uploaded_at,name:f.name,mime:f.mime||(f.type==="video"?"video/mp4":undefined)})
 
 // Viewer gaya ClickUp: prev/next antar foto dalam galeri yang sama, toolbar atas rapi
 // (nama+posisi, Download, Close), scroll-wheel zoom + drag buat geser waktu di-zoom (mouse),
@@ -146,7 +146,7 @@ export function FotoZoomViewer({fotos,startIndex,label,onClose}:{fotos:FotoViewe
               <i className="ti ti-rotate-clockwise" style={{fontSize:15}}/> Putar
             </button>
           )}
-          <button onClick={()=>downloadFotoTunggal(foto.url,sanitizeNamaFile(foto.name||`${label||"foto"}_${index+1}.jpg`))}
+          <button onClick={()=>downloadFotoTunggal(foto.url,sanitizeNamaFile(foto.name||`${label||"foto"}_${index+1}.${ekstensiMedia(foto)}`))}
             style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
             <i className="ti ti-download" style={{fontSize:15}}/> Download
           </button>

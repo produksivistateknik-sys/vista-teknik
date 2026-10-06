@@ -4,6 +4,8 @@ import { activityLogService } from "../services/activityLogService";
 import { DIVISI_CONFIG } from "../constants/panelTypes";
 import { FotoZoomViewer, type FotoViewer } from "./FotoZoomViewer";
 import { Card } from "./ui/Primitives";
+import { ThumbMedia } from './ui/ThumbMedia'
+import { isVideoFoto } from '../lib/mediaThumb'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - sidebar tab sendiri - laporan/dokumentasi pekerjaan operator di
@@ -215,7 +217,7 @@ export function ProyekLuarTab(){
                         <div key={fi} onClick={()=>setFotoViewer({fotos:fotoList,startIndex:fi,label:l.nama_lokasi})} title="Lihat foto"
                           style={{width:44,height:44,borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9",
                             border:"1px solid var(--border-color,#e2e8f0)",position:"relative"}}>
-                          <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                          <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
                           {fi===3&&fotoList.length>4&&(
                             <div style={{position:"absolute",inset:0,background:"#0f172a99",color:"#fff",fontSize:12,fontWeight:700,
                               display:"flex",alignItems:"center",justifyContent:"center"}}>+{fotoList.length-4}</div>

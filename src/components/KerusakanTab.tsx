@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
-import { uploadToR2 } from '../lib/r2Client'
+import { unggahMediaKeR2, isFileVideo } from '../lib/siapkanMedia'
+import { ThumbMedia } from './ui/ThumbMedia'
 import { activityLogService } from '../services/activityLogService'
 import { fmtShort } from '../lib/dateHelpers'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
@@ -67,29 +68,43 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
     if(!form.mesin_id||!form.judul.trim())return;
     setSaving(true);
     try{
+      // Foto/video (6 Okt 2026) - foto kini dikompres, video dikompres ke 720p (helper bersama
+      // siapkanMedia). File yang gagal TIDAK lagi dilewati diam-diam (dulu catch{continue}):
+      // dikumpulkan, disebutkan ke admin, & tetap di form untuk diulang.
       const fotoBaru:any[]=[];
+      const gagal:{s:{file:File,previewUrl:string},alasan:string}[]=[];
       for(const s of stagedFoto){
-        const key=`maintenance/${form.mesin_id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
         try{
-          const publicUrl=await uploadToR2(s.file,key,s.file.type||"image/jpeg");
-          fotoBaru.push({url:publicUrl,uploaded_at:new Date().toISOString()});
-        }catch{continue;}
+          const m=await unggahMediaKeR2(s.file,`maintenance/${form.mesin_id}`);
+          fotoBaru.push({url:m.url,mime:m.mime,name:m.name,type:m.mime.startsWith("video/")?"video":"image",uploaded_at:new Date().toISOString()});
+        }catch(err:any){
+          console.error("Upload dokumentasi kerusakan gagal:",s.file.name,err);
+          gagal.push({s,alasan:String(err?.message||err)});
+        }
       }
+      const sisa=gagal.map(g=>g.s);
+      const pesanGagal=gagal.length>0?`${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}\n\nLog sudah tersimpan. File yang gagal masih di form - tekan Simpan lagi untuk mengulang.`:"";
+      // Sukses simpan DB: kalau ada file gagal, form TETAP terbuka (mode edit log yang sama) dgn
+      // file gagal saja, supaya Simpan berikutnya menambahkan ke log yang sama (bukan log baru).
+      const selesaiSimpan=(id:any)=>{
+        stagedFoto.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
+        if(sisa.length>0){setStagedFoto(sisa);setEditId(id);alert(pesanGagal);}
+        else{setEditId(null);setShowForm(false);setForm(BLANK_FORM);setStagedFoto([]);}
+      };
       const payload:any={mesin_id:Number(form.mesin_id),judul:form.judul.trim(),kendala:form.kendala,perbaikan:form.perbaikan,tgl_kendala:form.tgl_kendala||null,tgl_perbaikan:form.tgl_perbaikan||null,teknisi:form.teknisi,status:form.status};
       if(editId){
         const existing=maintenanceList.find((m:any)=>m.id===editId);
         if(fotoBaru.length>0)payload.foto=[...(existing?.foto||[]),...fotoBaru];
         const{data,error}=await supabase.from("maintenance_log").update(payload).eq("id",editId).select("*,mesin(nama,kode)").single();
-        if(!error){setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===editId?data:m));setEditId(null);setShowForm(false);resetForm();}
+        if(error){console.error("Simpan log kerusakan gagal:",error);alert("Gagal menyimpan log kerusakan: "+error.message+"\n\nData di form masih ada - coba Simpan lagi.");return;}
+        setMaintenanceList((p:any[])=>p.map((m:any)=>m.id===editId?data:m));selesaiSimpan(editId);
       } else {
         if(fotoBaru.length>0)payload.foto=fotoBaru;
         const{data,error}=await supabase.from("maintenance_log").insert(payload).select("*,mesin(nama,kode)").single();
-        if(!error){
-          setMaintenanceList((p:any[])=>[data,...p]);
-          await activityLogService.insert({user_name:getUname(),action:"TAMBAH MAINTENANCE",description:"Tambah log maintenance "+data.mesin?.nama+" - "+data.judul,module:"maintenance",halaman:"Maintenance"});
-          setShowForm(false);
-          resetForm();
-        }
+        if(error){console.error("Simpan log kerusakan gagal:",error);alert("Gagal menyimpan log kerusakan: "+error.message+"\n\nData di form masih ada - coba Simpan lagi.");return;}
+        setMaintenanceList((p:any[])=>[data,...p]);
+        await activityLogService.insert({user_name:getUname(),action:"TAMBAH MAINTENANCE",description:"Tambah log maintenance "+data.mesin?.nama+" - "+data.judul,module:"maintenance",halaman:"Maintenance"});
+        selesaiSimpan(data.id);
       }
     } finally {
       setSaving(false);
@@ -150,7 +165,7 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
   <h3>Perbaikan</h3>
   <p>${esc(m.perbaikan||"-")}</p>
   ${(updateHarian.length>0||m.catatan)?`<h3>Riwayat Update</h3>${m.catatan?`<p><i>Catatan lama: ${esc(m.catatan)}</i></p>`:""}${updateHarian.map((u:any,ui:number)=>`<p><b>Hari ke-${ui+1}</b> (${esc(u.tanggal)}${u.oleh?", "+esc(u.oleh):""})<br/>${esc(u.catatan)}</p>`).join("")}`:""}
-  ${foto.length>0?`<h3>Foto</h3>${foto.map((f:any)=>`<p><img src="${f.url}" style="max-width:320px;"/></p>`).join("")}`:""}
+  ${foto.length>0?`<h3>Foto</h3>${foto.map((f:any)=>(f.type==="video"||(f.mime||"").startsWith("video/"))?`<p>Video: <a href="${f.url}">${f.url}</a></p>`:`<p><img src="${f.url}" style="max-width:320px;"/></p>`).join("")}`:""}
 </body></html>`;
     const blob=new Blob(["﻿",html],{type:"application/msword"});
     const url=URL.createObjectURL(blob);
@@ -203,14 +218,14 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
             <div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:stagedFoto.length>0?8:0}}>
               {stagedFoto.map((s,si)=>(
                 <div key={si} style={{position:"relative"}}>
-                  <img src={s.previewUrl} style={{width:56,height:56,borderRadius:8,objectFit:"cover",border:"1.5px dashed #2563eb"}}/>
+                  <div style={{width:56,height:56,borderRadius:8,overflow:"hidden",border:"1.5px dashed #2563eb"}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                   <button onClick={()=>batalkanFotoStaged(si)} style={{position:"absolute",top:-6,right:-6,width:17,height:17,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",fontSize:9,lineHeight:1}}>✕</button>
                 </div>
               ))}
             </div>
             <label style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:"#64748b",background:"#f8fafc",border:"1.5px dashed #cbd5e1",borderRadius:10,padding:"8px 12px",cursor:"pointer"}}>
               📷 Tambah Foto
-              <input type="file" accept="image/*" multiple style={{display:"none"}} onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value="";}}/>
+              <input type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value="";}}/>
             </label>
           </div>
           <div style={{display:"flex",gap:8}}>
@@ -291,8 +306,8 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
                     <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
                       {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
                         <div key={fi} style={{position:"relative",width:52,height:52}}>
-                          <img src={f.url} title="Buka foto" onClick={()=>bukaFotoKerusakan(m,fi)}
-                            style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",cursor:"pointer",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
+                          <div title={f.type==="video"?"Buka video":"Buka foto"} onClick={()=>bukaFotoKerusakan(m,fi)}
+                            style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></div>
                           <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
                             style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
                             <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>

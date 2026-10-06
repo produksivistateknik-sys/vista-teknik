@@ -3,6 +3,8 @@ import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../l
 import { getEffCfgGlobal, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
+import { ThumbMedia } from './ui/ThumbMedia'
+import { isVideoFoto, ekstensiMedia } from '../lib/mediaThumb'
 
 const STATUS_LABEL_WK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
@@ -82,7 +84,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
   const downloadZipPanelWk=async(panel:any,komponenList:any[])=>{
     const items:FotoZipItem[]=[]
     komponenList.forEach((k:any)=>{
-      k.foto.forEach((f:any,fi:number)=>items.push({url:f.url,path:`${sanitizeNamaFile(k.nama)}/foto_${fi+1}.jpg`}))
+      k.foto.forEach((f:any,fi:number)=>items.push({url:f.url,path:`${sanitizeNamaFile(k.nama)}/foto_${fi+1}.${ekstensiMedia(f)}`}))
     })
     if(items.length===0){alert("Belum ada foto untuk panel ini");return}
     const key=`panel_${panel.id}`
@@ -96,7 +98,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
     const items:FotoZipItem[]=[]
     folder.panels.forEach((p:any)=>{
       komponenWiringPanel(p).forEach((k:any)=>{
-        k.foto.forEach((f:any,fi:number)=>items.push({url:f.url,path:`${sanitizeNamaFile(p.nama)}/${sanitizeNamaFile(k.nama)}/foto_${fi+1}.jpg`}))
+        k.foto.forEach((f:any,fi:number)=>items.push({url:f.url,path:`${sanitizeNamaFile(p.nama)}/${sanitizeNamaFile(k.nama)}/foto_${fi+1}.${ekstensiMedia(f)}`}))
       })
     })
     if(items.length===0){alert("Belum ada foto untuk proyek ini");return}
@@ -196,7 +198,7 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
               <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
                 {k.foto.map((f:any,fi:number)=>(
                   <div key={fi} onClick={()=>setLightbox({fotos:k.foto,index:fi,label:`${k.nama}_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="wk-foto-print">
-                    <img src={f.url} style={{width:"100%",aspectRatio:"1",objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
+                    <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                     <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                   </div>
                 ))}

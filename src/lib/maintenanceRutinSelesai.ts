@@ -12,9 +12,9 @@
 //      DITEMPEL ke log yg sama -> putus di tengah jalan pun catatan & foto yang sudah terkirim aman.
 import { supabase } from './supabase'
 import { uploadToR2 } from './r2Client'
-import { kompresFoto } from './kompresFoto'
+import { siapkanMediaUpload, batasWaktuUnggahMs, BATAS_VIDEO_MB } from './siapkanMedia'
 
-export const BATAS_VIDEO_MB = 50
+export { BATAS_VIDEO_MB }
 export type ItemFotoLog = { url: string; type: 'image' | 'video'; uploaded_at: string }
 export type FotoGagal = { file: File; alasan: string }
 
@@ -39,12 +39,6 @@ export async function simpanSelesaiMaintenanceRutin(opsi: {
   return { rutinBaru, logId: (log as any).id }
 }
 
-const ekstensi = (file: File) => {
-  const dot = file.name.lastIndexOf('.')
-  if (dot > 0 && dot < file.name.length - 1) return file.name.slice(dot + 1).toLowerCase()
-  return file.type.startsWith('video/') ? 'mp4' : 'jpg'
-}
-
 // Upload satu per satu & tempel ke log `logId`. Kembalikan daftar file yang gagal (+alasan) supaya
 // pemanggil bisa menawarkan "Coba lagi" ke log yang SAMA (tidak bikin log baru/ganda).
 export async function unggahFotoKeLogMaintenance(logId: number, rutinId: number, files: File[],
@@ -54,17 +48,13 @@ export async function unggahFotoKeLogMaintenance(logId: number, rutinId: number,
   onProgres?.(0, files.length)
   for (const file of files) {
     try {
-      const video = file.type.startsWith('video/')
-      if (video && file.size > BATAS_VIDEO_MB * 1024 * 1024) {
-        throw new Error(`video ${(file.size / 1024 / 1024).toFixed(0)} MB, maksimal ${BATAS_VIDEO_MB} MB`)
-      }
-      let blob: Blob = file, tipe = file.type || 'application/octet-stream', ext = ekstensi(file)
-      if (!video) {
-        try { blob = await kompresFoto(file); tipe = 'image/jpeg'; ext = 'jpg' }
-        catch (e) { console.warn('Kompres foto gagal, dikirim ukuran asli:', e) }
-      }
-      const key = `maintenance-rutin/${rutinId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${ext}`
-      const url = await uploadToR2(blob, key, tipe, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: 180_000 })
+      // 6 Okt 2026 - lewat helper bersama siapkanMedia: foto dikompres (gagal -> ukuran asli, sama
+      // seperti dulu), video kini DIKOMPRES ke 720p dulu baru dicek batas BATAS_VIDEO_MB (dulu
+      // video >50 MB langsung ditolak walau setelah dikompres sebenarnya muat).
+      const m = await siapkanMediaUpload(file)
+      const video = m.mime.startsWith('video/')
+      const key = `maintenance-rutin/${rutinId}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
+      const url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob) })
       const item: ItemFotoLog = { url, type: video ? 'video' : 'image', uploaded_at: new Date().toISOString() }
       // Baca foto terkini dulu lalu tambahkan (bukan timpa) - aman kalau sebagian sudah tertempel.
       const { data: cur, error: eBaca } = await supabase.from('maintenance_rutin_log').select('foto').eq('id', logId).single()
