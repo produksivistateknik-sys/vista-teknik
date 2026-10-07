@@ -1,30 +1,14 @@
-// KOP SURAT RESMI PT. VISTA INTI TEKNIK (7 Okt 2026) - SATU tempat konfigurasi teks & warna kop, dipakai
-// semua dokumen cetak (PDF arsip Tracking Durasi sekarang; Print Qty dll nanti). Ubah teks/warna kop DI SINI.
+// KOP SURAT RESMI PT. VISTA INTI TEKNIK (7 Okt 2026) - versi jsPDF. Teks & warna kop TIDAK di sini, tapi di
+// kopSuratKonfig.ts (satu sumber utk versi jsPDF & HTML).
 // Desain yang disetujui user: kop penuh menempel tepi atas & kiri-kanan kertas di halaman 1 (rasio 1653:389,
 // ±49 mm di A4 - sama dgn kop di file Word user), kop ringkas di halaman lanjutan. Posisi/ukuran dikonversi
 // dari HTML/CSS desain (satuan "cqw" = 1% lebar kop).
 // Aset (logo transparan 660x310 + font Carlito subset) dimuat LAZY lewat siapkanKop() hanya saat export.
 import type jsPDF from 'jspdf'
 
-export const KOP_SURAT={
-  namaPt:"PT. VISTA INTI TEKNIK",
-  alamat:["Jln. Muncul, Komplek Pergudangan Ritz Gate blok BF-15,","Gedangan – Sidoarjo"],
-  telepon:"031 – 85589496",
-  website:"www.vistateknik.co.id",
-  email:"vista.intiteknik@gmail.com",
-  bidangUsaha:[
-    ["ELECTRICAL SWITCHBOARD","MANUFACTURING"],
-    ["ELECTRICAL POWER","SYSTEM DESIGN"],
-    ["MECHANICAL, ELECTRICAL","& INSTRUMENTATION SUPPLIER"],
-    ["AUTOMATION SYSTEM","CONTROL ENGINEERING"],
-  ],
-  warna:{latar:"#050505",emas:"#f3d887",teks:"#ddd09f",oranye:"#f37321",oranye2:"#f39a2e",poin:"#ee8a3c",titik:"#c9c3b0"},
-};
-// Baris alamat ke-2 & baris web/email persis susunan kop asli.
-export const barisAlamatKop=()=>[KOP_SURAT.alamat[0],`${KOP_SURAT.alamat[1]}, Telp. : ${KOP_SURAT.telepon}`];
-export const barisWebKop=()=>`${KOP_SURAT.website},  Email : ${KOP_SURAT.email}`;
-
-export const RASIO_KOP_PENUH=389/1653;
+// Konfigurasi teks & warna kop ada di kopSuratKonfig.ts (dipakai bersama versi HTML & vista-pekerja).
+import { KOP_SURAT, barisAlamatKop, barisWebKop, RASIO_KOP_PENUH } from './kopSuratKonfig'
+export { KOP_SURAT, barisAlamatKop, barisWebKop, RASIO_KOP_PENUH }
 const MM_KE_PT=72/25.4;
 const rgb=(hex:string):[number,number,number]=>{const h=hex.replace('#','');return[parseInt(h.slice(0,2),16),parseInt(h.slice(2,4),16),parseInt(h.slice(4,6),16)];};
 
