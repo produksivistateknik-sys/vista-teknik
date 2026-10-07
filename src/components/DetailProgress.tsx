@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
@@ -17,20 +17,24 @@ const tdS={padding:"6px 10px",borderBottom:"1px solid #f5f7fa",
   borderRight:"1px solid #f5f7fa",textAlign:"center" as const};
 const tdSL={...tdS,textAlign:"left" as const};
 
+// PERFORMA (7 Okt 2026): tooltip histori dulu SELALU dirender (tersembunyi opacity/visibility) di
+// tiap sel ber-histori - 24.430 dari 62.592 elemen halaman ini (3.135 tooltip). Sekarang isinya baru
+// dibuat saat kursor masuk sel (hover); CSS .hist-cell:hover tetap yang menampilkan - tampilan sama.
 const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
+  const[hover,setHover]=useState(false);
   if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
   const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
   const isDone=pct===100;
   const history=cl?.history?.[proses]||[];
   const pctFinal=pct!==undefined&&pct!==null?pct:getBestProgress(cl,proses);
   return(
-    <td style={tdS} className="hist-cell">
+    <td style={tdS} className="hist-cell" onMouseEnter={history.length>0?()=>setHover(true):undefined} onMouseLeave={hover?()=>setHover(false):undefined}>
       <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
         <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
           <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
         </div>
         <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
-        {history.length>0&&(
+        {hover&&history.length>0&&(
           <div className="hist-tooltip" style={{
             opacity:0,visibility:"hidden" as const,
             position:"absolute" as const,bottom:"100%",left:"50%",
@@ -57,6 +61,24 @@ const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl
       </div>
     </td>
   );
+};
+
+// PERFORMA (7 Okt 2026): kartu panel dibangun saat MENDEKATI layar (IntersectionObserver, jarak
+// 1500px), sebelumnya cuma kotak kosong setinggi perkiraan kartu aslinya supaya posisi scroll tidak
+// melompat. Sekali dibangun, kartu tetap ada (tidak dibongkar lagi). 4 kartu teratas langsung dibangun.
+// Dulu 64 kartu (±62 ribu elemen) dibangun sekaligus saat halaman dibuka -> layar beku ±1 detik.
+const KartuMalas=({langsung,tinggiPerkiraan,children}:{langsung:boolean,tinggiPerkiraan:number,children:()=>React.ReactNode})=>{
+  const[tampil,setTampil]=useState(langsung);
+  const ref=useRef<HTMLDivElement>(null);
+  useEffect(()=>{
+    if(tampil||!ref.current)return;
+    if(typeof IntersectionObserver==="undefined"){setTampil(true);return;}
+    const ob=new IntersectionObserver(es=>{if(es.some(e=>e.isIntersecting)){setTampil(true);ob.disconnect();}},{rootMargin:"1500px 0px"});
+    ob.observe(ref.current);
+    return()=>ob.disconnect();
+  },[tampil]);
+  if(tampil)return <>{children()}</>;
+  return <div ref={ref} style={{height:tinggiPerkiraan,borderRadius:8,border:"1px solid var(--border-color,#eaecf0)",background:"var(--card-bg,#fff)"}}/>;
 };
 
 export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
@@ -226,8 +248,13 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
           return p.pd[pr]!==undefined&&p.pd[pr]>=0;
         });
 
+        // Perkiraan tinggi kartu utk kotak pengganti (header ±42 + kepala tabel ±36 + baris ±33).
+        const nBarisKomp=wps.reduce((n:number,wp:any)=>n+wp.items.filter((it:any)=>(p.checklist?.[it.kode]?.qty||0)>0).length,0);
+        const nBarisBusbar=getPanelBusbarKomponen(p,rawData).length;
+        const tinggiPerkiraan=42+36+(nBarisKomp+(nBarisBusbar?nBarisBusbar+1:0))*33;
         return(
-          <div key={pi} style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",
+          <KartuMalas key={p.id??pi} langsung={pi<4} tinggiPerkiraan={tinggiPerkiraan}>{()=>(
+          <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",
             borderRadius:8,overflow:"hidden",borderLeft:"3px solid "+borderColor}}>
 
             {/* Panel header */}
@@ -407,6 +434,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
               </table>
             </div>
           </div>
+          )}</KartuMalas>
         );
       })}
     </div>

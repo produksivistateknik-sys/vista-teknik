@@ -508,12 +508,9 @@ export function calcPanelProgress(panel, rawData?:any[]): Record<string, number>
     // badge ringkasan) dulu SALAH masih coba rata-ratakan checklist[kode].progress yang kosong,
     // bikin 2 dari 13 proses SELALU ke-0% phantom walau QC/Packing beneran udah selesai - narik
     // rata-rata panelOverall turun drastis (11x100+2x0)/13=~85% padahal semua proses lain 100%.
-    if(pr==="QC TEST"){
-      prog[pr]=panel.qc_checklist?._global?.status==="complete"?100:0;
-      return;
-    }
-    if(pr==="PACKING"){
-      prog[pr]=panel.packing_done?100:0;
+    // 7 Okt 2026 - lewat statusPenandaPanel (satu sumber dgn Task Monitoring/Detail Progres).
+    if(pr==="QC TEST"||pr==="PACKING"){
+      prog[pr]=statusPenandaPanel(panel,pr)==="DONE"?100:0;
       return;
     }
     // Cuma komponen yang beneran relevan ke proses ini yang ikut dirata-rata - komponen yang
@@ -607,8 +604,7 @@ export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, cc
       prog[pr]=bvals.length>0?Math.round(bvals.reduce((a,b)=>a+b,0)/bvals.length):0;
       return;
     }
-    if(pr==="QC TEST"){ prog[pr]=panel.qc_checklist?._global?.status==="complete"?100:0; return; }
-    if(pr==="PACKING"){ prog[pr]=panel.packing_done?100:0; return; }
+    if(pr==="QC TEST"||pr==="PACKING"){ prog[pr]=statusPenandaPanel(panel,pr)==="DONE"?100:0; return; } // satu sumber, lihat statusPenandaPanel
     const relevantActive=active.filter(it=>isKomponenRelevant(it.kode,panel.tipe,pr));
     const itemsForCalc=relevantActive.length>0?relevantActive:active;
     // Badge % panel/WO di ManajemenWO/SummaryProgress/Dashboard/Task Monitoring pakai fungsi ini -

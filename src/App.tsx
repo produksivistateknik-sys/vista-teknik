@@ -308,7 +308,10 @@ const [pekerja, setPekerja] = useState<any[]>([]);
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
-  const { data: activityLog, refetch: refetchActivityLog } = useActivityLog()
+  // activity_log cuma dimuat setelah tab pemakainya (Stok/Activity Log/Master User) pernah dibuka -
+  // lihat useActivityLog (PERFORMA 7 Okt 2026).
+  const butuhActivityLog=visitedTabs.some(t=>t==="stok"||t==="activity"||t==="masteruser")
+  const { data: activityLog, refetch: refetchActivityLog } = useActivityLog(butuhActivityLog)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const refreshAll = async () => {
     setIsRefreshing(true)
