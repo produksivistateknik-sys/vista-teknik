@@ -117,7 +117,11 @@ export function gambarKopRingkas(doc:jsPDF,aset:AsetKop,sub:string):number{
   doc.setFont(aset.font,'normal');doc.setFontSize(fsT*MM_KE_PT);doc.setTextColor(...rgb(w.emas));
   doc.text(KOP_SURAT.namaPt,3.5*cq,H/2-.4);
   doc.setFontSize(fsS*MM_KE_PT);doc.setTextColor(...rgb(w.teks));
-  doc.text(sub,3.5*cq,H/2+fsS*.2+fsS*.9);
+  // Pengaman: teks terlalu panjang (nama panel >±105 karakter) dipotong dgn "…" supaya tidak menabrak logo.
+  const batasTeks=W-3.5*cq-lebarLogo-3.5*cq-3;
+  let teksSub=sub;
+  while(teksSub.length>4&&doc.getTextWidth(teksSub)>batasTeks)teksSub=teksSub.slice(0,-2).trimEnd()+"…";
+  doc.text(teksSub,3.5*cq,H/2+fsS*.2+fsS*.9);
   doc.setFillColor(...rgb(w.oranye));doc.rect(0,H-.9,W,.9,'F');
   doc.restoreGraphicsState();
   doc.setFont('helvetica','normal');doc.setTextColor(0,0,0);

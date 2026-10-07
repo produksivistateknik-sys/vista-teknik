@@ -172,6 +172,10 @@ export function ArsipTab({user,refetchWO}:any){
   // ringkas di halaman lanjutan. Tabel & timeline dirapatkan (font 9 -> 8, baris timeline 6,4 mm) supaya
   // panel biasa tetap muat di halaman 1. Isi tabel/Gantt tidak berubah.
   const exportGanttPdf=async(panel:any,baris:BarisGantt[],kendala:any[])=>{
+    try{await buatGanttPdf(panel,baris,kendala);}
+    catch(e:any){console.error("Export PDF Tracking Durasi gagal:",e);alert("Gagal membuat PDF: "+(e?.message||e));}
+  };
+  const buatGanttPdf=async(panel:any,baris:BarisGantt[],kendala:any[])=>{
     const doc=new jsPDF();
     let aset:AsetKop|null=null;
     try{aset=await siapkanKop(doc);}
