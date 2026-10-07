@@ -134,7 +134,10 @@ export function hitungGanttArsip(panel:any,data:DataGanttArsip,hariIni:string=ne
     const cp=data.checkpoint.filter(c=>c.proses===proses);
     const mulaiTimer=mins(tm.map(t=>t.mulai).filter(Boolean) as string[]);
     const mulaiCp=mins(cp.map(c=>c.ts||c.tanggal).filter(Boolean) as string[]);
-    const mulai=proses==="PASANG KOMPONEN"?(mulaiCp||mulaiTimer):(mulaiTimer||mulaiCp);
+    // Pasang Komponen: paling awal dari timer & checkpoint (persis START versi lama - timer dulu, lalu
+    // checkpoint menimpa kalau lebih awal). Proses lain: timer; checkpoint hanya cadangan kalau tidak
+    // ada timer sama sekali (dulu "Belum ada data").
+    const mulai=proses==="PASANG KOMPONEN"?mins([mulaiTimer,mulaiCp].filter(Boolean) as string[]):(mulaiTimer||mulaiCp);
     if(!mulai)return{...base,bars:[]};
     let selesai:string|null=null;
     if(PROSES_PER_KOMPONEN.includes(proses)&&(pd[proses]||0)>=100){

@@ -130,7 +130,7 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
       headStyles:{fillColor:[248,249,251],textColor:[107,114,128],fontSize:6,fontStyle:'bold',halign:'center'},
       alternateRowStyles:{fillColor:[248,249,251]},
       columnStyles:{...columnStyles,0:{cellWidth:LEBAR_LABEL,fontStyle:'bold',textColor:[23,27,46],cellPadding:{top:2.2,bottom:2.2,left:5,right:1}}},
-      didParseCell:(d:any)=>{if(d.section==='head'&&d.column.index-1===iHari)d.cell.styles.textColor=ORANYE;},
+      didParseCell:(d:any)=>{if(d.section==='head'&&iHari>=0&&d.column.index-1===iHari)d.cell.styles.textColor=ORANYE;},
       didDrawCell:(d:any)=>{
         if(d.section!=='body'||d.column.index!==0)return;
         const r=rows[d.row.index];if(!r)return;
