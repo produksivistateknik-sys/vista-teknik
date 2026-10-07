@@ -57,12 +57,13 @@ export const stokTransaksiService = {
     return row && row.id != null ? row : null
   },
 
-  // SATU fungsi masuk & SATU fungsi keluar (2 Okt 2026, dipertegas saat menambah form operator
-  // "Gunakan Stok Komponen" di vista-pekerja). Ketiga jalur pengubah stok - form Admin (di sini),
-  // Produksi Stok (SQL produksi_stok_cek_selesai/batal_produksi_stok) & form operator
-  // (vista-pekerja lib/stokTransaksiService.ts catatKeluar) - SEMUA berakhir di RPC
-  // catat_transaksi_stok: kunci baris stok, cek stok TERBARU di dalam kunci, update + catat
+  // SATU fungsi masuk & SATU fungsi keluar (2 Okt 2026). Jalur pengubah stok - form Admin (di sini)
+  // & Produksi Stok (SQL produksi_stok_cek_selesai/batal_produksi_stok, stok MASUK) - SEMUA berakhir
+  // di RPC catat_transaksi_stok: kunci baris stok, cek stok TERBARU di dalam kunci, update + catat
   // transaksi dalam 1 transaksi DB. Keluar > stok saat dieksekusi = ditolak "Stok tidak cukup".
+  // Stok KELUAR (pemakaian) HANYA lewat form Admin ini (7 Okt 2026, keputusan user) - form operator
+  // "Gunakan Stok" di vista-pekerja sudah DICABUT. Catatan: pembatasnya baru di tampilan; RPC ini tetap
+  // GRANT ke anon karena Admin sendiri belum memakai Supabase Auth (semua app masuk sbg anon).
   catatMasuk(p: { komponenId: number; jumlah: number; keterangan?: string | null; createdBy: string; tanggal?: string }) {
     return this.catat({ ...p, tipe: 'masuk', sumber: 'manual' })
   },
