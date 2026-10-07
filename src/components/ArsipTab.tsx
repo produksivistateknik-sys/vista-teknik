@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { calcPanelProgress, getEffCfgGlobal, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN } from '../lib/panelHelpers'
+import { calcPanelProgress, getEffCfgGlobal } from '../lib/panelHelpers'
 import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { Modal } from './ui/Primitives'
 import { FotoZoomViewer } from './FotoZoomViewer'
@@ -9,6 +9,7 @@ import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { buildDayColumns, colIndexForDate, gambarTimelineGanttPdf, type BarisGanttPdf } from '../lib/ganttArsipPdf'
+import { hitungGanttArsip, rentangGantt, type BarisGantt, type DataGanttArsip } from '../lib/ganttArsip'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
@@ -34,32 +35,8 @@ const QC_CENTER_SECTIONS_FLAT=[
   {key:"qs",label:"QS",icon:"📋",progressField:"qs_progress",fotoField:"qs_photos"},
 ];
 
-// Baris tabel Gantt "Tracking Durasi Proses Produksi" (15 Sep 2026, spesifikasi final - gantiin
-// modal "Durasi Pengerjaan" versi sebelumnya). SENGAJA cuma 9 baris (bukan 13 ALL_PROSES) - ini
-// permintaan eksplisit user, BENDING/STEL/FINISHING/RENDAM sengaja tidak dijadikan baris terpisah
-// di dashboard ringkas ini. `dataProses` = key proses yang dipakai buat query fcs_timer_kerja
-// (POTONG/PAINTING/RAKIT/BUSBAR/WIRING CONTROL/WIRING POWER), null buat 3 baris yang START-nya
-// dari sumber lain (PASANG KOMPONEN dari progress_checkpoint_log, QC dari qc_checklist.todo_at,
-// PACKING dari packing_done_at - lihat openGanttDetail).
-const GANTT_ROWS=[
-  {key:"POTONG",label:"Potong",icon:"ti ti-scissors",dataProses:"POTONG",color:"#2563eb",bg:"#eff6ff",border:"#bfdbfe"},
-  {key:"PAINTING",label:"Painting",icon:"ti ti-spray",dataProses:"PAINTING",color:"#ea580c",bg:"#fff7ed",border:"#fed7aa"},
-  {key:"RAKIT",label:"Asb Rakit",icon:"ti ti-puzzle",dataProses:"RAKIT",color:"#16a34a",bg:"#f0fdf4",border:"#bbf7d0"},
-  {key:"PASANG KOMPONEN",label:"Pasang Komponen",icon:"ti ti-plug",dataProses:null,color:"#0891b2",bg:"#ecfeff",border:"#a5f3fc"},
-  {key:"BUSBAR",label:"Busbar",icon:"ti ti-bolt",dataProses:"BUSBAR",color:"#7c3aed",bg:"#f5f3ff",border:"#ddd6fe"},
-  {key:"WIRING CONTROL",label:"Wiring Control",icon:"ti ti-plug-connected",dataProses:"WIRING CONTROL",color:"#4f46e5",bg:"#eef2ff",border:"#c7d2fe"},
-  {key:"WIRING POWER",label:"Wiring Power",icon:"ti ti-plug-connected-x",dataProses:"WIRING POWER",color:"#9333ea",bg:"#faf5ff",border:"#e9d5ff"},
-  {key:"QC",label:"QC",icon:"ti ti-clipboard-check",dataProses:null,color:"#e11d48",bg:"#fff1f2",border:"#fecdd3"},
-  {key:"PACKING",label:"Packing",icon:"ti ti-package",dataProses:null,color:"#0d9488",bg:"#f0fdfa",border:"#99f6e4"},
-];
-// Warna per tahap Busbar (beda dari warna baris Busbar sendiri - biar 4 sub-badge di 1 baris
-// tetap saling kebeda). Key SAMA persis BUSBAR_TAHAP_URUTAN (panelHelpers.ts).
-const GANTT_BUSBAR_TAHAP_COLOR:Record<string,{color:string,bg:string,border:string}>={
-  FABRIKASI:{color:"#7c3aed",bg:"#f5f3ff",border:"#ddd6fe"},
-  PLATING:{color:"#0d9488",bg:"#f0fdfa",border:"#99f6e4"},
-  HEATSHRINK:{color:"#d97706",bg:"#fffbeb",border:"#fde68a"},
-  PASANG:{color:"#db2777",bg:"#fdf2f8",border:"#fbcfe8"},
-};
+// Baris & warna Gantt "Tracking Durasi Proses Produksi" + aturan mulai/selesai: lib/ganttArsip.ts
+// (7 Okt 2026, dipindah dari sini - satu sumber dgn PDF/Excel).
 
 const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"];
 
@@ -120,15 +97,14 @@ export function ArsipTab({user,refetchWO}:any){
   //    "packing mulai" di manapun, user sudah setuju pakai tanggal packing_done_at ini).
   const[ganttDetailPanel,setGanttDetailPanel]=useState<any>(null);
   const[ganttLoading,setGanttLoading]=useState(false);
-  const[ganttStarts,setGanttStarts]=useState<Record<string,string|null>>({});
-  const[ganttBusbarTahap,setGanttBusbarTahap]=useState<Record<string,string|null>>({});
+  // Data mentah arsip utk bar mulai->selesai (7 Okt 2026); bar dihitung hitungGanttArsip (lib/ganttArsip.ts).
+  const[ganttData,setGanttData]=useState<DataGanttArsip|null>(null);
   const[ganttKendala,setGanttKendala]=useState<any[]>([]);
 
   const openGanttDetail=async(p:any)=>{
     setGanttDetailPanel(p);
     setGanttLoading(true);
-    setGanttStarts({});
-    setGanttBusbarTahap({});
+    setGanttData(null);
     setGanttKendala([]);
     const pageSize=1000;
     // 1. fcs_timer_kerja_archived - paginasi eksplisit (satu panel biasanya jauh di bawah 1000
@@ -136,38 +112,24 @@ export function ArsipTab({user,refetchWO}:any){
     let allTimer:any[]=[];
     let from=0;
     for(;;){
-      const{data,error}=await supabase.from("fcs_timer_kerja_archived").select("proses,tahap,mulai").eq("panel_id",p.id).range(from,from+pageSize-1);
+      const{data,error}=await supabase.from("fcs_timer_kerja_archived").select("proses,tahap,kode_komponen,mulai,selesai,progress").eq("panel_id",p.id).range(from,from+pageSize-1);
       if(error){alert("Gagal memuat data timer: "+error.message);setGanttLoading(false);return;}
       allTimer=allTimer.concat(data??[]);
       if(!data||data.length<pageSize)break;
       from+=pageSize;
     }
-    const starts:Record<string,string|null>={};
-    const busbarTahap:Record<string,string|null>={};
-    allTimer.forEach((r:any)=>{
-      if(!r.mulai)return;
-      if(r.proses==="BUSBAR"&&r.tahap){
-        if(!busbarTahap[r.tahap]||r.mulai<busbarTahap[r.tahap]!)busbarTahap[r.tahap]=r.mulai;
-      }
-      if(!starts[r.proses]||r.mulai<starts[r.proses]!)starts[r.proses]=r.mulai;
-    });
-    // 2. progress_checkpoint_log_archived - PASANG KOMPONEN (gap fcs_timer_kerja, lihat komentar atas)
+    // 2. progress_checkpoint_log_archived - SEMUA proses (7 Okt 2026): mulai Pasang Komponen + waktu tiap
+    //    komponen mencapai 100% (tanggal SELESAI bar) - lihat lib/ganttArsip.ts.
     let allCp:any[]=[];
     from=0;
     for(;;){
-      const{data,error}=await supabase.from("progress_checkpoint_log_archived").select("ts,tanggal").eq("panel_id",p.id).eq("proses","PASANG KOMPONEN").range(from,from+pageSize-1);
+      const{data,error}=await supabase.from("progress_checkpoint_log_archived").select("proses,kode_komponen,checkpoint,ts,tanggal").eq("panel_id",p.id).range(from,from+pageSize-1);
       if(error){alert("Gagal memuat data pasang komponen: "+error.message);setGanttLoading(false);return;}
       allCp=allCp.concat(data??[]);
       if(!data||data.length<pageSize)break;
       from+=pageSize;
     }
-    allCp.forEach((r:any)=>{
-      const t=r.ts||r.tanggal;
-      if(t&&(!starts["PASANG KOMPONEN"]||t<starts["PASANG KOMPONEN"]!))starts["PASANG KOMPONEN"]=t;
-    });
-    // 3. QC & Packing - langsung dari kolom panel yang sudah dimuat (panelList), gak perlu fetch
-    if(p.qc_checklist?._global?.todo_at)starts["QC"]=p.qc_checklist._global.todo_at;
-    if(p.packing_done_at)starts["PACKING"]=p.packing_done_at;
+    // 3. QC & Packing dibaca langsung dari kolom panel (qc_checklist/packing_done_at) di hitungGanttArsip.
     // 4. Kendala - cek live + archived (panel yang baru diarsipkan, catatan kendalanya mungkin
     //    belum sempat termigrasi ke kendala_archived tergantung timing proses arsip)
     const[{data:kLive,error:kLiveErr},{data:kArch,error:kArchErr}]=await Promise.all([
@@ -176,8 +138,7 @@ export function ArsipTab({user,refetchWO}:any){
     ]);
     if(kLiveErr||kArchErr){alert("Gagal memuat catatan kendala: "+(kLiveErr?.message||kArchErr?.message));setGanttLoading(false);return;}
     const kendalaAll=[...(kLive||[]),...(kArch||[])].sort((a,b)=>(a.tanggal||"").localeCompare(b.tanggal||""));
-    setGanttStarts(starts);
-    setGanttBusbarTahap(busbarTahap);
+    setGanttData({timer:allTimer,checkpoint:allCp});
     setGanttKendala(kendalaAll);
     setGanttLoading(false);
   };
@@ -187,36 +148,35 @@ export function ArsipTab({user,refetchWO}:any){
   const fmtTglFull=(iso:string|null|undefined)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"-";
   const BULAN_LABEL=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
-  // Baris export PDF/Excel: sama persis data yang dipakai buat render Gantt, cuma dirapikan jadi
-  // baris datar (Busbar dipecah per tahap yang punya data, sama seperti sub-badge di layar).
-  // (5 Okt 2026) + iso & warna per baris - timeline PDF digambar dari baris YANG SAMA dgn tabel
-  // "Proses | Tanggal Mulai" (tidak mungkin beda data). Warna = GANTT_ROWS/GANTT_BUSBAR_TAHAP_COLOR (web).
-  const buildGanttExportRows=(starts:Record<string,string|null>,busbarTahap:Record<string,string|null>)=>{
-    const rows:BarisGanttPdf[]=[];
-    GANTT_ROWS.forEach(r=>{
-      if(r.key==="BUSBAR"){
-        const adaTahap=BUSBAR_TAHAP_URUTAN.some(t=>busbarTahap[t]);
-        if(!adaTahap){rows.push({proses:"Busbar",tanggalMulai:"Belum ada data",iso:null,color:r.color});return;}
-        BUSBAR_TAHAP_URUTAN.forEach(t=>{
-          if(busbarTahap[t])rows.push({proses:`Busbar - ${BUSBAR_TAHAP_LABEL[t]}`,tanggalMulai:fmtTglFull(busbarTahap[t]),iso:busbarTahap[t],color:GANTT_BUSBAR_TAHAP_COLOR[t]?.color||r.color});
-        });
-        return;
-      }
-      rows.push({proses:r.label,tanggalMulai:starts[r.key]?fmtTglFull(starts[r.key]):"Belum ada data",iso:starts[r.key]||null,color:r.color});
+  // Baris export PDF/Excel (7 Okt 2026): diturunkan dari bar YANG SAMA dgn modal (hitungGanttArsip) -
+  // tabel "Proses | Mulai | Selesai | Durasi" & timeline PDF tidak mungkin beda data. Busbar = 1 baris/tahap.
+  type BarisEkspor=BarisGanttPdf&{tMulai:string,tSelesai:string,durasi:string};
+  const buildGanttExportRows=(baris:BarisGantt[]):BarisEkspor[]=>{
+    const rows:BarisEkspor[]=[];
+    baris.forEach(b=>{
+      if(!b.bars.length){rows.push({proses:b.label,color:b.color,mulai:null,akhir:null,berjalan:false,label:"",tMulai:"Belum ada data",tSelesai:"-",durasi:"-"});return;}
+      b.bars.forEach(x=>{
+        const berjalan=!x.selesai;
+        rows.push({proses:x.labelTahap?`${b.label} - ${x.labelTahap}`:b.label,color:x.color,mulai:x.mulai,akhir:x.akhir,berjalan,
+          label:x.singkatan?x.singkatan:(berjalan?"berjalan":`${x.hari} hr`),
+          tMulai:fmtTglFull(x.mulai),
+          tSelesai:x.selesai?fmtTglFull(x.selesai):`Belum selesai (s/d ${fmtTglFull(x.akhir)})`,
+          durasi:`${x.hari} hari${berjalan?" (belum selesai)":""}`});
+      });
     });
     return rows;
   };
 
-  const exportGanttPdf=(panel:any,starts:Record<string,string|null>,busbarTahap:Record<string,string|null>,kendala:any[])=>{
+  const exportGanttPdf=(panel:any,baris:BarisGantt[],kendala:any[])=>{
     const doc=new jsPDF();
     doc.setFontSize(14);
     doc.text("Tracking Durasi Proses Produksi",14,16);
     doc.setFontSize(10);
     doc.text(`${panel.nama} - WO ${panel.wo_number_snapshot} - ${panel.proyek_snapshot}`,14,23);
-    const rows=buildGanttExportRows(starts,busbarTahap);
-    autoTable(doc,{startY:30,head:[["Proses","Tanggal Mulai"]],body:rows.map(r=>[r.proses,r.tanggalMulai]),
+    const rows=buildGanttExportRows(baris);
+    autoTable(doc,{startY:30,head:[["Proses","Mulai","Selesai","Durasi"]],body:rows.map(r=>[r.proses,r.tMulai,r.tSelesai,r.durasi]),
       styles:{fontSize:9},headStyles:{fillColor:[29,78,216]}});
-    // Visualisasi timeline (5 Okt 2026) di antara tabel tanggal mulai & Catatan Kendala.
+    // Visualisasi timeline (5 Okt 2026; bar mulai->selesai 7 Okt 2026) di antara tabel & Catatan Kendala.
     let afterY=gambarTimelineGanttPdf(doc,rows,(doc as any).lastAutoTable.finalY+10);
     if(afterY>doc.internal.pageSize.getHeight()-30){doc.addPage();afterY=20;}
     doc.setFontSize(12);
@@ -232,12 +192,12 @@ export function ArsipTab({user,refetchWO}:any){
     doc.save(`Durasi_${(panel.nama||"panel").replace(/[\/\\?%*:|"<>]/g,"_")}.pdf`);
   };
 
-  const exportGanttExcel=(panel:any,starts:Record<string,string|null>,busbarTahap:Record<string,string|null>,kendala:any[])=>{
+  const exportGanttExcel=(panel:any,baris:BarisGantt[],kendala:any[])=>{
     const XLSX=(window as any).XLSX;
     if(!XLSX){alert("SheetJS belum dimuat, coba refresh halaman.");return;}
     const wb=XLSX.utils.book_new();
-    const rows=buildGanttExportRows(starts,busbarTahap);
-    const ws1=XLSX.utils.aoa_to_sheet([["Proses","Tanggal Mulai"],...rows.map(r=>[r.proses,r.tanggalMulai])]);
+    const rows=buildGanttExportRows(baris);
+    const ws1=XLSX.utils.aoa_to_sheet([["Proses","Mulai","Selesai","Durasi"],...rows.map(r=>[r.proses,r.tMulai,r.tSelesai,r.durasi])]);
     XLSX.utils.book_append_sheet(wb,ws1,"Durasi Proses");
     const ws2=XLSX.utils.aoa_to_sheet([["Tanggal","Divisi","Operator","Catatan"],...kendala.map(k=>[k.tanggal||"-",k.divisi_label||k.divisi||"-",k.operator||"-",k.catatan||"-"])]);
     XLSX.utils.book_append_sheet(wb,ws2,"Catatan Kendala");
@@ -603,17 +563,17 @@ export function ArsipTab({user,refetchWO}:any){
       })()}
 
       {ganttDetailPanel&&(()=>{
-        const allDates:string[]=[
-          ...GANTT_ROWS.filter(r=>r.key!=="BUSBAR").map(r=>ganttStarts[r.key]).filter(Boolean) as string[],
-          ...BUSBAR_TAHAP_URUTAN.map(t=>ganttBusbarTahap[t]).filter(Boolean) as string[],
-        ];
-        const hasAnyData=allDates.length>0;
-        const rangeStart=hasAnyData?allDates.reduce((a,b)=>a<b?a:b):null;
-        const rangeEnd=ganttDetailPanel.packing_done_at||(hasAnyData?allDates.reduce((a,b)=>a>b?a:b):null);
+        // Bar mulai->selesai (7 Okt 2026) - satu sumber dgn PDF/Excel (lib/ganttArsip.ts).
+        const baris:BarisGantt[]=ganttData?hitungGanttArsip(ganttDetailPanel,ganttData):[];
+        const rentang=rentangGantt(baris);
+        const hasAnyData=!!rentang;
+        const rangeStart=rentang?.mulai||null;
+        const rangeEnd=rentang?.akhir||null;
         // Kolom harian (16 Sep 2026, revisi dari kolom mingguan - lihat komentar buildDayColumns)
         // dikelompokkan 2 tingkat buat header: per-bulan (row1) dan per-minggu-dalam-bulan (row2),
         // row3 nampilin tanggal harian sendiri-sendiri.
         const cols=hasAnyData&&rangeStart&&rangeEnd?buildDayColumns(rangeStart,rangeEnd):[];
+        const idxHariIni=cols.length?colIndexForDate(cols,new Date().toISOString()):-1;
         const monthGroups:{year:number,month:number,count:number}[]=[];
         cols.forEach(c=>{
           const last=monthGroups[monthGroups.length-1];
@@ -665,10 +625,15 @@ export function ArsipTab({user,refetchWO}:any){
               ):!hasAnyData?(
                 <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>
                   <i className="ti ti-chart-gantt" style={{fontSize:28,display:"block",marginBottom:8}}/>
-                  Belum ada data tanggal mulai proses untuk panel ini.
+                  Belum ada data tanggal proses untuk panel ini.
                 </div>
               ):(
                 <>
+                  <div style={{display:"flex",flexWrap:"wrap" as const,gap:"6px 18px",fontSize:10.5,color:"#64748b",marginBottom:10}}>
+                    <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:26,height:11,borderRadius:4,background:"#2563eb",display:"inline-block"}}/>Selesai (progres 100%)</span>
+                    <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:26,height:11,borderRadius:4,background:"#2563eb",backgroundImage:"repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.4) 4px 8px)",display:"inline-block"}}/>Belum selesai (s/d tanggal diarsipkan)</span>
+                    <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:2,height:13,background:"#ff6a1a",display:"inline-block"}}/>Hari ini</span>
+                  </div>
                   <div style={{overflowX:"auto" as const,border:"1.5px solid #cbd5e1",borderRadius:8}}>
                     {/* table-layout:fixed + colgroup (16 Sep 2026) - kolom Proses PROSES_COL_W
                         fixed, kolom hari bagi rata sisa lebar (calc), minWidth di <table> jaga
@@ -692,62 +657,47 @@ export function ArsipTab({user,refetchWO}:any){
                         </tr>
                         <tr>
                           {cols.map((c,i)=>(
-                            <th key={i} style={{...ganttTh,fontSize:8,fontWeight:700,textAlign:"center" as const,padding:"4px 2px"}}>{c.day}</th>
+                            <th key={i} style={{...ganttTh,fontSize:8,fontWeight:700,textAlign:"center" as const,padding:"4px 2px",color:i===idxHariIni?"#ff6a1a":ganttTh.color}}>{c.day}</th>
                           ))}
                         </tr>
                       </thead>
                       <tbody>
-                        {GANTT_ROWS.map(row=>{
-                          if(row.key==="BUSBAR"){
-                            const tahapAda=BUSBAR_TAHAP_URUTAN.filter(t=>ganttBusbarTahap[t]);
-                            return(
-                              <tr key={row.key}>
-                                <td style={{...ganttTd,fontWeight:700,color:"#1e293b"}}>
-                                  <i className={row.icon} style={{fontSize:13,color:row.color,marginRight:6}}/>{row.label}
-                                  {tahapAda.length===0&&<div style={{fontSize:8.5,color:"#cbd5e1",fontWeight:500,marginTop:2}}>Belum ada data</div>}
-                                </td>
-                                {cols.map((c,ci)=>{
-                                  const tahapDiSini=tahapAda.filter(t=>colIndexForDate(cols,ganttBusbarTahap[t]!)===ci);
-                                  return(
-                                    <td key={ci} style={ganttDayTd}>
-                                      {tahapDiSini.length>0&&(
-                                        <div style={{display:"flex",flexDirection:"column" as const,gap:2.5,alignItems:"center"}}>
-                                          {tahapDiSini.map(t=>{
-                                            const bc=GANTT_BUSBAR_TAHAP_COLOR[t];
-                                            const singkatan:Record<string,string>={FABRIKASI:"FAB",PLATING:"PLT",HEATSHRINK:"HS",PASANG:"PSG"};
-                                            return(
-                                              <span key={t} title={`${BUSBAR_TAHAP_LABEL[t]} mulai ${fmtTglFull(ganttBusbarTahap[t])}`}
-                                                style={{display:"inline-block",background:bc.color,color:"#fff",borderRadius:4,padding:"2.5px 6px",fontSize:8.5,fontWeight:800,letterSpacing:.2,cursor:"default",lineHeight:1.2}}>
-                                                {singkatan[t]}
-                                              </span>
-                                            );
-                                          })}
-                                        </div>
-                                      )}
-                                    </td>
-                                  );
-                                })}
-                              </tr>
-                            );
-                          }
-                          const startIso=ganttStarts[row.key];
-                          const colIdx=startIso?colIndexForDate(cols,startIso):-1;
+                        {baris.map(row=>{
+                          const n=cols.length;
                           return(
                             <tr key={row.key}>
                               <td style={{...ganttTd,fontWeight:700,color:"#1e293b"}}>
-                                <i className={row.icon} style={{fontSize:13,color:row.color,marginRight:6}}/>{row.label}
-                                {!startIso&&<div style={{fontSize:8.5,color:"#cbd5e1",fontWeight:500,marginTop:2}}>Belum ada data</div>}
+                                <i className={row.icon} style={{fontSize:13,color:row.bars.length?row.color:"#cbd5e1",marginRight:6}}/>{row.label}
+                                {row.key==="BUSBAR"&&row.bars.length>0&&<div style={{fontSize:8.5,color:"#94a3b8",fontWeight:500,marginTop:2}}>{row.bars.length} tahap</div>}
                               </td>
-                              {cols.map((c,ci)=>(
-                                <td key={ci} style={ganttDayTd}>
-                                  {ci===colIdx&&(
-                                    <span title={`Mulai ${fmtTglFull(startIso)}`}
-                                      style={{display:"inline-block",background:row.color,color:"#fff",borderRadius:4,padding:"3px 7px",fontSize:9,fontWeight:800,letterSpacing:.2,cursor:"default",lineHeight:1.2}}>
-                                      START
-                                    </span>
-                                  )}
-                                </td>
-                              ))}
+                              {/* 1 sel selebar semua kolom hari: garis kolom digambar sbg background (lebar
+                                  kolom sama rata - table-layout fixed), bar diposisikan absolut per hari. */}
+                              <td colSpan={n} style={{padding:0,border:"1px solid #e2e8f0",position:"relative" as const,verticalAlign:"middle" as const,
+                                backgroundImage:"linear-gradient(to right,#e2e8f0 1px,transparent 1px)",backgroundSize:`calc(100% / ${n}) 100%`}}>
+                                {idxHariIni>=0&&<div style={{position:"absolute" as const,top:0,bottom:0,left:`calc(${(idxHariIni+.5)/n*100}% - 1px)`,width:2,background:"#ff6a1a",zIndex:2,pointerEvents:"none" as const}}/>}
+                                {row.bars.length===0?(
+                                  <div style={{padding:"9px 10px",fontSize:10.5,color:"#94a3b8",fontStyle:"italic" as const}}>Belum ada data</div>
+                                ):(
+                                  <div style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"5px 0"}}>
+                                    {row.bars.map((b,bi)=>{
+                                      const a=Math.max(0,colIndexForDate(cols,b.mulai)),z=Math.max(a,colIndexForDate(cols,b.akhir));
+                                      const berjalan=!b.selesai;
+                                      const teks=b.hari===1?(b.singkatan||(berjalan?"…":"1 hr")):`${b.singkatan?b.singkatan+" · ":""}${berjalan?"berjalan":b.hari+" hr"}`;
+                                      const judul=`${row.label}${b.labelTahap?" - "+b.labelTahap:""}: mulai ${fmtTglFull(b.mulai)}, ${b.selesai?"selesai "+fmtTglFull(b.selesai):"belum selesai (s/d "+fmtTglFull(b.akhir)+")"} · ${b.hari} hari`;
+                                      return(
+                                        <div key={bi} style={{position:"relative" as const,height:20}}>
+                                          <div title={judul} style={{position:"absolute" as const,top:0,bottom:0,left:`calc(${a/n*100}% + 3px)`,width:`calc(${(z-a+1)/n*100}% - 6px)`,
+                                            borderRadius:6,backgroundColor:b.color,backgroundImage:berjalan?"repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.32) 5px 10px)":undefined,
+                                            color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",whiteSpace:"nowrap" as const,overflow:"hidden",
+                                            zIndex:1,cursor:"default",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"} as any}>
+                                            {teks}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                )}
+                              </td>
                             </tr>
                           );
                         })}
@@ -791,11 +741,11 @@ export function ArsipTab({user,refetchWO}:any){
                   </div>
 
                   <div style={{display:"flex",gap:8,marginTop:16}}>
-                    <button onClick={()=>exportGanttPdf(ganttDetailPanel,ganttStarts,ganttBusbarTahap,ganttKendala)}
+                    <button onClick={()=>exportGanttPdf(ganttDetailPanel,baris,ganttKendala)}
                       style={{...exportBtnS,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626"}}>
                       <i className="ti ti-file-type-pdf" style={{fontSize:15}}/> Export PDF
                     </button>
-                    <button onClick={()=>exportGanttExcel(ganttDetailPanel,ganttStarts,ganttBusbarTahap,ganttKendala)}
+                    <button onClick={()=>exportGanttExcel(ganttDetailPanel,baris,ganttKendala)}
                       style={{...exportBtnS,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a"}}>
                       <i className="ti ti-file-type-xls" style={{fontSize:15}}/> Export Excel
                     </button>
