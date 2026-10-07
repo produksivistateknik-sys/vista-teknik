@@ -65,14 +65,18 @@ function gambarBar(doc:jsPDF,x:number,y:number,w:number,h:number,warna:[number,n
 }
 
 // Gambar bagian "Visualisasi Timeline" mulai startY; kembalikan Y setelahnya.
-export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:number,hariIniIso:string=new Date().toISOString()):number{
+// opsi.yHalamanBaru (7 Okt 2026, kop surat): posisi awal konten di halaman baru - di bawah kop ringkas.
+// Tata letak DIRAPATKAN (disetujui user 7 Okt 2026) supaya kop penuh 49 mm tidak mendorong timeline panel
+// biasa ke halaman 2: tinggi baris 7,6 -> 6,4 mm, spasi antarbagian dikurangi. Isi tidak berubah.
+export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:number,hariIniIso:string=new Date().toISOString(),opsi?:{yHalamanBaru?:number}):number{
   const tinggiHal=doc.internal.pageSize.getHeight();
   const lebarHal=doc.internal.pageSize.getWidth();
   const kiri=14,lebarIsi=lebarHal-kiri*2;
   let y=startY;
-  const pastikanRuang=(perlu:number)=>{if(y+perlu>tinggiHal-14){doc.addPage();y=20;}};
+  const yBaru=opsi?.yHalamanBaru??20;
+  const pastikanRuang=(perlu:number)=>{if(y+perlu>tinggiHal-12){doc.addPage();y=yBaru;}};
   const adaBar=rows.filter(r=>r.mulai&&r.akhir);
-  pastikanRuang(30);
+  pastikanRuang(26);
   doc.setFont('helvetica','bold');doc.setFontSize(12);doc.setTextColor(23,27,46);
   doc.text("Visualisasi Timeline",kiri,y);
   doc.setFont('helvetica','normal');doc.setFontSize(8.5);doc.setTextColor(107,114,128);
@@ -89,7 +93,7 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
   doc.text(`Bar = mulai s/d selesai tiap proses · ${labelTgl(cols[0])} – ${labelTgl(cols[cols.length-1])}`
     +(blok.length>1?` · ${blok.length} blok (maks ${HARI_PER_BLOK} hari per blok)`:""),kiri,y+5);
   // Legenda
-  const ly=y+8.5;
+  const ly=y+7.5;
   gambarBar(doc,kiri,ly,9,3.2,[37,99,235],false,"");
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(107,114,128);
   doc.text("Selesai (100%)",kiri+10.5,ly+2.5);
@@ -98,10 +102,10 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
   doc.text("Belum selesai (s/d tanggal diarsipkan)",kiri+44.5,ly+2.5);
   doc.setDrawColor(...ORANYE);doc.setLineWidth(.6);doc.line(kiri+98,ly-.3,kiri+98,ly+3.5);
   doc.text("Hari ini",kiri+99.5,ly+2.5);
-  y+=15;
+  y+=13;
   const lebarHari=(lebarIsi-LEBAR_LABEL)/HARI_PER_BLOK;
   const idxHariIni=colIndexForDate(cols,hariIniIso);
-  const tinggiBlok=12+rows.length*7.6+(blok.length>1?5:0);
+  const tinggiBlok=11+rows.length*6.5+(blok.length>1?5:0);
   blok.forEach((kolom,bi)=>{
     pastikanRuang(tinggiBlok<tinggiHal-40?tinggiBlok:30);
     if(blok.length>1){
@@ -126,10 +130,10 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
       body:rows.map(r=>r.mulai
         ?[r.proses,...kolom.map(()=>"")]
         :[r.proses,{content:"Belum ada data",colSpan:kolom.length,styles:{fontStyle:'italic',textColor:ABU,halign:'left'}}]),
-      styles:{fontSize:7,cellPadding:{top:2.2,bottom:2.2,left:1,right:1},lineColor:[226,228,234],lineWidth:.2,minCellHeight:7.5,valign:'middle'},
+      styles:{fontSize:7,cellPadding:{top:1.6,bottom:1.6,left:1,right:1},lineColor:[226,228,234],lineWidth:.2,minCellHeight:6.4,valign:'middle'},
       headStyles:{fillColor:[248,249,251],textColor:[107,114,128],fontSize:6,fontStyle:'bold',halign:'center'},
       alternateRowStyles:{fillColor:[248,249,251]},
-      columnStyles:{...columnStyles,0:{cellWidth:LEBAR_LABEL,fontStyle:'bold',textColor:[23,27,46],cellPadding:{top:2.2,bottom:2.2,left:5,right:1}}},
+      columnStyles:{...columnStyles,0:{cellWidth:LEBAR_LABEL,fontStyle:'bold',textColor:[23,27,46],cellPadding:{top:1.6,bottom:1.6,left:5,right:1}}},
       didParseCell:(d:any)=>{if(d.section==='head'&&iHari>=0&&d.column.index-1===iHari)d.cell.styles.textColor=ORANYE;},
       didDrawCell:(d:any)=>{
         if(d.section!=='body'||d.column.index!==0)return;
@@ -158,12 +162,12 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
       if(iZ<0||iA>=kolom.length)return;
       const a=Math.max(0,iA),z=Math.min(kolom.length-1,iZ);
       doc.setPage(pos.hal);
-      const h=4.2,x=xKol0+lebarHari*a+.5,w=lebarHari*(z-a+1)-1,yy=pos.y+(pos.h-h)/2;
+      const h=3.8,x=xKol0+lebarHari*a+.5,w=lebarHari*(z-a+1)-1,yy=pos.y+(pos.h-h)/2;
       gambarBar(doc,x,yy,w,h,hexKeRgb(r.color),r.berjalan,r.label);
     });
     doc.setPage(halAkhir);
-    y=(doc as any).lastAutoTable.finalY+5;
+    y=(doc as any).lastAutoTable.finalY+4;
   });
   doc.setFont('helvetica','normal');doc.setTextColor(0,0,0);
-  return y+3;
+  return y+2;
 }

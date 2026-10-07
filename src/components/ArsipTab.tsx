@@ -10,6 +10,7 @@ import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { buildDayColumns, colIndexForDate, gambarTimelineGanttPdf, type BarisGanttPdf } from '../lib/ganttArsipPdf'
 import { hitungGanttArsip, rentangGantt, type BarisGantt, type DataGanttArsip } from '../lib/ganttArsip'
+import { siapkanKop, gambarKopPenuh, gambarKopRingkas, TINGGI_KOP_RINGKAS, type AsetKop } from '../lib/kopSurat'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
@@ -167,27 +168,41 @@ export function ArsipTab({user,refetchWO}:any){
     return rows;
   };
 
-  const exportGanttPdf=(panel:any,baris:BarisGantt[],kendala:any[])=>{
+  // KOP SURAT (7 Okt 2026): kop penuh (lib/kopSurat.ts) menempel tepi atas & kiri-kanan halaman 1, kop
+  // ringkas di halaman lanjutan. Tabel & timeline dirapatkan (font 9 -> 8, baris timeline 6,4 mm) supaya
+  // panel biasa tetap muat di halaman 1. Isi tabel/Gantt tidak berubah.
+  const exportGanttPdf=async(panel:any,baris:BarisGantt[],kendala:any[])=>{
     const doc=new jsPDF();
+    let aset:AsetKop|null=null;
+    try{aset=await siapkanKop(doc);}
+    catch(e:any){console.error("Kop surat gagal dimuat:",e);alert("Kop surat gagal dimuat ("+(e?.message||e)+") - PDF tetap dibuat tanpa kop.");}
+    const atas=aset?gambarKopPenuh(doc,aset):6;
+    const yHalBaru=aset?TINGGI_KOP_RINGKAS+6:20;
+    const tinggiHal=doc.internal.pageSize.getHeight();
+    doc.setFont("helvetica","normal");doc.setTextColor(0,0,0);
     doc.setFontSize(14);
-    doc.text("Tracking Durasi Proses Produksi",14,16);
+    doc.text("Tracking Durasi Proses Produksi",14,atas+9);
     doc.setFontSize(10);
-    doc.text(`${panel.nama} - WO ${panel.wo_number_snapshot} - ${panel.proyek_snapshot}`,14,23);
+    doc.text(`${panel.nama} - WO ${panel.wo_number_snapshot} - ${panel.proyek_snapshot}`,14,atas+15);
     const rows=buildGanttExportRows(baris);
-    autoTable(doc,{startY:30,head:[["Proses","Mulai","Selesai","Durasi"]],body:rows.map(r=>[r.proses,r.tMulai,r.tSelesai,r.durasi]),
-      styles:{fontSize:9},headStyles:{fillColor:[29,78,216]}});
+    autoTable(doc,{startY:atas+19,margin:{top:yHalBaru},head:[["Proses","Mulai","Selesai","Durasi"]],body:rows.map(r=>[r.proses,r.tMulai,r.tSelesai,r.durasi]),
+      styles:{fontSize:8,cellPadding:1.5},headStyles:{fillColor:[29,78,216]}});
     // Visualisasi timeline (5 Okt 2026; bar mulai->selesai 7 Okt 2026) di antara tabel & Catatan Kendala.
-    let afterY=gambarTimelineGanttPdf(doc,rows,(doc as any).lastAutoTable.finalY+10);
-    if(afterY>doc.internal.pageSize.getHeight()-30){doc.addPage();afterY=20;}
+    let afterY=gambarTimelineGanttPdf(doc,rows,(doc as any).lastAutoTable.finalY+7,undefined,{yHalamanBaru:yHalBaru});
+    if(afterY>tinggiHal-30){doc.addPage();afterY=yHalBaru+2;}
     doc.setFontSize(12);
     doc.text("Catatan Kendala per Divisi",14,afterY);
     if(kendala.length===0){
       doc.setFontSize(10);
       doc.text("Belum ada catatan kendala untuk panel ini.",14,afterY+7);
     }else{
-      autoTable(doc,{startY:afterY+4,head:[["Tanggal","Divisi","Operator","Catatan"]],
+      autoTable(doc,{startY:afterY+4,margin:{top:yHalBaru},head:[["Tanggal","Divisi","Operator","Catatan"]],
         body:kendala.map(k=>[k.tanggal||"-",k.divisi_label||k.divisi||"-",k.operator||"-",k.catatan||"-"]),
         styles:{fontSize:8.5},headStyles:{fillColor:[29,78,216]}});
+    }
+    if(aset){
+      const n=doc.getNumberOfPages();
+      for(let i=2;i<=n;i++){doc.setPage(i);gambarKopRingkas(doc,aset,`Tracking Durasi Proses Produksi \u00b7 ${panel.nama} \u00b7 WO ${panel.wo_number_snapshot}`);}
     }
     doc.save(`Durasi_${(panel.nama||"panel").replace(/[\/\\?%*:|"<>]/g,"_")}.pdf`);
   };
