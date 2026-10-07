@@ -311,7 +311,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   // activity_log cuma dimuat setelah tab pemakainya (Stok/Activity Log/Master User) pernah dibuka -
   // lihat useActivityLog (PERFORMA 7 Okt 2026).
   const butuhActivityLog=visitedTabs.some(t=>t==="stok"||t==="activity"||t==="masteruser")
-  const { data: activityLog, refetch: refetchActivityLog } = useActivityLog(butuhActivityLog)
+  const { data: activityLog, siap: activityLogSiap, refetch: refetchActivityLog } = useActivityLog(butuhActivityLog)
   const [isRefreshing, setIsRefreshing] = useState(false)
   const refreshAll = async () => {
     setIsRefreshing(true)
@@ -1139,7 +1139,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}
               {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
+              {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} activityLogSiap={activityLogSiap} muatActivityLog={refetchActivityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
             </div>
           </div>
         </div>

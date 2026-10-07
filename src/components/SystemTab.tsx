@@ -14,7 +14,7 @@ import { RecycleBinTab } from './RecycleBinTab'
 import { TimerAktifTab } from './TimerAktifTab'
 import { AppDocumentationTab } from './AppDocumentationTab'
 
-export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
+export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
   // Tombol "Lihat" toast Sesi Produksi Stok -> langsung sub-tab Stok (lib/navProduksiStok.ts).
   const [subTab,setSubTab]=useState(()=>adaPermintaanBukaSesi()?"stok":"masteruser");
   useEffect(()=>{
@@ -130,9 +130,12 @@ export function SystemTab({user,activityLog,pekerja,setPekerja,createPekerja,upd
             XLSX.utils.book_append_sheet(wb,ws3,"Master Pekerja");
 
             // Sheet 4: Activity Log
+            // 7 Okt 2026 - activity_log sekarang baru dimuat saat tab ini dibuka (useActivityLog). Kalau
+            // export ditekan sebelum muatan pertama selesai, ambil dulu (tunggu) - jangan ekspor sheet kosong.
+            const logSumber:any[]=(activityLogSiap===false&&muatActivityLog)?(await muatActivityLog())||activityLog||[]:(activityLog||[]);
             const logRows:any[]=[];
             logRows.push(["WAKTU","USER","AKSI","DESKRIPSI","MODULE","HALAMAN"]);
-            activityLog?.slice(0,200).forEach((l:any)=>{
+            logSumber.slice(0,200).forEach((l:any)=>{
               logRows.push([l.created_at,l.user_name,l.action,l.description,l.module,l.halaman]);
             });
             const ws4=XLSX.utils.aoa_to_sheet(logRows);

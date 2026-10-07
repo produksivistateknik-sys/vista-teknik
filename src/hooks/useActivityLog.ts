@@ -7,6 +7,8 @@ import { supabase } from '../lib/supabase'
 // (App.tsx), lalu tetap hidup seperti sebelumnya. aktif=false -> tidak ada fetch/realtime, refetch no-op.
 export function useActivityLog(aktif: boolean = true) {
   const [data, setData] = useState<any[]>([])
+  // siap = fetch pertama sudah selesai (dipakai export Master User supaya tidak mengekspor log kosong).
+  const [siap, setSiap] = useState(false)
   const aktifRef = useRef(aktif)
   aktifRef.current = aktif
 
@@ -14,8 +16,8 @@ export function useActivityLog(aktif: boolean = true) {
   // activity_log sudah lewat 16.000+ baris, jadi tanpa fetchAll ini entry lama (di luar
   // 1000 terbaru) gak akan pernah ke-load ke ActivityLogView (yang filter tanggal/admin/
   // module/search-nya semua jalan client-side dari array ini, bukan query per-filter).
-  const fetchAll = async () => {
-    if (!aktifRef.current) return
+  const fetchAll = async (): Promise<any[]> => {
+    if (!aktifRef.current) return []
     let all: any[] = []
     let from = 0
     const step = 1000
@@ -31,6 +33,8 @@ export function useActivityLog(aktif: boolean = true) {
       from += step
     }
     setData(all)
+    setSiap(true)
+    return all
   }
 
   useEffect(() => {
@@ -49,5 +53,5 @@ export function useActivityLog(aktif: boolean = true) {
     return () => { supabase.removeChannel(channel) }
   }, [aktif])
 
-  return { data, refetch: fetchAll }
+  return { data, siap, refetch: fetchAll }
 }
