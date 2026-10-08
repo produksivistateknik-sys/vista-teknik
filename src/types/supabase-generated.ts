@@ -3357,6 +3357,18 @@ export type Database = {
           wo: string
         }[]
       }
+      hapus_bom_komponen: {
+        Args: { p_id: number; p_user: string }
+        Returns: Json
+      }
+      hapus_tipe_panel: {
+        Args: { p_tipe_panel: string; p_user: string }
+        Returns: Json
+      }
+      nomor_kode_komponen_berikutnya: {
+        Args: { p_tipe_panel: string }
+        Returns: number
+      }
       set_bom_proses_relevan: {
         Args: {
           p_kode_komponen: string

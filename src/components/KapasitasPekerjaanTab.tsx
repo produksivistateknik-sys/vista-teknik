@@ -28,11 +28,42 @@ export function KapasitasPekerjaanTab(){
   const WP_OPTIONS=["WP1","WP2","WP3","WP4","WP5","WP6"];
   const [expandedWpKey,setExpandedWpKey]=useState<string|null>(null);
   const WP_COLOR_PRESET=["#f59e0b","#22c55e","#06b6d4","#f97316","#8b5cf6","#ec4899","#3b82f6","#ef4444"];
+  const namaUserSesi=()=>{
+    try{const s=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");return s?.nama||s?.name||"Admin";}catch{return "Admin";}
+  };
+  // (8 Okt 2026, insiden OU_FS) Nomor kode komponen berikutnya dari RPC - dihitung dari SEMUA jejak
+  // kode tipe itu (bom_master, mapping proses, process time, checklist panel live & arsip), bukan
+  // cuma bom_master. Dulu: kode tertinggi dihapus -> nomornya dipakai ulang & komponen baru
+  // "mewarisi" mapping proses/process time/checklist komponen lama. Satu sumber utk wizard &
+  // Tambah Komponen (lihat migration 20261008010000_tipe_panel_hapus_aman.sql).
+  const ambilNomorKodeBerikutnya=async(tipe:string):Promise<number>=>{
+    const{data,error}=await supabase.rpc("nomor_kode_komponen_berikutnya",{p_tipe_panel:tipe});
+    if(error)throw error;
+    const n=Number(data);
+    if(!Number.isFinite(n)||n<1)throw new Error(`Nomor kode berikutnya tidak valid: ${data}`);
+    return n;
+  };
+  // Nama komponen yang SUDAH ada di tipe+WP ini (wizard menolak nama dobel dalam 1 tipe+WP - insiden
+  // OU_FS: "Box (include ambang)" sampai 4x di WP1). Dibaca segar dari DB, bukan bomList lokal.
+  const ambilNamaSudahAda=async(tipe:string,wp:string):Promise<Set<string>>=>{
+    const{data,error}=await supabase.from("bom_master").select("nama_komponen").eq("tipe_panel",tipe).eq("wp",wp).range(0,4999);
+    if(error)throw error;
+    return new Set((data||[]).map((r:any)=>String(r.nama_komponen).trim().toLowerCase()));
+  };
+  const [wizardNamaSudahAda,setWizardNamaSudahAda]=useState<Set<string>>(new Set());
 
   const openWizard=async(tipe:string)=>{
-    const{data}=await supabase.from("bom_master").select("nama_komponen");
-    const uniqueNama=Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))).sort();
+    // Paginasi + cek error (8 Okt 2026) - dulu select polos tanpa .range() & error diabaikan.
+    let semua:any[]=[];
+    for(let from=0;;from+=1000){
+      const{data,error}=await supabase.from("bom_master").select("nama_komponen").range(from,from+999);
+      if(error){console.error("[Wizard WP] gagal ambil daftar komponen:",error);alert("Gagal memuat daftar komponen: "+error.message);return;}
+      semua=semua.concat(data||[]);
+      if(!data||data.length<1000)break;
+    }
+    const uniqueNama=Array.from(new Set(semua.map((r:any)=>r.nama_komponen))).sort();
     setWizardAllNama(uniqueNama);
+    setWizardNamaSudahAda(new Set());
     setWizardTipe(tipe);
     setWizardWp("WP1");
     setWizardColor("#3b82f6");
@@ -51,40 +82,88 @@ export function KapasitasPekerjaanTab(){
       return{...prev,[nama]:next};
     });
   };
-  const saveWizardWp=async()=>{
-    setWizardSaving(true);
+  // Lanjut dari langkah 1 (pilih WP) ke langkah 2 - muat nama komponen yang sudah ada di tipe+WP
+  // ini supaya ditandai "sudah ada" & tidak bisa dicentang lagi.
+  const lanjutKePilihKomponen=async()=>{
     try{
-      await supabase.from("panel_wp_meta").upsert({tipe_panel:wizardTipe,wp:wizardWp,color:wizardColor,range_label:wizardRange},{onConflict:"tipe_panel,wp"});
-      const{data:existingBom}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",wizardTipe);
-      let maxNum=0;
-      (existingBom||[]).forEach((r:any)=>{
-        const m=String(r.kode_komponen).match(/(\d+)$/);
-        if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
-      });
+      const sudah=await ambilNamaSudahAda(wizardTipe,wizardWp);
+      setWizardNamaSudahAda(sudah);
+      setWizardSelectedNama(prev=>prev.filter(n=>!sudah.has(n.trim().toLowerCase())));
+      setWizardStep(2);
+    }catch(err:any){
+      console.error("[Wizard WP] gagal cek komponen yang sudah ada:",err);
+      alert("Gagal memuat komponen yang sudah ada: "+(err?.message||err));
+    }
+  };
+
+  // Muat ulang mapping proses-relevan global (dipakai setelah wizard / hapus jenis / hapus komponen).
+  const segarkanProsesRelevanGlobal=async()=>{
+    let semua:any[]=[];
+    for(let from=0;;from+=1000){
+      const{data,error}=await supabase.from("bom_proses_relevan").select("kode_komponen,tipe_panel,jenis_pekerjaan").range(from,from+999);
+      if(error){console.error("gagal muat ulang bom_proses_relevan:",error);return;}
+      semua=semua.concat(data||[]);
+      if(!data||data.length<1000)break;
+    }
+    const relevanSet=new Set<string>();
+    const hasMappingSet=new Set<string>();
+    semua.forEach((r:any)=>{
+      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+    });
+    setGlobalProsesRelevan(relevanSet,hasMappingSet);
+  };
+
+  // PERBAIKAN (8 Okt 2026, insiden OU_FS): dulu semua langkah tanpa cek error (gagal = diam-diam
+  // setengah tersimpan), nama dobel dalam 1 tipe+WP diterima, nomor kode bisa dipakai ulang.
+  // Sekarang: tiap langkah dicek, berhenti di langkah pertama yang gagal & lapor apa saja yang
+  // SUDAH tersimpan; nama yang sudah ada di tipe+WP dilewati (dicek ulang segar saat simpan);
+  // nomor kode dari RPC nomor_kode_komponen_berikutnya.
+  const saveWizardWp=async()=>{
+    if(wizardSaving)return;
+    setWizardSaving(true);
+    const tersimpan:string[]=[];
+    const dilewati:string[]=[];
+    let gagal:string|null=null;
+    try{
+      const{error:wpErr}=await supabase.from("panel_wp_meta").upsert({tipe_panel:wizardTipe,wp:wizardWp,color:wizardColor,range_label:wizardRange},{onConflict:"tipe_panel,wp"});
+      if(wpErr)throw wpErr;
+      const sudah=await ambilNamaSudahAda(wizardTipe,wizardWp);
+      let nomor=await ambilNomorKodeBerikutnya(wizardTipe);
       for(const nama of wizardSelectedNama){
-        maxNum++;
-        const kodeBaru=`${wizardTipe}.${maxNum}`;
-        await supabase.from("bom_master").insert({kode_komponen:kodeBaru,nama_komponen:nama,tipe_panel:wizardTipe,wp:wizardWp,urutan:0});
+        const kunci=nama.trim().toLowerCase();
+        if(sudah.has(kunci)){dilewati.push(nama);continue;}
+        const kodeBaru=`${wizardTipe}.${nomor}`;
+        const{error:bomErr}=await supabase.from("bom_master").insert({kode_komponen:kodeBaru,nama_komponen:nama,tipe_panel:wizardTipe,wp:wizardWp,urutan:0});
+        if(bomErr){gagal=`simpan komponen "${nama}" (${kodeBaru}): ${bomErr.message}`;break;}
+        nomor++;
+        sudah.add(kunci);
         const prosesList=wizardProsesPerNama[nama]||[];
         if(prosesList.length>0){
-          await supabase.from("bom_proses_relevan").insert(prosesList.map(p=>({kode_komponen:kodeBaru,tipe_panel:wizardTipe,jenis_pekerjaan:p})));
+          const{error:relErr}=await supabase.from("bom_proses_relevan").insert(prosesList.map(p=>({kode_komponen:kodeBaru,tipe_panel:wizardTipe,jenis_pekerjaan:p})));
+          if(relErr){tersimpan.push(`${kodeBaru} ${nama} (TANPA mapping proses)`);gagal=`simpan proses komponen "${nama}" (${kodeBaru}): ${relErr.message} - atur prosesnya lewat tombol proses di tabel BOM`;break;}
         }
+        tersimpan.push(`${kodeBaru} ${nama}`);
       }
-      const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
-      const relevanSet=new Set<string>();
-      const hasMappingSet=new Set<string>();
-      (allRelevan||[]).forEach((r:any)=>{
-        relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
-        hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
-      });
-      setGlobalProsesRelevan(relevanSet,hasMappingSet);
-      await fetchPanelTypeMeta();
-      await fetchBom();
-      setWizardStep(0);
     }catch(err:any){
-      alert("Gagal: "+err.message);
+      gagal=err?.message||String(err);
     }
+    if(tersimpan.length>0){
+      const{error:logErr}=await supabase.from("activity_log").insert({user_name:namaUserSesi(),action:"TAMBAH KOMPONEN WP (WIZARD)",module:"master_data",halaman:"Kapasitas Pekerjaan",
+        description:`Tipe ${wizardTipe} ${wizardWp}: ${tersimpan.join(", ")}${dilewati.length?` | dilewati (sudah ada): ${dilewati.join(", ")}`:""}`});
+      if(logErr)console.error("[Wizard WP] catat activity_log gagal:",logErr);
+    }
+    await segarkanProsesRelevanGlobal();
+    await fetchPanelTypeMeta();
+    await fetchBom();
     setWizardSaving(false);
+    if(gagal){
+      console.error("[Wizard WP] gagal:",gagal);
+      alert(`Gagal: ${gagal}\n\nSudah tersimpan (${tersimpan.length}): ${tersimpan.join(", ")||"-"}${dilewati.length?`\nDilewati karena sudah ada: ${dilewati.join(", ")}`:""}`);
+      return;
+    }
+    if(dilewati.length)alert(`Tersimpan ${tersimpan.length} komponen.\nDilewati karena sudah ada di ${wizardTipe} ${wizardWp}: ${dilewati.join(", ")}`);
+    setWizardStep(0);
   };
   const [prosesRelevanModal,setProsesRelevanModal]=useState<any>(null);
   const [selectedProsesRelevan,setSelectedProsesRelevan]=useState<string[]>([]);
@@ -154,11 +233,23 @@ export function KapasitasPekerjaanTab(){
     setShowAddTipe(false);
     setTipeForm({tipe_panel:"",label:""});
   };
+  // PERBAIKAN (8 Okt 2026, insiden OU_FS): dulu cuma hapus panel_wp_meta + panel_type_meta (error
+  // diabaikan) - komponen BOM, mapping proses & process time tertinggal, lalu muncul lagi semua
+  // begitu jenis dibuat ulang. Sekarang lewat RPC hapus_tipe_panel: 1 transaksi, DITOLAK kalau
+  // jenis masih dipakai panel (live/arsip/jadwal FCS/arsip seksi), tercatat di activity_log.
   const deleteTipePanel=async(tipe:string)=>{
-    if(!confirm(`Yakin hapus tipe panel "${tipe}"? Semua WP di dalamnya juga ikut kehapus.`))return;
-    await supabase.from("panel_wp_meta").delete().eq("tipe_panel",tipe);
-    await supabase.from("panel_type_meta").delete().eq("tipe_panel",tipe);
+    if(!confirm(`Yakin hapus tipe panel "${tipe}"?\n\nSemua WP, komponen BOM, mapping proses & process time tipe ini IKUT TERHAPUS permanen.\n(Ditolak otomatis kalau tipe ini masih dipakai panel.)`))return;
+    const{data,error}=await supabase.rpc("hapus_tipe_panel",{p_tipe_panel:tipe,p_user:namaUserSesi()});
+    if(error){
+      console.error(`[Hapus tipe panel ${tipe}] gagal:`,error);
+      alert("Gagal hapus tipe panel: "+error.message);
+      return;
+    }
+    const r:any=data||{};
+    alert(`Tipe panel "${tipe}" dihapus: ${r.wp??0} WP, ${r.bom??0} komponen BOM, ${r.proses_relevan??0} mapping proses, ${r.process_time??0} process time.`);
+    await segarkanProsesRelevanGlobal();
     await fetchPanelTypeMeta();
+    await fetchBom();
   };
   const saveWpMeta=async()=>{
     if(!wpForm.tipe_panel||!wpForm.wp)return;
@@ -356,6 +447,19 @@ export function KapasitasPekerjaanTab(){
     });
     return`${tipe}.${maxNum+1}`;
   };
+  // Pratinjau kode di form Tambah Komponen (8 Okt 2026) - pakai RPC yang sama dgn saat simpan supaya
+  // yang ditampilkan = yang benar-benar dipakai. nextKodeUntukTipe (bomList lokal) cuma tampilan
+  // sementara selama RPC belum menjawab.
+  const [pratinjauKode,setPratinjauKode]=useState<string|null>(null);
+  useEffect(()=>{
+    if(!showAddBom||editBom){setPratinjauKode(null);return;}
+    let batal=false;
+    setPratinjauKode(null);
+    ambilNomorKodeBerikutnya(bomForm.tipe_panel)
+      .then(n=>{if(!batal)setPratinjauKode(`${bomForm.tipe_panel}.${n}`);})
+      .catch(err=>console.error("[Tambah komponen BOM] pratinjau kode gagal:",err));
+    return()=>{batal=true;};
+  },[showAddBom,editBom,bomForm.tipe_panel]);
 
   const saveBom=async()=>{
     if(!bomForm.nama_komponen)return;
@@ -392,13 +496,12 @@ export function KapasitasPekerjaanTab(){
     } else {
       // Fresh-fetch (bukan dari bomList lokal) buat mastiin gak collide walau ada admin lain yang
       // barusan nambah komponen tipe yang sama.
-      const{data:existingSameTipe}=await supabase.from("bom_master").select("kode_komponen").eq("tipe_panel",bomForm.tipe_panel);
-      let maxNum=0;
-      (existingSameTipe||[]).forEach((r:any)=>{
-        const m=String(r.kode_komponen).match(/(\d+)$/);
-        if(m)maxNum=Math.max(maxNum,parseInt(m[1],10));
-      });
-      const kodeBaru=`${bomForm.tipe_panel}.${maxNum+1}`;
+      // (8 Okt 2026) Nomor dari RPC - tidak pernah memakai ulang kode yang pernah ada (lihat
+      // ambilNomorKodeBerikutnya).
+      let nomor:number;
+      try{nomor=await ambilNomorKodeBerikutnya(bomForm.tipe_panel);}
+      catch(err:any){console.error("[Tambah komponen BOM] gagal ambil nomor kode:",err);alert("Gagal menentukan kode komponen: "+(err?.message||err));return;}
+      const kodeBaru=`${bomForm.tipe_panel}.${nomor}`;
       const urutanFinal=await nextUrutanFresh(bomForm.tipe_panel,bomForm.wp);
       const{error}=await supabase.from("bom_master").insert({nama_komponen:bomForm.nama_komponen,tipe_panel:bomForm.tipe_panel,wp:bomForm.wp,urutan:urutanFinal,kode_komponen:kodeBaru});
       if(error){alert("Gagal: "+error.message);return;}
@@ -410,10 +513,17 @@ export function KapasitasPekerjaanTab(){
     setBomForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",urutan:0});
   };
 
+  // PERBAIKAN (8 Okt 2026, insiden OU_FS): dulu cuma hapus baris bom_master - mapping proses
+  // (bom_proses_relevan) tertinggal yatim. Sekarang lewat RPC hapus_bom_komponen: mapping proses &
+  // process time ikut dihapus HANYA kalau kode itu tidak ada di checklist panel manapun (kalau masih
+  // dipakai, sengaja dibiarkan - trigger cap progress Mekanik menganggap kode tanpa mapping relevan
+  // utk semua proses). Janji "kode tidak dipakai ulang" kini benar-benar dijaga RPC
+  // nomor_kode_komponen_berikutnya.
   const deleteBom=async(id:number)=>{
     if(!confirm("Yakin hapus komponen ini dari Master Data BOM?\n\nKodenya TIDAK akan dipakai ulang buat komponen lain (biar checklist panel yang sudah ada gak pernah nyambung ke komponen yang salah) - bakal ninggalin celah nomor, itu wajar & aman."))return;
-    const{error}=await supabase.from("bom_master").delete().eq("id",id);
-    if(error){alert("Gagal: "+error.message);return;}
+    const{error}=await supabase.rpc("hapus_bom_komponen",{p_id:id,p_user:namaUserSesi()});
+    if(error){console.error(`[Hapus komponen BOM ${id}] gagal:`,error);alert("Gagal: "+error.message);}
+    await segarkanProsesRelevanGlobal();
     await fetchBom();
   };
 
@@ -793,7 +903,7 @@ export function KapasitasPekerjaanTab(){
                   <div>
                     <Lbl>Kode Komponen</Lbl>
                     <div style={{padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",background:"#f1f5f9",color:"#475569",fontSize:13,fontFamily:"'DM Mono',monospace",fontWeight:700}}>
-                      {editBom?bomForm.kode_komponen:nextKodeUntukTipe(bomForm.tipe_panel)}
+                      {editBom?bomForm.kode_komponen:(pratinjauKode||nextKodeUntukTipe(bomForm.tipe_panel))}
                     </div>
                     <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>
                       {editBom?"Kode gak bisa diubah - sudah jadi identitas permanen di data panel yang sudah ada.":"Otomatis, nomor berikutnya buat tipe panel ini."}
@@ -1015,7 +1125,7 @@ export function KapasitasPekerjaanTab(){
                 </div>
                 <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                   <Btn outline color="#64748b" onClick={()=>setWizardStep(0)}>Batal</Btn>
-                  <Btn color="#1d4ed8" onClick={()=>setWizardStep(2)}>Lanjut →</Btn>
+                  <Btn color="#1d4ed8" onClick={lanjutKePilihKomponen}>Lanjut →</Btn>
                 </div>
               </div>
             )}
@@ -1024,12 +1134,17 @@ export function KapasitasPekerjaanTab(){
               <div>
                 <div style={{fontSize:12,color:"#64748b",marginBottom:10}}>Centang komponen yang dipakai di {wizardWp} buat tipe panel ini:</div>
                 <div style={{display:"flex",flexDirection:"column" as const,gap:5,maxHeight:320,overflowY:"auto" as const,marginBottom:16}}>
-                  {wizardAllNama.map(nama=>(
-                    <label key={nama} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderRadius:6,border:`1.5px solid ${wizardSelectedNama.includes(nama)?"#1d4ed8":"#e2e8f0"}`,background:wizardSelectedNama.includes(nama)?"#eff6ff":"#f8fafc",cursor:"pointer"}}>
-                      <input type="checkbox" checked={wizardSelectedNama.includes(nama)} onChange={()=>toggleWizardNama(nama)}/>
-                      <span style={{fontSize:12,fontWeight:wizardSelectedNama.includes(nama)?700:400}}>{nama}</span>
+                  {wizardAllNama.map(nama=>{
+                    // Sudah ada di tipe+WP ini -> tidak bisa dicentang lagi (cegah nama dobel, insiden OU_FS).
+                    const sudahAda=wizardNamaSudahAda.has(String(nama).trim().toLowerCase());
+                    return(
+                    <label key={nama} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 10px",borderRadius:6,border:`1.5px solid ${wizardSelectedNama.includes(nama)?"#1d4ed8":"#e2e8f0"}`,background:sudahAda?"#f1f5f9":wizardSelectedNama.includes(nama)?"#eff6ff":"#f8fafc",cursor:sudahAda?"not-allowed":"pointer",opacity:sudahAda?.6:1}}>
+                      <input type="checkbox" disabled={sudahAda} checked={!sudahAda&&wizardSelectedNama.includes(nama)} onChange={()=>toggleWizardNama(nama)}/>
+                      <span style={{fontSize:12,fontWeight:wizardSelectedNama.includes(nama)?700:400,flex:1}}>{nama}</span>
+                      {sudahAda&&<span style={{fontSize:10,fontWeight:700,color:"#64748b",background:"#e2e8f0",borderRadius:99,padding:"1px 8px",whiteSpace:"nowrap" as const}}>sudah ada di {wizardWp}</span>}
                     </label>
-                  ))}
+                    );
+                  })}
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                   <Btn outline color="#64748b" onClick={()=>setWizardStep(1)}>← Kembali</Btn>
@@ -1061,7 +1176,7 @@ export function KapasitasPekerjaanTab(){
                 </div>
                 <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
                   <Btn outline color="#64748b" onClick={()=>setWizardStep(2)}>← Kembali</Btn>
-                  <Btn color="#16a34a" onClick={saveWizardWp}>{wizardSaving?"Menyimpan...":"Simpan WP Ini"}</Btn>
+                  <Btn color="#16a34a" onClick={saveWizardWp} disabled={wizardSaving}>{wizardSaving?"Menyimpan...":"Simpan WP Ini"}</Btn>
                 </div>
               </div>
             )}
