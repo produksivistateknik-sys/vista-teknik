@@ -90,7 +90,7 @@ export function useRenhar() {
       setData(prev => prev.map(r => r.id === id ? result : r))
       return { success: true, data: result }
     } catch (err) {
-      return { success: false, error: err instanceof Error ? err.message : 'Error' }
+      return { success: false, error: err instanceof Error ? err.message : 'Error', code: (err as any)?.code }
     }
   }
 

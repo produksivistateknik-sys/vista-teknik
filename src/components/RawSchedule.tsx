@@ -293,8 +293,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   useEffect(()=>{
     let cancelled=false;
     const load=async()=>{
-      const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
-      if(!cancelled)setWiringHariKerjaMap(map);
+      // try/catch (8 Okt 2026) - fetchWiringHariKerjaMap melempar error saat koneksi putus; dulu
+      // jadi error tak tertangani. Gagal = pakai peta lama, coba lagi di event berikutnya.
+      try{
+        const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
+        if(!cancelled)setWiringHariKerjaMap(map);
+      }catch(err){
+        console.error("[Raw Schedule] gagal muat hari kerja wiring (pakai data lama):",err);
+      }
     };
     load();
     const ch=supabase.channel("realtime-fcs-timer-kerja-rawschedule")

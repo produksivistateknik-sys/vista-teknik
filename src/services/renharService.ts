@@ -86,7 +86,8 @@ export const renharService = {
     const { updated_by, ...safe } = payload
     const uname = updated_by || 'Admin'
     const { data, error } = await supabase.from('renhar').update({ ...safe, updated_at: new Date().toISOString() }).eq('id', id).select().single()
-    if (error) throw new Error(error.message)
+    // `code` ikut dibawa (8 Okt 2026) - pemanggil bisa bedakan ditolak server vs koneksi putus.
+    if (error) throw Object.assign(new Error(error.message), { code: (error as any).code })
     await activityLogService.insert({
       user_name: uname,
       action: 'UPDATE RENHAR',

@@ -458,15 +458,23 @@ useEffect(()=>{
 // buat kombinasi yang sama, salah satu bakal ditolak DB (23505). fn() HARUS throw kalau
 // createRenhar-nya gagal (bukan diem2 aja) biar retry di bawah ini kepicu - re-fetch bakal
 // nemuin row yang barusan dibuat sesi lain itu, lanjut ke jalur update alih2 insert lagi.
+// BUG FIX (8 Okt 2026, Rilis PP-04 Groundplate gagal terus): dulu `prev.then(...)` - begitu SATU
+// operasi gagal (mis. koneksi putus sesaat), promise antrian key itu tertolak selamanya & SEMUA
+// klik berikutnya utk raw+wp+tanggal yang sama ikut gagal TANPA mengirim request apa pun (dibuktikan
+// di headless: klik ke-2 = 0 request) sampai halaman dimuat ulang. Sekarang kegagalan operasi
+// sebelumnya ditelan KHUSUS utk urutan antrian (error-nya tetap dilempar ke pemanggil aslinya).
+// Plus: error fetch fresh dulu diabaikan -> fn(null) = dikira "belum ada renhar" lalu mencoba
+// insert baris baru. Sekarang dilempar (operasi dibatalkan dgn pesan jelas).
 const renharOpQueueRef = useRef<Record<string,Promise<any>>>({});
 const withRenharQueue = async (task:any, fn:(existingFresh:any)=>Promise<void>) => {
   const key = `${task.rawId}_${task.wp}_${task.tanggal}`;
   const prev = renharOpQueueRef.current[key] || Promise.resolve();
-  const thisOp = prev.then(async () => {
+  const thisOp = prev.catch(() => {}).then(async () => {
     for(let attempt=0; attempt<4; attempt++){
-      const { data } = await supabase.from("renhar").select("*")
+      const { data, error } = await supabase.from("renhar").select("*")
         .eq("raw_id", task.rawId).eq("wp", task.wp).eq("tanggal", task.tanggal)
         .order("updated_at", { ascending: false, nullsFirst: false }).limit(1);
+      if(error) throw Object.assign(new Error("Gagal membaca data rencana harian terbaru: "+error.message), { code: error.code });
       try{
         await fn(data?.[0] || null);
         return;

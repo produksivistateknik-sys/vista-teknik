@@ -22,6 +22,30 @@ const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
   "NOT YET":"Not Yet","TO DO":"To Do","IN PROGRESS":"In Progress","DONE":"Done",
 };
 
+// Jeda muat ulang realtime (8 Okt 2026, performa jam sibuk) - tiap start/stop/simpan timer operator
+// di SELURUH pabrik memicu event fcs_timer_kerja; dulu 4 loader di halaman ini masing-masing muat
+// ulang langsung di SETIAP event. Event beruntun dalam JEDA_REALTIME_MS digabung jadi 1 kali muat
+// ulang (data tetap mutakhir, paling lambat ~1,5 dtk). Polling cadangan tetap berjalan seperti biasa.
+const JEDA_REALTIME_MS=1500;
+function jedaRealtime(fn:()=>void,ms=JEDA_REALTIME_MS){
+  let t:ReturnType<typeof setTimeout>|null=null;
+  return{
+    panggil:()=>{if(t)clearTimeout(t);t=setTimeout(()=>{t=null;fn();},ms);},
+    batal:()=>{if(t)clearTimeout(t);t=null;},
+  };
+}
+
+// Pesan gagal simpan renhar yang jujur (8 Okt 2026) - error koneksi (fetch gagal, tanpa `code`) vs
+// ditolak server (punya `code`, mis. RLS/constraint). Dulu toggleReleaseKomponen/Distribusi tanpa
+// catch: gagal = error tak tertangani di console, bahkan toast "✅ berhasil" tetap muncul.
+function pesanGagalRenhar(aksi:string,err:any):string{
+  const kode=typeof err?.code==="string"?err.code.trim():"";
+  const pesan=String(err?.message||err||"tidak ada pesan");
+  return kode
+    ?`Gagal ${aksi} - server menolak (kode ${kode}): ${pesan}`
+    :`Gagal ${aksi} - koneksi lambat/putus. Coba klik lagi.\n(${pesan})`;
+}
+
 // Kolom QTY (17 Sep 2026, fitur baru) - proses yang progress-nya BENERAN dicatat granular
 // per-unit (checklist[kode].qtyProses[proses] - operator NGETIK LANGSUNG "sudah X dari Y unit",
 // bukan geser persentase, lihat updateQtyProses() vista-pekerja/OperatorView.tsx - progress%
@@ -177,11 +201,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       setTimerAktifData(data??[]);
     };
     fetchTimerAktif();
+    const tunda=jedaRealtime(fetchTimerAktif);
     const ch=supabase.channel("realtime-timer-aktif-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchTimerAktif)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},tunda.panggil)
       .subscribe();
     const iv=setInterval(fetchTimerAktif,30000);
-    return()=>{supabase.removeChannel(ch);clearInterval(iv);};
+    return()=>{tunda.batal();supabase.removeChannel(ch);clearInterval(iv);};
   },[]);
 
   // Tick ringan (17 Sep 2026) - KHUSUS pas ada timer aktif, badge durasi ("X menit") dipaksa
@@ -231,14 +256,21 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   useEffect(()=>{
     let cancelled=false;
     const load=async()=>{
-      const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
-      if(!cancelled)setWiringHariKerjaMap(map);
+      // try/catch (8 Okt 2026) - fetchWiringHariKerjaMap melempar error saat koneksi putus; dulu
+      // jadi error tak tertangani. Gagal = pakai peta lama, coba lagi di event berikutnya.
+      try{
+        const map=await fetchWiringHariKerjaMap(wiringPanelIds as number[]);
+        if(!cancelled)setWiringHariKerjaMap(map);
+      }catch(err){
+        console.error("[Rencana Harian] gagal muat hari kerja wiring (pakai data lama):",err);
+      }
     };
     load();
+    const tunda=jedaRealtime(load);
     const ch=supabase.channel("realtime-fcs-timer-kerja-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},load)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},tunda.panggil)
       .subscribe();
-    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    return()=>{cancelled=true;tunda.batal();supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(wiringPanelIds)]);
 
@@ -270,10 +302,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       if(!cancelled)setBusbarTahapOperatorData(all);
     };
     fetchBusbarTahapOperator();
+    const tunda=jedaRealtime(fetchBusbarTahapOperator);
     const ch=supabase.channel("realtime-busbar-tahap-operator-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},fetchBusbarTahapOperator)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},tunda.panggil)
       .subscribe();
-    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    return()=>{cancelled=true;tunda.batal();supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(busbarPanelIds)]);
   // Breakdown HARIAN lengkap (semua tanggal, semua tahap termasuk yang udah 100%) - buat
@@ -349,10 +382,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       if(!cancelled)setOperatorHistoryData(all);
     };
     fetchOperatorHistory();
+    const tunda=jedaRealtime(fetchOperatorHistory);
     const ch=supabase.channel("realtime-operator-history-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},fetchOperatorHistory)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},tunda.panggil)
       .subscribe();
-    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    return()=>{cancelled=true;tunda.batal();supabase.removeChannel(ch);};
   },[selDate]);
   const getOperatorNamesForKode=(panelId:any,kode:string,proses:string):string[]=>{
     const ids=[...new Set(operatorHistoryData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses).map((t:any)=>t.pekerja_id))];
@@ -877,7 +911,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           // released, klik Tarik SELALU berakhir tidak-released - gak pernah kebalik lagi.
           const mauRilis=!kemungkinanSudahRelease;
           const{komponen:komponenBaru,komponen_released:releasedBaru}=releaseKomponenToRenhar(existing,[kode],mauRilis?"rilis":"tarik");
-          await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
+          // (8 Okt 2026) Hasil update dicek - dulu gagal pun tetap toast "✅ berhasil dirilis".
+          const upd=await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
+          if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
           markRenharDirty(existing.id);
           setRenhar((prev:any)=>prev.some((r:any)=>r.id===existing.id)?prev.map((r:any)=>r.id===existing.id?{...r,komponen:komponenBaru,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen:komponenBaru,komponen_released:releasedBaru}]);
           showToast(mauRilis?`✅ "${namaTampil}" berhasil dirilis`:`↩️ "${namaTampil}" dibatalkan rilisnya`);
@@ -894,6 +930,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           showToast(`✅ "${namaTampil}" berhasil dirilis`);
         }
       });
+    } catch(err:any){
+      // (8 Okt 2026) Dulu tanpa catch - gagal = error tak tertangani, user gak dikasih tahu.
+      console.error(`[Rilis/Tarik ${kode} raw ${task.rawId} ${task.wp} ${task.tanggal}] gagal:`,err);
+      alert(pesanGagalRenhar(kemungkinanSudahRelease?`batalkan rilis "${namaTampil}"`:`rilis "${namaTampil}"`,err));
     } finally {
       setPendingRelease(prev=>{const n=new Set(prev);n.delete(key);return n;});
     }
@@ -901,9 +941,13 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   const confirmDistribute=async()=>{
     if(!assignModal)return;
     const{task,divisi}=assignModal;
+    // (8 Okt 2026) Gagal -> pesan jujur, modal TETAP terbuka (pilihan operator gak hilang, bisa
+    // langsung dicoba lagi), log aktivitas cuma ditulis kalau benar-benar tersimpan.
+    try{
     await withRenharQueue(task,async(existing)=>{
       if(existing){
-        await updateRenhar(existing.id,{pekerja:selPekerja});
+        const upd=await updateRenhar(existing.id,{pekerja:selPekerja});
+        if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
         markRenharDirty(existing.id);
         setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r):[...prev,{...existing,pekerja:selPekerja}]);
       } else {
@@ -918,20 +962,32 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);
       }
     });
+    }catch(err:any){
+      console.error(`[Distribusi raw ${task.rawId} ${task.wp} ${task.tanggal}] gagal:`,err);
+      alert(pesanGagalRenhar(`distribusi operator ${task.proses} - ${task.panel}`,err));
+      return;
+    }
     if(log) await log("DISTRIBUSI RENHAR","Distribusi operator proses "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Rencana Harian"});
     setAssignModal(null);setSelPekerja([]);
   };
+  // (8 Okt 2026) Dulu 1 task gagal = seluruh loop berhenti diam-diam (error tak tertangani, sisa
+  // task gak dirilis, user gak tahu). Sekarang tiap task berdiri sendiri, ringkasan di akhir.
   const distributeAll=async()=>{
+    const gagal:string[]=[];
+    let sukses=0,sudahSebelumnya=0;
     for(const task of filteredTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
       const allKode=task.komponen||[];
+      let tidakBerubah=false;
+      try{
       await withRenharQueue(task,async(existing)=>{
         if(existing){
           const releasedLamaLen=(existing.komponen_released||[]).length;
           const komponenLamaLen=(existing.komponen||[]).length;
           const{komponen:komponenBaru,komponen_released:releasedBaru}=releaseKomponenToRenhar(existing,allKode,"rilis");
-          if(releasedBaru.length===releasedLamaLen&&komponenBaru.length===komponenLamaLen)return;
-          await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
+          if(releasedBaru.length===releasedLamaLen&&komponenBaru.length===komponenLamaLen){tidakBerubah=true;return;}
+          const upd=await updateRenhar(existing.id,{komponen:komponenBaru,komponen_released:releasedBaru});
+          if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
           markRenharDirty(existing.id);
           setRenhar(prev=>prev.some(r=>r.id===existing.id)?prev.map(r=>r.id===existing.id?{...r,komponen:komponenBaru,komponen_released:releasedBaru}:r):[...prev,{...existing,komponen:komponenBaru,komponen_released:releasedBaru}]);
         } else {
@@ -946,6 +1002,14 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           setRenhar(prev=>prev.some(r=>r.id===result.data.id)?prev:[...prev,result.data]);
         }
       });
+      if(tidakBerubah)sudahSebelumnya++;else sukses++;
+      }catch(err:any){
+        console.error(`[Rilis Semua raw ${task.rawId} ${task.wp} ${task.tanggal}] gagal:`,err);
+        gagal.push(`${task.proses} - ${task.panel} ${task.wp} (${String(err?.message||err).slice(0,80)})`);
+      }
+    }
+    if(gagal.length>0){
+      alert(`Rilis Semua: ${sukses} berhasil dirilis, ${sudahSebelumnya} sudah dirilis sebelumnya, ${gagal.length} GAGAL (koneksi/server) - klik Rilis Semua lagi untuk mencoba ulang yang gagal:\n\n${gagal.slice(0,15).join("\n")}${gagal.length>15?`\n... dan ${gagal.length-15} lainnya`:""}`);
     }
   };
   const isDist=(task)=>!!getRenharEntry(task);
