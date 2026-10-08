@@ -783,6 +783,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
+    // Mode POTONG (8 Okt 2026, review): klik biasa di baris MANA PUN = pilih hari tujuan - dicek
+    // SEBELUM cabang marker QC TEST/PACKING supaya klik tujuan tidak ikut men-toggle marker (menulis
+    // raw_schedule tanpa sengaja). Logika marker sendiri tidak diubah.
+    if(cutCells.length>0&&!(e.ctrlKey||e.metaKey||e.shiftKey||e.altKey)){
+      e.stopPropagation();
+      setTujuanTempel(date);
+      return;
+    }
     if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)){
       e.stopPropagation();
       toggleMarkerCell(rawId,date);
@@ -1430,7 +1438,18 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // Server menolak kalau jadwal di DB sudah berubah sejak layar dimuat. Gagal -> tampilan dikembalikan
   // + toast merah dgn tombol Ulangi. Sukses -> snapshot disimpan utk Undo (tahap 4).
   const undoMultiRef=useRef<any[]>([]);
+  // Pengaman aksi ganda (8 Okt 2026, review): Ctrl+V / tombol Pindah / Ctrl+Z ditekan 2x cepat dulu
+  // menjalankan 2 RPC - yang kedua ditolak server lalu tampilan dikembalikan ke posisi lama (padahal
+  // DB sudah pindah), atau undo kedua ikut membuang entri undo sebelumnya. Pakai ref (bukan state)
+  // supaya langsung berlaku tanpa menunggu render.
+  const sedangPindahRef=useRef(false);
+  const sedangBatalkanRef=useRef(false);
   const jalankanPindahMulti=async(cells:{rawId:number;date:string}[],offset:number)=>{
+    if(sedangPindahRef.current||sedangBatalkanRef.current){tampilToastAksi("Masih memproses pemindahan sebelumnya - tunggu sebentar.","err");return false;}
+    sedangPindahRef.current=true;
+    try{return await jalankanPindahMultiInti(cells,offset);}finally{sedangPindahRef.current=false;}
+  };
+  const jalankanPindahMultiInti=async(cells:{rawId:number;date:string}[],offset:number)=>{
     const{ikut,bentrok}=cekPindahMulti(cells,offset);
     if(bentrok.length>0){
       tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b=>b.alasan))].join(", ")}). Tidak ada yang dipindah.`,"err");
@@ -1480,7 +1499,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       console.error("[Pindah banyak sel] gagal:",error);
       setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,schedule:sesudahById.get(r.id)!.sebelum}:r));
       const kode=typeof error.code==="string"&&error.code.trim()?error.code:"";
-      tampilToastAksi((kode==="P0001"?error.message:`Gagal menyimpan pindah ${sel.length} sel (${kode?"server: "+error.message:"koneksi lambat/putus"}). Tampilan dikembalikan.`),"err",
+      // Gagal koneksi bisa berarti server SUDAH menyimpan tapi responsnya putus -> muat ulang dari
+      // server supaya layar menunjukkan keadaan DB yang sebenarnya (bukan tebakan "pasti gagal").
+      if(kode!=="P0001"){refetchRaw?.();refetchRenhar?.();}
+      tampilToastAksi((kode==="P0001"?error.message:`Gagal menyimpan pindah ${sel.length} sel (${kode?"server: "+error.message:"koneksi lambat/putus"}). Jadwal dimuat ulang dari server - cek posisinya sebelum mengulang.`),"err",
         kode==="P0001"?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
       return false;
     }
@@ -1515,18 +1537,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   };
   // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel (bukan pindah balik, yang
   // akan menambah jejak baru). Server menolak kalau data sudah berubah lagi sejak dipindah.
-  const [sedangBatalkan,setSedangBatalkan]=useState(false);
   const batalkanPindahTerakhir=async()=>{
     const st=undoMultiRef.current;
-    if(st.length===0||sedangBatalkan)return;
+    if(st.length===0||sedangBatalkanRef.current||sedangPindahRef.current)return;
     const entri=st[st.length-1];
-    setSedangBatalkan(true);
-    const{error}=await supabase.rpc("pulihkan_multi_sel",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"});
-    setSedangBatalkan(false);
+    sedangBatalkanRef.current=true;
+    let error:any=null;
+    try{({error}=await supabase.rpc("pulihkan_multi_sel",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"}));}
+    finally{sedangBatalkanRef.current=false;}
     if(error){
       console.error("[Batalkan pindah banyak sel] gagal:",error);
       const ditolak=typeof error.code==="string"&&error.code==="P0001";
       if(ditolak)st.pop(); // data sudah berubah lagi - tidak bisa dibatalkan, jangan ditawarkan lagi
+      else{refetchRaw?.();refetchRenhar?.();} // respons putus: tampilkan keadaan server yang sebenarnya
       tampilToastAksi(ditolak?error.message:`Gagal membatalkan (koneksi lambat/putus). Pemindahan BELUM dibatalkan.`,"err",
         ditolak?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.batalkanPindahTerakhir()}]);
       return;
@@ -2416,7 +2439,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               <th style={{...thS,width:90,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               <th aria-hidden="true" style={{width:lebarSpasiKiri,padding:0,border:"none",background:"#1e3a8a"}}/>
               {days.map(d=>(
-                <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
+                <th key={d} onClick={()=>{
+                  // Mode potong: klik header tanggal = pilih hari tujuan tempel (8 Okt 2026).
+                  if(cutCells.length>0){setTujuanTempel(d);return;}
+                  setSelDate(d===selDate?null:d);
+                }}
                   style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:tujuanTempel===d&&cutCells.length>0?"#15803d":d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
