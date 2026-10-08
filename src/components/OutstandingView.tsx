@@ -3,7 +3,9 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang } from '../services/fcsService'
 import { PANEL_TYPES, ALL_PROSES, PROSES_COLOR } from '../constants/panelTypes'
-import { markRenharDirty, markRawDirty } from '../lib/globalState'
+import { markRawDirty, clearRawDirty } from '../lib/globalState'
+import { withRetry } from '../lib/withRetry'
+import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { TODAY } from '../lib/dateHelpers'
 import { Modal } from './ui/Primitives'
 
@@ -161,78 +163,40 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
 
     markRawDirty(row.rawId)
     setRawData((prev: any[]) => prev.map((r) => r.id === row.rawId ? { ...r, schedule } : r))
-    await updateRaw(row.rawId, { schedule })
-
-    // Sync renhar (pola sama seperti drag-drop di Raw Schedule) - biar status Rilis/operator
-    // ikut konsisten, bukan nyangkut di tanggal lama.
-    await withRenharQueue({ rawId: row.rawId, wp: row.wp, tanggal: fromDate }, async (existingSrc: any) => {
-      if (!existingSrc || !(existingSrc.komponen || []).includes(row.kode)) return
-      if (kasus1) {
-        const sisaKomp = (existingSrc.komponen || []).filter((k: string) => k !== row.kode)
-        if (sisaKomp.length > 0) {
-          markRenharDirty(existingSrc.id)
-          await updateRenhar(existingSrc.id, { komponen: sisaKomp })
-          setRenhar((prev: any[]) => prev.map((x) => x.id === existingSrc.id ? { ...x, komponen: sisaKomp } : x))
-        } else {
-          // Semua komponen di renhar row ini ikut pindah - cukup geser tanggalnya, gak perlu row baru.
-          markRenharDirty(existingSrc.id)
-          await updateRenhar(existingSrc.id, { tanggal: newDate, komponen: [row.kode] })
-          setRenhar((prev: any[]) => prev.map((x) => x.id === existingSrc.id ? { ...x, tanggal: newDate, komponen: [row.kode] } : x))
-          return
-        }
-      } else {
-        // FIX bug "reschedule bikin row renhar lama nyangkut" (kasus2/partial): sebelumnya CUMA
-        // kasus1 yang bersihin komponen dari row renhar sumber - kasus2 dibiarkan, jadi row renhar
-        // lama di tanggal asal TETAP nganggep kode itu aktif/released di sana selamanya, padahal
-        // raw_schedule udah bener2 nandain jejak (digeserKe). Efeknya kalau kode yang sama
-        // di-reschedule LAGI nanti, sistem baca row renhar lama yang basi itu, bikin data tampilan
-        // (operator/status rilis) kontradiktif antara tanggal asal vs tujuan. Bersihin persis pola
-        // kasus1 (komponen/komponen_released/pekerja_per_komponen), row renhar TETAP ada (historis
-        // valid buat audit "siapa yang sempat kerja di sini"), cuma gak dianggap aktif lagi.
-        const sisaKomp = (existingSrc.komponen || []).filter((k: string) => k !== row.kode)
-        const sisaReleased = (existingSrc.komponen_released || []).filter((k: string) => k !== row.kode)
-        const sisaPpk = { ...(existingSrc.pekerja_per_komponen || {}) }
-        delete sisaPpk[row.kode]
-        markRenharDirty(existingSrc.id)
-        await updateRenhar(existingSrc.id, { komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk })
-        setRenhar((prev: any[]) => prev.map((x) => x.id === existingSrc.id ? { ...x, komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk } : x))
-      }
-      const releasedLama = existingSrc.komponen_released || []
-      const ppkLama = existingSrc.pekerja_per_komponen || {}
-      const released = releasedLama.includes(row.kode) ? [row.kode] : []
-      const ppk = ppkLama[row.kode] ? { [row.kode]: ppkLama[row.kode] } : {}
-
-      await withRenharQueue({ rawId: row.rawId, wp: row.wp, tanggal: newDate }, async (existingTarget: any) => {
-        if (existingTarget) {
-          const komponenGabung = [...new Set([...(existingTarget.komponen || []), row.kode])]
-          const releasedGabung = [...new Set([...(existingTarget.komponen_released || []), ...released])]
-          const ppkGabung = { ...(existingTarget.pekerja_per_komponen || {}), ...ppk }
-          markRenharDirty(existingTarget.id)
-          await updateRenhar(existingTarget.id, { komponen: komponenGabung, komponen_released: releasedGabung, pekerja_per_komponen: ppkGabung })
-          setRenhar((prev: any[]) => prev.map((x) => x.id === existingTarget.id ? { ...x, komponen: komponenGabung, komponen_released: releasedGabung, pekerja_per_komponen: ppkGabung } : x))
-        } else {
-          const result = await createRenhar({
-            raw_id: row.rawId, wo_id: rawRow.wo_id, panel_id: row.panelId,
-            proyek: row.proyek, panel: row.panel, proses: subProses,
-            prioritas: rawRow.prioritas || 'Sedang', wp: row.wp, komponen: [row.kode],
-            tanggal: newDate, pekerja: [],
-            komponen_released: released,
-            pekerja_per_komponen: ppk,
-          })
-          if (result?.success && result.data) {
-            markRenharDirty(result.data.id)
-            setRenhar((prev: any[]) => [...prev, result.data])
-          }
-        }
+    // (8 Okt 2026) Hasil simpan raw dicek - dulu gagal pun lanjut sinkron renhar & tulis log
+    // "berhasil", tampilan optimistic lalu ketimpa balik diam-diam. Pola sama confirmDrag RawSchedule.
+    try {
+      await withRetry(async () => {
+        const res = await updateRaw(row.rawId, { schedule })
+        if (!res?.success) throw new Error(res?.error || 'Gagal menyimpan jadwal ke server')
+        return res
       })
-    })
+    } catch (err: any) {
+      clearRawDirty(row.rawId)
+      setRawData((prev: any[]) => prev.map((r) => r.id === row.rawId ? { ...r, schedule: rawRow.schedule } : r))
+      alert('Gagal menyimpan jadwal ulang: ' + (err?.message || 'koneksi bermasalah') + '\n\nTampilan sudah dikembalikan ke posisi semula - coba lagi.')
+      throw Object.assign(new Error('Reschedule dibatalkan'), { sudahDiberitahu: true })
+    }
+    clearRawDirty(row.rawId)
+
+    // Sync renhar - helper bersama lib/renharSinkron.ts (8 Okt 2026): baca segar, tambah ke tujuan
+    // dulu baru kurangi asal, semua hasil dicek, kalau gagal admin diberi tahu + bisa ulang.
+    // Kasus jejak (ada pengerjaan di fromDate) -> baris asal dipertahankan (riwayat siapa yang
+    // sempat kerja di sini), baris tujuan baru dibuat tanpa operator (pekerja: []) - sama seperti dulu.
+    const sinkron = () => pindahKomponenRenhar(
+      { withRenharQueue, updateRenhar, createRenhar, setRenhar },
+      { rawId: row.rawId, wp: row.wp, fromDate, toDate: newDate, kode: [row.kode], simpanBarisAsal: !kasus1, pekerjaBarisBaru: [] })
+    let sinkronGagal = false
+    try { await sinkron() } catch (err: any) {
+      sinkronGagal = !(await tanganiGagalSinkronRenhar(err, `${row.panel} ${row.wp} ${row.kode} (${fromDate} → ${newDate})`, async () => { await sinkron() }))
+    }
 
     const sess = JSON.parse(localStorage.getItem('vista_admin_session') || '{}')
     const uname = user?.name || user?.nama || sess?.nama || 'Admin'
     await activityLogService.insert({
       user_name: uname,
       action: 'RESCHEDULE DARI OUTSTANDING',
-      description: `Jadwal ulang ${row.nama} (${row.kode}) ${row.panel} - ${row.proyek} proses ${subProses} dari ${fromDate} ke ${newDate}`,
+      description: `Jadwal ulang ${row.nama} (${row.kode}) ${row.panel} - ${row.proyek} proses ${subProses} dari ${fromDate} ke ${newDate}${sinkronGagal ? ' (SINKRON RENCANA HARIAN GAGAL)' : ''}`,
       module: 'raw', halaman: 'Outstanding', proyek: row.proyek || '', panel: row.panel || '',
     })
   }
@@ -276,6 +240,12 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
       }
       await tulisReschedule(row, newDate)
       setEditingKey(null)
+    } catch (err: any) {
+      // (8 Okt 2026) Dulu tanpa catch - error (cek kapasitas/simpan) jadi error tak tertangani.
+      if (!err?.sudahDiberitahu) {
+        console.error('[Outstanding] reschedule gagal:', err)
+        alert('Gagal menjadwalkan ulang: ' + (err?.message || 'koneksi bermasalah'))
+      }
     } finally {
       setBusy(false)
     }
@@ -301,7 +271,7 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
       await tulisReschedule(rowToRetry, targetDate)
       setEditingKey(null)
     } catch (err: any) {
-      alert('Gagal tukar jadwal: ' + err.message)
+      if (!err?.sudahDiberitahu) alert('Gagal tukar jadwal: ' + err.message)
     }
     setBusy(false)
   }

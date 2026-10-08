@@ -9,6 +9,7 @@ import {
 import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
+import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -874,7 +875,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     await withRenharQueue({rawId,wp,tanggal:date},async(existing)=>{
       if(existing){
         markRenharDirty(existing.id);
-        await updateRenhar(existing.id,{komponen:newKompBersih});
+        const upd=await updateRenhar(existing.id,{komponen:newKompBersih});
+        if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
         setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,komponen:newKompBersih}:r));
       } else {
         setRenhar(prev=>prev.map(r=>(String(r.raw_id||r.rawId)===String(rawId)&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKompBersih}:r));
@@ -884,7 +886,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const syncRenharDel=async(rawId,date,wp)=>{
     await withRenharQueue({rawId,wp,tanggal:date},async(existing)=>{
       if(existing){
-        await removeRenhar(existing.id);
+        const del=await removeRenhar(existing.id);
+        if(!del?.success)throw Object.assign(new Error(del?.error||"Gagal menghapus rencana harian"),{code:(del as any)?.code});
         setRenhar(prev=>prev.filter(r=>r.id!==existing.id));
       } else {
         setRenhar(prev=>prev.filter(r=>!(String(r.raw_id||r.rawId)===String(rawId)&&r.wp===wp&&r.tanggal===date)));
@@ -1034,7 +1037,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       updatedRow={...r,schedule:newSch,...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
       return updatedRow;
     }));
-    syncRenharKomp(cellModal.rawId,cellModal.date,modalWp,finalKomp);
+    // (8 Okt 2026) syncRenharKomp dipindah ke SETELAH raw tersimpan & di-await (lihat bawah) -
+    // dulu dipanggil tanpa await & hasilnya tidak pernah dicek.
+    const ctxSinkron={rawId:cellModal.rawId,date:cellModal.date,wp:modalWp};
     setModalWp('');setModalKomponen([]);setModalBobotPerKomponen({});
     const isBusbarRow=rawRow?.proses==="BUSBAR";
     if(updatedRow){
@@ -1048,7 +1053,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           return{...r,schedule:updatedRow.schedule,busbar_schedule:newBusbarSch};
         }));
       }
-      await updateRaw(cellModal.rawId,updatePayload);
+      const resRaw=await updateRaw(cellModal.rawId,updatePayload);
+      // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron (raw belum berubah).
+      if(!resRaw?.success){
+        console.error("[Raw Schedule] simpan WP gagal:",resRaw?.error);
+        alert("Gagal menyimpan WP ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
+        return;
+      }
+    }
+    {
+      const sinkron=()=>syncRenharKomp(ctxSinkron.rawId,ctxSinkron.date,ctxSinkron.wp,finalKomp);
+      try{await sinkron();}catch(err:any){
+        await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} ${ctxSinkron.wp} (${ctxSinkron.date})`,sinkron);
+      }
     }
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
     const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
@@ -1076,8 +1093,20 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // Update state dan Supabase
     markRawDirty(cellModal.rawId);
     setRawData(prev=>prev.map(r=>r.id===cellModal.rawId?updatedRow:r));
-    await updateRaw(cellModal.rawId,{schedule:newSch});
-    syncRenharDel(cellModal.rawId,cellModal.date,wp);
+    const resRaw=await updateRaw(cellModal.rawId,{schedule:newSch});
+    // (8 Okt 2026) Dulu hasil simpan tidak dicek & syncRenharDel tanpa await.
+    if(!resRaw?.success){
+      console.error("[Raw Schedule] hapus WP gagal:",resRaw?.error);
+      alert("Gagal menghapus WP di server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
+      return;
+    }
+    {
+      const date=cellModal.date,rawIdDel=cellModal.rawId;
+      const sinkron=()=>syncRenharDel(rawIdDel,date,wp);
+      try{await sinkron();}catch(err:any){
+        await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} ${wp} (${date}) - hapus`,sinkron);
+      }
+    }
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";
     await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+rawRow?.panel+" - "+rawRow?.proyek+" ("+cellModal?.date+")",module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""});
   };
@@ -1138,43 +1167,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       return;
     }
     clearRawDirty(row.id);
+    let sinkronRenharGagal=false;
     if(mode==="move"){
-      // Sync renhar wp="BUSBAR" - sama logic split/gabung kayak proses lain (lihat confirmDrag).
-      const renharBusbar=effectiveRenhar.filter((rh:any)=>String(rh.raw_id||rh.rawId)===String(row.id)&&rh.wp==="BUSBAR"&&rh.tanggal===fromDate);
-      for(const rh of renharBusbar){
-        const komponenLama=rh.komponen||[];
-        const komponenPindah=komponenLama.filter((k:string)=>kodeDrag.includes(k));
-        const komponenTinggal=komponenLama.filter((k:string)=>!kodeDrag.includes(k));
-        if(komponenPindah.length===0)continue;
-        if(komponenTinggal.length===0){
-          markRenharDirty(rh.id);
-          await updateRenhar(rh.id,{tanggal:toDate,komponen:komponenPindah});
-          setRenhar((prev:any[])=>prev.map((x:any)=>x.id===rh.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
-        } else {
-          markRenharDirty(rh.id);
-          await updateRenhar(rh.id,{komponen:komponenTinggal});
-          setRenhar((prev:any[])=>prev.map((x:any)=>x.id===rh.id?{...x,komponen:komponenTinggal}:x));
-          const releasedLama=rh.komponen_released||[];
-          const releasedPindah=komponenPindah.filter((k:string)=>releasedLama.includes(k));
-          await withRenharQueue({rawId:row.id,wp:"BUSBAR",tanggal:toDate},async(existingTarget:any)=>{
-            if(existingTarget){
-              const komponenGabung=[...new Set([...(existingTarget.komponen||[]),...komponenPindah])];
-              const releasedGabung=[...new Set([...(existingTarget.komponen_released||[]),...releasedPindah])];
-              markRenharDirty(existingTarget.id);
-              await updateRenhar(existingTarget.id,{komponen:komponenGabung,komponen_released:releasedGabung});
-              setRenhar((prev:any[])=>prev.map((x:any)=>x.id===existingTarget.id?{...x,komponen:komponenGabung,komponen_released:releasedGabung}:x));
-            } else {
-              const result=await createRenhar({
-                raw_id:row.id,wo_id:rh.wo_id,panel_id:rh.panel_id,
-                proyek:rh.proyek,panel:rh.panel,proses:rh.proses,
-                prioritas:rh.prioritas||"Sedang",wp:"BUSBAR",komponen:komponenPindah,
-                tanggal:toDate,pekerja:rh.pekerja||[],komponen_released:releasedPindah,
-              });
-              if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
-              markRenharDirty(result.data.id);setRenhar((prev:any[])=>[...prev,result.data]);
-            }
-          });
-        }
+      // Sync renhar wp="BUSBAR" - helper bersama lib/renharSinkron.ts (8 Okt 2026), logika SAMA
+      // dgn proses lain (lihat confirmDrag): baca segar, tambah ke tujuan dulu baru kurangi asal,
+      // hasil dicek, gagal -> admin diberi tahu & bisa ulang.
+      const sinkron=()=>pindahKomponenRenhar({withRenharQueue,updateRenhar,createRenhar,setRenhar},{rawId:row.id,wp:"BUSBAR",fromDate,toDate,kode:kodeDrag});
+      try{await sinkron();}catch(err:any){
+        sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${row.panel} BUSBAR ${kodeDrag.join(", ")} (${fromDate} → ${toDate})`,async()=>{await sinkron();}));
       }
     }
     setDragMode(null);setDragInfo(null);
@@ -1183,7 +1183,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     await activityLogService.insert({
       user_name:uname,
       action:mode==="move"?"PINDAH JADWAL":"COPY JADWAL",
-      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row.panel+" ("+row.proyek+") proses BUSBAR: "+kodeDrag.join(", ")+" dari "+fromDate+" ke "+toDate,
+      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row.panel+" ("+row.proyek+") proses BUSBAR: "+kodeDrag.join(", ")+" dari "+fromDate+" ke "+toDate+(sinkronRenharGagal?" (SINKRON RENCANA HARIAN GAGAL)":""),
       module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||"",
     });
   };
@@ -1261,63 +1261,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
-    if(mode==="move"){
-      // Renhar yang udah pernah didistribusi/dirilis buat kombinasi ini perlu IKUT PINDAH
-      // tanggalnya di database, bukan cuma di state lokal - kalau enggak, Vista Pekerja
-      // (yang baca renhar.tanggal langsung dari DB) masih nampilin di tanggal LAMA walau
-      // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
-      // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
-      const renharUntukDipindah=effectiveRenhar.filter((r:any)=>String(r.raw_id||r.rawId)===String(rawId)&&r.tanggal===fromDate&&entries.some((e:any)=>e.wp===r.wp));
-      for(const r of renharUntukDipindah){
-        const entry=entries.find((e:any)=>e.wp===r.wp);
-        if(!entry)continue;
-        const komponenLama=r.komponen||[];
-        const komponenPindah=komponenLama.filter((k:string)=>entry.komponen.includes(k));
-        const komponenTinggal=komponenLama.filter((k:string)=>!entry.komponen.includes(k));
-        if(komponenPindah.length===0)continue;
-        if(komponenTinggal.length===0){
-          // Semua komponen di renhar row ini ikut pindah - cukup update tanggalnya, gak perlu row baru.
-          markRenharDirty(r.id);
-          await updateRenhar(r.id,{tanggal:toDate,komponen:komponenPindah});
-          setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,tanggal:toDate,komponen:komponenPindah}:x));
-        } else {
-          // Sebagian komponennya (yang gak ikut ter-drag, misal udah selesai) TETAP tinggal
-          // di row+tanggal lama; yang ikut pindah dibikinin/digabung ke row di tanggal tujuan
-          // biar status rilis/operator buat komponen itu ikut kebawa (bukan malah hilang).
-          markRenharDirty(r.id);
-          await updateRenhar(r.id,{komponen:komponenTinggal});
-          setRenhar(prev=>prev.map((x:any)=>x.id===r.id?{...x,komponen:komponenTinggal}:x));
-          const releasedLama=r.komponen_released||[];
-          const ppkLama=r.pekerja_per_komponen||{};
-          const releasedPindah=komponenPindah.filter((k:string)=>releasedLama.includes(k));
-          const ppkPindah=Object.fromEntries(komponenPindah.filter((k:string)=>ppkLama[k]).map((k:string)=>[k,ppkLama[k]]));
-          // Fresh-fetch dulu lewat withRenharQueue - kalau di tanggal tujuan udah ADA row
-          // renhar (misal dari distribusi manual sebelumnya), GABUNG ke situ, jangan bikin row
-          // baru yang bakal jadi duplikat kedua buat kombinasi raw_id+wp+tanggal yang sama.
-          await withRenharQueue({rawId,wp:r.wp,tanggal:toDate},async(existingTarget)=>{
-            if(existingTarget){
-              const komponenGabung=[...new Set([...(existingTarget.komponen||[]),...komponenPindah])];
-              const releasedGabung=[...new Set([...(existingTarget.komponen_released||[]),...releasedPindah])];
-              const ppkGabung={...(existingTarget.pekerja_per_komponen||{}),...ppkPindah};
-              markRenharDirty(existingTarget.id);
-              await updateRenhar(existingTarget.id,{komponen:komponenGabung,komponen_released:releasedGabung,pekerja_per_komponen:ppkGabung});
-              setRenhar(prev=>prev.map((x:any)=>x.id===existingTarget.id?{...x,komponen:komponenGabung,komponen_released:releasedGabung,pekerja_per_komponen:ppkGabung}:x));
-            } else {
-              const result=await createRenhar({
-                raw_id:rawId,wo_id:r.wo_id,panel_id:r.panel_id,
-                proyek:r.proyek,panel:r.panel,proses:r.proses,
-                prioritas:r.prioritas||"Sedang",wp:r.wp,komponen:komponenPindah,
-                tanggal:toDate,pekerja:r.pekerja||[],
-                komponen_released:releasedPindah,
-                pekerja_per_komponen:ppkPindah,
-              });
-              if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
-              markRenharDirty(result.data.id);setRenhar((prev:any)=>[...prev,result.data]);
-            }
-          });
-        }
-      }
-    }
     setDragMode(null);setDragInfo(null);
     // FIX (25 Sep 2026, root cause "geser Raw Schedule balik lagi instan") - updateRaw() gagal
     // (koneksi lambat/putus) TIDAK PERNAH dicek di sini dulu - rawData optimistic di atas cuma
@@ -1343,6 +1286,32 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
       clearRawDirty(rawId);
     }
+    // Renhar yang udah pernah didistribusi/dirilis buat kombinasi ini perlu IKUT PINDAH
+    // tanggalnya di database, bukan cuma di state lokal - kalau enggak, Vista Pekerja
+    // (yang baca renhar.tanggal langsung dari DB) masih nampilin di tanggal LAMA walau
+    // raw_schedule-nya udah pindah, sementara Rencana Harian (baca raw_schedule) udah gak
+    // nampilin di tanggal lama itu lagi - dua sisi jadi gak sinkron.
+    // (8 Okt 2026) Lewat helper bersama lib/renharSinkron.ts & SETELAH raw tersimpan (dulu
+    // sebelum - renhar gagal = simpan raw ikut batal; raw gagal = renhar sudah terlanjur pindah).
+    // Helper: baca segar, tambah ke tujuan dulu baru kurangi asal, hasil dicek, tujuan yang sudah
+    // punya baris digabung (dulu update tanggal -> ditolak constraint unik diam-diam).
+    let sinkronRenharGagal=false;
+    if(mode==="move"&&updatedRow){
+      const wpGagal:any[]=[];
+      const jalankan=async(daftar:any[])=>{
+        wpGagal.length=0;
+        let errPertama:any=null;
+        for(const e of daftar){
+          try{
+            await pindahKomponenRenhar({withRenharQueue,updateRenhar,createRenhar,setRenhar},{rawId,wp:e.wp,fromDate,toDate,kode:e.komponen||[]});
+          }catch(err){wpGagal.push(e);errPertama=errPertama||err;}
+        }
+        if(errPertama)throw errPertama;
+      };
+      try{await jalankan(entries);}catch(err:any){
+        sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${rowForDrag?.panel||""} ${rowForDrag?.proses||""} ${wpGagal.map((e:any)=>e.wp).join(", ")} (${fromDate} → ${toDate})`,()=>jalankan([...wpGagal])));
+      }
+    }
     // Activity log drag & drop
     const row=rawData.find(r=>r.id===rawId);
     const wpList=entries.map(e=>e.wp).join(", ");
@@ -1352,7 +1321,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     await activityLogService.insert({
       user_name:uname,
       action:mode==="move"?"PINDAH JADWAL":"COPY JADWAL",
-      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row?.panel+" ("+row?.proyek+") proses "+row?.proses+" WP: "+wpList+" dari "+fromDate+" ke "+toDate,
+      description:(mode==="move"?"Pindah":"Copy")+" jadwal "+row?.panel+" ("+row?.proyek+") proses "+row?.proses+" WP: "+wpList+" dari "+fromDate+" ke "+toDate+(sinkronRenharGagal?" (SINKRON RENCANA HARIAN GAGAL)":""),
       module:"raw",
       halaman:"Raw Schedule",
       proyek:row?.proyek||"",
@@ -1767,10 +1736,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const{task,divisi}=assignModal;
     // Cek fresh lewat withRenharQueue - JANGAN percaya assignModal.existing (di-capture stale
     // pas modal dibuka, bisa udah beda kondisinya kalau ada tulisan lain nyelip di antaranya).
+    // (8 Okt 2026) Gagal -> pesan jujur, modal tetap terbuka, log cuma kalau tersimpan.
+    try{
     await withRenharQueue(task,async(existing)=>{
       if(existing){
         markRenharDirty(existing.id);
-        await updateRenhar(existing.id,{pekerja:selPekerja});
+        const upd=await updateRenhar(existing.id,{pekerja:selPekerja});
+        if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
         setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,pekerja:selPekerja}:r));
       } else {
         const result=await createRenhar({
@@ -1783,13 +1755,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);
       }
     });
+    }catch(err:any){
+      console.error(`[Distribusi Raw Schedule raw ${task.rawId} ${task.wp} ${task.tanggal}] gagal:`,err);
+      const kode=typeof err?.code==="string"?err.code.trim():"";
+      alert(kode?`Gagal distribusi - server menolak (kode ${kode}): ${err?.message||err}`:`Gagal distribusi - koneksi lambat/putus. Coba lagi.\n(${err?.message||err})`);
+      return;
+    }
     if(log) await log("DISTRIBUSI RAW SCHEDULE","Distribusi "+task.proses+" - "+task.panel+" ("+task.tanggal+")","renhar",{module:"rencana",action_type:"distribute",proyek:task.proyek||"",panel:task.panel||"",wo_number:task.woId?.toString()||"",halaman:"Raw Schedule"});
     setAssignModal(null);setSelPekerja([]);
   };
 
+  // (8 Okt 2026) Dulu 1 task gagal = loop berhenti diam-diam. Sekarang per task + ringkasan.
   const distributeAll=async()=>{
+    const gagal:string[]=[];
     for(const task of dateTasks){
       const divisi=Object.entries(DIVISI_PROSES).find(([,ps])=>ps.includes(task.proses))?.[0]||"mekanik";
+      try{
       await withRenharQueue(task,async(existing)=>{
         if(existing)return;
         const result=await createRenhar({
@@ -1801,7 +1782,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
         markRenharDirty(result.data.id);setRenhar(prev=>[...prev,result.data]);
       });
+      }catch(err:any){
+        console.error(`[Distribusi semua Raw Schedule raw ${task.rawId} ${task.wp} ${task.tanggal}] gagal:`,err);
+        gagal.push(`${task.proses} - ${task.panel} ${task.wp} (${String(err?.message||err).slice(0,80)})`);
+      }
     }
+    if(gagal.length>0)alert(`Distribusi semua: ${gagal.length} GAGAL (koneksi/server) - klik lagi untuk mencoba ulang:\n\n${gagal.slice(0,15).join("\n")}${gagal.length>15?`\n... dan ${gagal.length-15} lainnya`:""}`);
   };
 
   const thS={background:"#1e3a8a",color:"#fff",padding:"3px 6px",fontWeight:600,fontSize:9,whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center" as "center",borderRight:"1px solid #ffffff18",position:"sticky" as "sticky",top:0,zIndex:3,textTransform:"uppercase" as "uppercase"};
@@ -3002,7 +2988,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   if(r.id!==cellModal.rawId)return r;
                   return{...r,busbar_schedule:newBusbarSch};
                 }));
-                await updateRaw(cellModal.rawId,{busbar_schedule:newBusbarSch});
+                const resRaw=await updateRaw(cellModal.rawId,{busbar_schedule:newBusbarSch});
+                // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron.
+                if(!resRaw?.success){
+                  console.error("[Raw Schedule] simpan jadwal BUSBAR gagal:",resRaw?.error);
+                  alert("Gagal menyimpan jadwal BUSBAR ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
+                  return;
+                }
                 const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
                 const uname=user?.name||user?.nama||sess?.nama||'Admin';
                 // Sync ke renhar - fresh-fetch lewat withRenharQueue, bukan cari di state renhar
@@ -3022,10 +3014,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                     divisi:"assembling",
                     prioritas:rawRow?.prioritas||"Sedang",
                   };
-                  await withRenharQueue(busbarTask,async(existRenhar)=>{
+                  const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
                     if(existRenhar){
                       markRenharDirty(existRenhar.id);
-                      await updateRenhar(existRenhar.id,{...renharPayload});
+                      const upd=await updateRenhar(existRenhar.id,{...renharPayload});
+                      if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
                       setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
                     } else {
                       const res=await createRenhar(renharPayload);
@@ -3033,14 +3026,17 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);
                     }
                   });
+                  try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date})`,sinkron);}
                 } else {
                   // Hapus renhar busbar jika kosong
-                  await withRenharQueue(busbarTask,async(existRenhar)=>{
+                  const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
                     if(existRenhar){
-                      await removeRenhar(existRenhar.id);
+                      const del=await removeRenhar(existRenhar.id);
+                      if(!del?.success)throw Object.assign(new Error(del?.error||"Gagal menghapus rencana harian"),{code:(del as any)?.code});
                       setRenhar((prev:any[])=>prev.filter((r:any)=>r.id!==existRenhar.id));
                     }
                   });
+                  try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date}) - hapus`,sinkron);}
                 }
                 await activityLogService.insert({
                   user_name:uname,
