@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from './lib/supabase'
 import { getLocalDateStr } from './lib/dateHelpers'
 import { ThumbMedia } from './components/ui/ThumbMedia'
+import { MediaPickerSheet } from './components/ui/MediaPickerSheet'
 import { BATAS_VIDEO_MENTAH_MB } from './lib/siapkanMedia'
 import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, type FotoGagal } from './lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch } from './lib/mediaRotasi'
@@ -371,11 +372,11 @@ export default function MesinPublic(){
                     </div>
                     {/* Dokumentasi OPSIONAL - label bilang jelas biar gak dikira wajib. */}
                     <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      <label style={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
+                      {/* (8 Okt 2026) MediaPickerSheet (salinan identik vista-pekerja, dijaga npm run cek:kop) -
+                          dulu input tanpa capture: di HP cuma membuka galeri/pemilih file, tanpa pilihan kamera. */}
+                      <MediaPickerSheet allowVideo onFiles={(files)=>pilihFoto(files)} triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
                         📎 Lampirkan foto/video (opsional)
-                        <input type="file" accept="image/*,video/*" multiple style={{display:"none"}}
-                          onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value=""}}/>
-                      </label>
+                      </MediaPickerSheet>
                       {stagedFoto.length>0&&<span style={{fontSize:10.5,color:"#94a3b8"}}>{stagedFoto.length} file dipilih</span>}
                     </div>
                     {stagedFoto.length>0&&(

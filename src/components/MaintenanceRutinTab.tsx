@@ -6,6 +6,7 @@ import { BATAS_VIDEO_MENTAH_MB } from '../lib/siapkanMedia'
 import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, type FotoGagal } from '../lib/maintenanceRutinSelesai'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
 import { Card, Lbl, Sel, Inp, Btn, Modal } from './ui/Primitives'
+import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { FotoZoomViewer, fotoMaintenanceKeViewer, type FotoViewer } from './FotoZoomViewer'
 import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { bandingDivisiProduksi, DIVISI_KOSONG } from '../lib/urutanDivisi'
@@ -339,11 +340,11 @@ export function MaintenanceRutinTab({mesinList,rutinList,setRutinList,rutinLogLi
         {/* Dokumentasi OPSIONAL (16 Sep 2026) - sama persis konsepnya kayak form "Tandai Selesai" QR (MesinPublic.tsx). */}
         <div style={{marginBottom:20}}>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-            <label style={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
+            {/* (8 Okt 2026) MediaPickerSheet (salinan identik vista-pekerja, dijaga npm run cek:kop) - dulu
+                input tanpa capture: di HP cuma membuka galeri/pemilih file, tidak ada pilihan kamera. */}
+            <MediaPickerSheet allowVideo onFiles={(files)=>pilihFoto(files)} triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
               📎 Lampirkan foto/video (opsional)
-              <input type="file" accept="image/*,video/*" multiple style={{display:"none"}}
-                onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value="";}}/>
-            </label>
+            </MediaPickerSheet>
             {stagedFoto.length>0&&<span style={{fontSize:10.5,color:"#94a3b8"}}>{stagedFoto.length} file dipilih</span>}
           </div>
           {stagedFoto.length>0&&(

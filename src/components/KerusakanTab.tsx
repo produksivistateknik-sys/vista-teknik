@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { unggahMediaKeR2, isFileVideo } from '../lib/siapkanMedia'
 import { ThumbMedia } from './ui/ThumbMedia'
+import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { activityLogService } from '../services/activityLogService'
 import { fmtShort } from '../lib/dateHelpers'
 import { fetchRotasiBatch, rotateMedia } from '../lib/mediaRotasi'
@@ -223,10 +224,12 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
                 </div>
               ))}
             </div>
-            <label style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:"#64748b",background:"#f8fafc",border:"1.5px dashed #cbd5e1",borderRadius:10,padding:"8px 12px",cursor:"pointer"}}>
+            {/* // (8 Okt 2026) MediaPickerSheet (salinan identik vista-pekerja, dijaga npm run cek:kop) - dulu input
+                // tanpa capture: di HP tombol ini cuma membuka galeri/pemilih file, tidak ada pilihan kamera. */}
+            <MediaPickerSheet allowVideo onFiles={(files)=>pilihFoto(files)}
+              triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:"#64748b",background:"#f8fafc",border:"1.5px dashed #cbd5e1",borderRadius:10,padding:"8px 12px",cursor:"pointer"}}>
               📷 Tambah Foto
-              <input type="file" accept="image/*,video/*" multiple style={{display:"none"}} onChange={(e:any)=>{pilihFoto(e.target.files);e.target.value="";}}/>
-            </label>
+            </MediaPickerSheet>
           </div>
           <div style={{display:"flex",gap:8}}>
             <Btn color="#1d4ed8" onClick={save} disabled={saving}>{saving?"Menyimpan...":editId?"Simpan":"Tambah"}</Btn>
