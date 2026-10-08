@@ -604,7 +604,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // tetap). Yang DIRENDER cuma kolom terlihat + BUFFER_KOLOM di kiri-kanan; sisanya 1 sel spacer
   // kiri & 1 kanan per baris. Kartu Capacity Utilization TIDAK ikut state ini (mingguKapasitas, navigasi sendiri).
   const LEBAR_TETAP_KOLOM_TANGGAL=160; // tetap (table-layout:fixed) - wajib utk virtualisasi baris & kolom
-  const LEBAR_STICKY_KIRI=80+150+110+90; // PROYEK + PANEL + PROSES + PRIORITAS
+  // Kolom kiri sticky (8 Okt 2026: + DEADLINE). Offset `left` tiap kolom dihitung dari sini - jangan
+  // tulis angka lagi di header/sel. LEBAR_STICKY_KIRI dipakai virtualisasi kolom, lasso, lebar tabel.
+  const LEBAR_KOL={proyek:80,panel:150,deadline:96,proses:110,prioritas:90};
+  const KIRI_KOL={proyek:0,panel:80,deadline:230,proses:326,prioritas:436};
+  const LEBAR_STICKY_KIRI=LEBAR_KOL.proyek+LEBAR_KOL.panel+LEBAR_KOL.deadline+LEBAR_KOL.proses+LEBAR_KOL.prioritas;
   const LEBAR_STICKY_KANAN=40;
   const RENTANG_VIRTUAL_HARI=3650; // +-10 tahun dari ACUAN_TANGGAL
   const BUFFER_KOLOM=14;
@@ -2061,6 +2065,39 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return m;
   },[woData]);
 
+  // DEADLINE panel (8 Okt 2026) = target baris WO-nya (work_orders.target) - TIDAK berdiri sendiri:
+  // deadline per panel di Manajemen WO sudah diwujudkan dgn memecah panel ke baris WO sibling per
+  // tanggal (saveWOWithSplit), jadi target WO = deadline panel. Baca-saja di sini (ubah lewat Manajemen
+  // WO). Dari woData yang sudah dimuat - tanpa request tambahan.
+  const deadlinePanel=useMemo(()=>{
+    const m=new Map<number,{target:string;wo:string}>();
+    woData.forEach((w:any)=>(w.panels||[]).forEach((p:any)=>{const k=Number(p.id);if(!m.has(k)&&w.target)m.set(k,{target:String(w.target).slice(0,10),wo:w.wo});}));
+    return m;
+  },[woData]);
+  // Filter baris yang tampil - SATU sumber utk grid & penanda deadline di header.
+  const lolosFilterBaris=(row:any)=>
+    (filterProses.length===0||filterProses.includes(row.proses))&&
+    (filterProyek.length===0||filterProyek.includes(row.proyek))&&
+    (filterPanel.length===0||filterPanel.includes(row.panel));
+  // 🚩 di header tanggal: panel (yang tampil) dgn deadline di tanggal itu.
+  const deadlinePerTanggal=useMemo(()=>{
+    const m=new Map<string,string[]>();const sudah=new Set<number>();
+    rawData.forEach((row:any)=>{
+      const pid=Number(row.panel_id||row.panelId);if(sudah.has(pid)||!lolosFilterBaris(row))return;
+      sudah.add(pid);const dl=deadlinePanel.get(pid);if(!dl)return;
+      if(!m.has(dl.target))m.set(dl.target,[]);m.get(dl.target)!.push(`${row.panel} (WO ${dl.wo})`);
+    });
+    return m;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[rawData,deadlinePanel,filterProses,filterProyek,filterPanel]);
+  const infoDeadline=(target:string)=>{
+    const sisa=Math.round((Date.UTC(+target.slice(0,4),+target.slice(5,7)-1,+target.slice(8,10))-Date.UTC(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8,10)))/86400000);
+    const label=sisa>0?`H-${sisa}`:sisa===0?"Hari ini":`Telat ${-sisa} hr`;
+    const warna=sisa<=3?{fg:"#b91c1c",bg:"#fef2f2",bd:"#fecaca"}:sisa<=7?{fg:"#a16207",bg:"#fefce8",bd:"#fde68a"}:{fg:"#15803d",bg:"#f0fdf4",bd:"#bbf7d0"};
+    const tgl=new Date(target+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
+    return{sisa,label,warna,tgl};
+  };
+
   const dateTasks=useMemo(()=>{
     if(!selDate)return[];
     const tasks:any[]=[];
@@ -2433,10 +2470,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         <table style={{width:LEBAR_STICKY_KIRI+TOTAL_KOLOM*LEBAR_TETAP_KOLOM_TANGGAL+LEBAR_STICKY_KANAN,borderCollapse:"collapse",fontSize:9,tableLayout:"fixed"}}>
           <thead ref={el=>daftarUkur("thead",el)} style={{position:"sticky",top:0,zIndex:10}}>
             <tr>
-              <th style={{...thS,textAlign:"left",width:80,minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
-              <th style={{...thS,textAlign:"left",width:150,minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
-              <th style={{...thS,width:110,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
-              <th style={{...thS,width:90,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
+              <th style={{...thS,textAlign:"left",width:LEBAR_KOL.proyek,minWidth:LEBAR_KOL.proyek,position:"sticky",left:KIRI_KOL.proyek,zIndex:5,background:"#1e3a8a"}}>PROYEK</th>
+              <th style={{...thS,textAlign:"left",width:LEBAR_KOL.panel,minWidth:LEBAR_KOL.panel,position:"sticky",left:KIRI_KOL.panel,zIndex:5,background:"#1e3a8a"}}>PANEL</th>
+              <th title="Deadline = target WO (ubah lewat Manajemen WO)" style={{...thS,width:LEBAR_KOL.deadline,minWidth:LEBAR_KOL.deadline,position:"sticky",left:KIRI_KOL.deadline,zIndex:5,background:"#1e3a8a"}}>DEADLINE</th>
+              <th style={{...thS,width:LEBAR_KOL.proses,minWidth:LEBAR_KOL.proses,position:"sticky",left:KIRI_KOL.proses,zIndex:5,background:"#1e3a8a"}}>PROSES</th>
+              <th style={{...thS,width:LEBAR_KOL.prioritas,minWidth:LEBAR_KOL.prioritas,position:"sticky",left:KIRI_KOL.prioritas,zIndex:5,background:"#1e3a8a"}}>PRIORITAS</th>
               <th aria-hidden="true" style={{width:lebarSpasiKiri,padding:0,border:"none",background:"#1e3a8a"}}/>
               {days.map(d=>(
                 <th key={d} onClick={()=>{
@@ -2447,6 +2485,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:tujuanTempel===d&&cutCells.length>0?"#15803d":d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
+                  {deadlinePerTanggal.has(d)&&(
+                    <div title={"Deadline:\n"+deadlinePerTanggal.get(d)!.join("\n")} style={{fontSize:9,fontWeight:800,color:"#fecaca"}}>🚩 {deadlinePerTanggal.get(d)!.length} deadline</div>
+                  )}
                   {tujuanTempel===d&&cutCells.length>0&&<div style={{fontSize:9,fontWeight:800}}>▼ Tujuan tempel</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
                 </th>
@@ -2457,11 +2498,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           </thead>
             {(()=>{
               const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
-              const visibleRows=rawData.filter(row=>
-                (filterProses.length===0||filterProses.includes(row.proses))&&
-                (filterProyek.length===0||filterProyek.includes(row.proyek))&&
-                (filterPanel.length===0||filterPanel.includes(row.panel))
-              ).sort((a,b)=>{
+              const visibleRows=rawData.filter(lolosFilterBaris).sort((a,b)=>{
                 const pa=PRIO_ORDER[a.prioritas]??1;const pb=PRIO_ORDER[b.prioritas]??1;
                 if(pa!==pb)return pa-pb;
                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
@@ -2537,12 +2574,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             </>
                           )}
                           {ki===0&&(
-                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:KIRI_KOL.proses,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
                               <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap" as const}}>{row.proses}</span>
                             </td>
                           )}
                           {ki===0&&(
-                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
+                            <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:KIRI_KOL.prioritas,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
                               <select value={row.prioritas||"Sedang"} onChange={e=>aksiRef.current.updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                                 style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
                                 {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
@@ -2592,12 +2629,27 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             })()}
                           </div>
                         </td>
+                        <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:KIRI_KOL.deadline,zIndex:2,textAlign:"center",background:"#fff",minWidth:LEBAR_KOL.deadline,maxWidth:LEBAR_KOL.deadline,verticalAlign:"middle"}}>
+                          {(()=>{
+                            // DEADLINE = target WO (baca-saja, 8 Okt 2026) - lihat deadlinePanel.
+                            const dl=deadlinePanel.get(Number(curPanelId));
+                            if(!dl)return <span title="WO ini belum punya target - atur di Manajemen WO" style={{fontSize:9,color:"#cbd5e1"}}>—</span>;
+                            const inf=infoDeadline(dl.target);
+                            return(
+                              <div title={`Deadline = target WO ${dl.wo}${inf.sisa<0?" (sudah lewat)":""} - ubah lewat Manajemen WO`}
+                                style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,padding:"2px 6px",borderRadius:6,background:inf.warna.bg,border:`1px solid ${inf.warna.bd}`,color:inf.warna.fg}}>
+                                <span style={{fontSize:9.5,fontWeight:800,whiteSpace:"nowrap" as const}}>{inf.tgl}</span>
+                                <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const}}>{inf.label}</span>
+                              </div>
+                            );
+                          })()}
+                        </td>
                       </>
                     )}
-                    <td style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center",background:rBg}}>
+                    <td style={{...td,position:"sticky",left:KIRI_KOL.proses,zIndex:2,textAlign:"center",background:rBg}}>
                       <span style={{background:pc+"18",color:pc,border:`1px solid ${pc}33`,borderRadius:4,padding:"1px 5px",fontWeight:700,fontSize:9,whiteSpace:"nowrap"}}>{row.proses}</span>
                     </td>
-                    <td style={{...td,position:"sticky",left:340,zIndex:2,textAlign:"center",background:rBg}}>
+                    <td style={{...td,position:"sticky",left:KIRI_KOL.prioritas,zIndex:2,textAlign:"center",background:rBg}}>
                       <select value={row.prioritas||"Sedang"} onChange={e=>aksiRef.current.updatePrioritasPanel(row.panel_id||row.panelId,e.target.value)}
                         style={{padding:"1px 4px",borderRadius:4,border:`1px solid ${priColor}`,background:priColor+"18",color:priColor,fontSize:9,fontWeight:700,cursor:"pointer"}}>
                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
@@ -2781,7 +2833,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 const prevRow=visibleRows[ri-1];
                 const isNewPanel=!prevRow||(prevRow.panel_id||prevRow.panelId)!==pid;
                 const menuTerbuka=menuUrutanPanel===Number(pid);
-                return[row,ri%2,isNewPanel,isNewPanel&&ri>0,panelRowCount[String(pid)]||1,panelById.get(Number(pid)),
+                return[row,ri%2,isNewPanel,isNewPanel&&ri>0,panelRowCount[String(pid)]||1,panelById.get(Number(pid)),deadlinePanel.get(Number(pid))?.target||"",
                   days,selDate,livePanelTypes,wiringHariKerjaMap,savingUrutan,
                   menuTerbuka?{}:false, // menu terbuka membaca blokUrutRef -> selalu render ulang
                   dragOverCell?.rawId===row.id?dragOverCell.date:null,
@@ -2799,7 +2851,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 else blokList.push({panelId:pid,zona:zonaDari(row.prioritas),items:[{row,ri}]});
               });
               blokUrutRef.current=blokList.map(b=>({panelId:b.panelId,zona:b.zona}));
-              const colSpanPenuh=7+days.length; // 4 sticky kiri + spacer kiri + tanggal + spacer kanan + ✕
+              const colSpanPenuh=8+days.length; // 5 sticky kiri (+DEADLINE) + spacer kiri + tanggal + spacer kanan + ✕
               const ZONA_LABEL:Record<Zona,string>={Tinggi:"▲ TINGGI",Sedang:"● SEDANG",Rendah:"▼ RENDAH"};
               // Model posisi (paket 5, lihat VIRTUALISASI GRID): koordinat konten container, urut tampilan.
               void versiUkur; // dihitung ulang tiap ukuran blok berubah
