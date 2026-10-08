@@ -469,6 +469,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // berubah sama sekali.
   const dragMultiRef=useRef<{cells:{rawId:number;date:string}[];anchorDate:string;offset:number|null;ditandai:HTMLElement[];badge:HTMLDivElement|null}|null>(null);
   useEffect(()=>{
+    if(!document.getElementById("rs-deadline-css")){
+      const sd=document.createElement("style");sd.id="rs-deadline-css";
+      sd.textContent=".rs-dl:hover .rs-dl-tgl{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:2px}.rs-dl-kosong{opacity:.45}.rs-dl-kosong:hover{opacity:1;text-decoration:underline}";
+      document.head.appendChild(sd);
+    }
     if(document.getElementById("rs-multi-css"))return;
     const st=document.createElement("style");st.id="rs-multi-css";
     st.textContent=".rs-tujuan-ok{box-shadow:inset 0 0 0 2px #16a34a!important;background:#f0fdf4!important}.rs-tujuan-bad{box-shadow:inset 0 0 0 2px #dc2626!important;background:#fef2f2!important}";
@@ -2092,8 +2097,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   },[rawData,deadlinePanel,filterProses,filterProyek,filterPanel]);
   const infoDeadline=(target:string)=>{
     const sisa=Math.round((Date.UTC(+target.slice(0,4),+target.slice(5,7)-1,+target.slice(8,10))-Date.UTC(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8,10)))/86400000);
-    const label=sisa>0?`H-${sisa}`:sisa===0?"Hari ini":`Telat ${-sisa} hr`;
-    const warna=sisa<=3?{fg:"#b91c1c",bg:"#fef2f2",bd:"#fecaca"}:sisa<=7?{fg:"#a16207",bg:"#fefce8",bd:"#fde68a"}:{fg:"#15803d",bg:"#f0fdf4",bd:"#bbf7d0"};
+    // Tampilan teks polos (8 Okt 2026 koreksi): warna HANYA di teks. normal >7 hari = abu gelap seperti
+    // teks PANEL; segera 4-7 = oranye tua; mepet 0-3 (termasuk hari ini) = merah tua; terlambat = merah
+    // tua tebal.
+    // >=100 hari terlambat: bentuk pendek supaya tidak terpotong di kolom 96px.
+    const label=sisa>0?`${sisa} hari lagi`:sisa===0?"Hari ini":-sisa>=100?`Telat ${-sisa} hr`:`Terlambat ${-sisa} hari`;
+    const warna=sisa<0?{tgl:"#b91c1c",ket:"#b91c1c",tebal:true}:sisa<=3?{tgl:"#b91c1c",ket:"#b91c1c",tebal:false}
+      :sisa<=7?{tgl:"#c2410c",ket:"#c2410c",tebal:false}:{tgl:"#1e293b",ket:"#64748b",tebal:false};
     const tgl=new Date(target+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
     return{sisa,label,warna,tgl};
   };
@@ -2633,13 +2643,13 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                           {(()=>{
                             // DEADLINE = target WO (baca-saja, 8 Okt 2026) - lihat deadlinePanel.
                             const dl=deadlinePanel.get(Number(curPanelId));
-                            if(!dl)return <span title="WO ini belum punya target - atur di Manajemen WO" style={{fontSize:9,color:"#cbd5e1"}}>—</span>;
+                            if(!dl)return <span className="rs-dl rs-dl-kosong" title="WO ini belum punya target - atur di Manajemen WO" style={{fontSize:10,color:"#94a3b8"}}>+ Deadline</span>;
                             const inf=infoDeadline(dl.target);
                             return(
-                              <div title={`Deadline = target WO ${dl.wo}${inf.sisa<0?" (sudah lewat)":""} - ubah lewat Manajemen WO`}
-                                style={{display:"inline-flex",flexDirection:"column" as const,alignItems:"center",gap:1,padding:"2px 6px",borderRadius:6,background:inf.warna.bg,border:`1px solid ${inf.warna.bd}`,color:inf.warna.fg}}>
-                                <span style={{fontSize:9.5,fontWeight:800,whiteSpace:"nowrap" as const}}>{inf.tgl}</span>
-                                <span style={{fontSize:8,fontWeight:700,whiteSpace:"nowrap" as const}}>{inf.label}</span>
+                              <div className="rs-dl" title={`Deadline = target WO ${dl.wo}${inf.sisa<0?" (sudah lewat)":""} - ubah lewat Manajemen WO`}
+                                style={{display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",gap:1,lineHeight:1.2}}>
+                                <span className="rs-dl-tgl" style={{fontSize:11,fontWeight:inf.warna.tebal?800:600,color:inf.warna.tgl,whiteSpace:"nowrap" as const}}>{inf.tgl}</span>
+                                <span style={{fontSize:9.5,fontWeight:inf.warna.tebal?700:400,color:inf.warna.ket,whiteSpace:"nowrap" as const}}>{inf.label}</span>
                               </div>
                             );
                           })()}
