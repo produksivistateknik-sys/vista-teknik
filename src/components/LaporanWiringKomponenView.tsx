@@ -1,4 +1,5 @@
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useRef } from 'react'
+import { cetakElemenBerkop } from '../lib/cetakBerkop'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
 import { getEffCfgGlobal, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
@@ -157,16 +158,19 @@ export function LaporanWiringKomponenView({woData}:{woData:any[]}){
     return d.toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"})
   }
 
+  // Print Laporan (8 Okt 2026): cetak HANYA bagian laporan ini dgn kop surat resmi (lib/cetakBerkop.ts) -
+  // dulu window.print() ikut mencetak sidebar & top bar aplikasi.
+  const refCetak=useRef<HTMLDivElement>(null)
   if(selectedPanel){
     const sb=STATUS_LABEL_WK[selectedPanel._wkStatus]
     return(
-      <div className="fi">
+      <div className="fi" ref={refCetak}>
         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:16,flexWrap:"wrap" as const}} className="no-print">
           <button onClick={()=>setSelectedPanelId(null)}
             style={{height:32,padding:"0 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#fff",color:"#475569",fontSize:12,fontWeight:600,cursor:"pointer"}}>
             Kembali
           </button>
-          <button onClick={()=>window.print()}
+          <button onClick={()=>{const j="Laporan Wiring Komponen";cetakElemenBerkop(refCetak.current,{judulJendela:`${j} - ${selectedPanel.nama}`,subKopRingkas:`${j} \u00b7 ${selectedPanel.nama} \u00b7 WO ${selectedPanel._wo?.wo||"-"}`})}}
             style={{height:32,padding:"0 14px",borderRadius:7,border:"none",background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:600,cursor:"pointer"}}>
             Print Laporan
           </button>
