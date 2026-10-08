@@ -10,6 +10,7 @@ import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getPro
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
+import { lepasDariAsal, taruhDiTujuan, rencanakanPindahMulti, isMinggu, type SelPindah } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -92,6 +93,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
   const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
+  // Buffer POTONG (Ctrl+X, 8 Okt 2026) - terpisah dari buffer salin (copiedCells) tapi saling menimpa
+  // (cuma satu yang aktif). Ctrl+V: ada potongan -> PINDAH (lewat RPC multi-pindah); tidak ada ->
+  // tempel salinan seperti dulu. tujuanTempel = hari tujuan yang diklik setelah memotong.
+  const [cutCells,setCutCells]=useState<{rawId:number,date:string}[]>([]);
+  const [tujuanTempel,setTujuanTempel]=useState<string|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [cellModal,setCellModal]=useState(null);
   const [riwayatOpen,setRiwayatOpen]=useState(false);
@@ -455,23 +461,101 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     });
   };
 
+  // ── DRAG BANYAK SEL (8 Okt 2026, tahap 3) ────────────────────────────────────────────────────
+  // Drag sebuah sel yang TERMASUK pilihan berisi >=2 sel -> seluruh pilihan ikut (offset hari sama,
+  // baris tetap). Selama drag TIDAK ada setState per gerakan mouse: sel tujuan ditandai lewat class
+  // CSS di DOM (hijau = bisa mendarat, merah = bentrok) + badge "N sel · +X hari" yang mengikuti
+  // kursor. Drag sel di luar pilihan = drag 1 sel lama (pilihan dibatalkan). Drag 1 sel lama tidak
+  // berubah sama sekali.
+  const dragMultiRef=useRef<{cells:{rawId:number;date:string}[];anchorDate:string;offset:number|null;ditandai:HTMLElement[];badge:HTMLDivElement|null}|null>(null);
+  useEffect(()=>{
+    if(document.getElementById("rs-multi-css"))return;
+    const st=document.createElement("style");st.id="rs-multi-css";
+    st.textContent=".rs-tujuan-ok{box-shadow:inset 0 0 0 2px #16a34a!important;background:#f0fdf4!important}.rs-tujuan-bad{box-shadow:inset 0 0 0 2px #dc2626!important;background:#fef2f2!important}";
+    document.head.appendChild(st);
+  },[]);
+  // Sel yang ikut dipindah & sel yang bentrok utk offset tertentu (dipakai bayangan drag, validasi
+  // sebelum modal, dan Ctrl+X/V). Sel KOSONG di pilihan (mis. dari Shift+klik) diabaikan.
+  const cekPindahMulti=(cells:{rawId:number;date:string}[],offset:number)=>{
+    const ikut:{rawId:number;date:string;ke:string}[]=[];const bentrok:{rawId:number;date:string;ke:string;alasan:string}[]=[];
+    for(const c of cells){
+      const row=rawData.find((r:any)=>r.id===c.rawId);
+      if(row&&(row.schedule?.[c.date]||[]).length===0&&(row.busbar_schedule?.[c.date]||[]).length===0)continue;
+      const idxKe=tanggalKeIdx(c.date)+offset;
+      const ke=idxKe>=0&&idxKe<TOTAL_KOLOM?idxKeTanggal(idxKe):"";
+      const alasan=!ke?"di luar rentang jadwal":isMinggu(ke)?"hari Minggu":alasanTakBisaMultiPilih(row,c.date,false);
+      if(alasan)bentrok.push({...c,ke,alasan});else ikut.push({...c,ke});
+    }
+    return{ikut,bentrok};
+  };
+  const bersihkanDragMulti=()=>{
+    const m=dragMultiRef.current;if(!m)return;
+    m.ditandai.forEach(el=>el.classList.remove("rs-tujuan-ok","rs-tujuan-bad"));
+    m.badge?.remove();
+    dragMultiRef.current=null;
+  };
+
   const onDragStart=(e,rawId,fromDate,entries)=>{
     // entries di sini udah difilter (lewat getEntriesTanpaSelesai) buang komponen yang udah
     // 100% - kalau abis difilter kosong berarti SEMUA komponen di cell ini udah selesai,
     // gak ada yang perlu/boleh digeser. Batalkan drag-nya sama sekali.
     if(entries.length===0){e.preventDefault();return;}
     e.dataTransfer.effectAllowed="move";
+    const termasukPilihan=selectedCells.some((c:any)=>c.rawId===rawId&&c.date===fromDate);
+    if(termasukPilihan&&selectedCells.length>=2){
+      const badge=document.createElement("div");
+      badge.style.cssText="position:fixed;z-index:10001;pointer-events:none;padding:5px 11px;border-radius:99px;background:#2563eb;color:#fff;font:700 12px system-ui,sans-serif;white-space:nowrap;left:-1000px;top:-1000px";
+      badge.textContent=selectedCells.length+" sel";
+      document.body.appendChild(badge);
+      try{e.dataTransfer.setDragImage(badge,12,12);}catch{/* browser lama - pakai gambar bawaan */}
+      dragMultiRef.current={cells:[...selectedCells],anchorDate:fromDate,offset:null,ditandai:[],badge};
+    } else {
+      bersihkanDragMulti();
+      if(selectedCells.length>0){setSelectedCells([]);setLastSelected(null);}
+    }
     setDragInfo({rawId,fromDate,entries});
   };
 
   const onDragOver=(e,rawId,date)=>{
     e.preventDefault();
     e.dataTransfer.dropEffect="move";
+    const m=dragMultiRef.current;
+    if(m){
+      const offset=tanggalKeIdx(date)-tanggalKeIdx(m.anchorDate);
+      if(m.badge){m.badge.style.left=(e.clientX+16)+"px";m.badge.style.top=(e.clientY+16)+"px";}
+      if(offset===m.offset)return;
+      m.offset=offset;
+      m.ditandai.forEach(el=>el.classList.remove("rs-tujuan-ok","rs-tujuan-bad"));m.ditandai=[];
+      const{ikut,bentrok}=cekPindahMulti(m.cells,offset);
+      const cont=tableScrollRef.current;
+      const tandai=(c:any,cls:string)=>{if(!c.ke||!cont)return;const td=cont.querySelector(`tr[data-rawid="${c.rawId}"] td[data-tgl="${c.ke}"]`) as HTMLElement|null;if(td){td.classList.add(cls);m.ditandai.push(td);}};
+      if(offset!==0){ikut.forEach(c=>tandai(c,"rs-tujuan-ok"));bentrok.forEach(c=>tandai(c,"rs-tujuan-bad"));}
+      if(m.badge){
+        m.badge.textContent=`${ikut.length+bentrok.length} sel · ${offset>0?"+":""}${offset} hari${bentrok.length?` · ${bentrok.length} bentrok`:""}`;
+        m.badge.style.background=bentrok.length?"#dc2626":"#2563eb";
+      }
+      return;
+    }
     setDragOverCell({rawId,date});
   };
 
   const onDrop=(e,rawId,toDate)=>{
     e.preventDefault();
+    const m=dragMultiRef.current;
+    if(m){
+      const offset=tanggalKeIdx(toDate)-tanggalKeIdx(m.anchorDate);
+      const cells=m.cells;
+      bersihkanDragMulti();setDragInfo(null);
+      if(offset===0)return;
+      const{ikut,bentrok}=cekPindahMulti(cells,offset);
+      if(bentrok.length>0){
+        tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b=>b.alasan))].join(", ")}). Tidak ada yang dipindah.`,"err");
+        return;
+      }
+      if(ikut.length===0)return;
+      setDragMode({multi:true,cells:ikut.map(c=>({rawId:c.rawId,date:c.date})),offset,fromDate:m.anchorDate,toDate});
+      return;
+    }
     setDragOverCell(null);
     if(!dragInfo)return;
     if(dragInfo.rawId!==rawId){setDragInfo(null);return;}
@@ -487,6 +571,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // kayak komponen "numpuk"/pindah ke tempat yang gak diminta. onDragEnd jamin dragInfo selalu
   // ke-reset begitu gesture drag berakhir, sukses ataupun dibatalkan.
   const onDragEnd=()=>{
+    bersihkanDragMulti();
     setDragInfo(null);
     setDragOverCell(null);
   };
@@ -629,20 +714,33 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // Keyboard handler Ctrl+C / Ctrl+V / Esc / Delete
   useEffect(()=>{
     const handler=(e:KeyboardEvent)=>{
-      if((e.ctrlKey||e.metaKey)&&e.key==="c"){
-        if(selectedCells.length>0){e.preventDefault();copySelected();}
+      // (8 Okt 2026) Jangan tangkap shortcut saat mengetik di input/textarea/select.
+      const tgt=e.target as HTMLElement|null;
+      if(tgt&&(tgt.tagName==="INPUT"||tgt.tagName==="TEXTAREA"||tgt.tagName==="SELECT"||tgt.isContentEditable))return;
+      const mod=e.ctrlKey||e.metaKey;const k=(e.key||"").toLowerCase();
+      if(mod&&k==="c"){
+        if(selectedCells.length>0){e.preventDefault();copySelected();setCutCells([]);setTujuanTempel(null);}
       }
-      if((e.ctrlKey||e.metaKey)&&e.key==="v"){
-        if(copiedCells.length>0&&lastSelected){
+      if(mod&&k==="x"){
+        if(selectedCells.length>0){e.preventDefault();aksiMultiRef.current.potong();}
+      }
+      if(mod&&k==="v"){
+        if(cutCells.length>0){
+          e.preventDefault();
+          aksiMultiRef.current.tempelPotongan();
+        } else if(copiedCells.length>0&&lastSelected){
           e.preventDefault();
           pasteToCell(lastSelected.rawId,lastSelected.date);
         }
       }
-      if(e.key==="Escape"){setSelectedCells([]);setCopiedCells([]);}
+      if(mod&&k==="z"&&!e.shiftKey){
+        if(undoMultiRef.current.length>0){e.preventDefault();aksiMultiRef.current.batalkanPindahTerakhir();}
+      }
+      if(e.key==="Escape"){setSelectedCells([]);setCopiedCells([]);setCutCells([]);setTujuanTempel(null);}
     };
     window.addEventListener("keydown",handler);
     return()=>window.removeEventListener("keydown",handler);
-  },[selectedCells,copiedCells,lastSelected,rawData,woData]);
+  },[selectedCells,copiedCells,cutCells,tujuanTempel,lastSelected,rawData,woData]);
   // ── COPY PASTE FUNCTIONS ──
   const toggleMarkerCell=async(rawId:number,date:string)=>{
     const rowM=rawData.find((r:any)=>r.id===rawId);
@@ -664,6 +762,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // progress aktualnya tetap di panels.nameplate_progress (Vista Pekerja NameplateView), sudah
   // dan tetap dilihat lewat Detail Progres/Task Monitoring, cuma gak lagi lewat jalur ini.
   const PROSES_MARKER_ONLY=["QC TEST","PACKING"];
+
+  // MULTI-PILIH SEL (8 Okt 2026, tahap 1 fitur pindah banyak sel) - Ctrl/Cmd+klik & lasso BARU
+  // memakai state selectedCells yang SAMA dgn Shift+klik/Alt+klik lama (bukan sistem seleksi kedua).
+  // Aturan "boleh ikut dipilih" = aturan drag yang SUDAH ada: sel yang semua isinya selesai/jejak
+  // (getEntriesTanpaSelesai kosong) tidak bisa; BUSBAR belum ikut multi-pindah (keputusan B, drag
+  // 1 sel BUSBAR lama tetap); sel rentang (tidak bisa di-drag sejak dulu) tidak bisa.
+  // Return null = boleh; string = alasan (ditampilkan sebagai toast). `kosongBoleh` = sel tanpa isi
+  // dianggap boleh (Ctrl+klik setara Alt+klik lama, dipakai juga utk copy/paste); lasso -> false.
+  const alasanTakBisaMultiPilih=(row:any,date:string,kosongBoleh:boolean):string|null=>{
+    if(!row)return"Baris tidak ditemukan.";
+    if(row.proses==="BUSBAR")return"Baris BUSBAR belum bisa ikut dipilih bersama sel lain - geser 1 sel seperti biasa.";
+    if(PROSES_MARKER_ONLY.includes(row.proses))return"Baris "+row.proses+" tidak ikut multi-pilih.";
+    if(getRentangInfoUntukTanggal(row,date))return"Sel rentang tidak bisa dipindah.";
+    const entries=row.schedule?.[date]||[];
+    if(entries.length===0)return kosongBoleh?null:"Sel kosong.";
+    if(getEntriesTanpaSelesai(row,entries).length===0)return"Semua pekerjaan di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.";
+    return null;
+  };
 
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
@@ -706,6 +822,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         }
       }
       setSelectedCells(newSelected);
+    } else if(e.ctrlKey||e.metaKey){
+      // Ctrl/Cmd+klik (BARU, 8 Okt 2026) = setara Alt+klik lama (tambah/kurangi 1 sel), plus aturan
+      // multi-pilih (sel selesai/BUSBAR/rentang ditolak dgn toast). Melepas pilihan selalu boleh.
+      const sudahDipilih=selectedCells.some((c:any)=>c.rawId===rawId&&c.date===date);
+      if(!sudahDipilih){
+        const alasan=alasanTakBisaMultiPilih(rowClicked,date,true);
+        if(alasan){tampilToastUrutan(alasan);return;}
+      }
+      setSelectedCells(prev=>{
+        const exists=prev.some((c:any)=>c.rawId===rawId&&c.date===date);
+        return exists?prev.filter((c:any)=>!(c.rawId===rawId&&c.date===date)):[...prev,{rawId,date}];
+      });
+      setLastSelected({rawId,date});
     } else if(e.altKey){
       // Alt+klik = toggle individual cell (multi select tidak berurutan)
       setSelectedCells(prev=>{
@@ -715,6 +844,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       setLastSelected({rawId,date});
     } else {
       // Klik biasa tanpa modifier
+      if(cutCells.length>0){
+        // Mode POTONG (8 Okt 2026): klik = tandai hari tujuan (kolom), tidak membuka Edit.
+        setTujuanTempel(date);
+        return;
+      }
       if(selectedCells.length>0||copiedCells.length>0){
         // Ada selection/copied → clear dan mulai fresh atau buka modal
         if(copiedCells.length>0){
@@ -733,6 +867,103 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
     }
   };
+
+  // LASSO (8 Okt 2026, tahap 1 multi-pilih) - tarik kotak mulai dari SEL KOSONG (bukan sel berisi
+  // pekerjaan -> itu wilayah drag native, bukan scrollbar) dgn mouse. Kotak digambar langsung ke DOM
+  // (tanpa state React, maks 1x/frame); pilihan dihitung SEKALI saat mouse dilepas: baris dari <tr
+  // data-rawid> yang memotong kotak (kotak selalu di dalam layar -> barisnya pasti dirender), tanggal
+  // dari ARITMETIKA kolom (kolom divirtualisasi, bukan dari elemen DOM sel). Ctrl/Cmd saat mulai =
+  // tambah ke pilihan. Klik tanpa geser (<6px) tetap jadi klik biasa (buka Edit seperti dulu).
+  // Hanya mouse (pointerType "mouse") - di HP/tablet fitur ini tidak aktif.
+  const lassoCtxRef=useRef<any>({});
+  lassoCtxRef.current={rawData,selectedCells,alasan:alasanTakBisaMultiPilih};
+  useEffect(()=>{
+    const cont=tableScrollRef.current;if(!cont)return;
+    let mulai:{x:number;y:number;tambah:boolean}|null=null,aktif=false,raf=0;
+    let akhir={x:0,y:0};
+    let kotak:HTMLDivElement|null=null;
+    const ambilKotak=()=>{
+      if(!kotak){
+        kotak=document.createElement("div");
+        kotak.style.cssText="position:fixed;z-index:9000;pointer-events:none;border:1.5px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none";
+        document.body.appendChild(kotak);
+      }
+      return kotak;
+    };
+    const gambar=()=>{
+      raf=0;if(!mulai)return;
+      const el=ambilKotak();
+      el.style.display="block";
+      el.style.left=Math.min(mulai.x,akhir.x)+"px";el.style.top=Math.min(mulai.y,akhir.y)+"px";
+      el.style.width=Math.abs(akhir.x-mulai.x)+"px";el.style.height=Math.abs(akhir.y-mulai.y)+"px";
+    };
+    const onDown=(e:PointerEvent)=>{
+      if(e.pointerType!=="mouse"||e.button!==0||e.shiftKey||e.altKey)return;
+      const t=e.target as HTMLElement;
+      if(t.closest('[draggable="true"]'))return;
+      const td=t.closest("td[data-tgl]") as HTMLElement|null;
+      if(!td||td.dataset.isi==="1")return;
+      mulai={x:e.clientX,y:e.clientY,tambah:e.ctrlKey||e.metaKey};aktif=false;akhir={x:e.clientX,y:e.clientY};
+    };
+    const onMove=(e:PointerEvent)=>{
+      if(!mulai)return;
+      akhir={x:e.clientX,y:e.clientY};
+      if(!aktif){
+        if(Math.hypot(akhir.x-mulai.x,akhir.y-mulai.y)<6)return;
+        aktif=true;document.body.style.userSelect="none";window.getSelection()?.removeAllRanges();
+      }
+      if(!raf)raf=requestAnimationFrame(gambar);
+    };
+    const onUp=()=>{
+      if(!mulai)return;
+      const m=mulai;mulai=null;
+      if(!aktif)return;
+      aktif=false;document.body.style.userSelect="";
+      if(raf){cancelAnimationFrame(raf);raf=0;}
+      if(kotak)kotak.style.display="none";
+      // Klik yang menyusul mouseup ini (kalau dilepas di atas sel) JANGAN membuka modal Edit.
+      const telan=(ev:MouseEvent)=>{ev.stopPropagation();ev.preventDefault();};
+      cont.addEventListener("click",telan,{capture:true,once:true});
+      setTimeout(()=>cont.removeEventListener("click",telan,{capture:true}),0);
+      const cr=cont.getBoundingClientRect();
+      const x1=Math.max(Math.min(m.x,akhir.x),cr.left+LEBAR_STICKY_KIRI),x2=Math.max(m.x,akhir.x);
+      const y1=Math.min(m.y,akhir.y),y2=Math.max(m.y,akhir.y);
+      if(x2<x1)return;
+      const keIdx=(cx:number)=>Math.floor((cx-cr.left-cont.clientLeft+cont.scrollLeft-LEBAR_STICKY_KIRI)/LEBAR_TETAP_KOLOM_TANGGAL);
+      const i1=Math.max(0,keIdx(x1)),i2=Math.min(TOTAL_KOLOM-1,keIdx(x2));
+      const rowIds=[...cont.querySelectorAll("tr[data-rawid]")].filter(tr=>{
+        const r=tr.getBoundingClientRect();return r.bottom>y1&&r.top<y2;
+      }).map(tr=>Number((tr as HTMLElement).dataset.rawid));
+      const{rawData:rd,selectedCells:sel,alasan}=lassoCtxRef.current;
+      const hasil:{rawId:number;date:string}[]=m.tambah?[...sel]:[];
+      const ada=new Set(hasil.map(c=>c.rawId+"|"+c.date));
+      let pertama:{rawId:number;date:string}|null=null;
+      for(const id of rowIds){
+        const row=rd.find((r:any)=>r.id===id);if(!row)continue;
+        for(let i=i1;i<=i2;i++){
+          const d=idxKeTanggal(i);
+          if(alasan(row,d,false))continue;
+          const k=id+"|"+d;if(ada.has(k))continue;
+          ada.add(k);hasil.push({rawId:id,date:d});pertama=pertama||{rawId:id,date:d};
+        }
+      }
+      setCtxMenu(null);
+      setSelectedCells(hasil);
+      if(pertama)setLastSelected(pertama);
+    };
+    cont.addEventListener("pointerdown",onDown);
+    window.addEventListener("pointermove",onMove);
+    window.addEventListener("pointerup",onUp);
+    return()=>{
+      cont.removeEventListener("pointerdown",onDown);
+      window.removeEventListener("pointermove",onMove);
+      window.removeEventListener("pointerup",onUp);
+      if(raf)cancelAnimationFrame(raf);
+      if(kotak)kotak.remove();
+      document.body.style.userSelect="";
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   const handleContextMenu=(rawId:number,date:string,e:React.MouseEvent)=>{
     e.preventDefault();
@@ -776,19 +1007,24 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       };
     });
     setCopiedCells(copied);
+    // Buffer salin & potong saling menimpa (8 Okt 2026) - termasuk Copy lewat menu klik kanan.
+    setCutCells([]);setTujuanTempel(null);
   };
 
-  const pasteToCell=async(targetRawId:number,targetDate:string)=>{
-    if(!copiedCells.length)return;
+  // `sumber` (8 Okt 2026): opsional - dipakai "Copy" di modal drag banyak sel; default = buffer salin
+  // (Ctrl+C) seperti dulu. Logika tempel tidak berubah.
+  const pasteToCell=async(targetRawId:number,targetDate:string,sumber?:any[])=>{
+    const copiedCells_=sumber||copiedCells;
+    if(!copiedCells_.length)return;
     // Indeks tanggal lewat aritmetika (4 Okt 2026) - dulu days.indexOf: tujuan di luar jendela
     // 44 hari diam-diam dilewati (paste terpotong). Sekarang berlaku untuk tanggal mana pun.
     const targetDayIdx=tanggalKeIdx(targetDate);
     const targetRowIdx=rawData.findIndex(r=>r.id===targetRawId);
-    const srcRowIds=[...new Set(copiedCells.map((c:any)=>c.rawId))];
-    const minSrcDayIdx=Math.min(...copiedCells.map((c:any)=>tanggalKeIdx(c.date)));
+    const srcRowIds=[...new Set(copiedCells_.map((c:any)=>c.rawId))];
+    const minSrcDayIdx=Math.min(...copiedCells_.map((c:any)=>tanggalKeIdx(c.date)));
     const minSrcRowIdx=Math.min(...srcRowIds.map((id:any)=>rawData.findIndex(r=>r.id===id)));
     const batchUpdates:Record<number,any>={};
-    for(const cell of copiedCells){
+    for(const cell of copiedCells_){
       const srcDayIdx=tanggalKeIdx(cell.date);
       const srcRowIdx=rawData.findIndex(r=>r.id===cell.rawId);
       const dayOffset=srcDayIdx-minSrcDayIdx;
@@ -813,7 +1049,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       await updateRaw(id,data);
     }
     setSelectedCells([]);
-    setCopiedCells([]);
+    if(!sumber)setCopiedCells([]);
   };
 
   const openCellModal=(rawId,date)=>{
@@ -1188,8 +1424,139 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     });
   };
 
+  // ── PINDAH BANYAK SEL LEWAT RPC (8 Okt 2026) ────────────────────────────────────────────────
+  // 1 panggilan pindah_multi_sel (migration 20261008020000): jadwal baru dihitung di sini dgn helper
+  // yang SAMA dgn drag 1 sel (lib/jadwalPindah.ts), renhar dipindah di server, semua 1 transaksi.
+  // Server menolak kalau jadwal di DB sudah berubah sejak layar dimuat. Gagal -> tampilan dikembalikan
+  // + toast merah dgn tombol Ulangi. Sukses -> snapshot disimpan utk Undo (tahap 4).
+  const undoMultiRef=useRef<any[]>([]);
+  const jalankanPindahMulti=async(cells:{rawId:number;date:string}[],offset:number)=>{
+    const{ikut,bentrok}=cekPindahMulti(cells,offset);
+    if(bentrok.length>0){
+      tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b=>b.alasan))].join(", ")}). Tidak ada yang dipindah.`,"err");
+      return false;
+    }
+    const sel:SelPindah[]=[];const jadwal=new Map<number,any>();
+    for(const c of ikut){
+      const row=rawData.find((r:any)=>r.id===c.rawId);if(!row)continue;
+      const entries=getEntriesTanpaSelesai(row,row.schedule?.[c.date]||[]);
+      if(entries.length===0)continue;
+      sel.push({rawId:row.id,dari:c.date,ke:c.ke,entries,adaPengerjaan:new Set<string>()});
+      jadwal.set(row.id,row.schedule||{});
+    }
+    if(sel.length===0){tampilToastAksi("Tidak ada pekerjaan yang bisa dipindah di sel terpilih.","err");return false;}
+    // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - SATU query utk semua sel
+    // (bukan per sel), lalu dicocokkan persis panel+proses+tanggal+kode di sini.
+    const rowsById=new Map<number,any>(rawData.map((r:any)=>[r.id,r]));
+    const panelIds=[...new Set(sel.map(s=>Number(rowsById.get(s.rawId)?.panel_id||rowsById.get(s.rawId)?.panelId)))];
+    const tanggalAsal=[...new Set(sel.map(s=>s.dari))];
+    const kodeSemua=[...new Set(sel.flatMap(s=>s.entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")))))];
+    if(kodeSemua.length>0){
+      let semua:any[]=[];
+      for(let from=0;;from+=1000){
+        const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,proses,tanggal,kode_komponen")
+          .in("panel_id",panelIds).in("tanggal",tanggalAsal).in("kode_komponen",kodeSemua).range(from,from+999);
+        if(error){
+          console.error("[Pindah banyak sel] gagal cek pengerjaan:",error);
+          tampilToastAksi("Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.","err",[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
+          return false;
+        }
+        semua=semua.concat(data||[]);
+        if(!data||data.length<1000)break;
+      }
+      sel.forEach(s=>{
+        const row=rowsById.get(s.rawId);const pid=Number(row?.panel_id||row?.panelId);
+        semua.forEach((t:any)=>{if(Number(t.panel_id)===pid&&t.proses===row?.proses&&t.tanggal===s.dari)s.adaPengerjaan.add(t.kode_komponen);});
+      });
+    }
+    const rencana=rencanakanPindahMulti(jadwal,sel,new Date().toISOString());
+    const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r]));
+    rencana.rows.forEach(r=>markRawDirty(r.raw_id));
+    setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,schedule:sesudahById.get(r.id)!.sesudah}:r));
+    const uname=user?.name||user?.nama||"Admin";
+    const{data,error}=await supabase.rpc("pindah_multi_sel",{p_sel:rencana.sel,p_rows:rencana.rows,p_renhar:rencana.renhar,p_user:uname});
+    rencana.rows.forEach(r=>clearRawDirty(r.raw_id));
+    if(error){
+      console.error("[Pindah banyak sel] gagal:",error);
+      setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,schedule:sesudahById.get(r.id)!.sebelum}:r));
+      const kode=typeof error.code==="string"&&error.code.trim()?error.code:"";
+      tampilToastAksi((kode==="P0001"?error.message:`Gagal menyimpan pindah ${sel.length} sel (${kode?"server: "+error.message:"koneksi lambat/putus"}). Tampilan dikembalikan.`),"err",
+        kode==="P0001"?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
+      return false;
+    }
+    refetchRenhar?.();
+    undoMultiRef.current.push({snap:data,label:`${sel.length} sel ${offset>0?"+":""}${offset} hari`});
+    const pindahan=new Map(sel.map(s=>[s.rawId+"|"+s.dari,s.ke]));
+    setSelectedCells((prev:any[])=>prev.map((c:any)=>{const ke=pindahan.get(c.rawId+"|"+c.date);return ke?{...c,date:ke}:c;}));
+    setLastSelected(null);
+    tampilToastAksi(`${sel.length} sel dipindah ${offset>0?"+":""}${offset} hari.`,"ok",[{label:"Batalkan",fn:()=>aksiMultiRef.current.batalkanPindahTerakhir()}]);
+    return true;
+  };
+  // ── POTONG / TEMPEL / BATALKAN (8 Okt 2026, tahap 4) ────────────────────────────────────────
+  const potong=()=>{
+    const cells=selectedCells.filter((c:any)=>{const row=rawData.find((r:any)=>r.id===c.rawId);return(row?.schedule?.[c.date]||[]).length>0||(row?.busbar_schedule?.[c.date]||[]).length>0;});
+    if(cells.length===0){tampilToastAksi("Sel terpilih kosong - tidak ada yang dipotong.","err");return;}
+    const tolak=cells.filter((c:any)=>alasanTakBisaMultiPilih(rawData.find((r:any)=>r.id===c.rawId),c.date,false));
+    if(tolak.length>0){
+      tampilToastAksi(`${tolak.length} sel tidak bisa dipotong (BUSBAR / sudah selesai / jejak / rentang). Tidak ada yang dipotong.`,"err");
+      return;
+    }
+    setCutCells(cells);setCopiedCells([]);setTujuanTempel(null);
+    tampilToastAksi(`${cells.length} sel dipotong. Klik hari tujuan di jadwal, lalu Ctrl+V (atau tombol Tempel).`,"ok");
+  };
+  const tempelPotongan=async()=>{
+    if(cutCells.length===0)return;
+    if(!tujuanTempel){tampilToastAksi("Klik hari tujuan di jadwal dulu, lalu Ctrl+V.","err");return;}
+    // Sel PALING AWAL mendarat di hari tujuan, sisanya ikut offset relatif yang sama.
+    const offset=tanggalKeIdx(tujuanTempel)-Math.min(...cutCells.map((c:any)=>tanggalKeIdx(c.date)));
+    if(offset===0){tampilToastAksi("Hari tujuan sama dengan posisi sekarang - tidak ada yang dipindah.","err");return;}
+    const ok=await jalankanPindahMulti(cutCells,offset);
+    if(ok){setCutCells([]);setTujuanTempel(null);}
+  };
+  // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel (bukan pindah balik, yang
+  // akan menambah jejak baru). Server menolak kalau data sudah berubah lagi sejak dipindah.
+  const [sedangBatalkan,setSedangBatalkan]=useState(false);
+  const batalkanPindahTerakhir=async()=>{
+    const st=undoMultiRef.current;
+    if(st.length===0||sedangBatalkan)return;
+    const entri=st[st.length-1];
+    setSedangBatalkan(true);
+    const{error}=await supabase.rpc("pulihkan_multi_sel",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"});
+    setSedangBatalkan(false);
+    if(error){
+      console.error("[Batalkan pindah banyak sel] gagal:",error);
+      const ditolak=typeof error.code==="string"&&error.code==="P0001";
+      if(ditolak)st.pop(); // data sudah berubah lagi - tidak bisa dibatalkan, jangan ditawarkan lagi
+      tampilToastAksi(ditolak?error.message:`Gagal membatalkan (koneksi lambat/putus). Pemindahan BELUM dibatalkan.`,"err",
+        ditolak?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.batalkanPindahTerakhir()}]);
+      return;
+    }
+    st.pop();
+    const sebelum=new Map<number,any>((entri.snap?.raw||[]).map((r:any)=>[Number(r.raw_id),r.sebelum]));
+    setRawData((prev:any[])=>prev.map((r:any)=>sebelum.has(r.id)?{...r,schedule:sebelum.get(r.id)}:r));
+    refetchRenhar?.();
+    setSelectedCells([]);setLastSelected(null);
+    tampilToastAksi(`Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`,"ok");
+  };
+  // Copy banyak sel (pilihan "Copy" di modal drag) = salin/duplikat LAMA (pasteToCell) dgn offset hari
+  // yang sama, baris tetap - perilaku copy tidak diubah.
+  const salinMulti=async(cells:{rawId:number;date:string}[],offset:number)=>{
+    const sumber=cells.map(c=>{const row=rawData.find((r:any)=>r.id===c.rawId);return{rawId:c.rawId,date:c.date,entries:row?.schedule?.[c.date]||[],busbar:row?.busbar_schedule?.[c.date]||[]};});
+    const minRowIdx=Math.min(...sumber.map(c=>rawData.findIndex((r:any)=>r.id===c.rawId)));
+    const minDayIdx=Math.min(...sumber.map(c=>tanggalKeIdx(c.date)));
+    await pasteToCell(rawData[minRowIdx].id,idxKeTanggal(minDayIdx+offset),sumber);
+  };
+  const aksiMultiRef=useRef<any>({});
+  aksiMultiRef.current={jalankanPindahMulti,potong,tempelPotongan,batalkanPindahTerakhir};
+
   const confirmDrag=async(mode)=>{
     if(!dragMode)return;
+    if(dragMode.multi){
+      const{cells,offset}=dragMode;
+      setDragMode(null);setDragInfo(null);
+      if(mode==="move")await jalankanPindahMulti(cells,offset);else await salinMulti(cells,offset);
+      return;
+    }
     const{rawId,fromDate,entries,toDate}=dragMode;
     const rowForDrag=rawData.find((r:any)=>r.id===rawId);
     if(rowForDrag?.proses==="BUSBAR"){
@@ -1211,53 +1578,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         adaPengerjaanSetDrag=new Set((timerRowsDrag||[]).map((t:any)=>t.kode_komponen));
       }
     }
+    // Logika jadwal dipindah ke lib/jadwalPindah.ts (8 Okt 2026) - SATU sumber dgn pindah banyak
+    // sel sekaligus; isinya sama persis (lihat komentar di sana): move = lepas kode dari asal
+    // (jejak digeserKe bila ada pengerjaan di fromDate), lalu move MAUPUN copy = gabung ke tujuan
+    // + stamp manualPin (BUG FIX 23 Sep 2026 "pengaturan manual ketimpa auto-geser").
+    const nowIsoPin=new Date().toISOString();
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
-      const newSch={...r.schedule};
-      if(mode==="move"){
-        // Jangan hapus fromDate total - kode yang gak ikut ter-drag (misal udah selesai,
-        // sudah difilter keluar dari `entries` sejak onDragStart) harus TETAP di tempatnya.
-        const sisaDiAsal=(r.schedule?.[fromDate]||[]).map((orig:any)=>{
-          const dragged=entries.find((e:any)=>e.wp===orig.wp);
-          if(!dragged)return orig;
-          let digeserKe={...(orig.digeserKe||{})};
-          const komponenSisa=(orig.komponen||[]).filter((k:string)=>{
-            if(!dragged.komponen.includes(k))return true;
-            if(adaPengerjaanSetDrag.has(k)){digeserKe[k]=toDate;return true;}
-            return false;
-          });
-          if(komponenSisa.length===0)return null;
-          return Object.keys(digeserKe).length>0?{...orig,komponen:komponenSisa,digeserKe}:{...orig,komponen:komponenSisa};
-        }).filter(Boolean);
-        if(sisaDiAsal.length>0)newSch[fromDate]=sisaDiAsal;else delete newSch[fromDate];
-      }
-      // BUG FIX (23 Sep 2026, "pengaturan manual ketimpa auto-geser") - drag manual dulu gak
-      // ninggalin penanda apa pun di entry TUJUAN, jadi auto-geser-harian (Edge Function) gak
-      // bisa bedain kode yang barusan diatur manual dari kode basi yang numpuk berhari-hari -
-      // keduanya sama-sama dievaluasi ulang & bisa digeser lagi begitu tanggal itu jadi
-      // hariSumber di run berikutnya (kasus nyata: MCC PANEL/WIRING CONTROL, LUTVAN drag manual
-      // ke 16 Sep, lenyap tanpa jejak keesokan paginya). Sekarang tiap kode yang ikut ter-drag
-      // (move MAUPUN copy) di-stamp `manualPin[kode]=timestamp` di entry tujuan - auto-geser-
-      // harian WAJIB skip kode berpenanda ini (permanen sampai progress 100%, sesuai keputusan
-      // user - lihat isManualPinKode di index.ts Edge Function).
-      const nowIsoPin=new Date().toISOString();
-      const existing=newSch[toDate]||[];
-      const merged=[...existing];
-      entries.forEach(e=>{
-        const kodeAsliDrag=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
-        const found=merged.find(m=>m.wp===e.wp);
-        if(found){
-          found.komponen=[...new Set([...found.komponen,...e.komponen])];
-          const manualPin={...(found.manualPin||{})};
-          kodeAsliDrag.forEach((k:string)=>{manualPin[k]=nowIsoPin;});
-          found.manualPin=manualPin;
-        } else {
-          const manualPin:Record<string,string>={};
-          kodeAsliDrag.forEach((k:string)=>{manualPin[k]=nowIsoPin;});
-          merged.push({...e,manualPin});
-        }
-      });
-      newSch[toDate]=merged;
+      let newSch=r.schedule||{};
+      if(mode==="move")newSch=lepasDariAsal(newSch,fromDate,toDate,entries,adaPengerjaanSetDrag);
+      newSch=taruhDiTujuan(newSch,toDate,entries,nowIsoPin);
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
@@ -1344,6 +1674,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [menuUrutanPanel,setMenuUrutanPanel]=useState<number|null>(null);
   const [toastUrutan,setToastUrutan]=useState<string|null>(null);
   const toastUrutanTimer=useRef<any>(null);
+  // Toast pindah banyak sel (8 Okt 2026): hijau/merah + tombol aksi (Ulangi / Batalkan).
+  const [toastAksi,setToastAksi]=useState<{pesan:string;jenis:"ok"|"err";aksi?:{label:string;fn:()=>void}[]}|null>(null);
+  const toastAksiTimer=useRef<any>(null);
+  const tampilToastAksi=(pesan:string,jenis:"ok"|"err",aksi?:{label:string;fn:()=>void}[])=>{
+    setToastAksi({pesan,jenis,aksi});
+    if(toastAksiTimer.current)clearTimeout(toastAksiTimer.current);
+    toastAksiTimer.current=setTimeout(()=>setToastAksi(null),aksi?.length?9000:5000);
+  };
   const tampilToastUrutan=(msg:string)=>{
     setToastUrutan(msg);
     if(toastUrutanTimer.current)clearTimeout(toastUrutanTimer.current);
@@ -2079,9 +2417,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               <th aria-hidden="true" style={{width:lebarSpasiKiri,padding:0,border:"none",background:"#1e3a8a"}}/>
               {days.map(d=>(
                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
-                  style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+                  style={{...thS,width:LEBAR_TETAP_KOLOM_TANGGAL,minWidth:LEBAR_TETAP_KOLOM_TANGGAL,cursor:"pointer",background:tujuanTempel===d&&cutCells.length>0?"#15803d":d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
                   <div>{getDayLabel(d)}</div>
                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
+                  {tujuanTempel===d&&cutCells.length>0&&<div style={{fontSize:9,fontWeight:800}}>▼ Tujuan tempel</div>}
                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
                 </th>
               ))}
@@ -2194,7 +2533,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 }
 
                 return(
-                  <tr key={row.id}>
+                  <tr key={row.id} data-rawid={row.id}>
                     {isNewPanel&&(
                       <>
                         <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:"#fff",minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center" as const,verticalAlign:"middle"}}>{row.proyek}</td>
@@ -2264,7 +2603,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const isDraggableEntry=!rentangInfo;
                       const isPast=d<TODAY;
                       return(
-                        <td key={d} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,outline:isOver?"2px dashed #2563eb":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} data-tgl={d} data-isi={(entries.length>0||busbarEntries.length>0)?"1":"0"} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,opacity:cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?0.45:1,outline:isOver?"2px dashed #2563eb":cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #64748b":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>aksiRef.current.onDragOver(e,row.id,d)}
                           onDrop={e=>aksiRef.current.onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
@@ -2419,7 +2758,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   days,selDate,livePanelTypes,wiringHariKerjaMap,savingUrutan,
                   menuTerbuka?{}:false, // menu terbuka membaca blokUrutRef -> selalu render ulang
                   dragOverCell?.rawId===row.id?dragOverCell.date:null,
-                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id)];
+                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id),kunciSel(cutCells,row.id)];
               };
 
               // Kelompokkan jadi blok panel (baris 1 panel selalu berurutan krn sort di atas), lalu
@@ -2531,6 +2870,33 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         })()}
       </DragOverlay>
       </DndContext>
+      {(cutCells.length>0||(selectedCells.length>=2&&copiedCells.length===0))&&!cellModal&&(
+        // Penanda multi-pilih / potong (8 Okt 2026). Sel terpilih tetap ditandai outline biru (lama),
+        // sel terpotong redup + garis putus abu-abu.
+        <div style={{position:"fixed",top:14,left:"50%",transform:"translateX(-50%)",zIndex:9500,background:cutCells.length>0?"#334155":"#2563eb",color:"#fff",
+          borderRadius:99,padding:"6px 8px 6px 14px",fontSize:12,fontWeight:700,boxShadow:"0 6px 20px #0003",display:"flex",gap:8,alignItems:"center"}}>
+          {cutCells.length>0
+            ?<>{cutCells.length} sel dipotong · {tujuanTempel?<>tujuan <b>{getDayLabel(tujuanTempel)}</b></>:"klik hari tujuan"}
+              <button onClick={()=>aksiMultiRef.current.tempelPotongan()} disabled={!tujuanTempel}
+                style={{background:tujuanTempel?"#16a34a":"rgba(255,255,255,.15)",color:"#fff",border:"none",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:800,cursor:tujuanTempel?"pointer":"default"}}>Tempel (Ctrl+V)</button></>
+            :<>{selectedCells.length} sel dipilih
+              <button onClick={()=>aksiMultiRef.current.potong()}
+                style={{background:"rgba(255,255,255,.2)",color:"#fff",border:"none",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Potong (Ctrl+X)</button></>}
+          <button onClick={()=>{setSelectedCells([]);setLastSelected(null);setCutCells([]);setTujuanTempel(null);}}
+            style={{background:"rgba(255,255,255,.2)",color:"#fff",border:"none",borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Batal (Esc)</button>
+        </div>
+      )}
+      {toastAksi&&(
+        <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:toastAksi.jenis==="err"?"#dc2626":"#14532d",color:"#fff",
+          borderRadius:10,padding:"10px 16px",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 20px #0004",display:"flex",gap:14,alignItems:"center",maxWidth:"min(92vw,620px)"}}>
+          <span>{toastAksi.pesan}</span>
+          {(toastAksi.aksi||[]).map(a=>(
+            <button key={a.label} onClick={()=>{setToastAksi(null);a.fn();}}
+              style={{background:"rgba(255,255,255,.18)",color:"#fff",border:"1px solid rgba(255,255,255,.4)",borderRadius:7,padding:"4px 10px",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{a.label}</button>
+          ))}
+          <button onClick={()=>setToastAksi(null)} aria-label="Tutup" style={{background:"none",border:"none",color:"#fff",opacity:.7,cursor:"pointer",fontSize:14,flexShrink:0}}>✕</button>
+        </div>
+      )}
       {toastUrutan&&(
         <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:"#fffbeb",border:"1.5px solid #f59e0b",color:"#92400e",
           borderRadius:10,padding:"10px 16px",fontSize:12,fontWeight:700,boxShadow:"0 6px 20px #0003"}}>
@@ -3467,8 +3833,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       })()}
 
       {dragMode&&(
-        <Modal title="Pindah atau Copy?" onClose={()=>setDragMode(null)} width={360}>
-          <div style={{fontSize:13,color:"#475569",marginBottom:16}}>Dari <strong>{getDayLabel(dragMode.fromDate)}</strong> ke <strong>{getDayLabel(dragMode.toDate)}</strong></div>
+        <Modal title={dragMode.multi?`Pindah ${dragMode.cells.length} sel atau Copy?`:"Pindah atau Copy?"} onClose={()=>setDragMode(null)} width={360}>
+          <div style={{fontSize:13,color:"#475569",marginBottom:16}}>{dragMode.multi
+            ?<>Semua sel terpilih digeser <strong>{dragMode.offset>0?"+":""}{dragMode.offset} hari</strong> (jarak antar-sel tetap, baris tidak berubah).</>
+            :<>Dari <strong>{getDayLabel(dragMode.fromDate)}</strong> ke <strong>{getDayLabel(dragMode.toDate)}</strong></>}</div>
           <div style={{display:"flex",gap:10}}>
             <Btn color="#dc2626" style={{flex:1}} onClick={()=>confirmDrag("move")}>📦 Pindah</Btn>
             <Btn color="#2563eb" style={{flex:1}} onClick={()=>confirmDrag("copy")}>📋 Copy</Btn>

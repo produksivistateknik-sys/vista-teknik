@@ -3365,6 +3365,14 @@ export type Database = {
         Args: { p_tipe_panel: string; p_user: string }
         Returns: Json
       }
+      pindah_multi_sel: {
+        Args: { p_sel: Json; p_rows: Json; p_renhar: Json; p_user: string }
+        Returns: Json
+      }
+      pulihkan_multi_sel: {
+        Args: { p_snap: Json; p_user: string }
+        Returns: Json
+      }
       nomor_kode_komponen_berikutnya: {
         Args: { p_tipe_panel: string }
         Returns: number
