@@ -12,7 +12,8 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
-import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib, muatTimerBusbarAktif, isiPengerjaanAsal, rpcPindahMultiV2, rpcPulihkanMultiV2 } from '../lib/pindahMulti'
+import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
+import { usePindahMulti } from '../hooks/usePindahMulti'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
@@ -452,16 +453,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // Capacity Utilization, dihitung dari snapshot jadwal setelah dipindah: beban yang mendarat dijumlah,
   // sumber berkurang dari hari asal). Hari biasa tidak dicek kapasitas (sama dgn drag lama). BUSBAR:
   // timer berjalan = bentrok (status timer dimuat 1x saat drag/potong dimulai - muatTimerBusbar).
-  const timerBusbarRef=useRef<Set<string>>(new Set()); // "panelId|kode" yang timer BUSBAR-nya berjalan
-  const muatTimerBusbar=async(cells:{rawId:number;date:string}[])=>{
-    const pids=[...new Set(cells.map(c=>rawData.find((r:any)=>r.id===c.rawId)).filter((r:any)=>r?.proses==="BUSBAR").map((r:any)=>Number(r.panel_id||r.panelId)))];
-    // Dikosongkan dulu (9 Okt 2026, review): selama muat / bila gagal, jangan pakai daftar aksi
-    // sebelumnya (bisa menolak palsu "timer berjalan"). Pengecekan pasti tetap di server (RPC v2).
-    timerBusbarRef.current=new Set();
-    if(pids.length===0)return;
-    const hasil=await muatTimerBusbarAktif(pids); // query & log gagal: lib/pindahMulti.ts
-    if(hasil)timerBusbarRef.current=hasil;
-  };
+  // Orkestrasi pindah banyak sel + Undo + status timer BUSBAR = hooks/usePindahMulti.ts (Tahap 0 - satu
+  // jalur utk tampilan lama & baru). Data/fungsi diambil SAAT AKSI (getter), bukan saat render.
+  const pindahMulti=usePindahMulti(()=>({rawData,user,setRawData,refetchRaw,refetchRenhar,tampilToastAksi,cekPindahMulti,buatSelV2,
+    onSesudahPindah:(pindahan:Map<string,string>)=>{
+      setSelectedCells((prev:any[])=>prev.map((c:any)=>{const ke=pindahan.get(c.rawId+"|"+c.date);return ke?{...c,date:ke}:c;}));
+      setLastSelected(null);
+    },
+    onSesudahBatal:()=>{setSelectedCells([]);setLastSelected(null);}}));
+  const timerBusbarRef=pindahMulti.timerBusbarRef;
+  const muatTimerBusbar=pindahMulti.muatTimerBusbar;
   const kapasitasPada=(d:string,pr:string)=>kapasitasPadaLib(fcsKapasitas,d,pr);
   // Sel -> data pindah (BUSBAR: kode busbar yang boleh pindah; lainnya termasuk QC/PACKING: entries
   // tanpa yang selesai/jejak). Jejak (adaPengerjaan) diisi belakangan oleh jalankanPindahMulti.
@@ -715,7 +716,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         }
       }
       if(mod&&k==="z"&&!e.shiftKey){
-        if(undoMultiRef.current.length>0){e.preventDefault();aksiMultiRef.current.batalkanPindahTerakhir();}
+        if(pindahMulti.undoMultiRef.current.length>0){e.preventDefault();aksiMultiRef.current.batalkanPindahTerakhir();}
       }
       if(e.key==="Escape"){setSelectedCells([]);setCopiedCells([]);setCutCells([]);setTujuanTempel(null);}
     };
@@ -1415,59 +1416,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // yang SAMA dgn drag 1 sel (lib/jadwalPindah.ts), renhar dipindah di server, semua 1 transaksi.
   // Server menolak kalau jadwal di DB sudah berubah sejak layar dimuat. Gagal -> tampilan dikembalikan
   // + toast merah dgn tombol Ulangi. Sukses -> snapshot disimpan utk Undo (tahap 4).
-  const undoMultiRef=useRef<any[]>([]);
-  // Pengaman aksi ganda (8 Okt 2026, review): Ctrl+V / tombol Pindah / Ctrl+Z ditekan 2x cepat dulu
-  // menjalankan 2 RPC - yang kedua ditolak server lalu tampilan dikembalikan ke posisi lama (padahal
-  // DB sudah pindah), atau undo kedua ikut membuang entri undo sebelumnya. Pakai ref (bukan state)
-  // supaya langsung berlaku tanpa menunggu render.
-  const sedangPindahRef=useRef(false);
-  const sedangBatalkanRef=useRef(false);
-  const jalankanPindahMulti=async(cells:{rawId:number;date:string}[],offset:number)=>{
-    if(sedangPindahRef.current||sedangBatalkanRef.current){tampilToastAksi("Masih memproses pemindahan sebelumnya - tunggu sebentar.","err");return false;}
-    sedangPindahRef.current=true;
-    try{return await jalankanPindahMultiInti(cells,offset);}finally{sedangPindahRef.current=false;}
-  };
-  const jalankanPindahMultiInti=async(cells:{rawId:number;date:string}[],offset:number)=>{
-    const{ikut,bentrok}=cekPindahMulti(cells,offset);
-    if(bentrok.length>0){
-      tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b=>b.alasan))].join(", ")}). Tidak ada yang dipindah.`,"err");
-      return false;
-    }
-    const{sel,jadwal}=buatSelV2(ikut);
-    if(sel.length===0){tampilToastAksi("Tidak ada pekerjaan yang bisa dipindah di sel terpilih.","err");return false;}
-    // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - 1 query utk semua sel (lib/pindahMulti.ts).
-    const{error:errPengerjaan}=await isiPengerjaanAsal(rawData,sel);
-    if(errPengerjaan){
-      tampilToastAksi("Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.","err",[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
-      return false;
-    }
-    const rencana=rencanakanPindahMultiV2(jadwal,sel,new Date().toISOString());
-    const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r]));
-    rencana.rows.forEach(r=>markRawDirty(r.raw_id));
-    // 4 kolom (schedule + busbar_schedule/jejak/manual_pin) - RPC v2 (migration 20261009010000).
-    setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)!.sesudah}:r));
-    const uname=user?.name||user?.nama||"Admin";
-    const{data,error}=await rpcPindahMultiV2(rencana,uname);
-    rencana.rows.forEach(r=>clearRawDirty(r.raw_id));
-    if(error){
-      console.error("[Pindah banyak sel] gagal:",error);
-      setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)!.sebelum}:r));
-      const kode=typeof error.code==="string"&&error.code.trim()?error.code:"";
-      // Gagal koneksi bisa berarti server SUDAH menyimpan tapi responsnya putus -> muat ulang dari
-      // server supaya layar menunjukkan keadaan DB yang sebenarnya (bukan tebakan "pasti gagal").
-      if(kode!=="P0001"){refetchRaw?.();refetchRenhar?.();}
-      tampilToastAksi((kode==="P0001"?error.message:`Gagal menyimpan pindah ${sel.length} sel (${kode?"server: "+error.message:"koneksi lambat/putus"}). Jadwal dimuat ulang dari server - cek posisinya sebelum mengulang.`),"err",
-        kode==="P0001"?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
-      return false;
-    }
-    refetchRenhar?.();
-    undoMultiRef.current.push({snap:data,label:`${sel.length} sel ${offset>0?"+":""}${offset} hari`});
-    const pindahan=new Map(sel.map(s=>[s.rawId+"|"+s.dari,s.ke]));
-    setSelectedCells((prev:any[])=>prev.map((c:any)=>{const ke=pindahan.get(c.rawId+"|"+c.date);return ke?{...c,date:ke}:c;}));
-    setLastSelected(null);
-    tampilToastAksi(`${sel.length} sel dipindah ${offset>0?"+":""}${offset} hari.`,"ok",[{label:"Batalkan",fn:()=>aksiMultiRef.current.batalkanPindahTerakhir()}]);
-    return true;
-  };
+  // Pindah (validasi -> RPC v2 -> kembalikan bila gagal -> snapshot Undo) & pengaman aksi ganda: hooks/usePindahMulti.ts.
+  const jalankanPindahMulti=pindahMulti.jalankanPindahMulti;
   // ── POTONG / TEMPEL / BATALKAN (8 Okt 2026, tahap 4) ────────────────────────────────────────
   const potong=()=>{
     const cells=selectedCells.filter((c:any)=>{const row=rawData.find((r:any)=>r.id===c.rawId);return(row?.schedule?.[c.date]||[]).length>0||(row?.busbar_schedule?.[c.date]||[]).length>0;});
@@ -1490,32 +1440,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const ok=await jalankanPindahMulti(cutCells,offset);
     if(ok){setCutCells([]);setTujuanTempel(null);}
   };
-  // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel (bukan pindah balik, yang
-  // akan menambah jejak baru). Server menolak kalau data sudah berubah lagi sejak dipindah.
-  const batalkanPindahTerakhir=async()=>{
-    const st=undoMultiRef.current;
-    if(st.length===0||sedangBatalkanRef.current||sedangPindahRef.current)return;
-    const entri=st[st.length-1];
-    sedangBatalkanRef.current=true;
-    let error:any=null;
-    try{({error}=await rpcPulihkanMultiV2(entri.snap,user?.name||user?.nama||"Admin"));}
-    finally{sedangBatalkanRef.current=false;}
-    if(error){
-      console.error("[Batalkan pindah banyak sel] gagal:",error);
-      const ditolak=typeof error.code==="string"&&error.code==="P0001";
-      if(ditolak)st.pop(); // data sudah berubah lagi - tidak bisa dibatalkan, jangan ditawarkan lagi
-      else{refetchRaw?.();refetchRenhar?.();} // respons putus: tampilkan keadaan server yang sebenarnya
-      tampilToastAksi(ditolak?error.message:`Gagal membatalkan (koneksi lambat/putus). Pemindahan BELUM dibatalkan.`,"err",
-        ditolak?undefined:[{label:"Ulangi",fn:()=>aksiMultiRef.current.batalkanPindahTerakhir()}]);
-      return;
-    }
-    st.pop();
-    const sebelum=new Map<number,any>((entri.snap?.raw||[]).map((r:any)=>[Number(r.raw_id),r.sebelum]));
-    setRawData((prev:any[])=>prev.map((r:any)=>sebelum.has(r.id)?{...r,...sebelum.get(r.id)}:r)); // 4 kolom (v2)
-    refetchRenhar?.();
-    setSelectedCells([]);setLastSelected(null);
-    tampilToastAksi(`Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`,"ok");
-  };
+  // Undo = MEMULIHKAN keadaan persis sebelum pindah (pulihkan_multi_sel_v2) - hooks/usePindahMulti.ts.
+  const batalkanPindahTerakhir=pindahMulti.batalkanPindahTerakhir;
   // Copy banyak sel (pilihan "Copy" di modal drag) = salin/duplikat LAMA (pasteToCell) dgn offset hari
   // yang sama, baris tetap - perilaku copy tidak diubah.
   const salinMulti=async(cells:{rawId:number;date:string}[],offset:number)=>{
