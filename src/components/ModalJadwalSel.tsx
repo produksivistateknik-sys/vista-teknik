@@ -338,34 +338,38 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
     }
   };
-  const removeEntry=async(wp)=>{
+  // Hapus 1 WP dari sel (rawId, tanggal) + sinkron renhar + log. Dipakai tombol "✕ Hapus" di modal (removeEntry)
+  // dan menu "Hapus" tampilan accordion. Mengembalikan true bila jadwal tersimpan.
+  const hapusWpDariSel=async(rawId:number,date:string,wp:string):Promise<boolean>=>{
     // Hitung new schedule dulu sebelum update state
-    const currentRow=rawData.find(r=>r.id===cellModal.rawId);
-    if(!currentRow)return;
+    const currentRow=rawData.find(r=>r.id===rawId);
+    if(!currentRow)return false;
     const newSch={...currentRow.schedule};
-    const updated=(newSch[cellModal.date]||[]).filter((e:any)=>e.wp!==wp);
-    if(!updated.length) delete newSch[cellModal.date]; else newSch[cellModal.date]=updated;
+    const updated=(newSch[date]||[]).filter((e:any)=>e.wp!==wp);
+    if(!updated.length) delete newSch[date]; else newSch[date]=updated;
     const updatedRow={...currentRow,schedule:newSch};
     // Update state dan Supabase
-    markRawDirty(cellModal.rawId);
-    setRawData(prev=>prev.map(r=>r.id===cellModal.rawId?updatedRow:r));
-    const resRaw=await updateRaw(cellModal.rawId,{schedule:newSch});
+    markRawDirty(rawId);
+    setRawData(prev=>prev.map(r=>r.id===rawId?updatedRow:r));
+    const resRaw=await updateRaw(rawId,{schedule:newSch});
     // (8 Okt 2026) Dulu hasil simpan tidak dicek & syncRenharDel tanpa await.
     if(!resRaw?.success){
       console.error("[Raw Schedule] hapus WP gagal:",resRaw?.error);
       alert("Gagal menghapus WP di server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
-      return;
+      return false;
     }
     {
-      const date=cellModal.date,rawIdDel=cellModal.rawId;
+      const rawIdDel=rawId;
       const sinkron=()=>syncRenharDel(rawIdDel,date,wp);
       try{await sinkron();}catch(err:any){
-        await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} ${wp} (${date}) - hapus`,sinkron);
+        await tanganiGagalSinkronRenhar(err,`${currentRow?.panel||""} ${wp} (${date}) - hapus`,sinkron);
       }
     }
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";
-    await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+rawRow?.panel+" - "+rawRow?.proyek+" ("+cellModal?.date+")",module:"raw",halaman:"Raw Schedule",proyek:rawRow?.proyek||"",panel:rawRow?.panel||""});
+    await activityLogService.insert({user_name:uname,action:"HAPUS WP RAW SCHEDULE",description:"Hapus "+wp+" dari jadwal "+currentRow?.panel+" - "+currentRow?.proyek+" ("+date+")",module:"raw",halaman:"Raw Schedule",proyek:currentRow?.proyek||"",panel:currentRow?.panel||""});
+    return true;
   };
+  const removeEntry=async(wp)=>{await hapusWpDariSel(cellModal.rawId,cellModal.date,wp);};
   // Modal edit sel + modal kapasitas/kuota ikutannya (dirender induk di posisi yang sama seperti dulu).
   const elemen=(
     <>
@@ -966,5 +970,5 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       )}
     </>
   );
-  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen};
+  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel};
 }
