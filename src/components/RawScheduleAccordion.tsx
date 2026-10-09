@@ -1,10 +1,10 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { supabase } from '../lib/supabase'
-import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
+import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap } from '../services/fcsService'
-import { useRawPanelOrder, bandingkanBarisRaw } from '../lib/rawPanelOrder'
+import { useRawPanelOrder, bandingkanBarisRaw, zonaDari, type Zona } from '../lib/rawPanelOrder'
 import { muatDataKapasitas, menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
@@ -15,6 +15,11 @@ import { activityLogService } from '../services/activityLogService'
 import { rencanakanPindahAccordion, pecahKunci } from '../lib/pindahAccordion'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
+import { useUrutanPanel } from '../hooks/useUrutanPanel'
+import { useAturKapasitas } from './ModalAturKapasitas'
+import { useTambahPanelRaw } from './ModalTambahPanelRaw'
+import { useRiwayatQty } from './RiwayatQty'
+import { useNotifAvailable } from './NotifAvailable'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses } from '../lib/rawPivot'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -25,6 +30,8 @@ import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type
 // QC/PACKING = toggle, salin-GABUNG (Copy di modal drag / Ctrl+C -> Ctrl+V), menu klik kanan.
 // Tahap 3b: klik sel -> pilih proses -> modal edit BERSAMA tampilan lama (components/ModalJadwalSel.tsx: tambah/
 // edit/hapus WP & komponen, BUSBAR, bobot WIRING, cek kapasitas/kuota + swap) ; menu klik kanan Edit & Hapus WP.
+// Tahap 3c: prioritas (dropdown) & urutan panel (menu ⋮), Atur Kapasitas (klik kartu kapasitas), Tambah Panel,
+// Riwayat Perubahan Qty, notifikasi komponen available - semuanya bagian BERSAMA dgn tampilan lama.
 // Menggantikan maket dummy RawScheduleSandbox (keputusan user). Raw Schedule asli TETAP jalan berdampingan
 // sampai paritas tercapai; semua aksi tulis (pindah/edit/hapus) dibawa di Tahap 2-3.
 //
@@ -133,10 +140,12 @@ function MultiPilih({ label, opsi, nilai, setNilai }: { label: string; opsi: str
   )
 }
 
-export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, refetchRaw, refetchRenhar, livePanelTypes, user, setRenhar, createRenhar, updateRenhar, removeRenhar, withRenharQueue }: {
+export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, refetchRaw, refetchRenhar, livePanelTypes, user, setRenhar, createRenhar, updateRenhar, removeRenhar, withRenharQueue, renhar, createRaw, log }: {
   woData: any[]; rawData: any[]; setRawData?: (f: (prev: any[]) => any[]) => void; updateRaw?: (id: number, data: any) => Promise<any>; refetchRaw?: () => void; refetchRenhar?: () => void; livePanelTypes?: any; user?: any
   // rencana harian - dipakai modal edit bersama (sinkron renhar sama persis dgn tampilan lama)
   setRenhar?: (f: any) => void; createRenhar?: (d: any) => Promise<any>; updateRenhar?: (id: any, d: any) => Promise<any>; removeRenhar?: (id: any) => Promise<any>; withRenharQueue?: (task: any, fn: (existing: any) => Promise<void>) => Promise<any>
+  // Tahap 3c: renhar (snapshot rollback prioritas), createRaw + log (Tambah Panel) - sama dgn tampilan lama
+  renhar?: any[]; createRaw?: (d: any) => Promise<any>; log?: any
 }) {
   // ── data pendukung (sama sumber dgn Raw Schedule lama) ──
   const [fcsKapasitas, setFcsKapasitas] = useState<any[]>([])
@@ -165,7 +174,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
     return () => { batal = true; supabase.removeChannel(ch) }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [JSON.stringify(wiringPanelIds)])
-  const { orderMap, error: orderMapError } = useRawPanelOrder()
+  const { orderMap, setOrderMap, error: orderMapError } = useRawPanelOrder()
 
   const panelById = useMemo(() => {
     const m = new Map<number, any>()
@@ -399,6 +408,28 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
     removeRenhar: removeRenhar || (async () => ({ success: false, error: 'Rencana harian belum tersambung.' })),
     setRenhar: setRenhar || (() => {}),
   })
+  // ── Tahap 3c: bagian bersama tampilan lama ──
+  const [menuUrutan, setMenuUrutan] = useState<{ panelId: number; x: number; y: number } | null>(null)
+  const blokUrutRef = useRef<{ panelId: number; zona: Zona }[]>([])
+  blokUrutRef.current = blokTampil.map(b => ({ panelId: b.panelId, zona: zonaDari(b.prioritas) })) // panel TERLIHAT, urut tampilan
+  const urutanPanel = useUrutanPanel({
+    rawData, setRawData: setRawData || (() => {}), effectiveRenhar: renhar || [], setRenhar: setRenhar || (() => {}),
+    orderMap, setOrderMap, user, blokUrutRef, tampilToastUrutan: (m: string) => tampilToastAksi(m, 'ok'),
+    setMenuUrutanPanel: (v: number | null) => { if (v == null) setMenuUrutan(null) },
+  })
+  const aturKapasitas = useAturKapasitas({ user, refetchRaw })
+  const bukaAturKapasitas = (d: string, pr: string) => { aturKapasitas.setOverrideModal({ tanggalMulai: d, tanggalAkhir: d, proses: [pr] }); aturKapasitas.setOverrideValue(''); aturKapasitas.setOverrideResult(null) }
+  const tambahPanelRaw = useTambahPanelRaw({ woData, rawData, createRaw: createRaw || (async () => ({ success: false, error: 'Tampilan ini belum tersambung.' })), refetchRaw: refetchRaw || (() => {}), log })
+  const riwayatQty = useRiwayatQty({ setFilterProyek, setFilterPanel })
+  const notifAvailable = useNotifAvailable({ rawData, woData, getEffCfg: cfgTipe, openCellModal: modalJadwal.buka, setModalWp: modalJadwal.setModalWp, setModalKomponen: modalJadwal.setModalKomponen, setModalBobotPerKomponen: modalJadwal.setModalBobotPerKomponen })
+  useEffect(() => {
+    notifAvailable.fetchNotifAvailable()
+    const ch = supabase.channel('realtime-fcs-notif-accordion')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'fcs_notifikasi' }, () => notifAvailable.fetchNotifAvailable())
+      .subscribe()
+    return () => { supabase.removeChannel(ch) }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
   type OpsiProses = { proses: string; rawId: number; terisi: boolean }
   const [popProses, setPopProses] = useState<{ x: number; y: number; r: Baris; d: string; opsi: OpsiProses[] } | null>(null)
   // Proses yang bisa diedit di sel ini (baris jadwal panel itu): grup BUSBAR -> baris BUSBAR; header WP -> semua
@@ -502,7 +533,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
-      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable)) return
       if (!scrollRef.current || scrollRef.current.offsetParent === null) return // tab tidak tampil
       const mod = e.ctrlKey || e.metaKey; const k = e.key.toLowerCase()
       if (mod && k === 'x' && aksiRef.current.pilihan.size) { e.preventDefault(); aksiRef.current.potong() }
@@ -667,9 +698,18 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
         <td style={stickyKiri('proyek', { ...td, color: '#475569', fontWeight: 600 })}>{r.pertama && batas(<div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.proyek}>{b.proyek}</div>)}</td>
         <td style={stickyKiri('panel', { ...td, color: '#1e293b', fontWeight: 700 })}>{r.pertama && batas(
           <div title={`${b.panel} · ${b.tipe}`}>
-            <div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.panel}</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.panel}</span>
+              <button title="Pindah urutan panel" aria-label="Pindah urutan panel" disabled={urutanPanel.savingUrutan}
+                onClick={(e: any) => { const rc = e.currentTarget.getBoundingClientRect(); setMenuUrutan(m => m?.panelId === b.panelId ? null : { panelId: b.panelId, x: rc.right, y: rc.bottom }) }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 12, fontWeight: 800, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>⋮</button>
+            </div>
             <div style={{ display: 'flex', gap: 4, alignItems: 'center', marginTop: 1 }}>
-              <span style={{ padding: '0 4px', borderRadius: 3, border: `1px solid ${pri}`, color: pri, background: pri + '14', fontSize: 8, fontWeight: 800 }}>{b.prioritas || 'Sedang'}</span>
+              <select aria-label={`Prioritas ${b.panel}`} value={zonaDari(b.prioritas)} disabled={urutanPanel.savingUrutan} onChange={e => urutanPanel.updatePrioritasPanel(b.panelId, e.target.value)}
+                title="Ubah prioritas panel (semua proses + rencana harian)"
+                style={{ height: 15, padding: '0 2px', borderRadius: 3, border: `1px solid ${pri}`, color: pri, background: pri + '14', fontSize: 8, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit' }}>
+                {PRIORITAS.map((x: string) => <option key={x} value={x}>{x}</option>)}
+              </select>
               <span style={{ fontSize: 8, color: '#94a3b8', fontWeight: 600 }}>{b.tipe}</span>
             </div>
           </div>)}
@@ -755,7 +795,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik sel = edit jadwal (pilih proses; modal sama dgn tampilan lama); klik penanda QC/PACKING = tambah/hapus; klik kanan = menu (Edit, Hapus WP). <b>Ini data produksi asli</b> - setiap perubahan dikonfirmasi dulu.
+          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik sel = edit jadwal (pilih proses; modal sama dgn tampilan lama); prioritas & urutan panel di kolom Panel (dropdown, ⋮); klik baris kartu kapasitas = Atur Kapasitas; klik penanda QC/PACKING = tambah/hapus; klik kanan = menu (Edit, Hapus WP). <b>Ini data produksi asli</b> - setiap perubahan dikonfirmasi dulu.
         </div>
       </div>
 
@@ -765,6 +805,12 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
           <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{blokTampil.length} panel · {jumlahHeader} baris tertutup · {jumlahKomponen} komponen · tampil sekarang {baris.length} baris</div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
+          <button onClick={() => tambahPanelRaw.setAddModal(true)} style={{ height: 28, padding: '0 12px', borderRadius: 6, border: 'none', background: '#3b5bdb', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Panel</button>
+          <button onClick={riwayatQty.openRiwayat} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+            🔔 Riwayat Perubahan
+            {riwayatQty.qtyChangeUnread > 0 && <span style={{ background: '#dc2626', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{riwayatQty.qtyChangeUnread}</span>}
+          </button>
+          <span style={{ width: 1, height: 20, background: '#e2e8f0' }} />
           <button onClick={bukaSemua} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #c9d1e4', background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Buka semua</button>
           <button onClick={tutupSemua} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #c9d1e4', background: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>Tutup semua</button>
           <span style={{ width: 1, height: 20, background: '#e2e8f0' }} />
@@ -784,6 +830,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
           <button key={pr} onClick={() => setFilterProses(on ? filterProses.filter(x => x !== pr) : [...filterProses, pr])} style={{ padding: '3px 10px', borderRadius: 20, border: `1.5px solid ${on ? pc : '#e2e8f0'}`, background: on ? pc + '18' : '#fff', color: on ? pc : '#64748b', cursor: 'pointer', fontSize: 10.5, fontWeight: 700 }}>{pr}</button>) })}
       </div>
 
+      {notifAvailable.elemenBanner}
       {fcsKapasitas.length > 0 && (
         <div style={{ background: 'var(--card-bg,#fff)', border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, padding: '10px 14px', marginBottom: 12 }}>
           <div onClick={() => setKartuTutup(!kartuTutup)} style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: kartuTutup ? 0 : 8, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6, userSelect: 'none' }}>
@@ -807,8 +854,8 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
                     const pct = kap > 0 ? Math.min(100, Math.round(pakai / kap * 100)) : 0
                     const w = pct >= 95 ? '#dc2626' : pct >= 80 ? '#f59e0b' : '#16a34a'
                     return (
-                      <div key={pr} style={{ marginBottom: 3 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}><span style={{ color: '#64748b' }}>{pr}</span><b style={{ color: kap > 0 ? '#1e293b' : '#94a3b8' }}>{kap > 0 ? `${orang ? Number(pakai.toFixed(1)) : Math.round(pakai)}/${kap} ${orang ? 'orang' : 'mnt'}` : 'belum diatur'}</b></div>
+                      <div key={pr} role="button" tabIndex={0} title={`Atur kapasitas ${pr} ${getDayLabel(d)}`} onClick={() => bukaAturKapasitas(d, pr)} onKeyDown={(e: any) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); bukaAturKapasitas(d, pr) } }} style={{ marginBottom: 3, cursor: 'pointer' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 9 }}><span style={{ color: '#64748b' }}>{pr} ✎</span><b style={{ color: kap > 0 ? '#1e293b' : '#dc2626' }}>{kap > 0 ? `${orang ? Number(pakai.toFixed(1)) : Math.round(pakai)}/${kap} ${orang ? 'orang' : 'mnt'}` : 'belum diatur · Atur'}</b></div>
                         <div style={{ height: 3, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}><div style={{ width: pct + '%', height: '100%', background: w }} /></div>
                       </div>
                     )
@@ -886,6 +933,27 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
         </>
       )}
       {modalJadwal.elemen}
+      {notifAvailable.elemenModal}
+      {aturKapasitas.elemen}
+      {tambahPanelRaw.elemen}
+      {riwayatQty.elemen}
+      {menuUrutan && (() => {
+        // SENGAJA hanya di dalam zona yang sama (pindah zona lewat dropdown prioritas) - sama dgn menu ⋮ tampilan lama.
+        const me = blokUrutRef.current.find(x => x.panelId === menuUrutan.panelId)
+        const bz = me ? blokUrutRef.current.filter(x => x.zona === me.zona) : []
+        const i = bz.findIndex(x => x.panelId === menuUrutan.panelId)
+        const opsi: { k: 'atas' | 'naik' | 'turun' | 'bawah'; l: string; ok: boolean }[] = [
+          { k: 'atas', l: '⤒ Pindah ke paling atas kelompok', ok: i > 0 }, { k: 'naik', l: '↑ Naik 1', ok: i > 0 },
+          { k: 'turun', l: '↓ Turun 1', ok: i >= 0 && i < bz.length - 1 }, { k: 'bawah', l: '⤓ Pindah ke paling bawah kelompok', ok: i >= 0 && i < bz.length - 1 }]
+        return <>
+          <div onClick={() => setMenuUrutan(null)} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
+          <div role="menu" aria-label="Urutan panel" style={{ position: 'fixed', left: Math.min(menuUrutan.x, window.innerWidth - 250), top: Math.min(menuUrutan.y + 2, window.innerHeight - 170), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '4px 0', minWidth: 230, fontSize: 12 }}>
+            <div style={{ padding: '2px 14px 4px', fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>Urutan dalam kelompok {me?.zona}</div>
+            {opsi.map(o => <button key={o.k} role="menuitem" disabled={!o.ok || urutanPanel.savingUrutan} onClick={() => urutanPanel.pindahViaMenu(menuUrutan.panelId, o.k)}
+              style={{ display: 'block', width: '100%', padding: '7px 14px', border: 'none', background: 'none', cursor: o.ok ? 'pointer' : 'default', color: o.ok ? '#1e293b' : '#cbd5e1', fontSize: 12, textAlign: 'left', fontFamily: 'inherit' }}>{o.l}</button>)}
+          </div>
+        </>
+      })()}
       {menu && (
         <>
           <div onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null) }} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
