@@ -10,7 +10,7 @@ import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getPro
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
-import { lepasDariAsal, taruhDiTujuan, rencanakanPindahMulti, isMinggu, type SelPindah } from '../lib/jadwalPindah'
+import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -476,26 +476,88 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     if(document.getElementById("rs-multi-css"))return;
     const st=document.createElement("style");st.id="rs-multi-css";
-    st.textContent=".rs-tujuan-ok{box-shadow:inset 0 0 0 2px #16a34a!important;background:#f0fdf4!important}.rs-tujuan-bad{box-shadow:inset 0 0 0 2px #dc2626!important;background:#fef2f2!important}";
+    st.textContent=".rs-tujuan-ok{box-shadow:inset 0 0 0 2px #16a34a!important;background:#f0fdf4!important}.rs-tujuan-bad{box-shadow:inset 0 0 0 2px #dc2626!important;background:#fef2f2!important}"
+      +".rs-tujuan-ok[data-lbl],.rs-tujuan-bad[data-lbl]{position:relative}"
+      +".rs-tujuan-ok[data-lbl]::after,.rs-tujuan-bad[data-lbl]::after{content:attr(data-lbl);position:absolute;left:2px;right:2px;bottom:1px;font:700 8px system-ui,sans-serif;text-align:center;pointer-events:none;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}"
+      +".rs-tujuan-ok[data-lbl]::after{color:#15803d}.rs-tujuan-bad[data-lbl]::after{color:#b91c1c}";
     document.head.appendChild(st);
   },[]);
   // Sel yang ikut dipindah & sel yang bentrok utk offset tertentu (dipakai bayangan drag, validasi
   // sebelum modal, dan Ctrl+X/V). Sel KOSONG di pilihan (mis. dari Shift+klik) diabaikan.
+  // REVISI 9 Okt 2026: Minggu BUKAN bentrok otomatis - boleh bila kapasitas Minggu itu (tanggal+proses)
+  // diatur > 0 DAN pemakaian SETELAH semua pindahan <= kapasitas (hitungTerpakaiHari = rumus kartu
+  // Capacity Utilization, dihitung dari snapshot jadwal setelah dipindah: beban yang mendarat dijumlah,
+  // sumber berkurang dari hari asal). Hari biasa tidak dicek kapasitas (sama dgn drag lama). BUSBAR:
+  // timer berjalan = bentrok (status timer dimuat 1x saat drag/potong dimulai - muatTimerBusbar).
+  const timerBusbarRef=useRef<Set<string>>(new Set()); // "panelId|kode" yang timer BUSBAR-nya berjalan
+  const muatTimerBusbar=async(cells:{rawId:number;date:string}[])=>{
+    const pids=[...new Set(cells.map(c=>rawData.find((r:any)=>r.id===c.rawId)).filter((r:any)=>r?.proses==="BUSBAR").map((r:any)=>Number(r.panel_id||r.panelId)))];
+    if(pids.length===0){timerBusbarRef.current=new Set();return;}
+    const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen").eq("proses","BUSBAR").is("selesai",null).in("panel_id",pids).range(0,999);
+    if(error){console.error("[Pindah banyak sel] gagal cek timer BUSBAR (server tetap mengecek):",error);return;}
+    timerBusbarRef.current=new Set((data||[]).map((t:any)=>Number(t.panel_id)+"|"+t.kode_komponen));
+  };
+  const kapasitasPada=(d:string,pr:string)=>{
+    const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
+    if(!ov)return 0;
+    return PROSES_ORANG_RAW_GLOBAL.includes(pr)?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0);
+  };
+  // Sel -> data pindah (BUSBAR: kode busbar yang boleh pindah; lainnya termasuk QC/PACKING: entries
+  // tanpa yang selesai/jejak). Jejak (adaPengerjaan) diisi belakangan oleh jalankanPindahMulti.
+  const buatSelV2=(ikut:{rawId:number;date:string;ke:string}[])=>{
+    const sel:SelPindahV2[]=[];const jadwal=new Map<number,any>();
+    for(const c of ikut){
+      const row=rawData.find((r:any)=>r.id===c.rawId);if(!row)continue;
+      if(row.proses==="BUSBAR"){
+        const kode=kodeBusbarBisaDipindah(row,panelById.get(Number(row.panel_id||row.panelId))?.checklist,c.date);
+        if(kode.length===0)continue;
+        sel.push({rawId:row.id,dari:c.date,ke:c.ke,kodeBusbar:kode});
+      } else {
+        const entries=getEntriesTanpaSelesai(row,row.schedule?.[c.date]||[]);
+        if(entries.length===0)continue;
+        sel.push({rawId:row.id,dari:c.date,ke:c.ke,entries,adaPengerjaan:new Set<string>()});
+      }
+      jadwal.set(row.id,ambilJadwal4(row));
+    }
+    return{sel,jadwal};
+  };
   const cekPindahMulti=(cells:{rawId:number;date:string}[],offset:number)=>{
-    const ikut:{rawId:number;date:string;ke:string}[]=[];const bentrok:{rawId:number;date:string;ke:string;alasan:string}[]=[];
+    let ikut:{rawId:number;date:string;ke:string}[]=[];const bentrok:{rawId:number;date:string;ke:string;alasan:string}[]=[];
+    const mingguOk=new Set<string>(); // "rawId|ke" yang mendarat di Minggu dgn kapasitas tersedia
     for(const c of cells){
       const row=rawData.find((r:any)=>r.id===c.rawId);
       if(row&&(row.schedule?.[c.date]||[]).length===0&&(row.busbar_schedule?.[c.date]||[]).length===0)continue;
       const idxKe=tanggalKeIdx(c.date)+offset;
       const ke=idxKe>=0&&idxKe<TOTAL_KOLOM?idxKeTanggal(idxKe):"";
-      const alasan=!ke?"di luar rentang jadwal":isMinggu(ke)?"hari Minggu":alasanTakBisaMultiPilih(row,c.date,false);
+      let alasan=!ke?"di luar rentang jadwal":alasanTakBisaMultiPilih(row,c.date,false);
+      if(!alasan&&row?.proses==="BUSBAR"){
+        const pid=Number(row.panel_id||row.panelId);
+        const kode=kodeBusbarBisaDipindah(row,panelById.get(pid)?.checklist,c.date);
+        if(kode.some(k=>timerBusbarRef.current.has(pid+"|"+k)))alasan="timer BUSBAR berjalan";
+      }
       if(alasan)bentrok.push({...c,ke,alasan});else ikut.push({...c,ke});
     }
-    return{ikut,bentrok};
+    const keMinggu=ikut.filter(c=>isMinggu(c.ke));
+    if(keMinggu.length>0&&offset!==0){
+      const{sel,jadwal}=buatSelV2(ikut);
+      const rencana=rencanakanPindahMultiV2(jadwal,sel,"cek");
+      const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r.sesudah]));
+      const rowsSetelah=rawData.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)}:r);
+      const grup=new Map<string,{ke:string;pr:string;daftar:typeof ikut}>();
+      keMinggu.forEach(c=>{const pr=rawData.find((r:any)=>r.id===c.rawId)?.proses||"";const k=c.ke+"@"+pr;if(!grup.has(k))grup.set(k,{ke:c.ke,pr,daftar:[]});grup.get(k)!.daftar.push(c);});
+      const ditolak=new Set<string>();
+      grup.forEach(({ke,pr,daftar})=>{
+        const kap=kapasitasPada(ke,pr);
+        const alasan=kap<=0?"kapasitas Minggu belum diatur":hitungTerpakaiHari(rowsSetelah,ke,pr)>kap?"kapasitas Minggu penuh":null;
+        daftar.forEach(c=>{if(alasan){bentrok.push({...c,alasan});ditolak.add(c.rawId+"|"+c.date);}else mingguOk.add(c.rawId+"|"+c.ke);});
+      });
+      if(ditolak.size)ikut=ikut.filter(c=>!ditolak.has(c.rawId+"|"+c.date));
+    }
+    return{ikut,bentrok,mingguOk};
   };
   const bersihkanDragMulti=()=>{
     const m=dragMultiRef.current;if(!m)return;
-    m.ditandai.forEach(el=>el.classList.remove("rs-tujuan-ok","rs-tujuan-bad"));
+    m.ditandai.forEach(el=>{el.classList.remove("rs-tujuan-ok","rs-tujuan-bad");delete el.dataset.lbl;});
     m.badge?.remove();
     dragMultiRef.current=null;
   };
@@ -514,6 +576,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       document.body.appendChild(badge);
       try{e.dataTransfer.setDragImage(badge,12,12);}catch{/* browser lama - pakai gambar bawaan */}
       dragMultiRef.current={cells:[...selectedCells],anchorDate:fromDate,offset:null,ditandai:[],badge};
+      // Status timer BUSBAR dimuat 1x; begitu tiba, bayangan dihitung ulang di dragover berikutnya.
+      muatTimerBusbar(selectedCells).then(()=>{const mm=dragMultiRef.current;if(mm)mm.offset=null;});
     } else {
       bersihkanDragMulti();
       if(selectedCells.length>0){setSelectedCells([]);setLastSelected(null);}
@@ -530,11 +594,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       if(m.badge){m.badge.style.left=(e.clientX+16)+"px";m.badge.style.top=(e.clientY+16)+"px";}
       if(offset===m.offset)return;
       m.offset=offset;
-      m.ditandai.forEach(el=>el.classList.remove("rs-tujuan-ok","rs-tujuan-bad"));m.ditandai=[];
-      const{ikut,bentrok}=cekPindahMulti(m.cells,offset);
+      m.ditandai.forEach(el=>{el.classList.remove("rs-tujuan-ok","rs-tujuan-bad");delete el.dataset.lbl;});m.ditandai=[];
+      const{ikut,bentrok,mingguOk}=cekPindahMulti(m.cells,offset);
       const cont=tableScrollRef.current;
-      const tandai=(c:any,cls:string)=>{if(!c.ke||!cont)return;const td=cont.querySelector(`tr[data-rawid="${c.rawId}"] td[data-tgl="${c.ke}"]`) as HTMLElement|null;if(td){td.classList.add(cls);m.ditandai.push(td);}};
-      if(offset!==0){ikut.forEach(c=>tandai(c,"rs-tujuan-ok"));bentrok.forEach(c=>tandai(c,"rs-tujuan-bad"));}
+      const tandai=(c:any,cls:string,lbl?:string)=>{if(!c.ke||!cont)return;const td=cont.querySelector(`tr[data-rawid="${c.rawId}"] td[data-tgl="${c.ke}"]`) as HTMLElement|null;if(td){td.classList.add(cls);if(lbl)td.dataset.lbl=lbl;m.ditandai.push(td);}};
+      if(offset!==0){
+        ikut.forEach(c=>tandai(c,"rs-tujuan-ok",mingguOk.has(c.rawId+"|"+c.ke)?"Minggu · kapasitas tersedia":undefined));
+        bentrok.forEach(c=>tandai(c,"rs-tujuan-bad",c.alasan));
+      }
       if(m.badge){
         m.badge.textContent=`${ikut.length+bentrok.length} sel · ${offset>0?"+":""}${offset} hari${bentrok.length?` · ${bentrok.length} bentrok`:""}`;
         m.badge.style.background=bentrok.length?"#dc2626":"#2563eb";
@@ -781,9 +848,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // dianggap boleh (Ctrl+klik setara Alt+klik lama, dipakai juga utk copy/paste); lasso -> false.
   const alasanTakBisaMultiPilih=(row:any,date:string,kosongBoleh:boolean):string|null=>{
     if(!row)return"Baris tidak ditemukan.";
-    if(row.proses==="BUSBAR")return"Baris BUSBAR belum bisa ikut dipilih bersama sel lain - geser 1 sel seperti biasa.";
-    if(PROSES_MARKER_ONLY.includes(row.proses))return"Baris "+row.proses+" tidak ikut multi-pilih.";
     if(getRentangInfoUntukTanggal(row,date))return"Sel rentang tidak bisa dipindah.";
+    // REVISI 9 Okt 2026: BUSBAR & QC/PACKING ikut multi-pilih. BUSBAR: kode yang boleh pindah = aturan
+    // drag 1 sel BUSBAR (belum jejak & progress < 100). QC/PACKING ("MARKED") lewat jalur biasa di bawah.
+    if(row.proses==="BUSBAR"){
+      if((row.busbar_schedule?.[date]||[]).length===0)return kosongBoleh?null:"Sel kosong.";
+      if(kodeBusbarBisaDipindah(row,panelById.get(Number(row.panel_id||row.panelId))?.checklist,date).length===0)return"Semua kode BUSBAR di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.";
+      return null;
+    }
     const entries=row.schedule?.[date]||[];
     if(entries.length===0)return kosongBoleh?null:"Sel kosong.";
     if(getEntriesTanpaSelesai(row,entries).length===0)return"Semua pekerjaan di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.";
@@ -800,7 +872,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       setTujuanTempel(date);
       return;
     }
-    if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)){
+    // Klik BIASA di baris QC TEST/PACKING = toggle penanda (tidak berubah). Klik dgn Ctrl/Cmd/Alt/Shift
+    // (9 Okt 2026, keputusan user) = memilih sel utk pindah banyak sel, tidak men-toggle penanda.
+    if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)&&!(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)){
       e.stopPropagation();
       toggleMarkerCell(rawId,date);
       return;
@@ -1383,25 +1457,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       }
     }
     markRawDirty(row.id);
-    const newBusbarSchedule={...(row.busbar_schedule||{})};
-    const existingAtTarget=newBusbarSchedule[toDate]||[];
-    newBusbarSchedule[toDate]=[...new Set([...existingAtTarget,...kodeDrag])];
-    let newBusbarJejak=row.busbar_jejak||{};
-    if(mode==="move"){
-      // Kode TETAP ada di busbar_schedule[fromDate] (gak dihapus) - cuma ditandai jejak, sama
-      // konsep persis kayak digeserKe di entry.komponen proses lain.
-      const jejakFromDate={...(newBusbarJejak[fromDate]||{})};
-      kodeDrag.forEach((kode:string)=>{jejakFromDate[kode]=toDate;});
-      newBusbarJejak={...newBusbarJejak,[fromDate]:jejakFromDate};
-    }
-    // BUG FIX (23 Sep 2026) - pola sama persis confirmDrag (proses biasa/WIRING): stamp
-    // busbar_manual_pin[toDate][kode]=timestamp buat kode yang ikut ter-drag (move MAUPUN copy),
-    // biar auto-geser-harian (FASE 2-BUSBAR) bisa skip kode ini permanen sampai progress 100%.
-    const nowIsoPinBusbar=new Date().toISOString();
-    const newBusbarManualPin={...(row.busbar_manual_pin||{})};
-    const pinAtTarget={...(newBusbarManualPin[toDate]||{})};
-    kodeDrag.forEach((kode:string)=>{pinAtTarget[kode]=nowIsoPinBusbar;});
-    newBusbarManualPin[toDate]=pinAtTarget;
+    // Logika jadwal BUSBAR dipindah ke lib/jadwalPindah.ts (9 Okt 2026, SATU sumber dgn pindah banyak
+    // sel) - isi sama persis: move = kode TETAP di busbar_schedule[fromDate] + ditandai busbar_jejak;
+    // move MAUPUN copy = gabung ke tujuan + stamp busbar_manual_pin (BUG FIX 23 Sep 2026, auto-geser
+    // FASE 2-BUSBAR skip kode ini permanen sampai progress 100%).
+    let jBusbar={busbar_schedule:row.busbar_schedule||{},busbar_jejak:row.busbar_jejak||{},busbar_manual_pin:row.busbar_manual_pin||{}};
+    if(mode==="move")jBusbar=lepasBusbar(jBusbar,fromDate,toDate,kodeDrag);
+    jBusbar=taruhBusbar(jBusbar,toDate,kodeDrag,new Date().toISOString());
+    const newBusbarSchedule=jBusbar.busbar_schedule,newBusbarJejak=jBusbar.busbar_jejak,newBusbarManualPin=jBusbar.busbar_manual_pin;
     setRawData((prev:any[])=>prev.map((r:any)=>r.id!==row.id?r:{...r,busbar_schedule:newBusbarSchedule,busbar_jejak:newBusbarJejak,busbar_manual_pin:newBusbarManualPin}));
     // FIX (25 Sep 2026) - sama persis root cause & fix di confirmDrag (proses biasa) di atas:
     // updateRaw() gagal gak pernah dicek di sini, dirty timeout buta bisa abis sebelum hasilnya
@@ -1464,21 +1527,16 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b=>b.alasan))].join(", ")}). Tidak ada yang dipindah.`,"err");
       return false;
     }
-    const sel:SelPindah[]=[];const jadwal=new Map<number,any>();
-    for(const c of ikut){
-      const row=rawData.find((r:any)=>r.id===c.rawId);if(!row)continue;
-      const entries=getEntriesTanpaSelesai(row,row.schedule?.[c.date]||[]);
-      if(entries.length===0)continue;
-      sel.push({rawId:row.id,dari:c.date,ke:c.ke,entries,adaPengerjaan:new Set<string>()});
-      jadwal.set(row.id,row.schedule||{});
-    }
+    const{sel,jadwal}=buatSelV2(ikut);
     if(sel.length===0){tampilToastAksi("Tidak ada pekerjaan yang bisa dipindah di sel terpilih.","err");return false;}
     // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - SATU query utk semua sel
     // (bukan per sel), lalu dicocokkan persis panel+proses+tanggal+kode di sini.
     const rowsById=new Map<number,any>(rawData.map((r:any)=>[r.id,r]));
     const panelIds=[...new Set(sel.map(s=>Number(rowsById.get(s.rawId)?.panel_id||rowsById.get(s.rawId)?.panelId)))];
     const tanggalAsal=[...new Set(sel.map(s=>s.dari))];
-    const kodeSemua=[...new Set(sel.flatMap(s=>s.entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")))))];
+    // BUSBAR tidak pakai jejak-bila-ada-pengerjaan (jejak BUSBAR selalu ditaruh) - cuma sel non-BUSBAR.
+    const selBiasa=sel.filter(s=>!s.kodeBusbar);
+    const kodeSemua=[...new Set(selBiasa.flatMap(s=>(s.entries||[]).flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")))))];
     if(kodeSemua.length>0){
       let semua:any[]=[];
       for(let from=0;;from+=1000){
@@ -1492,21 +1550,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         semua=semua.concat(data||[]);
         if(!data||data.length<1000)break;
       }
-      sel.forEach(s=>{
+      selBiasa.forEach(s=>{
         const row=rowsById.get(s.rawId);const pid=Number(row?.panel_id||row?.panelId);
-        semua.forEach((t:any)=>{if(Number(t.panel_id)===pid&&t.proses===row?.proses&&t.tanggal===s.dari)s.adaPengerjaan.add(t.kode_komponen);});
+        semua.forEach((t:any)=>{if(Number(t.panel_id)===pid&&t.proses===row?.proses&&t.tanggal===s.dari)s.adaPengerjaan!.add(t.kode_komponen);});
       });
     }
-    const rencana=rencanakanPindahMulti(jadwal,sel,new Date().toISOString());
+    const rencana=rencanakanPindahMultiV2(jadwal,sel,new Date().toISOString());
     const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r]));
     rencana.rows.forEach(r=>markRawDirty(r.raw_id));
-    setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,schedule:sesudahById.get(r.id)!.sesudah}:r));
+    // 4 kolom (schedule + busbar_schedule/jejak/manual_pin) - RPC v2 (migration 20261009010000).
+    setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)!.sesudah}:r));
     const uname=user?.name||user?.nama||"Admin";
-    const{data,error}=await supabase.rpc("pindah_multi_sel",{p_sel:rencana.sel,p_rows:rencana.rows,p_renhar:rencana.renhar,p_user:uname});
+    const{data,error}=await supabase.rpc("pindah_multi_sel_v2",{p_sel:rencana.sel,p_rows:rencana.rows,p_renhar:rencana.renhar,p_user:uname});
     rencana.rows.forEach(r=>clearRawDirty(r.raw_id));
     if(error){
       console.error("[Pindah banyak sel] gagal:",error);
-      setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,schedule:sesudahById.get(r.id)!.sebelum}:r));
+      setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)!.sebelum}:r));
       const kode=typeof error.code==="string"&&error.code.trim()?error.code:"";
       // Gagal koneksi bisa berarti server SUDAH menyimpan tapi responsnya putus -> muat ulang dari
       // server supaya layar menunjukkan keadaan DB yang sebenarnya (bukan tebakan "pasti gagal").
@@ -1529,10 +1588,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(cells.length===0){tampilToastAksi("Sel terpilih kosong - tidak ada yang dipotong.","err");return;}
     const tolak=cells.filter((c:any)=>alasanTakBisaMultiPilih(rawData.find((r:any)=>r.id===c.rawId),c.date,false));
     if(tolak.length>0){
-      tampilToastAksi(`${tolak.length} sel tidak bisa dipotong (BUSBAR / sudah selesai / jejak / rentang). Tidak ada yang dipotong.`,"err");
+      tampilToastAksi(`${tolak.length} sel tidak bisa dipotong (sudah selesai / jejak / rentang). Tidak ada yang dipotong.`,"err");
       return;
     }
     setCutCells(cells);setCopiedCells([]);setTujuanTempel(null);
+    muatTimerBusbar(cells);
     tampilToastAksi(`${cells.length} sel dipotong. Klik hari tujuan di jadwal, lalu Ctrl+V (atau tombol Tempel).`,"ok");
   };
   const tempelPotongan=async()=>{
@@ -1552,7 +1612,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const entri=st[st.length-1];
     sedangBatalkanRef.current=true;
     let error:any=null;
-    try{({error}=await supabase.rpc("pulihkan_multi_sel",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"}));}
+    try{({error}=await supabase.rpc("pulihkan_multi_sel_v2",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"}));}
     finally{sedangBatalkanRef.current=false;}
     if(error){
       console.error("[Batalkan pindah banyak sel] gagal:",error);
@@ -1565,7 +1625,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     st.pop();
     const sebelum=new Map<number,any>((entri.snap?.raw||[]).map((r:any)=>[Number(r.raw_id),r.sebelum]));
-    setRawData((prev:any[])=>prev.map((r:any)=>sebelum.has(r.id)?{...r,schedule:sebelum.get(r.id)}:r));
+    setRawData((prev:any[])=>prev.map((r:any)=>sebelum.has(r.id)?{...r,...sebelum.get(r.id)}:r)); // 4 kolom (v2)
     refetchRenhar?.();
     setSelectedCells([]);setLastSelected(null);
     tampilToastAksi(`Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`,"ok");
@@ -2095,6 +2155,70 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return m;
   // eslint-disable-next-line react-hooks/exhaustive-deps
   },[rawData,deadlinePanel,filterProses,filterProyek,filterPanel]);
+  // PEMAKAIAN KAPASITAS 1 hari x 1 proses (9 Okt 2026) - rumus kartu Capacity Utilization APA ADANYA,
+  // dipindah ke sini supaya SATU sumber dgn validasi pindah banyak sel ke hari Minggu. `rows` = baris
+  // raw_schedule (bisa versi "setelah dipindah"). Proses jam = qty x menit/pcs, WIRING = kebutuhan orang
+  // (+ proyeksi), jejak digeserKe tidak dihitung. Tanpa request (data sudah dimuat).
+  const hitungTerpakaiHari=(rows:any[],d:string,pr:string)=>{
+    const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
+    let terpakaiPr=0;
+    rows.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
+      const panelId=r.panel_id||r.panelId;
+      const panelData=panelById.get(Number(panelId));
+      if(!panelData)return;
+      const entries=r.schedule?.[d]||[];
+      // Kode wiring yang UDAH punya entry REAL di tanggal d - dipakai buat dedup
+      // proyeksi di bawah (real selalu menang, gak boleh dobel-hitung).
+      const kodeRealHariIni=new Set<string>(isOrangPr?entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'))):[]);
+      entries.forEach((e:any)=>{
+        if(isOrangPr){
+          // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN, dari bobot_komponen
+          // (row-level) + hari kerja aktual (fcs_timer_kerja) - lihat panelHelpers.ts
+          // WIRING_BOBOT_TABLE. Jejak (digeserKe) tetap dikecualikan seperti proses lain.
+          (e.komponen||[]).forEach((kode:string)=>{
+            if(kode.startsWith('__wiring_'))return;
+            if(e.digeserKe?.[kode])return;
+            const bobot=r.bobot_komponen?.[kode];
+            const hariKeN=hariKeNFromMap(wiringHariKerjaMap,panelId,kode,pr,d);
+            terpakaiPr+=kebutuhanOrangWiring(bobot,hariKeN);
+          });
+        } else {
+          (e.komponen||[]).forEach((kode:string)=>{
+            // Jejak (digeserKe) itu histori read-only - JANGAN dihitung kapasitas
+            // (sama rule dgn checkKapasitasDanKomponenSwapV2/auto-geser-harian).
+            if(e.digeserKe?.[kode])return;
+            const qty=panelData.checklist?.[kode]?.qty||0;
+            const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
+            terpakaiPr+=qty*menitPcs;
+          });
+        }
+      });
+      // TAMBAHAN (12 Agu 2026): kartu proyeksi (wiringForwardMap di grid) sekarang ikut
+      // kehitung badge juga - reuse hitungProyeksiWiring yang SAMA dipakai kartu, biar
+      // planner lain gak overbook di hari yang "keliatan" udah terisi kartu proyeksi
+      // (mis. komponen VERY_HARD 4 hari yang cuma punya 1 entry real). Kode yang UDAH
+      // ada entry real di tanggal d (kodeRealHariIni) di-skip - real selalu menang.
+      if(isOrangPr){
+        Object.entries(r.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
+          if(liveDate===d)return;
+          (liveEntries||[]).forEach((e:any)=>{
+            (e.komponen||[]).forEach((kode:string)=>{
+              if(kode.startsWith('__wiring_'))return;
+              if(e.digeserKe?.[kode])return;
+              if(kodeRealHariIni.has(kode))return;
+              const progress=panelData?.checklist?.[kode]?.progress?.[pr]||0;
+              if(progress>=100)return;
+              const bobot=r.bobot_komponen?.[kode];
+              hitungProyeksiWiring(panelId,kode,pr,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
+                if(p.tanggal===d)terpakaiPr+=p.orang;
+              });
+            });
+          });
+        });
+      }
+    });
+    return terpakaiPr;
+  };
   const infoDeadline=(target:string)=>{
     const sisa=Math.round((Date.UTC(+target.slice(0,4),+target.slice(5,7)-1,+target.slice(8,10))-Date.UTC(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8,10)))/86400000);
     // Tampilan teks polos (8 Okt 2026 koreksi): warna HANYA di teks. normal >7 hari = abu gelap seperti
@@ -2367,62 +2491,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
                 const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
                 const kapasitasPr=ov?(isOrangPr?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0)):0;
-                let terpakaiPr=0;
-                rawData.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
-                  const panelId=r.panel_id||r.panelId;
-                  const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
-                  if(!panelData)return;
-                  const entries=r.schedule?.[d]||[];
-                  // Kode wiring yang UDAH punya entry REAL di tanggal d - dipakai buat dedup
-                  // proyeksi di bawah (real selalu menang, gak boleh dobel-hitung).
-                  const kodeRealHariIni=new Set<string>(isOrangPr?entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'))):[]);
-                  entries.forEach((e:any)=>{
-                    if(isOrangPr){
-                      // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN, dari bobot_komponen
-                      // (row-level) + hari kerja aktual (fcs_timer_kerja) - lihat panelHelpers.ts
-                      // WIRING_BOBOT_TABLE. Jejak (digeserKe) tetap dikecualikan seperti proses lain.
-                      (e.komponen||[]).forEach((kode:string)=>{
-                        if(kode.startsWith('__wiring_'))return;
-                        if(e.digeserKe?.[kode])return;
-                        const bobot=r.bobot_komponen?.[kode];
-                        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,panelId,kode,pr,d);
-                        terpakaiPr+=kebutuhanOrangWiring(bobot,hariKeN);
-                      });
-                    } else {
-                      (e.komponen||[]).forEach((kode:string)=>{
-                        // Jejak (digeserKe) itu histori read-only - JANGAN dihitung kapasitas
-                        // (sama rule dgn checkKapasitasDanKomponenSwapV2/auto-geser-harian).
-                        if(e.digeserKe?.[kode])return;
-                        const qty=panelData.checklist?.[kode]?.qty||0;
-                        const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
-                        terpakaiPr+=qty*menitPcs;
-                      });
-                    }
-                  });
-                  // TAMBAHAN (12 Agu 2026): kartu proyeksi (wiringForwardMap di grid) sekarang ikut
-                  // kehitung badge juga - reuse hitungProyeksiWiring yang SAMA dipakai kartu, biar
-                  // planner lain gak overbook di hari yang "keliatan" udah terisi kartu proyeksi
-                  // (mis. komponen VERY_HARD 4 hari yang cuma punya 1 entry real). Kode yang UDAH
-                  // ada entry real di tanggal d (kodeRealHariIni) di-skip - real selalu menang.
-                  if(isOrangPr){
-                    Object.entries(r.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
-                      if(liveDate===d)return;
-                      (liveEntries||[]).forEach((e:any)=>{
-                        (e.komponen||[]).forEach((kode:string)=>{
-                          if(kode.startsWith('__wiring_'))return;
-                          if(e.digeserKe?.[kode])return;
-                          if(kodeRealHariIni.has(kode))return;
-                          const progress=panelData?.checklist?.[kode]?.progress?.[pr]||0;
-                          if(progress>=100)return;
-                          const bobot=r.bobot_komponen?.[kode];
-                          hitungProyeksiWiring(panelId,kode,pr,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
-                            if(p.tanggal===d)terpakaiPr+=p.orang;
-                          });
-                        });
-                      });
-                    });
-                  }
-                });
+                const terpakaiPr=hitungTerpakaiHari(rawData,d,pr);
                 return {nama:pr,terpakai:terpakaiPr,kapasitas:kapasitasPr,adaOverride:!!ov,satuan:isOrangPr?"orang":"mnt"};
               });
               const adaOverride=perProses.some(pp=>pp.adaOverride);
@@ -2714,11 +2783,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                             const busbarJejakHariIni:Record<string,string>=row.busbar_jejak?.[d]||{};
                             // Cuma kode progress<100% & belum jejak yang ikut ke-drag - 100% (selesai)
                             // TETAP di tanggal ini, gak ikut pindah (sama rule kayak proses lain).
-                            const kodeDraggable=busbarEntries.filter((kode:string)=>{
-                              if(busbarJejakHariIni[kode])return false;
-                              const pct=checklistForBusbar[kode]?.progress?.BUSBAR||0;
-                              return pct<100;
-                            });
+                            const kodeDraggable=kodeBusbarBisaDipindah(row,checklistForBusbar,d);
                             const isDraggableBusbar=kodeDraggable.length>0;
                             return(
                               <div draggable={isDraggableBusbar}

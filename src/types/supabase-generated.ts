@@ -3369,6 +3369,14 @@ export type Database = {
         Args: { p_sel: Json; p_rows: Json; p_renhar: Json; p_user: string }
         Returns: Json
       }
+      pindah_multi_sel_v2: {
+        Args: { p_sel: Json; p_rows: Json; p_renhar: Json; p_user: string }
+        Returns: Json
+      }
+      pulihkan_multi_sel_v2: {
+        Args: { p_snap: Json; p_user: string }
+        Returns: Json
+      }
       pulihkan_multi_sel: {
         Args: { p_snap: Json; p_user: string }
         Returns: Json

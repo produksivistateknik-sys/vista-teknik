@@ -53,30 +53,73 @@ export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJa
   return newSch
 }
 
-// ── Pindah BANYAK sel sekaligus (offset hari sama) ───────────────────────────────────────────────
-export type SelPindah = { rawId: number; dari: string; ke: string; entries: EntriJadwal[]; adaPengerjaan: Set<string> }
-export type RencanaPindahMulti = {
-  rows: { raw_id: number; sebelum: Jadwal; sesudah: Jadwal }[]
-  renhar: { raw_id: number; wp: string; dari: string; ke: string; kode: string[] }[]
-  sel: { raw_id: number; dari: string; ke: string }[]
+// ── BUSBAR (9 Okt 2026) - logika confirmDragBusbar apa adanya, dipindah ke sini (SATU sumber dgn
+// pindah banyak sel). BUSBAR tidak pakai `schedule`, tapi busbar_schedule {tgl:[kode]} + busbar_jejak
+// {tgl:{kode:tglTujuan}} + busbar_manual_pin {tgl:{kode:waktu}}. Beda dari proses biasa: saat move kode
+// TETAP ada di tanggal asal & SELALU diberi jejak (tidak tergantung ada pengerjaan).
+export type JadwalBusbar = { busbar_schedule: Record<string, string[]>; busbar_jejak: Record<string, Record<string, string>>; busbar_manual_pin: Record<string, Record<string, string>> }
+
+export function lepasBusbar(j: JadwalBusbar, fromDate: string, toDate: string, kode: string[]): JadwalBusbar {
+  const jejakFromDate = { ...((j.busbar_jejak || {})[fromDate] || {}) }
+  kode.forEach((k) => { jejakFromDate[k] = toDate })
+  return { ...j, busbar_jejak: { ...(j.busbar_jejak || {}), [fromDate]: jejakFromDate } }
 }
 
+export function taruhBusbar(j: JadwalBusbar, toDate: string, kode: string[], nowIso: string): JadwalBusbar {
+  const bs = { ...(j.busbar_schedule || {}) }
+  bs[toDate] = [...new Set([...(bs[toDate] || []), ...kode])]
+  const pin = { ...(j.busbar_manual_pin || {}) }
+  const pinAtTarget = { ...(pin[toDate] || {}) }
+  kode.forEach((k) => { pinAtTarget[k] = nowIso })
+  pin[toDate] = pinAtTarget
+  return { ...j, busbar_schedule: bs, busbar_manual_pin: pin }
+}
+
+// Kode BUSBAR di sel yang boleh ikut pindah: belum jejak di tanggal itu & progress BUSBAR < 100 (sama
+// persis aturan drag 1 sel BUSBAR). `checklist` = panels.checklist panel tsb.
+export function kodeBusbarBisaDipindah(row: any, checklist: any, tanggal: string): string[] {
+  const jejakHariIni: Record<string, string> = row?.busbar_jejak?.[tanggal] || {}
+  return ((row?.busbar_schedule?.[tanggal] || []) as string[]).filter((k) => !jejakHariIni[k] && ((checklist?.[k]?.progress?.BUSBAR) || 0) < 100)
+}
+
+// ── Pindah BANYAK sel sekaligus (offset hari sama) ───────────────────────────────────────────────
+export type Jadwal4 = { schedule: Jadwal } & JadwalBusbar
+export type SelPindahV2 = { rawId: number; dari: string; ke: string; entries?: EntriJadwal[]; adaPengerjaan?: Set<string>; kodeBusbar?: string[] }
+export type RencanaPindahMultiV2 = {
+  rows: { raw_id: number; sebelum: Jadwal4; sesudah: Jadwal4 }[]
+  renhar: { raw_id: number; wp: string; dari: string; ke: string; kode: string[] }[]
+  sel: { raw_id: number; dari: string; ke: string; kode_busbar?: string[] }[]
+}
+export const ambilJadwal4 = (row: any): Jadwal4 => ({
+  schedule: row?.schedule || {}, busbar_schedule: row?.busbar_schedule || {},
+  busbar_jejak: row?.busbar_jejak || {}, busbar_manual_pin: row?.busbar_manual_pin || {},
+})
+
 // Per baris: LEPAS semua sumber dulu (dari snapshot awal), BARU taruh semua tujuan - jangan pindah
-// satu-satu berurutan. Contoh geser +1 hari sel 8 & 9 Okt di baris yang sama: tujuan 9 Okt adalah
-// sumber sel lain - kalau berurutan, isi 8 Okt yang baru mendarat di 9 Okt ikut terbawa ke 10 Okt.
-export function rencanakanPindahMulti(jadwalPerBaris: Map<number, Jadwal>, sel: SelPindah[], nowIso: string): RencanaPindahMulti {
-  const perBaris = new Map<number, SelPindah[]>()
+// satu-satu berurutan (geser +1 hari sel 8 & 9 Okt di baris sama: tujuan 9 Okt = sumber sel lain).
+// Sel BUSBAR (kodeBusbar terisi) lewat lepasBusbar/taruhBusbar; sel lain (termasuk QC/PACKING
+// "MARKED") lewat lepasDariAsal/taruhDiTujuan.
+export function rencanakanPindahMultiV2(jadwalPerBaris: Map<number, Jadwal4>, sel: SelPindahV2[], nowIso: string): RencanaPindahMultiV2 {
+  const perBaris = new Map<number, SelPindahV2[]>()
   sel.forEach((s) => { if (!perBaris.has(s.rawId)) perBaris.set(s.rawId, []); perBaris.get(s.rawId)!.push(s) })
-  const rows: RencanaPindahMulti['rows'] = []
+  const rows: RencanaPindahMultiV2['rows'] = []
   perBaris.forEach((daftar, rawId) => {
-    const sebelum = jadwalPerBaris.get(rawId) || {}
-    let sch: Jadwal = JSON.parse(JSON.stringify(sebelum))
-    daftar.forEach((s) => { sch = lepasDariAsal(sch, s.dari, s.ke, s.entries, s.adaPengerjaan) })
-    daftar.forEach((s) => { sch = taruhDiTujuan(sch, s.ke, s.entries, nowIso) })
-    rows.push({ raw_id: rawId, sebelum, sesudah: sch })
+    const sebelum = jadwalPerBaris.get(rawId) || ambilJadwal4(null)
+    let j: Jadwal4 = JSON.parse(JSON.stringify(sebelum))
+    daftar.forEach((s) => {
+      if (s.kodeBusbar) j = { ...j, ...lepasBusbar(j, s.dari, s.ke, s.kodeBusbar) }
+      else j = { ...j, schedule: lepasDariAsal(j.schedule, s.dari, s.ke, s.entries || [], s.adaPengerjaan || new Set()) }
+    })
+    daftar.forEach((s) => {
+      if (s.kodeBusbar) j = { ...j, ...taruhBusbar(j, s.ke, s.kodeBusbar, nowIso) }
+      else j = { ...j, schedule: taruhDiTujuan(j.schedule, s.ke, s.entries || [], nowIso) }
+    })
+    rows.push({ raw_id: rawId, sebelum, sesudah: j })
   })
-  const renhar = sel.flatMap((s) => s.entries.map((e) => ({ raw_id: s.rawId, wp: e.wp, dari: s.dari, ke: s.ke, kode: [...(e.komponen || [])] })))
-  return { rows, renhar, sel: sel.map((s) => ({ raw_id: s.rawId, dari: s.dari, ke: s.ke })) }
+  const renhar = sel.flatMap((s) => s.kodeBusbar
+    ? [{ raw_id: s.rawId, wp: 'BUSBAR', dari: s.dari, ke: s.ke, kode: [...s.kodeBusbar] }]
+    : (s.entries || []).map((e) => ({ raw_id: s.rawId, wp: e.wp, dari: s.dari, ke: s.ke, kode: [...(e.komponen || [])] })))
+  return { rows, renhar, sel: sel.map((s) => ({ raw_id: s.rawId, dari: s.dari, ke: s.ke, ...(s.kodeBusbar ? { kode_busbar: [...s.kodeBusbar] } : {}) })) }
 }
 
 export const isMinggu = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd)).getUTCDay() === 0 }
