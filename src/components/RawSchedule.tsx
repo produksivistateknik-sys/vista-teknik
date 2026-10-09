@@ -21,6 +21,11 @@ import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core'
 import { useModalJadwalSel, namaKomponenDariKode, wpSelesai } from './ModalJadwalSel'
+import { useUrutanPanel } from '../hooks/useUrutanPanel'
+import { useAturKapasitas } from './ModalAturKapasitas'
+import { useTambahPanelRaw } from './ModalTambahPanelRaw'
+import { useRiwayatQty } from './RiwayatQty'
+import { useNotifAvailable } from './NotifAvailable'
 import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, cmpPanelDalamZona, bandingkanBarisRaw, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
 
 // Handle geser urutan panel (⠿) di sel PANEL - @dnd-kit (pointer events), SENGAJA bukan HTML5
@@ -105,29 +110,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [cutCells,setCutCells]=useState<{rawId:number,date:string}[]>([]);
   const [tujuanTempel,setTujuanTempel]=useState<string|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
-  const [riwayatOpen,setRiwayatOpen]=useState(false);
-  const [qtyChangeLog,setQtyChangeLog]=useState<any[]>([]);
-  const [qtyChangeUnread,setQtyChangeUnread]=useState(0);
-  const fetchQtyChangeLog=async()=>{
-    const{data}=await supabase.from("qty_change_log").select("*").order("created_at",{ascending:false}).limit(100);
-    setQtyChangeLog(data||[]);
-    setQtyChangeUnread((data||[]).filter((d:any)=>!d.is_read).length);
-  };
-  useEffect(()=>{
-    fetchQtyChangeLog();
-    const ch=supabase.channel("realtime-qty-change-log-rawschedule")
-      .on("postgres_changes",{event:"*",schema:"public",table:"qty_change_log"},fetchQtyChangeLog)
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-  },[]);
-  const openRiwayat=()=>{
-    setRiwayatOpen(true);
-  };
-  const confirmQtyChange=async(id:number)=>{
-    await supabase.from("qty_change_log").update({is_read:true}).eq("id",id);
-    setQtyChangeLog(prev=>prev.map(d=>d.id===id?{...d,is_read:true}:d));
-    setQtyChangeUnread(prev=>Math.max(0,prev-1));
-  };
   const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
   const [selectedForMove,setSelectedForMove]=useState<{wp:string;kode:string}[]>([]);
   const toggleSelectForMove=(wp:string,kode:string)=>{
@@ -181,9 +163,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [dragInfo,setDragInfo]=useState(null);
   const [dragOverCell,setDragOverCell]=useState(null);
   const [dragMode,setDragMode]=useState(null);
-  const [addModal,setAddModal]=useState(false);
   const [selDate,setSelDate]=useState(null);
-  const [addForm,setAddForm]=useState<{woId:string;panelIds:number[];prioritas:string}>({woId:"",panelIds:[],prioritas:"Sedang"});
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
 
   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
@@ -223,6 +203,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setFilterPanel([]);
   };
   const [filterPanel,setFilterPanel]=useState<string[]>([]);
+  // Riwayat Perubahan Qty: components/RiwayatQty.tsx (Tahap 3c - dipakai juga tampilan "Raw Schedule per WP").
+  const riwayatQty=useRiwayatQty({setFilterProyek,setFilterPanel});
+  const{openRiwayat,qtyChangeUnread}=riwayatQty;
   const [panelDropdownOpen,setPanelDropdownOpen]=useState(false);
   const toggleFilterPanel=(p:string)=>{
     setFilterPanel(prev=>prev.includes(p)?prev.filter(x=>x!==p):[...prev,p]);
@@ -232,16 +215,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const [selPekerja,setSelPekerja]=useState([]);
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
   const [capacityCollapsed,setCapacityCollapsed]=useState(false);
-  const [overrideModal,setOverrideModal]=useState<{tanggalMulai:string,tanggalAkhir:string,proses:string[]}|null>(null);
-  const [overrideValue,setOverrideValue]=useState("");
-  const [overrideJamKerja,setOverrideJamKerja]=useState("8");
-  const [overrideEfektivitas,setOverrideEfektivitas]=useState("80");
-  const [overrideSaving,setOverrideSaving]=useState(false);
-  const [overrideResult,setOverrideResult]=useState<any>(null);
-  const [overrideProgress,setOverrideProgress]=useState("");
+  // Modal "Atur Kapasitas": components/ModalAturKapasitas.tsx (Tahap 3c - dipakai juga oleh tampilan "Raw Schedule per WP").
+  const aturKapasitas=useAturKapasitas({user,refetchRaw});
+  const{setOverrideModal,setOverrideValue,setOverrideResult}=aturKapasitas;
   const [lemburLoading,setLemburLoading]=useState(false);
   const [processTimeList,setProcessTimeList]=useState<any[]>([]);
-  const [notifAvailable,setNotifAvailable]=useState<any[]>([]);
   // REVISI TOTAL (12 Agu 2026) kapasitas WIRING: "hari kerja ke-N" per komponen dari histori
   // fcs_timer_kerja (bukan hari kalender) - dipakai bareng kebutuhanOrangWiring() buat hitung
   // kebutuhan orang dinamis. Lihat panelHelpers.ts WIRING_BOBOT_TABLE buat penjelasan lengkap.
@@ -267,17 +245,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[JSON.stringify(wiringPanelIds)]);
 
-  const fetchNotifAvailable=async()=>{
-    const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).eq("tipe","available").order("created_at",{ascending:false});
-    setNotifAvailable(data??[]);
-  };
 
-  const tandaiNotifDibaca=async(id:number)=>{
-    await supabase.from("fcs_notifikasi").update({dibaca:true}).eq("id",id);
-    setNotifAvailable(prev=>prev.filter((n:any)=>n.id!==id));
-  };
 
-  const [pilihKomponenModal,setPilihKomponenModal]=useState<any>(null);
 
   useEffect(()=>{
     // FIX (20 Sep 2026, retirement fcs_schedule Fase 1) - dulu Promise.all ini JUGA baca
@@ -314,30 +283,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   const getNamaKomponenDariKode=(panelId:number,kode:string):string=>namaKomponenDariKode(woData,getEffCfg,panelId,kode);
 
-  const getKomponenBelumDikerjakan=(proses:string):any[]=>{
-    const hasil:any[]=[];
-    rawData.filter((row:any)=>row.proses===proses).forEach((row:any)=>{
-      const panelId=row.panel_id||row.panelId;
-      const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
-      if(!panelData)return;
-      const sudahDitambah=new Set<string>();
-      Object.values(row.schedule||{}).forEach((entries:any)=>{
-        entries.forEach((entry:any)=>{
-          (entry.komponen||[]).forEach((kode:string)=>{
-            if(sudahDitambah.has(kode))return;
-            const progress=panelData.checklist?.[kode]?.progress?.[proses]||0;
-            if(progress>0)return;
-            const cfg=getEffCfg(panelData.tipe);
-            const item=cfg?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
-            if(!item)return;
-            sudahDitambah.add(kode);
-            hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama,wp:entry.wp});
-          });
-        });
-      });
-    });
-    return hasil;
-  };
 
   // Rumus kapasitas di lib/kapasitasHari.ts (Tahap 0 migrasi accordion - satu sumber utk tampilan lama & baru).
   const getMenitPerPcs=(tipePanel:string,proses:string,kode:string):number=>menitPerPcs(processTimeList,tipePanel,proses,kode);
@@ -1000,6 +945,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const cellModal=modalJadwal.cellModal;
   const openCellModal=modalJadwal.buka;
   const{setModalWp,setModalKomponen,setModalBobotPerKomponen}=modalJadwal; // dipakai "Pilih Komponen Lain" (notifikasi available)
+  // Notifikasi komponen available + "Pilih Komponen Lain": components/NotifAvailable.tsx (Tahap 3c).
+  const notifAvailable=useNotifAvailable({rawData,woData,getEffCfg,openCellModal,setModalWp,setModalKomponen,setModalBobotPerKomponen});
+  const{fetchNotifAvailable}=notifAvailable;
 
   // Drag & drop BUSBAR - proses ini gak pakai `schedule[tanggal][].komponen` sama sekali
   // (raw_schedule.busbar_schedule[tanggal]=string[] flat, gak ada breakdown per-tahap kayak
@@ -1230,7 +1178,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const dropStore=useRef<StoreDrop|null>(null);
   if(!dropStore.current)dropStore.current=buatStoreDrop();
   const setDropTarget=dropStore.current.set;
-  const [savingUrutan,setSavingUrutan]=useState(false);
   const [menuUrutanPanel,setMenuUrutanPanel]=useState<number|null>(null);
   const [toastUrutan,setToastUrutan]=useState<string|null>(null);
   const toastUrutanTimer=useRef<any>(null);
@@ -1253,129 +1200,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const dragPanelIdRef=useRef<number|null>(null);
   const dropTargetRef=useRef<TargetDrop|null>(null);
   const pointerYRef=useRef(0);
-  const namaUserAktif=()=>{
-    let sess:any={};try{sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");}catch{}
-    return user?.name||user?.nama||sess?.nama||"Admin";
-  };
-  const rowsPanelOf=(panelId:number)=>rawData.filter((r:any)=>Number(r.panel_id||r.panelId)===panelId);
-  const semuaPanelInfo=(map:Record<number,string>)=>{
-    const seen=new Map<number,any>();
-    rawData.forEach((r:any)=>{
-      const id=Number(r.panel_id||r.panelId);
-      if(!id||seen.has(id))return;
-      seen.set(id,{panelId:id,zona:zonaDari(r.prioritas),key:map[id]||null});
-    });
-    return[...seen.values()];
-  };
-  // Optimistic prioritas lokal (raw + renhar) + snapshot buat rollback.
-  const terapkanPrioritasLokal=(panelId:number,val:string)=>{
-    const rowsPanel=rowsPanelOf(panelId);
-    const snapRaw=rowsPanel.map((r:any)=>({id:r.id,prioritas:r.prioritas}));
-    const snapRenhar=effectiveRenhar.filter((r:any)=>Number(r.panel_id||r.panelId)===panelId).map((r:any)=>({id:r.id,prioritas:r.prioritas}));
-    rowsPanel.forEach((r:any)=>markRawDirty(r.id));
-    snapRenhar.forEach((r:any)=>markRenharDirty(r.id));
-    setRawData((prev:any[])=>prev.map((r:any)=>Number(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
-    setRenhar((prev:any[])=>prev.map((r:any)=>Number(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
-    return()=>{
-      setRawData((prev:any[])=>prev.map((r:any)=>{const s=snapRaw.find(x=>x.id===r.id);return s?{...r,prioritas:s.prioritas}:r;}));
-      setRenhar((prev:any[])=>prev.map((r:any)=>{const s=snapRenhar.find(x=>x.id===r.id);return s?{...r,prioritas:s.prioritas}:r;}));
-    };
-  };
-  const logUbahPrioritas=async(panelId:number,lama:string,baru:string,sumber:string)=>{
-    const r0=rowsPanelOf(panelId)[0];
-    await activityLogService.insert({
-      user_name:namaUserAktif(),action:"UBAH PRIORITAS",
-      description:`Prioritas ${r0?.panel} (${r0?.proyek}) ${lama} → ${baru} (${sumber})`,
-      module:"raw",halaman:"Raw Schedule",proyek:r0?.proyek||"",panel:r0?.panel||"",
-    });
-  };
-
-  // Dropdown PRIORITAS - posisi di zona baru tetap ngikut order_key panel itu (keputusan user).
-  const updatePrioritasPanel=async(panelIdRaw:any,val:string)=>{
-    const panelId=Number(panelIdRaw);
-    const rowsPanel=rowsPanelOf(panelId);
-    if(!rowsPanel.length)return;
-    const lama=zonaDari(rowsPanel[0].prioritas);
-    if(lama===val)return;
-    const rollback=terapkanPrioritasLokal(panelId,val);
-    const res=await simpanPindahPanel({panelId,orderKey:null,prioritas:val as Zona,materialize:[],user:namaUserAktif()});
-    rowsPanel.forEach((r:any)=>clearRawDirty(r.id));
-    if(!res.ok){
-      rollback();
-      alert(`Gagal mengubah prioritas ${rowsPanel[0].panel}: ${res.message}\n\nPrioritas dikembalikan ke ${lama}.`);
-      return;
-    }
-    await logUbahPrioritas(panelId,lama,val,"dropdown");
-  };
-
-  // Geser panel (drag handle ⠿ / menu ⋮). target = zona + tetangga TERLIHAT di zona itu.
-  const pindahPanel=async(panelId:number,target:TargetPindah)=>{
-    if(savingUrutan)return;
-    const sekarang=tetanggaSekarang(blokUrutRef.current,panelId);
-    if(sekarang&&sekarang.zona===target.zona&&sekarang.prevId===target.prevId&&sekarang.nextId===target.nextId)return; // gak pindah
-    const rowsPanel=rowsPanelOf(panelId);
-    if(!rowsPanel.length)return;
-    const namaPanel=rowsPanel[0].panel;
-    const zonaLama=zonaDari(rowsPanel[0].prioritas);
-    const lintas=zonaLama!==target.zona;
-    const snapKey=orderMap[panelId];
-    const materializedSemua:number[]=[];
-    const pasangKeyLokal=(base:Record<number,string>,h:{orderKey:string;materialize:{panel_id:number;order_key:string}[]})=>{
-      const n={...base,[panelId]:h.orderKey};
-      h.materialize.forEach(m=>{n[m.panel_id]=m.order_key;materializedSemua.push(m.panel_id);});
-      return n;
-    };
-    setSavingUrutan(true);
-    let hasil=hitungKeyPindah(semuaPanelInfo(orderMap),panelId,target);
-    setOrderMap(prev=>pasangKeyLokal(prev,hasil));
-    const rollbackPrioritas=lintas?terapkanPrioritasLokal(panelId,target.zona):null;
-    const simpan=()=>simpanPindahPanel({panelId,orderKey:hasil.orderKey,prioritas:lintas?target.zona:null,materialize:hasil.materialize,user:namaUserAktif()});
-    let res=await simpan();
-    if(!res.ok){
-      // Retry SEKALI pakai key segar dari server - kasus utama: 23505 (user lain barusan nyisip
-      // di celah yang sama, key kembar ditolak unique index). Tampilan gak berubah selama retry.
-      try{
-        const segar=await fetchPanelOrderMap();
-        hasil=hitungKeyPindah(semuaPanelInfo(segar),panelId,target);
-        setOrderMap(pasangKeyLokal(segar,hasil));
-        res=await simpan();
-      }catch(e:any){res={ok:false,message:String(e?.message||e)};}
-    }
-    rowsPanel.forEach((r:any)=>clearRawDirty(r.id));
-    setSavingUrutan(false);
-    if(!res.ok){
-      // RPC atomik -> DB pasti masih keadaan lama; balikin tampilan dalam 1 render.
-      setOrderMap(prev=>{
-        const n={...prev};
-        if(snapKey)n[panelId]=snapKey;else delete n[panelId];
-        materializedSemua.forEach(id=>{delete n[id];});
-        return n;
-      });
-      rollbackPrioritas?.();
-      alert(`Gagal memindahkan ${namaPanel}: ${res.message}\n\nUrutan${lintas?" & prioritas":""} dikembalikan seperti semula.`);
-      return;
-    }
-    if(lintas){
-      tampilToastUrutan(`Prioritas ${namaPanel} diubah: ${zonaLama} → ${target.zona}`);
-      await logUbahPrioritas(panelId,zonaLama,target.zona,"geser urutan panel");
-    }
-  };
-
-  // Menu ⋮ - SENGAJA cuma di dalam zona yang sama (pindah zona cuma lewat drag dgn indikator
-  // amber, atau dropdown PRIORITAS - biar prioritas gak pernah berubah diam-diam lewat "Naik 1").
-  const pindahViaMenu=(panelId:number,aksi:"atas"|"naik"|"turun"|"bawah")=>{
-    setMenuUrutanPanel(null);
-    const me=blokUrutRef.current.find(b=>b.panelId===panelId);
-    if(!me)return;
-    const bz=blokUrutRef.current.filter(b=>b.zona===me.zona).map(b=>b.panelId);
-    const i=bz.indexOf(panelId);
-    let t:TargetPindah|null=null;
-    if(aksi==="atas"&&i>0)t={zona:me.zona,prevId:null,nextId:bz[0]};
-    if(aksi==="naik"&&i>0)t={zona:me.zona,prevId:bz[i-2]??null,nextId:bz[i-1]};
-    if(aksi==="turun"&&i<bz.length-1)t={zona:me.zona,prevId:bz[i+1],nextId:bz[i+2]??null};
-    if(aksi==="bawah"&&i<bz.length-1)t={zona:me.zona,prevId:bz[bz.length-1],nextId:null};
-    if(t)pindahPanel(panelId,t);
-  };
+  // Prioritas & urutan panel: hooks/useUrutanPanel.ts (Tahap 3c - dipakai juga oleh tampilan "Raw Schedule per WP").
+  const urutanPanel=useUrutanPanel({rawData,setRawData,effectiveRenhar,setRenhar,orderMap,setOrderMap,user,blokUrutRef,tampilToastUrutan,setMenuUrutanPanel});
+  const{savingUrutan,rowsPanelOf,updatePrioritasPanel,pindahPanel,pindahViaMenu}=urutanPanel;
 
   // ── Drag: posisi jatuh dihitung dari posisi pointer (Y) vs kotak <tbody> tiap panel TERLIHAT &
   // 3 baris pembatas zona (lihat hitungTargetDrop). Dihitung ulang tiap pointer gerak & tiap
@@ -1487,45 +1314,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(id!=null&&t)pindahPanel(id,{zona:t.zona,prevId:t.prevId,nextId:t.nextId});
   };
 
-  const getMissingRelevantProses=(p:any):string[]=>{
-    const existingProsesP=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
-    const activeKodes=Object.entries(p.checklist||{}).filter(([,v]:any)=>(v?.qty||0)>0).map(([k])=>k);
-    const relevantSet=new Set<string>();
-    activeKodes.forEach((kode:string)=>getRelevantProsesForKode(kode,p.tipe).forEach((pr:string)=>relevantSet.add(pr)));
-    // NAMEPLATE/YELLOWMARK (16 Sep 2026) - dihapus dari Raw Schedule sesuai permintaan user,
-    // getRelevantProsesForKode() TETAP nyertain keduanya (dipakai juga di TaskMonitoring/
-    // RencanaHarian buat gating status "whole panel", jangan disentuh fungsi bersama itu) -
-    // filter khusus di sini aja biar "Tambah Panel" gak pernah nawarin/bikin baris ini lagi.
-    return [...relevantSet].filter((pr:string)=>pr!=="NAMEPLATE"&&pr!=="YELLOWMARK"&&!existingProsesP.includes(pr));
-  };
-  const panelOpts=addForm.woId?(woData.find(w=>w.id===Number(addForm.woId))?.panels||[]).filter((p:any)=>getMissingRelevantProses(p).length>0):[];
-  const [addLoading,setAddLoading]=useState(false);
-  const submitAdd=async()=>{
-    if(addLoading)return;
-    if(!addForm.woId||addForm.panelIds.length===0)return;
-    const wo=woData.find(w=>w.id===Number(addForm.woId));
-    if(!wo)return;
-    setAddLoading(true);
-    let totalPanelDitambah=0;
-    for(const panelId of addForm.panelIds){
-      const p=wo.panels.find(x=>x.id===panelId);
-      if(!p)continue;
-      const toAdd=getMissingRelevantProses(p);
-      if(!toAdd.length)continue;
-      for(const proses of toAdd){
-        await createRaw({
-          wo_id:wo.id,panel_id:p.id,proyek:wo.proyek,panel:p.nama,
-          proses,prioritas:addForm.prioritas,schedule:{}
-        });
-      }
-      totalPanelDitambah++;
-      if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
-    }
-    await refetchRaw();
-    setAddLoading(false);
-    if(totalPanelDitambah===0){alert("Semua proses panel yang dipilih sudah ada!");}
-    setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
-  };
+  // Modal "Tambah Panel ke Raw Schedule": components/ModalTambahPanelRaw.tsx (Tahap 3c - dipakai juga tampilan "Raw Schedule per WP").
+  const tambahPanelRaw=useTambahPanelRaw({woData,rawData,createRaw,refetchRaw,log});
+  const{setAddModal}=tambahPanelRaw;
 
   // ── VIRTUALISASI GRID (4 Okt 2026, paket 5) ─────────────────────────────────────────────────
   // Grid dulu merender SEMUA panel (+-900 baris x 44 hari = 128 rb node DOM). Sekarang per BLOK
@@ -1783,76 +1574,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
       </div>
 
-      {pilihKomponenModal&&(
-        <Modal title="Pilih Komponen Lain yang Bisa Diambil" onClose={()=>setPilihKomponenModal(null)} width={520}>
-          <div style={{fontSize:11,color:"#64748b",marginBottom:12}}>
-            Daftar komponen {pilihKomponenModal.proses} yang belum pernah dijadwalkan. Klik salah satu untuk lompat ke baris itu dan tambahkan ke hari ini.
-          </div>
-          {(()=>{
-            const daftarKomponen=getKomponenBelumDikerjakan(pilihKomponenModal.proses);
-            if(daftarKomponen.length===0){
-              return(<div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:12}}>Semua komponen sudah terjadwal</div>);
-            }
-            return(
-              <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:340,overflowY:"auto" as const}}>
-                {daftarKomponen.map((k:any,ki:number)=>(
-                  <button key={ki} onClick={async()=>{
-                      await tandaiNotifDibaca(pilihKomponenModal.notifId);
-                      setPilihKomponenModal(null);
-                      openCellModal(k.rawId,TODAY);
-                      setModalWp(k.wp);
-                      const rowTarget=rawData.find((r:any)=>r.id===k.rawId);
-                      const existingEntry=(rowTarget?.schedule?.[TODAY]||[]).find((e:any)=>e.wp===k.wp);
-                      const panelDataTarget=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(k.panelId));
-                      const komponenLamaBelumSelesai=(existingEntry?.komponen||[]).filter((kd:string)=>{
-                        if(kd.startsWith("__wiring_"))return false; // token bobot, bukan komponen asli
-                        const progress=panelDataTarget?.checklist?.[kd]?.progress?.[pilihKomponenModal.proses]||0;
-                        return progress<100;
-                      });
-                      setModalKomponen([...new Set([...komponenLamaBelumSelesai,k.kode])]);
-                      setModalBobotPerKomponen((prev:any)=>({...prev,[k.kode]:prev[k.kode]??rowTarget?.bobot_komponen?.[k.kode]??"MEDIUM"}));
-                    }}
-                    style={{textAlign:"left" as const,display:"flex",justifyContent:"space-between",alignItems:"center",border:"1px solid #e2e8f0",borderRadius:8,padding:"10px 12px",cursor:"pointer",background:"#fff"}}>
-                    <div>
-                      <div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{k.nama}<span style={{fontSize:10,color:"#94a3b8",marginLeft:4}}>({k.kode})</span></div>
-                      <div style={{fontSize:10,color:"#64748b"}}>{k.panel} · {k.proyek}</div>
-                    </div>
-                    <i className="ti ti-arrow-right" style={{fontSize:14,color:"#1d4ed8"}}/>
-                  </button>
-                ))}
-              </div>
-            );
-          })()}
-        </Modal>
-      )}
+      {notifAvailable.elemenModal}
 
-      {notifAvailable.length>0&&(
-        <div style={{background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
-          <div style={{fontSize:11,fontWeight:700,color:"#1d4ed8",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:10}}>
-            💡 Operator Selesai Lebih Cepat ({notifAvailable.length})
-          </div>
-          <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
-            {notifAvailable.map((n:any)=>(
-              <div key={n.id} style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:10,background:"#fff",borderRadius:8,padding:"10px 12px",border:"1px solid #dbeafe"}}>
-                <div style={{flex:1}}>
-                  <div style={{fontSize:12,color:"#1e293b"}}>
-                    <strong>{n.pekerja_nama}</strong> selesai <strong>{n.nama_komponen}</strong> ({n.panel_nama}) lebih cepat
-                  </div>
-                  <div style={{fontSize:10,color:"#64748b",marginTop:2}}>
-                    Rencana selesai {fmtDate(n.tanggal_rencana_selesai)}, aktual {fmtDate(n.tanggal_aktual_selesai)}. Ada komponen lain yang bisa diambil.
-                  </div>
-                </div>
-                <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
-                  <button onClick={()=>setPilihKomponenModal({notifId:n.id,proses:n.proses})}
-                    style={{background:"#1d4ed8",border:"none",borderRadius:6,padding:"4px 10px",cursor:"pointer",fontSize:10,color:"#fff",fontWeight:700,whiteSpace:"nowrap" as const}}>Pilih Komponen</button>
-                  <button onClick={()=>tandaiNotifDibaca(n.id)}
-                    style={{background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:6,padding:"3px 8px",cursor:"pointer",fontSize:10,color:"#64748b",whiteSpace:"nowrap" as const}}>Tandai dibaca</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {notifAvailable.elemenBanner}
 
       {fcsKapasitas.length>0&&(
         <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#e2e8f0)",borderRadius:8,padding:"12px 14px",marginBottom:14}}>
@@ -2520,189 +2244,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
           <button onClick={()=>setMoveKomponenState(null)} style={{background:"#334155",border:"none",color:"#fff",borderRadius:6,padding:"4px 10px",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
         </div>
       )}
-      {riwayatOpen&&(
-        <div onClick={()=>setRiwayatOpen(false)} style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.4)",zIndex:10000,display:"flex",justifyContent:"flex-end"}}>
-          <div onClick={(e:any)=>e.stopPropagation()} style={{width:380,maxWidth:"100%",background:"#fff",height:"100%",padding:20,overflowY:"auto" as const,boxShadow:"-4px 0 20px rgba(0,0,0,0.15)"}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontWeight:800,fontSize:16}}>Riwayat Perubahan Qty</div>
-              <button onClick={()=>setRiwayatOpen(false)} style={{background:"none",border:"none",cursor:"pointer",fontSize:18,color:"#94a3b8"}}>✕</button>
-            </div>
-            <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Perubahan qty komponen dari Manajemen WO.</div>
-            {qtyChangeLog.length===0?(
-              <div style={{textAlign:"center" as const,color:"#94a3b8",fontSize:12,padding:"30px 0"}}>Belum ada riwayat perubahan.</div>
-            ):(
-              <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
-                {qtyChangeLog.map((d:any)=>{
-                  const naik=Number(d.qty_baru)>Number(d.qty_lama);
-                  return(
-                    <div key={d.id} onClick={()=>{setFilterProyek(d.proyek?[d.proyek]:[]);setFilterPanel(d.panel?[d.panel]:[]);setRiwayatOpen(false);}}
-                      title="Klik buat langsung liat baris ini di Raw Schedule"
-                      style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",cursor:"pointer",border:"1px solid transparent",transition:"border-color .15s"}}
-                      onMouseEnter={(e:any)=>e.currentTarget.style.borderColor="#93c5fd"}
-                      onMouseLeave={(e:any)=>e.currentTarget.style.borderColor="transparent"}>
-                      <div style={{display:"flex",justifyContent:"space-between",fontSize:11,color:"#64748b",marginBottom:4}}>
-                        <span>{d.proyek} · {d.panel}</span>
-                        <span>{new Date(d.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
-                      </div>
-                      <div style={{display:"flex",alignItems:"center",gap:8,fontSize:13}}>
-                        {d.wp&&<span style={{background:WP_COLOR[d.wp]||"#64748b",color:"#fff",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{d.wp}</span>}
-                        <span style={{flex:1}}>{d.nama_komponen}</span>
-                        <span style={{color:"#94a3b8"}}>{d.qty_lama}</span>
-                        <span style={{color:"#94a3b8"}}>→</span>
-                        <span style={{color:naik?"#16a34a":"#dc2626",fontWeight:700}}>{d.qty_baru}</span>
-                      </div>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:6}}>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>Diubah oleh {d.changed_by}</div>
-                        {d.is_read?(
-                          <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>✓ Sudah dibaca</span>
-                        ):(
-                          <button onClick={(e:any)=>{e.stopPropagation();confirmQtyChange(d.id);}} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✓ Konfirmasi</button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+      {riwayatQty.elemen}
       {modalJadwal.elemen}
 
-      {overrideModal&&(
-        <Modal title="Atur Kapasitas" onClose={()=>{setOverrideModal(null);setOverrideResult(null);}} width={480}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:14}}>
-            <div>
-              <Lbl>Tanggal Mulai</Lbl>
-              <Inp type="date" value={overrideModal.tanggalMulai} onChange={e=>setOverrideModal({...overrideModal,tanggalMulai:e.target.value})}/>
-            </div>
-            <div>
-              <Lbl>Tanggal Akhir</Lbl>
-              <Inp type="date" value={overrideModal.tanggalAkhir} onChange={e=>setOverrideModal({...overrideModal,tanggalAkhir:e.target.value})}/>
-            </div>
-          </div>
-          <div style={{marginBottom:14}}>
-            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Jenis Pekerjaan ({overrideModal.proses.length} dipilih)</div>
-              <div style={{display:"flex",gap:6}}>
-                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:[...ALL_PROSES]})}
-                  style={{fontSize:10,color:"#16a34a",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
-                <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:[]})}
-                  style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
-              </div>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
-              {ALL_PROSES.map(p=>{
-                const checked=overrideModal.proses.includes(p);
-                return(
-                  <button key={p} type="button" onClick={()=>{
-                    setOverrideModal({...overrideModal,proses:checked?overrideModal.proses.filter(x=>x!==p):[...overrideModal.proses,p]});
-                  }}
-                    style={{padding:"4px 10px",borderRadius:6,border:`1.5px solid ${checked?"#1d4ed8":"#e2e8f0"}`,
-                      background:checked?"#eff6ff":"#fff",color:checked?"#1d4ed8":"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
-                    {p}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?(
-            <div style={{marginBottom:14}}>
-              <Lbl>Jumlah Orang</Lbl>
-              <Inp type="number" min="0" value={overrideValue} onChange={e=>setOverrideValue(e.target.value)} placeholder="misal 6"/>
-            </div>
-          ):(
-            <div style={{marginBottom:14}}>
-              <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:10,marginBottom:8}}>
-                <div>
-                  <Lbl>Jam Kerja</Lbl>
-                  <Inp type="number" min="0" step="0.5" value={overrideJamKerja} onChange={e=>setOverrideJamKerja(e.target.value)}/>
-                </div>
-                <div>
-                  <Lbl>Efektivitas %</Lbl>
-                  <Inp type="number" min="0" max="100" value={overrideEfektivitas} onChange={e=>setOverrideEfektivitas(e.target.value)}/>
-                </div>
-              </div>
-              <div style={{background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:7,padding:"6px 12px",fontSize:12,color:"#16a34a",fontWeight:600}}>
-                {overrideJamKerja} jam × 60 × {overrideEfektivitas}% = <strong>{Math.round((Number(overrideJamKerja)||0)*60*(Number(overrideEfektivitas)||0)/100)} menit</strong>/hari
-              </div>
-            </div>
-          )}
-          {!overrideResult?(
-            <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
-              <Btn outline color="#64748b" onClick={()=>setOverrideModal(null)}>Batal</Btn>
-              <Btn color="#1d4ed8" disabled={overrideSaving||(overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?!overrideValue:(!overrideJamKerja||!overrideEfektivitas))||overrideModal.proses.length===0||!overrideModal.tanggalMulai||!overrideModal.tanggalAkhir} onClick={async()=>{
-                setOverrideSaving(true);
-                const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
-                const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                const allShifted:any[]=[];
-                let cur=new Date(overrideModal.tanggalMulai);
-                const end=new Date(overrideModal.tanggalAkhir);
-                let safety=0;
-                // AUDIT FIX (21 Sep 2026) - dulu res.success===false DIAM-DIAM diabaikan (gak ada
-                // else), allShifted tetap dianggap hasil final yg valid - kalau SEMUA gagal,
-                // modal nutup nunjukin "✅ Kapasitas tersimpan" padahal nol yg beneran tersimpan.
-                // Sekarang kegagalan dikumpulkan & dilaporkan eksplisit ke admin (CLAUDE.md A.2).
-                const gagalList:string[]=[];
-                while(cur<=end&&safety<366){
-                  const tgl=cur.toISOString().slice(0,10);
-                  for(const proses of overrideModal.proses){
-                    setOverrideProgress(tgl+" — "+proses);
-                    const isOrangOv=["WIRING CONTROL","WIRING POWER"].includes(proses);
-                    const kapasitasMenitHitung=Math.round((Number(overrideJamKerja)||0)*60*(Number(overrideEfektivitas)||0)/100);
-                    const res=await setOverrideAndRebalance({
-                      tanggal:tgl,
-                      jenisPekerjaan:proses,
-                      kapasitasMenit:isOrangOv?undefined:kapasitasMenitHitung,
-                      jumlahOrang:isOrangOv?Number(overrideValue):undefined,
-                      createdBy:uname,
-                    });
-                    if(res.success)allShifted.push(...res.shifted);
-                    else gagalList.push(`${tgl} — ${proses}: ${res.error||"gagal tanpa keterangan"}`);
-                  }
-                  cur.setDate(cur.getDate()+1);
-                  safety++;
-                }
-                setOverrideSaving(false);
-                if(gagalList.length>0){
-                  alert(`Gagal simpan kapasitas utk ${gagalList.length} kombinasi tanggal/proses:\n\n`+gagalList.join("\n"));
-                }
-                setOverrideProgress("");
-                setOverrideResult(allShifted);
-                if(refetchRaw) await refetchRaw();
-              }}>
-                {overrideSaving?(overrideProgress||"Menyimpan..."):"Simpan"}
-              </Btn>
-            </div>
-          ):(
-            <div>
-              {overrideResult.length===0?(
-                <div style={{textAlign:"center",padding:"16px 0",color:"#16a34a",fontWeight:700,fontSize:13}}>✅ Kapasitas tersimpan, gak ada yang perlu digeser</div>
-              ):(
-                <div>
-                  <div style={{fontSize:12,fontWeight:700,color:"#92400e",marginBottom:8}}>⚠ {overrideResult.length} komponen digeser ke tanggal berikutnya:</div>
-                  <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:280,overflowY:"auto" as const,marginBottom:14}}>
-                    {overrideResult.map((s:any,i:number)=>(
-                      <div key={i} style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 12px",fontSize:11}}>
-                        <div style={{fontWeight:700,color:"#1e293b"}}>{s.namaKomponen} — {s.panelNama}</div>
-                        <div style={{color:"#64748b"}}>WO {s.woNumber} · {s.proyek}</div>
-                        <div style={{color:s.overflow?"#dc2626":"#92400e",fontWeight:600,marginTop:2}}>
-                          {s.overflow
-                            ?`${fmtDate(s.dariTanggal)} — TIDAK dipindah (gak ketemu slot kosong 60 hari, tetap overbook di sini)`
-                            :`${fmtDate(s.dariTanggal)} → ${fmtDate(s.keTanggal)}`}
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-              <div style={{display:"flex",justifyContent:"flex-end"}}>
-                <Btn color="#1d4ed8" onClick={()=>{setOverrideModal(null);setOverrideResult(null);}}>Tutup</Btn>
-              </div>
-            </div>
-          )}
-        </Modal>
-      )}
+      {aturKapasitas.elemen}
 
       {assignModal&&(()=>{
         const{task,divisi,existing}=assignModal;const dc=DIVISI_CONFIG[divisi];
@@ -2757,51 +2302,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         </Modal>
       )}
 
-      {addModal&&(
-        <Modal title="Tambah Panel ke Raw Schedule" onClose={()=>setAddModal(false)} width={480}>
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div><Lbl>Work Order</Lbl>
-              <Sel value={addForm.woId} onChange={e=>setAddForm({...addForm,woId:e.target.value,panelIds:[]})}>
-                <option value="">-- Pilih WO --</option>
-                {woData.filter((w:any)=>(w.panels||[]).some((p:any)=>getMissingRelevantProses(p).length>0)).map((w:any)=><option key={w.id} value={w.id}>WO {w.wo} — {w.proyek}</option>)}
-              </Sel>
-            </div>
-            <div><Lbl>Panel ({addForm.panelIds.length} dipilih)</Lbl>
-              <div style={{display:"flex",gap:8,marginBottom:6}}>
-                <button type="button" onClick={()=>setAddForm({...addForm,panelIds:panelOpts.map((p:any)=>p.id)})}
-                  style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",padding:0}}>Pilih Semua</button>
-                <button type="button" onClick={()=>setAddForm({...addForm,panelIds:[]})}
-                  style={{fontSize:11,color:"#64748b",background:"none",border:"none",cursor:"pointer",padding:0}}>Hapus Semua</button>
-              </div>
-              <div style={{maxHeight:220,overflowY:"auto" as const,border:"1px solid #e2e8f0",borderRadius:8,padding:6}}>
-                {panelOpts.length===0&&(
-                  <div style={{fontSize:12,color:"#94a3b8",padding:8,textAlign:"center" as const}}>Tidak ada panel tersedia</div>
-                )}
-                {panelOpts.map((p:any)=>{
-                  const checked=addForm.panelIds.includes(p.id);
-                  return(
-                    <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"6px 8px",borderRadius:6,cursor:"pointer",background:checked?"#eff6ff":"transparent"}}>
-                      <input type="checkbox" checked={checked} onChange={()=>{
-                        setAddForm(prev=>({...prev,panelIds:checked?prev.panelIds.filter(id=>id!==p.id):[...prev.panelIds,p.id]}));
-                      }}/>
-                      <span style={{fontSize:13,color:"#1e293b"}}>#{p.no_pnl||p.noPnl} — {p.nama}</span>
-                    </label>
-                  );
-                })}
-              </div>
-            </div>
-            <div><Lbl>Prioritas</Lbl>
-              <Sel value={addForm.prioritas} onChange={e=>setAddForm({...addForm,prioritas:e.target.value})}>
-                {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
-              </Sel>
-            </div>
-          </div>
-          <div style={{display:"flex",gap:10,marginTop:20,justifyContent:"flex-end"}}>
-            <Btn outline color="#64748b" onClick={()=>setAddModal(false)}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={submitAdd} disabled={addLoading}>{addLoading?"Menambahkan...":"Tambah Panel"}</Btn>
-          </div>
-        </Modal>
-      )}
+      {tambahPanelRaw.elemen}
     {/* Context Menu */}
     {ctxMenu&&(
       <>
