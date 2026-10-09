@@ -8,7 +8,10 @@ import { useRawPanelOrder, bandingkanBarisRaw } from '../lib/rawPanelOrder'
 import { muatDataKapasitas, menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
-import { kodeBusbarBisaDipindah } from '../lib/jadwalPindah'
+import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
+import { withRetry } from '../lib/withRetry'
+import { markRawDirty, clearRawDirty } from '../lib/globalState'
+import { activityLogService } from '../services/activityLogService'
 import { rencanakanPindahAccordion, pecahKunci } from '../lib/pindahAccordion'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses } from '../lib/rawPivot'
@@ -17,7 +20,8 @@ import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type
 // RAW SCHEDULE ACCORDION PER WP (Tahap 1 migrasi, 9 Okt 2026) - tampilan per WP dari data produksi.
 // Tahap 2 (9 Okt 2026): pilih & PINDAH (Ctrl/Alt/Shift+klik, lasso, drag grup, Ctrl+X/V, Ctrl+Z) lewat jalur
 // yang SAMA dgn tampilan lama (lib/pindahAccordion -> hooks/usePindahMulti -> RPC v2 + Undo). Selama masa
-// uji, pindah HANYA untuk WO "TRIAL ACCORDION" (Preview memakai database produksi). Edit/hapus/copy: Tahap 3.
+// Tahap 3a: konfirmasi "data produksi asli" sebelum menulis (menggantikan batas WO uji), klik penanda
+// QC/PACKING = toggle, salin-GABUNG (Copy di modal drag / Ctrl+C -> Ctrl+V), menu klik kanan. Edit/hapus: 3b.
 // Menggantikan maket dummy RawScheduleSandbox (keputusan user). Raw Schedule asli TETAP jalan berdampingan
 // sampai paritas tercapai; semua aksi tulis (pindah/edit/hapus) dibawa di Tahap 2-3.
 //
@@ -45,9 +49,11 @@ const TINGGI = { grup: 40, komp: 36, penanda: 30 }
 const MAKS_CHIP = 3
 const BUFFER_BARIS = 12
 const PROSES_KARTU = ['POTONG', 'BENDING', 'STEL', 'FINISHING', 'PAINTING', 'WIRING CONTROL', 'WIRING POWER']
-// MASA UJI (keputusan user, Tahap 2-3): tulis dari tampilan baru hanya untuk WO uji. Hapus saat penggantian.
-const HANYA_WO_UJI = true
-const POLA_WO_UJI = /TRIAL ACCORDION/i
+// Konfirmasi "data produksi asli" (keputusan user, Tahap 3a - menggantikan batas WO uji): sekali per aksi tulis,
+// kecuali admin mencentang "jangan tanya lagi selama sesi ini" (sessionStorage, aman bila gagal).
+const KUNCI_IZIN_SESI = 'vt_raw_acc_izin_produksi'
+const izinSesi = () => { try { return sessionStorage.getItem(KUNCI_IZIN_SESI) === '1' } catch { return false } }
+const simpanIzinSesi = () => { try { sessionStorage.setItem(KUNCI_IZIN_SESI, '1') } catch { /* abaikan */ } }
 
 const idxKeTanggal = (i: number) => addDays(TODAY, i - RENTANG_HARI)
 const tanggalKeIdx = (d: string) => { const [y, m, dd] = d.split('-').map(Number); const [y0, m0, d0] = TODAY.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, dd) - Date.UTC(y0, m0 - 1, d0)) / 86400000) + RENTANG_HARI }
@@ -124,8 +130,8 @@ function MultiPilih({ label, opsi, nilai, setNilai }: { label: string; opsi: str
   )
 }
 
-export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, refetchRenhar, livePanelTypes, user }: {
-  woData: any[]; rawData: any[]; setRawData?: (f: (prev: any[]) => any[]) => void; refetchRaw?: () => void; refetchRenhar?: () => void; livePanelTypes?: any; user?: any
+export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, refetchRaw, refetchRenhar, livePanelTypes, user }: {
+  woData: any[]; rawData: any[]; setRawData?: (f: (prev: any[]) => any[]) => void; updateRaw?: (id: number, data: any) => Promise<any>; refetchRaw?: () => void; refetchRenhar?: () => void; livePanelTypes?: any; user?: any
 }) {
   // ── data pendukung (sama sumber dgn Raw Schedule lama) ──
   const [fcsKapasitas, setFcsKapasitas] = useState<any[]>([])
@@ -245,6 +251,12 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
   const [pilihan, setPilihan] = useState<Set<string>>(new Set()) // kunci "<kb>|<tanggal>"
   const [jangkar, setJangkar] = useState<{ i: number; d: string } | null>(null) // utk Shift+klik (indeks baris DATA)
   const [potongan, setPotongan] = useState<string[]>([])
+  const [salinan, setSalinan] = useState<string[]>([]) // Ctrl+C (salin-gabung)
+  const [izin, setIzin] = useState<{ pesan: string; jawab: (ok: boolean) => void } | null>(null)
+  const [centangSesi, setCentangSesi] = useState(false)
+  const [menu, setMenu] = useState<{ x: number; y: number; r: Baris; d: string } | null>(null)
+  const mintaIzin = (pesan: string) => new Promise<boolean>(res => { if (izinSesi()) { res(true); return } setCentangSesi(false); setIzin({ pesan, jawab: res }) })
+  const namaUser = () => user?.name || user?.nama || 'Admin'
   const [tujuanTempel, setTujuanTempel] = useState<string | null>(null)
   const [konfirmasi, setKonfirmasi] = useState<{ kunci: string[]; offset: number } | null>(null)
   const blokById = useMemo(() => new Map(blokTampil.map(b => [b.panelId, b])), [blokTampil])
@@ -265,26 +277,24 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
     return r.t === 'komp' ? kompBisa(r.k) : r.g.komponen.some(kompBisa)
   }
   const kunciSel = (r: Baris, d: string) => r.kb + '|' + d
-  const bolehTulis = (kunci: string[]) => {
+  // Konfirmasi "data produksi asli" (lewati bila sudah dikonfirmasi lewat modal drag / izin sesi).
+  const bolehTulis = async (pesan: string, sudahDikonfirmasi = false) => {
     if (!setRawData) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
-    if (!HANYA_WO_UJI) return true
-    const pids = new Set(kunci.map(k => pecahKunci(k).panelId))
-    const bukanUji = [...pids].filter(pid => { const b = blokById.get(pid); return !(POLA_WO_UJI.test(b?.proyek || '') || POLA_WO_UJI.test(String(woData.find((w: any) => (w.panels || []).some((p: any) => Number(p.id) === pid))?.wo || ''))) })
-    if (bukanUji.length) { tampilToastAksi('Masa uji: pindah dari tampilan baru hanya untuk WO "TRIAL ACCORDION". Data produksi lain tetap lewat menu Raw Schedule.', 'err'); return false }
-    return true
+    if (sudahDikonfirmasi) return true
+    return mintaIzin(pesan)
   }
   const muatTimerUntuk = (kunci: string[]) => {
     const cells = kunci.flatMap(k => { const x = pecahKunci(k); const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup && y.jenis === 'busbar'); return g ? g.komponen.flatMap(km => (km.sel[x.tanggal] || []).map(c => ({ rawId: c.rawId, date: x.tanggal }))) : [] })
     return pindahMulti.muatTimerBusbar(cells)
   }
-  const jalankanPindah = async (kunci: string[], offset: number) => {
+  const jalankanPindah = async (kunci: string[], offset: number, sudahDikonfirmasi = false) => {
     if (offset === 0) return false
-    if (!bolehTulis(kunci)) return false
     const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah())
     if (rencana.bentrok.length > 0) {
       tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err')
       return false
     }
+    if (!(await bolehTulis(`Pindah ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari di data produksi asli?`, sudahDikonfirmasi))) return false
     return pindahMulti.jalankanPindahSel(rencana.sel, rencana.jadwal, {
       jumlah: `${rencana.jumlahKomponen} komponen`, offset,
       ulangi: () => { jalankanPindahRef.current(kunci, offset) },
@@ -296,22 +306,103 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
     })
   }
   const jalankanPindahRef = useRef(jalankanPindah); jalankanPindahRef.current = jalankanPindah
-  const batalkan = () => { setPilihan(new Set()); setJangkar(null); setPotongan([]); setTujuanTempel(null) }
+
+  // SALIN-GABUNG (Tahap 3a): sama dgn salin 1 sel tampilan lama - tujuan digabung (+pin), asal tidak berubah,
+  // rencana harian tidak ikut. Simpan per baris jadwal (updateRaw + retry + cek hasil); gagal -> baris itu
+  // dikembalikan, jadwal dimuat ulang, toast + Ulangi.
+  const sedangSalinRef = useRef(false)
+  const jalankanSalin = async (kunci: string[], offset: number, sudahDikonfirmasi = false): Promise<boolean> => {
+    if (offset === 0) return false
+    if (sedangSalinRef.current || pindahMulti.sedangPindahRef.current) { tampilToastAksi('Masih memproses aksi sebelumnya - tunggu sebentar.', 'err'); return false }
+    if (!updateRaw) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
+    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'salin')
+    if (rencana.bentrok.length > 0) {
+      tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang disalin.`, 'err')
+      return false
+    }
+    const rows = rencana.rowsSalin || []
+    if (rows.length === 0) { tampilToastAksi('Tidak ada pekerjaan yang bisa disalin di pilihan ini.', 'err'); return false }
+    if (!(await bolehTulis(`Salin ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan) di data produksi asli?`, sudahDikonfirmasi))) return false
+    sedangSalinRef.current = true
+    try {
+      const perId = new Map(rows.map(r => [r.raw_id, r]))
+      rows.forEach(r => markRawDirty(r.raw_id))
+      setRawData!((prev: any[]) => prev.map((r: any) => perId.has(r.id) ? { ...r, ...perId.get(r.id)!.sesudah } : r))
+      const gagal: number[] = []
+      for (const r of rows) {
+        try {
+          await withRetry(async () => {
+            const res = await updateRaw(r.raw_id, { schedule: r.sesudah.schedule, busbar_schedule: r.sesudah.busbar_schedule, busbar_manual_pin: r.sesudah.busbar_manual_pin })
+            if (!res?.success) throw new Error(res?.error || 'Gagal menyimpan salinan jadwal')
+            return res
+          })
+        } catch (err) { console.error('[Raw per WP] salin gagal, baris', r.raw_id, err); gagal.push(r.raw_id) }
+        finally { clearRawDirty(r.raw_id) }
+      }
+      if (gagal.length) {
+        setRawData!((prev: any[]) => prev.map((x: any) => gagal.includes(x.id) ? { ...x, ...perId.get(x.id)!.sebelum } : x))
+        refetchRaw?.()
+        tampilToastAksi(`Gagal menyimpan salinan di ${gagal.length} dari ${rows.length} baris jadwal (koneksi?). Jadwal dimuat ulang dari server - cek sebelum mengulang.`, 'err', [{ label: 'Ulangi', fn: () => { jalankanSalinRef.current(kunci, offset, true) } }])
+        return false
+      }
+      const pid = pecahKunci(kunci[0]).panelId; const b0 = blokById.get(pid)
+      try {
+        await activityLogService.insert({ user_name: namaUser(), action: 'COPY JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
+          description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari - ${[...new Set(kunci.map(k => blokById.get(pecahKunci(k).panelId)?.panel))].join(', ')}`,
+          proyek: b0?.proyek || '', panel: b0?.panel || '' })
+      } catch (err) { console.error('[Raw per WP] gagal catat activity_log salin:', err) }
+      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).`, 'ok')
+      return true
+    } finally { sedangSalinRef.current = false }
+  }
+  const jalankanSalinRef = useRef(jalankanSalin); jalankanSalinRef.current = jalankanSalin
+
+  // TOGGLE PENANDA QC/PACKING (Tahap 3a): logika togglePenanda = tampilan lama; simpan dgn cek hasil (tampilan
+  // lama belum mengecek hasil updateRaw - dicatat sbg bug lama, tidak diubah di sana).
+  const togglePenandaSel = async (r: Baris, d: string) => {
+    if (r.t !== 'penanda' || !updateRaw) return
+    const row = rawData.find((x: any) => x.id === r.p.rawId); if (!row) return
+    const ada = !!r.p.sel[d]
+    if (!(await bolehTulis(`${ada ? 'Hapus' : 'Tambah'} penanda ${r.p.proses} ${r.blok.panel} pada ${getDayLabel(d)} di data produksi asli?`))) return
+    const sebelum = row.schedule || {}
+    const baru = togglePenanda(sebelum, d, row.proses)
+    markRawDirty(row.id)
+    setRawData!((prev: any[]) => prev.map((x: any) => x.id === row.id ? { ...x, schedule: baru } : x))
+    try {
+      await withRetry(async () => { const res = await updateRaw(row.id, { schedule: baru }); if (!res?.success) throw new Error(res?.error || 'Gagal menyimpan penanda'); return res })
+      tampilToastAksi(`Penanda ${r.p.proses} ${ada ? 'dihapus dari' : 'ditambahkan ke'} ${getDayLabel(d)}.`, 'ok')
+    } catch (err) {
+      console.error('[Raw per WP] toggle penanda gagal:', err)
+      setRawData!((prev: any[]) => prev.map((x: any) => x.id === row.id ? { ...x, schedule: sebelum } : x))
+      refetchRaw?.()
+      tampilToastAksi(`Gagal menyimpan penanda ${r.p.proses} (koneksi?). Tidak ada yang berubah.`, 'err', [{ label: 'Ulangi', fn: () => togglePenandaSel(r, d) }])
+    } finally { clearRawDirty(row.id) }
+  }
+  const batalkan = () => { setPilihan(new Set()); setJangkar(null); setPotongan([]); setSalinan([]); setTujuanTempel(null); setMenu(null) }
+  const salin = () => {
+    const isi = [...pilihan]
+    if (isi.length === 0) { tampilToastAksi('Pilih sel dulu (Ctrl+klik / lasso), lalu Ctrl+C.', 'err'); return }
+    setSalinan(isi); setPotongan([]); setTujuanTempel(null)
+    tampilToastAksi(`${isi.length} sel disalin. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
+  }
   const potong = () => {
     const isi = [...pilihan]
     if (isi.length === 0) { tampilToastAksi('Pilih sel dulu (Ctrl+klik / lasso), lalu Ctrl+X.', 'err'); return }
-    setPotongan(isi); setTujuanTempel(null); muatTimerUntuk(isi)
+    setPotongan(isi); setSalinan([]); setTujuanTempel(null); muatTimerUntuk(isi)
     tampilToastAksi(`${isi.length} sel dipotong. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
   }
-  const tempel = async () => {
-    if (potongan.length === 0) return
-    if (!tujuanTempel) { tampilToastAksi('Klik hari tujuan di jadwal dulu, lalu Ctrl+V.', 'err'); return }
-    const offset = tanggalKeIdx(tujuanTempel) - Math.min(...potongan.map(k => tanggalKeIdx(pecahKunci(k).tanggal)))
-    if (offset === 0) { tampilToastAksi('Hari tujuan sama dengan posisi sekarang - tidak ada yang dipindah.', 'err'); return }
-    const ok = await jalankanPindah(potongan, offset)
-    if (ok) { setPotongan([]); setTujuanTempel(null) }
+  // Tempel: potongan -> PINDAH; salinan -> SALIN (gabung). Sel PALING AWAL mendarat di hari tujuan.
+  const tempel = async (tujuan?: string) => {
+    const sumber = potongan.length ? potongan : salinan
+    if (sumber.length === 0) return
+    const t = tujuan || tujuanTempel
+    if (!t) { tampilToastAksi('Klik hari tujuan di jadwal dulu, lalu Ctrl+V.', 'err'); return }
+    const offset = tanggalKeIdx(t) - Math.min(...sumber.map(k => tanggalKeIdx(pecahKunci(k).tanggal)))
+    if (offset === 0) { tampilToastAksi('Hari tujuan sama dengan posisi sekarang - tidak ada yang berubah.', 'err'); return }
+    if (potongan.length) { const ok = await jalankanPindah(potongan, offset); if (ok) { setPotongan([]); setTujuanTempel(null) } }
+    else { const ok = await jalankanSalin(salinan, offset); if (ok) setTujuanTempel(null) } // salinan tetap bisa ditempel lagi
   }
-  const aksiRef = useRef<any>({}); aksiRef.current = { potong, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan }
+  const aksiRef = useRef<any>({}); aksiRef.current = { potong, salin, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan, salinan }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -319,7 +410,8 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
       if (!scrollRef.current || scrollRef.current.offsetParent === null) return // tab tidak tampil
       const mod = e.ctrlKey || e.metaKey; const k = e.key.toLowerCase()
       if (mod && k === 'x' && aksiRef.current.pilihan.size) { e.preventDefault(); aksiRef.current.potong() }
-      else if (mod && k === 'v' && aksiRef.current.potongan.length) { e.preventDefault(); aksiRef.current.tempel() }
+      else if (mod && k === 'c' && aksiRef.current.pilihan.size) { e.preventDefault(); aksiRef.current.salin() }
+      else if (mod && k === 'v' && (aksiRef.current.potongan.length || aksiRef.current.salinan.length)) { e.preventDefault(); aksiRef.current.tempel() }
       else if (mod && k === 'z' && !e.shiftKey && pindahMulti.undoMultiRef.current.length) { e.preventDefault(); aksiRef.current.undo() }
       else if (e.key === 'Escape') aksiRef.current.batalkan()
     }
@@ -329,7 +421,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
   }, [])
 
   const klikSel = (e: React.MouseEvent, r: Baris, d: string, i: number) => {
-    if (potongan.length && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { setTujuanTempel(d); return }
+    if ((potongan.length || salinan.length) && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { setTujuanTempel(d); return }
     const kunci = kunciSel(r, d)
     if (e.shiftKey && jangkar) {
       const [a, b] = [Math.min(jangkar.i, i), Math.max(jangkar.i, i)]
@@ -344,7 +436,8 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
       else { if (!bisaPindah(r, d)) { tampilToastAksi('Sel ini kosong / semua isinya sudah selesai atau sudah digeser - tidak bisa dipilih.', 'err'); return } s.add(kunci) }
       setPilihan(s); setJangkar({ i, d }); return
     }
-    // klik biasa: Edit jadwal menyusul (Tahap 3) - di tahap ini klik biasa tidak mengubah apa pun
+    // klik biasa: penanda QC/PACKING = toggle (sama dgn tampilan lama); sel lain: Edit jadwal menyusul (Tahap 3b)
+    if (r.t === 'penanda') { togglePenandaSel(r, d); return }
   }
 
   // Lasso: tekan di area kosong sel tanggal lalu seret. Baris & kolom dihitung dari DATA (offset kumulatif +
@@ -522,9 +615,10 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
     const kunci = kunciSel(r, d); const dipilih = pilihan.has(kunci); const dipotong = potongan.includes(kunci)
     const bisa = bisaPindah(r, d)
     const td: any = { borderTop: garisAtas, borderRight: '1px solid #f1f5f9', padding: '2px 4px', verticalAlign: 'middle', background: dipilih ? '#dbeafe' : bgSel(d, bgDasar), width: LEBAR_TGL, minWidth: LEBAR_TGL, maxWidth: LEBAR_TGL, boxSizing: 'border-box', overflow: 'hidden',
-      outline: dipilih ? '2px solid #2563eb' : 'none', outlineOffset: -2, opacity: dipotong ? .45 : 1, cursor: potongan.length ? 'crosshair' : bisa ? 'grab' : 'default' }
+      outline: dipilih ? '2px solid #2563eb' : salinan.includes(kunci) ? '2px dashed #2563eb' : 'none', outlineOffset: -2, opacity: dipotong ? .45 : 1, cursor: (potongan.length || salinan.length) ? 'crosshair' : r.t === 'penanda' ? 'pointer' : bisa ? 'grab' : 'default' }
     const ev = {
       onClick: (e: any) => klikSel(e, r, d, nomor),
+      onContextMenu: (e: any) => { e.preventDefault(); if (!pilihan.has(kunci) && bisa) { setPilihan(new Set([kunci])); setJangkar({ i: nomor, d }) } setMenu({ x: e.clientX, y: e.clientY, r, d }) },
       onDragOver: (e: any) => onDragOver(e, d), onDrop: (e: any) => onDrop(e, d),
       draggable: bisa && !potongan.length, onDragStart: (e: any) => onDragStart(e, r, d), onDragEnd: () => bersihkanDrag(),
     }
@@ -563,7 +657,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; batalkan: Ctrl+Z. <b>Masa uji: pindah hanya untuk WO "TRIAL ACCORDION"</b> - data lain tetap lewat menu <b>Raw Schedule</b>.
+          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik penanda QC/PACKING = tambah/hapus; klik kanan = menu. <b>Ini data produksi asli</b> - setiap perubahan dikonfirmasi dulu.
         </div>
       </div>
 
@@ -628,14 +722,16 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
         </div>
       )}
 
-      {(pilihan.size > 0 || potongan.length > 0 || pindahMulti.undoMultiRef.current.length > 0) && (
+      {(pilihan.size > 0 || potongan.length > 0 || salinan.length > 0 || pindahMulti.undoMultiRef.current.length > 0) && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '6px 10px', fontSize: 11 }}>
           {pilihan.size > 0 && <b style={{ color: '#1d4ed8' }}>{pilihan.size} sel dipilih</b>}
           {potongan.length > 0 && <span style={{ color: '#92400e', fontWeight: 700 }}>✂ {potongan.length} sel dipotong{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
+          {salinan.length > 0 && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>📋 {salinan.length} sel disalin{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
+          {pilihan.size > 0 && <button onClick={salin} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>📋 Salin (Ctrl+C)</button>}
           {pilihan.size > 0 && <button onClick={potong} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>✂ Potong (Ctrl+X)</button>}
-          {potongan.length > 0 && <button onClick={tempel} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Tempel (Ctrl+V)</button>}
+          {(potongan.length > 0 || salinan.length > 0) && <button onClick={() => tempel()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Tempel (Ctrl+V)</button>}
           {pindahMulti.undoMultiRef.current.length > 0 && <button onClick={() => pindahMulti.batalkanPindahTerakhir()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>↶ Batalkan pindah terakhir (Ctrl+Z)</button>}
-          {(pilihan.size > 0 || potongan.length > 0) && <button onClick={batalkan} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Bersihkan (Esc)</button>}
+          {(pilihan.size > 0 || potongan.length > 0 || salinan.length > 0) && <button onClick={batalkan} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Bersihkan (Esc)</button>}
         </div>
       )}
       {toast && (
@@ -648,15 +744,56 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, 
       {konfirmasi && (
         <div onClick={() => setKonfirmasi(null)} style={{ position: 'fixed', inset: 0, zIndex: 10040, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 18, width: 360, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 16px 40px rgba(0,0,0,.25)' }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Pindah {konfirmasi.kunci.length} sel {konfirmasi.offset > 0 ? '+' : ''}{konfirmasi.offset} hari?</div>
-            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Komponen yang sudah selesai atau sudah digeser tetap di tempatnya. Bisa dibatalkan dengan Ctrl+Z.</div>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Pindah atau Copy {konfirmasi.kunci.length} sel {konfirmasi.offset > 0 ? '+' : ''}{konfirmasi.offset} hari?</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}><b>Pindah</b>: komponen yang sudah selesai atau sudah digeser tetap di tempatnya; bisa dibatalkan dengan Ctrl+Z. <b>Copy</b>: digabung ke hari tujuan, asal tetap.</div>
+            <div style={{ fontSize: 11.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '6px 9px', marginBottom: 14 }}>⚠ Ini data produksi asli - langsung terlihat di Raw Schedule & Rencana Harian.</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-              <button title="Copy menyusul di Tahap 3" disabled style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#94a3b8', fontSize: 12, fontFamily: 'inherit' }}>Copy (tahap 3)</button>
               <button onClick={() => setKonfirmasi(null)} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
-              <button onClick={async () => { const k = konfirmasi; setKonfirmasi(null); await jalankanPindah(k.kunci, k.offset) }} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Pindah</button>
+              <button onClick={async () => { const k = konfirmasi; setKonfirmasi(null); await jalankanSalin(k.kunci, k.offset, true) }} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #2563eb', background: '#fff', color: '#2563eb', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Copy</button>
+              <button onClick={async () => { const k = konfirmasi; setKonfirmasi(null); await jalankanPindah(k.kunci, k.offset, true) }} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Pindah</button>
             </div>
           </div>
         </div>
+      )}
+
+      {izin && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 10045, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div role="dialog" aria-label="Konfirmasi data produksi" style={{ background: '#fff', borderRadius: 12, padding: 18, width: 380, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 16px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>⚠ Data produksi asli</div>
+            <div style={{ fontSize: 12.5, color: '#334155', marginBottom: 10 }}>{izin.pesan}</div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11.5, color: '#64748b', marginBottom: 14, cursor: 'pointer' }}>
+              <input type="checkbox" checked={centangSesi} onChange={e => setCentangSesi(e.target.checked)} /> Jangan tanya lagi selama sesi ini
+            </label>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button onClick={() => { const z = izin; setIzin(null); z.jawab(false) }} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+              <button onClick={() => { const z = izin; if (centangSesi) simpanIzinSesi(); setIzin(null); z.jawab(true) }} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Lanjutkan</button>
+            </div>
+          </div>
+        </div>
+      )}
+      {menu && (
+        <>
+          <div onClick={() => setMenu(null)} onContextMenu={e => { e.preventDefault(); setMenu(null) }} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
+          <div role="menu" style={{ position: 'fixed', left: Math.min(menu.x, window.innerWidth - 230), top: Math.min(menu.y, window.innerHeight - 260), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '4px 0', minWidth: 220, fontSize: 12 }}>
+            {(() => {
+              const item = (label: string, fn: (() => void) | null, warna = '#1e293b', ket?: string) => (
+                <button key={label} role="menuitem" disabled={!fn} onClick={() => { setMenu(null); fn?.() }} style={{ display: 'flex', width: '100%', justifyContent: 'space-between', gap: 10, padding: '7px 14px', border: 'none', background: 'none', cursor: fn ? 'pointer' : 'default', color: fn ? warna : '#cbd5e1', fontSize: 12, textAlign: 'left', fontFamily: 'inherit' }}>
+                  <span>{label}</span>{ket && <span style={{ fontSize: 10.5, color: '#94a3b8' }}>{ket}</span>}
+                </button>)
+              const adaSumber = potongan.length || salinan.length
+              return <>
+                {item(`📋 Salin ${pilihan.size} sel`, pilihan.size ? salin : null, '#1e293b', 'Ctrl+C')}
+                {item(`✂ Potong ${pilihan.size} sel`, pilihan.size ? potong : null, '#1e293b', 'Ctrl+X')}
+                {item(`📌 Tempel di ${getDayLabel(menu.d)}${potongan.length ? ' (pindah)' : salinan.length ? ' (salin)' : ''}`, adaSumber ? () => { setTujuanTempel(menu.d); tempel(menu.d) } : null, '#1d4ed8', 'Ctrl+V')}
+                {menu.r.t === 'penanda' && item(menu.r.p.sel[menu.d] ? `Hapus penanda ${menu.r.p.proses}` : `Tambah penanda ${menu.r.p.proses}`, () => togglePenandaSel(menu.r, menu.d))}
+                {item('✏️ Edit jadwal', null, '#1e293b', 'menyusul 3b')}
+                {item('🗑 Hapus', null, '#dc2626', 'menyusul 3b')}
+                <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
+                {item('Bersihkan pilihan', batalkan, '#64748b', 'Esc')}
+              </>
+            })()}
+          </div>
+        </>
       )}
 
       {orderMapError && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>Urutan panel gagal dimuat - panel diurutkan per prioritas & nomor panel.</div>}
