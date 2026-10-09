@@ -492,7 +492,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const timerBusbarRef=useRef<Set<string>>(new Set()); // "panelId|kode" yang timer BUSBAR-nya berjalan
   const muatTimerBusbar=async(cells:{rawId:number;date:string}[])=>{
     const pids=[...new Set(cells.map(c=>rawData.find((r:any)=>r.id===c.rawId)).filter((r:any)=>r?.proses==="BUSBAR").map((r:any)=>Number(r.panel_id||r.panelId)))];
-    if(pids.length===0){timerBusbarRef.current=new Set();return;}
+    // Dikosongkan dulu (9 Okt 2026, review): selama muat / bila gagal, jangan pakai daftar aksi
+    // sebelumnya (bisa menolak palsu "timer berjalan"). Pengecekan pasti tetap di server (RPC v2).
+    timerBusbarRef.current=new Set();
+    if(pids.length===0)return;
     const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen").eq("proses","BUSBAR").is("selesai",null).in("panel_id",pids).range(0,999);
     if(error){console.error("[Pindah banyak sel] gagal cek timer BUSBAR (server tetap mengecek):",error);return;}
     timerBusbarRef.current=new Set((data||[]).map((t:any)=>Number(t.panel_id)+"|"+t.kode_komponen));
@@ -877,6 +880,20 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)&&!(e.ctrlKey||e.metaKey||e.altKey||e.shiftKey)){
       e.stopPropagation();
       toggleMarkerCell(rawId,date);
+      return;
+    }
+    // Shift+klik di baris QC/PACKING TANPA titik awal pilihan (9 Okt 2026, review) dulu jatuh ke cabang
+    // klik biasa -> membuka modal Edit (TAMBAH WP) di baris penanda. Sekarang = pilih 1 sel itu (aturan
+    // sama dgn Ctrl+klik); baris penanda tidak pernah membuka modal Edit.
+    if(rowClicked&&PROSES_MARKER_ONLY.includes(rowClicked.proses)&&e.shiftKey&&!lastSelected&&!(e.ctrlKey||e.metaKey||e.altKey)){
+      e.stopPropagation();
+      const sudah=selectedCells.some((c:any)=>c.rawId===rawId&&c.date===date);
+      if(!sudah){
+        const alasan=alasanTakBisaMultiPilih(rowClicked,date,true);
+        if(alasan){tampilToastUrutan(alasan);return;}
+        setSelectedCells(prev=>[...prev,{rawId,date}]);
+      }
+      setLastSelected({rawId,date});
       return;
     }
     if(moveKomponenState){
