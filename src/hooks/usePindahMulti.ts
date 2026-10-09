@@ -68,10 +68,24 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     }
     const { sel, jadwal } = d.buatSelV2(ikut)
     if (sel.length === 0) { d.tampilToastAksi('Tidak ada pekerjaan yang bisa dipindah di sel terpilih.', 'err'); return false }
+    return intiPindah(sel, jadwal, {
+      jumlah: `${sel.length} sel`, offset,
+      ulangi: () => apiRef.current.jalankanPindahMulti(cells, offset),
+      onSukses: () => d.onSesudahPindah?.(new Map(sel.map(s => [s.rawId + '|' + s.dari, s.ke]))),
+    })
+  }
+
+  // INTI pindah (dipakai tampilan lama via jalankanPindahMulti & accordion via jalankanPindahSel): jejak
+  // pengerjaan -> tampilan optimistis -> RPC v2 -> kembalikan bila gagal -> snapshot Undo. `jumlah` = teks
+  // satuan di pesan ("3 sel" / "4 komponen"), `ulangi` = aksi tombol Ulangi.
+  type OpsiInti = { jumlah: string; offset: number; ulangi: () => void; onSukses?: () => void }
+  const intiPindah = async (sel: SelPindahV2[], jadwal: Map<number, any>, o: OpsiInti) => {
+    const d = ambil()
+    const offset = o.offset
     // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - 1 query utk semua sel.
     const { error: errPengerjaan } = await isiPengerjaanAsal(d.rawData, sel)
     if (errPengerjaan) {
-      d.tampilToastAksi('Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.', 'err', [{ label: 'Ulangi', fn: () => apiRef.current.jalankanPindahMulti(cells, offset) }])
+      d.tampilToastAksi('Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.', 'err', [{ label: 'Ulangi', fn: o.ulangi }])
       return false
     }
     const rencana = rencanakanPindahMultiV2(jadwal, sel, new Date().toISOString())
@@ -89,15 +103,24 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
       // Gagal koneksi bisa berarti server SUDAH menyimpan tapi responsnya putus -> muat ulang dari server
       // supaya layar menunjukkan keadaan DB yang sebenarnya (bukan tebakan "pasti gagal").
       if (kode !== 'P0001') { d.refetchRaw?.(); d.refetchRenhar?.() }
-      d.tampilToastAksi((kode === 'P0001' ? error.message : `Gagal menyimpan pindah ${sel.length} sel (${kode ? 'server: ' + error.message : 'koneksi lambat/putus'}). Jadwal dimuat ulang dari server - cek posisinya sebelum mengulang.`), 'err',
-        kode === 'P0001' ? undefined : [{ label: 'Ulangi', fn: () => apiRef.current.jalankanPindahMulti(cells, offset) }])
+      d.tampilToastAksi((kode === 'P0001' ? error.message : `Gagal menyimpan pindah ${o.jumlah} (${kode ? 'server: ' + error.message : 'koneksi lambat/putus'}). Jadwal dimuat ulang dari server - cek posisinya sebelum mengulang.`), 'err',
+        kode === 'P0001' ? undefined : [{ label: 'Ulangi', fn: o.ulangi }])
       return false
     }
     d.refetchRenhar?.()
-    undoMultiRef.current.push({ snap: data, label: `${sel.length} sel ${offset > 0 ? '+' : ''}${offset} hari` })
-    d.onSesudahPindah?.(new Map(sel.map(s => [s.rawId + '|' + s.dari, s.ke])))
-    d.tampilToastAksi(`${sel.length} sel dipindah ${offset > 0 ? '+' : ''}${offset} hari.`, 'ok', [{ label: 'Batalkan', fn: () => apiRef.current.batalkanPindahTerakhir() }])
+    undoMultiRef.current.push({ snap: data, label: `${o.jumlah} ${offset > 0 ? '+' : ''}${offset} hari` })
+    o.onSukses?.()
+    d.tampilToastAksi(`${o.jumlah} dipindah ${offset > 0 ? '+' : ''}${offset} hari.`, 'ok', [{ label: 'Batalkan', fn: () => apiRef.current.batalkanPindahTerakhir() }])
     return true
+  }
+
+  // Pindah dgn data pindah yang sudah disusun & divalidasi pemanggil (accordion: satuan komponen/WP).
+  // Pengaman aksi ganda sama dgn jalankanPindahMulti.
+  const jalankanPindahSel = async (sel: SelPindahV2[], jadwal: Map<number, any>, o: OpsiInti) => {
+    if (sedangPindahRef.current || sedangBatalkanRef.current) { ambil().tampilToastAksi('Masih memproses pemindahan sebelumnya - tunggu sebentar.', 'err'); return false }
+    if (sel.length === 0) { ambil().tampilToastAksi('Tidak ada pekerjaan yang bisa dipindah di pilihan ini.', 'err'); return false }
+    sedangPindahRef.current = true
+    try { return await intiPindah(sel, jadwal, o) } finally { sedangPindahRef.current = false }
   }
 
   // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel_v2 (bukan pindah balik, yang
@@ -128,7 +151,7 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     d.tampilToastAksi(`Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`, 'ok')
   }
 
-  const api = { jalankanPindahMulti, batalkanPindahTerakhir, muatTimerBusbar, timerBusbarRef, undoMultiRef, sedangPindahRef, sedangBatalkanRef }
+  const api = { jalankanPindahMulti, jalankanPindahSel, batalkanPindahTerakhir, muatTimerBusbar, timerBusbarRef, undoMultiRef, sedangPindahRef, sedangBatalkanRef }
   apiRef.current = api
   return api
 }

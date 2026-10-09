@@ -71,21 +71,49 @@ export function cekPindahMulti(rawData: any[], cells: SelAsal[], offset: number,
   }
   const keMinggu = ikut.filter(c => isMinggu(c.ke))
   if (keMinggu.length > 0 && offset !== 0) {
-    const { sel, jadwal } = buatSelV2(rawData, ikut, ctx)
-    const rencana = rencanakanPindahMultiV2(jadwal, sel, 'cek')
-    const sesudahById = new Map(rencana.rows.map(r => [r.raw_id, r.sesudah]))
-    const rowsSetelah = rawData.map((r: any) => sesudahById.has(r.id) ? { ...r, ...sesudahById.get(r.id) } : r)
-    const grup = new Map<string, { ke: string; pr: string; daftar: SelTujuan[] }>()
-    keMinggu.forEach(c => { const pr = rawData.find((r: any) => r.id === c.rawId)?.proses || ''; const k = c.ke + '@' + pr; if (!grup.has(k)) grup.set(k, { ke: c.ke, pr, daftar: [] }); grup.get(k)!.daftar.push(c) })
+    const { sel } = buatSelV2(rawData, ikut, ctx)
+    const grup = cekMingguKapasitas(rawData, sel, ctx)
+    const alasanPer = new Map<string, string | null>()
+    grup.forEach(g => g.kunci.forEach(k => alasanPer.set(k, g.alasan)))
     const ditolak = new Set<string>()
-    grup.forEach(({ ke, pr, daftar }) => {
-      const kap = ctx.kapasitasPada(ke, pr)
-      const alasan = kap <= 0 ? 'kapasitas Minggu belum diatur' : ctx.hitungTerpakaiHari(rowsSetelah, ke, pr) > kap ? 'kapasitas Minggu penuh' : null
-      daftar.forEach(c => { if (alasan) { bentrok.push({ ...c, alasan }); ditolak.add(c.rawId + '|' + c.date) } else mingguOk.add(c.rawId + '|' + c.ke) })
-    })
+    // urutan bentrok = urutan grup (tanggal+proses) seperti sebelumnya
+    grup.forEach(g => keMinggu.filter(c => g.kunci.includes(c.rawId + '|' + c.date)).forEach(c => {
+      if (g.alasan) { bentrok.push({ ...c, alasan: g.alasan }); ditolak.add(c.rawId + '|' + c.date) } else mingguOk.add(c.rawId + '|' + c.ke)
+    }))
+    keMinggu.forEach(c => { if (!alasanPer.has(c.rawId + '|' + c.date)) mingguOk.add(c.rawId + '|' + c.ke) })
     if (ditolak.size) ikut = ikut.filter(c => !ditolak.has(c.rawId + '|' + c.date))
   }
   return { ikut, bentrok, mingguOk }
+}
+
+// MINGGU BERKAPASITAS (revisi 9 Okt 2026) - SATU sumber utk tampilan lama (cekPindahMulti) & accordion:
+// data pindah yang mendarat di hari Minggu dikelompokkan per (tanggal tujuan, proses baris); boleh bila
+// kapasitas Minggu itu diatur > 0 DAN pemakaian SETELAH semua pindahan (snapshot jadwal sesudah, termasuk
+// sumber yang berkurang) <= kapasitas. Hasil: grup berurutan kemunculan, kunci "rawId|tanggalAsal",
+// alasan null = boleh.
+export type KonteksMinggu = { kapasitasPada: (d: string, pr: string) => number; hitungTerpakaiHari: (rows: any[], d: string, pr: string) => number }
+export function cekMingguKapasitas(rawData: any[], sel: SelPindahV2[], ctx: KonteksMinggu) {
+  const keMinggu = sel.filter(s => isMinggu(s.ke))
+  const hasil: { ke: string; pr: string; kunci: string[]; alasan: string | null }[] = []
+  if (keMinggu.length === 0) return hasil
+  const jadwal = new Map<number, any>()
+  sel.forEach(s => { if (!jadwal.has(s.rawId)) { const row = rawData.find((r: any) => r.id === s.rawId); if (row) jadwal.set(s.rawId, ambilJadwal4(row)) } })
+  const rencana = rencanakanPindahMultiV2(jadwal, sel, 'cek')
+  const sesudahById = new Map(rencana.rows.map(r => [r.raw_id, r.sesudah]))
+  const rowsSetelah = rawData.map((r: any) => sesudahById.has(r.id) ? { ...r, ...sesudahById.get(r.id) } : r)
+  const grup = new Map<string, { ke: string; pr: string; kunci: string[]; alasan: string | null }>()
+  keMinggu.forEach(s => {
+    const pr = rawData.find((r: any) => r.id === s.rawId)?.proses || ''
+    const k = s.ke + '@' + pr
+    if (!grup.has(k)) grup.set(k, { ke: s.ke, pr, kunci: [], alasan: null })
+    grup.get(k)!.kunci.push(s.rawId + '|' + s.dari)
+  })
+  grup.forEach(g => {
+    const kap = ctx.kapasitasPada(g.ke, g.pr)
+    g.alasan = kap <= 0 ? 'kapasitas Minggu belum diatur' : ctx.hitungTerpakaiHari(rowsSetelah, g.ke, g.pr) > kap ? 'kapasitas Minggu penuh' : null
+    hasil.push(g)
+  })
+  return hasil
 }
 
 // Timer BUSBAR yang sedang berjalan utk panel-panel ini -> Set "panelId|kode". null = gagal dimuat
