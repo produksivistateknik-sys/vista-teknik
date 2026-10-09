@@ -12,6 +12,7 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
+import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib, muatTimerBusbarAktif, isiPengerjaanAsal, rpcPindahMultiV2, rpcPulihkanMultiV2 } from '../lib/pindahMulti'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
@@ -458,64 +459,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // sebelumnya (bisa menolak palsu "timer berjalan"). Pengecekan pasti tetap di server (RPC v2).
     timerBusbarRef.current=new Set();
     if(pids.length===0)return;
-    const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen").eq("proses","BUSBAR").is("selesai",null).in("panel_id",pids).range(0,999);
-    if(error){console.error("[Pindah banyak sel] gagal cek timer BUSBAR (server tetap mengecek):",error);return;}
-    timerBusbarRef.current=new Set((data||[]).map((t:any)=>Number(t.panel_id)+"|"+t.kode_komponen));
+    const hasil=await muatTimerBusbarAktif(pids); // query & log gagal: lib/pindahMulti.ts
+    if(hasil)timerBusbarRef.current=hasil;
   };
   const kapasitasPada=(d:string,pr:string)=>kapasitasPadaLib(fcsKapasitas,d,pr);
   // Sel -> data pindah (BUSBAR: kode busbar yang boleh pindah; lainnya termasuk QC/PACKING: entries
   // tanpa yang selesai/jejak). Jejak (adaPengerjaan) diisi belakangan oleh jalankanPindahMulti.
-  const buatSelV2=(ikut:{rawId:number;date:string;ke:string}[])=>{
-    const sel:SelPindahV2[]=[];const jadwal=new Map<number,any>();
-    for(const c of ikut){
-      const row=rawData.find((r:any)=>r.id===c.rawId);if(!row)continue;
-      if(row.proses==="BUSBAR"){
-        const kode=kodeBusbarBisaDipindah(row,panelById.get(Number(row.panel_id||row.panelId))?.checklist,c.date);
-        if(kode.length===0)continue;
-        sel.push({rawId:row.id,dari:c.date,ke:c.ke,kodeBusbar:kode});
-      } else {
-        const entries=getEntriesTanpaSelesai(row,row.schedule?.[c.date]||[]);
-        if(entries.length===0)continue;
-        sel.push({rawId:row.id,dari:c.date,ke:c.ke,entries,adaPengerjaan:new Set<string>()});
-      }
-      jadwal.set(row.id,ambilJadwal4(row));
-    }
-    return{sel,jadwal};
-  };
-  const cekPindahMulti=(cells:{rawId:number;date:string}[],offset:number)=>{
-    let ikut:{rawId:number;date:string;ke:string}[]=[];const bentrok:{rawId:number;date:string;ke:string;alasan:string}[]=[];
-    const mingguOk=new Set<string>(); // "rawId|ke" yang mendarat di Minggu dgn kapasitas tersedia
-    for(const c of cells){
-      const row=rawData.find((r:any)=>r.id===c.rawId);
-      if(row&&(row.schedule?.[c.date]||[]).length===0&&(row.busbar_schedule?.[c.date]||[]).length===0)continue;
-      const idxKe=tanggalKeIdx(c.date)+offset;
-      const ke=idxKe>=0&&idxKe<TOTAL_KOLOM?idxKeTanggal(idxKe):"";
-      let alasan=!ke?"di luar rentang jadwal":alasanTakBisaMultiPilih(row,c.date,false);
-      if(!alasan&&row?.proses==="BUSBAR"){
-        const pid=Number(row.panel_id||row.panelId);
-        const kode=kodeBusbarBisaDipindah(row,panelById.get(pid)?.checklist,c.date);
-        if(kode.some(k=>timerBusbarRef.current.has(pid+"|"+k)))alasan="timer BUSBAR berjalan";
-      }
-      if(alasan)bentrok.push({...c,ke,alasan});else ikut.push({...c,ke});
-    }
-    const keMinggu=ikut.filter(c=>isMinggu(c.ke));
-    if(keMinggu.length>0&&offset!==0){
-      const{sel,jadwal}=buatSelV2(ikut);
-      const rencana=rencanakanPindahMultiV2(jadwal,sel,"cek");
-      const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r.sesudah]));
-      const rowsSetelah=rawData.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)}:r);
-      const grup=new Map<string,{ke:string;pr:string;daftar:typeof ikut}>();
-      keMinggu.forEach(c=>{const pr=rawData.find((r:any)=>r.id===c.rawId)?.proses||"";const k=c.ke+"@"+pr;if(!grup.has(k))grup.set(k,{ke:c.ke,pr,daftar:[]});grup.get(k)!.daftar.push(c);});
-      const ditolak=new Set<string>();
-      grup.forEach(({ke,pr,daftar})=>{
-        const kap=kapasitasPada(ke,pr);
-        const alasan=kap<=0?"kapasitas Minggu belum diatur":hitungTerpakaiHari(rowsSetelah,ke,pr)>kap?"kapasitas Minggu penuh":null;
-        daftar.forEach(c=>{if(alasan){bentrok.push({...c,alasan});ditolak.add(c.rawId+"|"+c.date);}else mingguOk.add(c.rawId+"|"+c.ke);});
-      });
-      if(ditolak.size)ikut=ikut.filter(c=>!ditolak.has(c.rawId+"|"+c.date));
-    }
-    return{ikut,bentrok,mingguOk};
-  };
+  // Validasi pindah (buatSelV2/cekPindahMulti) = lib/pindahMulti.ts (Tahap 0) - satu sumber utk tampilan lama & baru.
+  const konteksSel=()=>({checklistPanel:(r:any)=>panelById.get(Number(r.panel_id||r.panelId))?.checklist,entriesTanpaSelesai:getEntriesTanpaSelesai});
+  const buatSelV2=(ikut:{rawId:number;date:string;ke:string}[])=>buatSelV2Lib(rawData,ikut,konteksSel());
+  const cekPindahMulti=(cells:{rawId:number;date:string}[],offset:number)=>cekPindahMultiLib(rawData,cells,offset,{
+    ...konteksSel(),tanggalKeIdx,idxKeTanggal,totalKolom:TOTAL_KOLOM,
+    alasanTakBisaPilih:(row:any,date:string)=>alasanTakBisaMultiPilih(row,date,false),
+    timerBusbar:timerBusbarRef.current,kapasitasPada,hitungTerpakaiHari});
   const bersihkanDragMulti=()=>{
     const m=dragMultiRef.current;if(!m)return;
     m.ditandai.forEach(el=>{el.classList.remove("rs-tujuan-ok","rs-tujuan-bad");delete el.dataset.lbl;});
@@ -1479,31 +1435,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     const{sel,jadwal}=buatSelV2(ikut);
     if(sel.length===0){tampilToastAksi("Tidak ada pekerjaan yang bisa dipindah di sel terpilih.","err");return false;}
-    // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - SATU query utk semua sel
-    // (bukan per sel), lalu dicocokkan persis panel+proses+tanggal+kode di sini.
-    const rowsById=new Map<number,any>(rawData.map((r:any)=>[r.id,r]));
-    const panelIds=[...new Set(sel.map(s=>Number(rowsById.get(s.rawId)?.panel_id||rowsById.get(s.rawId)?.panelId)))];
-    const tanggalAsal=[...new Set(sel.map(s=>s.dari))];
-    // BUSBAR tidak pakai jejak-bila-ada-pengerjaan (jejak BUSBAR selalu ditaruh) - cuma sel non-BUSBAR.
-    const selBiasa=sel.filter(s=>!s.kodeBusbar);
-    const kodeSemua=[...new Set(selBiasa.flatMap(s=>(s.entries||[]).flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")))))];
-    if(kodeSemua.length>0){
-      let semua:any[]=[];
-      for(let from=0;;from+=1000){
-        const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,proses,tanggal,kode_komponen")
-          .in("panel_id",panelIds).in("tanggal",tanggalAsal).in("kode_komponen",kodeSemua).range(from,from+999);
-        if(error){
-          console.error("[Pindah banyak sel] gagal cek pengerjaan:",error);
-          tampilToastAksi("Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.","err",[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
-          return false;
-        }
-        semua=semua.concat(data||[]);
-        if(!data||data.length<1000)break;
-      }
-      selBiasa.forEach(s=>{
-        const row=rowsById.get(s.rawId);const pid=Number(row?.panel_id||row?.panelId);
-        semua.forEach((t:any)=>{if(Number(t.panel_id)===pid&&t.proses===row?.proses&&t.tanggal===s.dari)s.adaPengerjaan!.add(t.kode_komponen);});
-      });
+    // Jejak digeserKe = kode yg ADA pengerjaan (timer) di tanggal asal - 1 query utk semua sel (lib/pindahMulti.ts).
+    const{error:errPengerjaan}=await isiPengerjaanAsal(rawData,sel);
+    if(errPengerjaan){
+      tampilToastAksi("Gagal memeriksa data pengerjaan (koneksi?). Tidak ada yang dipindah.","err",[{label:"Ulangi",fn:()=>aksiMultiRef.current.jalankanPindahMulti(cells,offset)}]);
+      return false;
     }
     const rencana=rencanakanPindahMultiV2(jadwal,sel,new Date().toISOString());
     const sesudahById=new Map(rencana.rows.map(r=>[r.raw_id,r]));
@@ -1511,7 +1447,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // 4 kolom (schedule + busbar_schedule/jejak/manual_pin) - RPC v2 (migration 20261009010000).
     setRawData((prev:any[])=>prev.map((r:any)=>sesudahById.has(r.id)?{...r,...sesudahById.get(r.id)!.sesudah}:r));
     const uname=user?.name||user?.nama||"Admin";
-    const{data,error}=await supabase.rpc("pindah_multi_sel_v2",{p_sel:rencana.sel,p_rows:rencana.rows,p_renhar:rencana.renhar,p_user:uname});
+    const{data,error}=await rpcPindahMultiV2(rencana,uname);
     rencana.rows.forEach(r=>clearRawDirty(r.raw_id));
     if(error){
       console.error("[Pindah banyak sel] gagal:",error);
@@ -1562,7 +1498,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     const entri=st[st.length-1];
     sedangBatalkanRef.current=true;
     let error:any=null;
-    try{({error}=await supabase.rpc("pulihkan_multi_sel_v2",{p_snap:entri.snap,p_user:user?.name||user?.nama||"Admin"}));}
+    try{({error}=await rpcPulihkanMultiV2(entri.snap,user?.name||user?.nama||"Admin"));}
     finally{sedangBatalkanRef.current=false;}
     if(error){
       console.error("[Batalkan pindah banyak sel] gagal:",error);
