@@ -12,6 +12,7 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
+import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
@@ -212,50 +213,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     );
   };
 
-  const getSemuaKomponenSebagaiSubBaris=(row:any):any[]|null=>{
-    if(!PROSES_ORANG_RAW.includes(row.proses))return null;
-    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId));
-    const semuaKomponen:any[]=[];
-    for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-      for(const entry of entries){
-        for(const kode of entry.komponen||[]){
-          const sudahAda=semuaKomponen.some(k=>k.wp===entry.wp&&k.kode===kode);
-          if(sudahAda)continue;
-          const rentang=entry.rentangTanggal?.[kode];
-          const jmlOrang=entry.orangPerKomponen?.[kode]||1;
-          const progress=panelData?.checklist?.[kode]?.progress?.[row.proses]||0;
-          const terlambat=rentang?.selesai&&TODAY>rentang.selesai&&progress<100;
-          semuaKomponen.push({wp:entry.wp,kode,mulai:rentang?.mulai||tglKey,selesai:rentang?.selesai||tglKey,jumlahOrang:jmlOrang,progress,terlambat});
-        }
-      }
-    }
-    if(semuaKomponen.length===0)return null;
-    semuaKomponen.sort((a,b)=>a.mulai.localeCompare(b.mulai)||a.wp.localeCompare(b.wp));
-    return semuaKomponen;
-  };
+  // Sub-baris WIRING, rentang, isi sel tanpa selesai & aturan pilih: lib/isiSelJadwal.ts (Tahap 0).
+  const getSemuaKomponenSebagaiSubBaris=(row:any):any[]|null=>!PROSES_ORANG_RAW.includes(row.proses)?null:
+    semuaKomponenSebagaiSubBaris(row,woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId)),TODAY);
 
-  const getRentangInfoUntukTanggal=(row:any,tanggal:string)=>{
-    if(!PROSES_ORANG_RAW.includes(row.proses))return null;
-    // Cari SEMUA komponen (lintas WP) yang rentangnya mencakup tanggal ini
-    const semuaKomponenAktif:any[]=[];
-    for(const entries of Object.values(row.schedule||{}) as any[]){
-      for(const entry of entries){
-        if(!entry.rentangTanggal)continue;
-        for(const kode of entry.komponen||[]){
-          const rentang=entry.rentangTanggal[kode];
-          if(!rentang)continue;
-          if(tanggal>=rentang.mulai&&tanggal<=rentang.selesai){
-            semuaKomponenAktif.push({wp:entry.wp,kode,mulai:rentang.mulai,selesai:rentang.selesai});
-          }
-        }
-      }
-    }
-    if(semuaKomponenAktif.length===0)return null;
-    // Union: cari mulai paling awal dan selesai paling akhir dari SEMUA komponen yg overlap di tanggal ini
-    const unionMulai=semuaKomponenAktif.reduce((min,k)=>k.mulai<min?k.mulai:min,semuaKomponenAktif[0].mulai);
-    const unionSelesai=semuaKomponenAktif.reduce((max,k)=>k.selesai>max?k.selesai:max,semuaKomponenAktif[0].selesai);
-    return{mulai:unionMulai,selesai:unionSelesai,isStart:tanggal===unionMulai,komponenList:semuaKomponenAktif};
-  };
+  const getRentangInfoUntukTanggal=(row:any,tanggal:string)=>rentangInfoUntukTanggal(row,tanggal);
   const [filterProses,setFilterProses]=useState<string[]>([]);
   const toggleFilterProses=(pr:string)=>{
     setFilterProses(prev=>prev.includes(pr)?prev.filter(p=>p!==pr):[...prev,pr]);
@@ -653,19 +615,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // asli); entry yang abis difilter kosong (semua komponennya udah selesai) dibuang total.
   const getEntriesTanpaSelesai=(row:any,entries:any[])=>{
     const panelId=row.panel_id||row.panelId;
-    const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>p.id===panelId);
-    if(!panelData)return entries;
-    return entries.map((e:any)=>{
-      const kodeAsli=(e.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_"));
-      const kodeBelumSelesai=kodeAsli.filter((kode:string)=>{
-        const cl=panelData.checklist?.[kode];
-        const sudahDigeser=e.digeserKe?.[kode];
-        return(cl?.progress?.[row.proses]||0)<100&&!sudahDigeser;
-      });
-      if(kodeBelumSelesai.length===0)return null;
-      const markerTokens=(e.komponen||[]).filter((k:string)=>k.startsWith("__wiring_"));
-      return{...e,komponen:[...markerTokens,...kodeBelumSelesai]};
-    }).filter(Boolean);
+    return entriesTanpaSelesai(row.proses,entries,woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>p.id===panelId));
   };
 
   // ── KOLOM TANGGAL: SCROLL BEBAS + VIRTUALISASI KOLOM (4 Okt 2026) ──────────────────────────
@@ -845,21 +795,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // 1 sel BUSBAR lama tetap); sel rentang (tidak bisa di-drag sejak dulu) tidak bisa.
   // Return null = boleh; string = alasan (ditampilkan sebagai toast). `kosongBoleh` = sel tanpa isi
   // dianggap boleh (Ctrl+klik setara Alt+klik lama, dipakai juga utk copy/paste); lasso -> false.
-  const alasanTakBisaMultiPilih=(row:any,date:string,kosongBoleh:boolean):string|null=>{
-    if(!row)return"Baris tidak ditemukan.";
-    if(getRentangInfoUntukTanggal(row,date))return"Sel rentang tidak bisa dipindah.";
-    // REVISI 9 Okt 2026: BUSBAR & QC/PACKING ikut multi-pilih. BUSBAR: kode yang boleh pindah = aturan
-    // drag 1 sel BUSBAR (belum jejak & progress < 100). QC/PACKING ("MARKED") lewat jalur biasa di bawah.
-    if(row.proses==="BUSBAR"){
-      if((row.busbar_schedule?.[date]||[]).length===0)return kosongBoleh?null:"Sel kosong.";
-      if(kodeBusbarBisaDipindah(row,panelById.get(Number(row.panel_id||row.panelId))?.checklist,date).length===0)return"Semua kode BUSBAR di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.";
-      return null;
-    }
-    const entries=row.schedule?.[date]||[];
-    if(entries.length===0)return kosongBoleh?null:"Sel kosong.";
-    if(getEntriesTanpaSelesai(row,entries).length===0)return"Semua pekerjaan di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.";
-    return null;
-  };
+  const alasanTakBisaMultiPilih=(row:any,date:string,kosongBoleh:boolean):string|null=>
+    alasanTakBisaMultiPilihLib(row,date,kosongBoleh,{checklistPanel:(r:any)=>panelById.get(Number(r.panel_id||r.panelId))?.checklist,entriesTanpaSelesai:getEntriesTanpaSelesai});
 
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
