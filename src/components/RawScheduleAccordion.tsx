@@ -4,7 +4,7 @@ import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RA
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
 import { fetchWiringHariKerjaMap } from '../services/fcsService'
-import { useRawPanelOrder, bandingkanBarisRaw, zonaDari, type Zona } from '../lib/rawPanelOrder'
+import { useRawPanelOrder, bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { muatDataKapasitas, menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
@@ -20,6 +20,7 @@ import { useAturKapasitas } from './ModalAturKapasitas'
 import { useTambahPanelRaw } from './ModalTambahPanelRaw'
 import { useRiwayatQty } from './RiwayatQty'
 import { useNotifAvailable } from './NotifAvailable'
+import { useKartuHari } from './KartuHari'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses } from '../lib/rawPivot'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -32,6 +33,8 @@ import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type
 // edit/hapus WP & komponen, BUSBAR, bobot WIRING, cek kapasitas/kuota + swap) ; menu klik kanan Edit & Hapus WP.
 // Tahap 3c: prioritas (dropdown) & urutan panel (menu ⋮), Atur Kapasitas (klik kartu kapasitas), Tambah Panel,
 // Riwayat Perubahan Qty, notifikasi komponen available - semuanya bagian BERSAMA dgn tampilan lama.
+// Tahap 3d: klik header tanggal = kartu hari (bersama, baca-saja), geser urutan panel dgn drag ⠿ (target dihitung
+// hitungTargetDrop yang sama dgn tampilan lama, posisi blok dari DATA), tombol Delete = Hapus WP sel terpilih.
 // Menggantikan maket dummy RawScheduleSandbox (keputusan user). Raw Schedule asli TETAP jalan berdampingan
 // sampai paritas tercapai; semua aksi tulis (pindah/edit/hapus) dibawa di Tahap 2-3.
 //
@@ -421,6 +424,40 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
   const bukaAturKapasitas = (d: string, pr: string) => { aturKapasitas.setOverrideModal({ tanggalMulai: d, tanggalAkhir: d, proses: [pr] }); aturKapasitas.setOverrideValue(''); aturKapasitas.setOverrideResult(null) }
   const tambahPanelRaw = useTambahPanelRaw({ woData, rawData, createRaw: createRaw || (async () => ({ success: false, error: 'Tampilan ini belum tersambung.' })), refetchRaw: refetchRaw || (() => {}), log })
   const riwayatQty = useRiwayatQty({ setFilterProyek, setFilterPanel })
+  const kartuHari = useKartuHari({ rawData, woData, getEffCfg: cfgTipe })
+  // ── Drag ⠿ urutan panel (Tahap 3d): posisi blok panel dari offset DATA (aman utk baris yang tidak dirender),
+  // target = hitungTargetDrop (sama dgn tampilan lama), simpan lewat urutanPanel.pindahPanel (RPC atomik + rollback).
+  const rentangBlok = useMemo(() => {
+    const m: { panelId: number; zona: Zona; i0: number; i1: number }[] = []
+    baris.forEach((r, i) => { const last = m[m.length - 1]; if (last && last.panelId === r.blok.panelId) last.i1 = i + 1; else m.push({ panelId: r.blok.panelId, zona: zonaDari(r.blok.prioritas), i0: i, i1: i + 1 }) })
+    return m
+  }, [baris])
+  const [dragPanel, setDragPanel] = useState<{ panelId: number; nama: string; target: TargetDrop | null; lintas: boolean; garisY: number } | null>(null)
+  const dragPanelCtx = useRef<any>({}); dragPanelCtx.current = { rentangBlok, offset, pindahPanel: urutanPanel.pindahPanel }
+  const mulaiDragPanel = (e: React.PointerEvent, panelId: number, nama: string, zonaAsal: Zona) => {
+    if (e.button !== 0 || urutanPanel.savingUrutan) return
+    e.preventDefault(); e.stopPropagation()
+    const cont = scrollRef.current; if (!cont) return
+    let y = e.clientY; let target: TargetDrop | null = null
+    const hitung = () => {
+      const C = dragPanelCtx.current; const cr = cont.getBoundingClientRect()
+      const asal = cr.top + cont.clientTop - cont.scrollTop + TINGGI_HEADER
+      const blok = C.rentangBlok.map((x: any) => ({ panelId: x.panelId, zona: x.zona, top: asal + C.offset[x.i0], bottom: asal + C.offset[x.i1] }))
+      target = hitungTargetDrop(blok, [], y, panelId)
+      setDragPanel({ panelId, nama, target, lintas: !!target && target.zona !== zonaAsal, garisY: target ? Math.max(cr.top + TINGGI_HEADER, Math.min(cr.bottom, target.indicatorY)) : -100 })
+    }
+    const onMove = (ev: PointerEvent) => { y = ev.clientY; hitung() }
+    // auto-scroll di tepi bagian tabel yang TERLIHAT (tabel bisa sebagian di luar layar)
+    const gulir = setInterval(() => { const cr = cont.getBoundingClientRect(); const atas = Math.max(cr.top, 0) + TINGGI_HEADER, bawah = Math.min(cr.bottom, window.innerHeight); const v = y < atas + 40 ? -24 : y > bawah - 40 ? 24 : 0; if (v) { cont.scrollTop += v; hitung() } }, 40)
+    const onUp = () => {
+      clearInterval(gulir); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); document.body.style.cursor = ''; document.body.style.userSelect = ''
+      setDragPanel(null)
+      if (target) dragPanelCtx.current.pindahPanel(panelId, { zona: target.zona, prevId: target.prevId, nextId: target.nextId })
+    }
+    document.body.style.cursor = 'grabbing'; document.body.style.userSelect = 'none'
+    window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
+    hitung()
+  }
   const notifAvailable = useNotifAvailable({ rawData, woData, getEffCfg: cfgTipe, openCellModal: modalJadwal.buka, setModalWp: modalJadwal.setModalWp, setModalKomponen: modalJadwal.setModalKomponen, setModalBobotPerKomponen: modalJadwal.setModalBobotPerKomponen })
   useEffect(() => {
     notifAvailable.fetchNotifAvailable()
@@ -484,7 +521,9 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
   // pada tanggal itu, lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal (sinkron renhar + log per proses).
   const hapusWpTerpilih = async (r: Baris, d: string) => {
     const kunciMenu = kunciSel(r, d)
-    const kunci = pilihan.has(kunciMenu) ? [...pilihan] : [kunciMenu]
+    return hapusWpKunci(pilihan.has(kunciMenu) ? [...pilihan] : [kunciMenu])
+  }
+  const hapusWpKunci = async (kunci: string[]) => {
     const target: { rawId: number; proses: string; d: string; wp: string; panel: string; n: number }[] = []
     let dilewati = 0
     for (const k of kunci) {
@@ -529,7 +568,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
     if (potongan.length) { const ok = await jalankanPindah(potongan, offset); if (ok) { setPotongan([]); setTujuanTempel(null) } }
     else { const ok = await jalankanSalin(salinan, offset); if (ok) setTujuanTempel(null) } // salinan tetap bisa ditempel lagi
   }
-  const aksiRef = useRef<any>({}); aksiRef.current = { potong, salin, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan, salinan }
+  const aksiRef = useRef<any>({}); aksiRef.current = { potong, salin, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan, salinan, hapus: () => hapusWpKunci([...pilihan]) }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -541,6 +580,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
       else if (mod && k === 'v' && (aksiRef.current.potongan.length || aksiRef.current.salinan.length)) { e.preventDefault(); aksiRef.current.tempel() }
       else if (mod && k === 'z' && !e.shiftKey && pindahMulti.undoMultiRef.current.length) { e.preventDefault(); aksiRef.current.undo() }
       else if (e.key === 'Escape') aksiRef.current.batalkan()
+      else if (e.key === 'Delete' && !mod && aksiRef.current.pilihan.size) { e.preventDefault(); aksiRef.current.hapus() }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
@@ -699,6 +739,9 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
         <td style={stickyKiri('panel', { ...td, color: '#1e293b', fontWeight: 700 })}>{r.pertama && batas(
           <div title={`${b.panel} · ${b.tipe}`}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+              <span role="button" aria-label={`Seret untuk ubah urutan ${b.panel}`} title={urutanPanel.savingUrutan ? 'Sedang menyimpan urutan...' : 'Seret untuk ubah urutan panel (lintas kelompok = prioritas ikut berubah)'}
+                onPointerDown={(e: any) => mulaiDragPanel(e, b.panelId, b.panel, zonaDari(b.prioritas))}
+                style={{ cursor: urutanPanel.savingUrutan ? 'not-allowed' : 'grab', touchAction: 'none', color: '#94a3b8', fontSize: 12, lineHeight: 1, padding: '1px 1px', userSelect: 'none', flexShrink: 0 }}>⠿</span>
               <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.panel}</span>
               <button title="Pindah urutan panel" aria-label="Pindah urutan panel" disabled={urutanPanel.savingUrutan}
                 onClick={(e: any) => { const rc = e.currentTarget.getBoundingClientRect(); setMenuUrutan(m => m?.panelId === b.panelId ? null : { panelId: b.panelId, x: rc.right, y: rc.bottom }) }}
@@ -795,7 +838,7 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik sel = edit jadwal (pilih proses; modal sama dgn tampilan lama); prioritas & urutan panel di kolom Panel (dropdown, ⋮); klik baris kartu kapasitas = Atur Kapasitas; klik penanda QC/PACKING = tambah/hapus; klik kanan = menu (Edit, Hapus WP). <b>Ini data produksi asli</b> - setiap perubahan dikonfirmasi dulu.
+          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik sel = edit jadwal (pilih proses; modal sama dgn tampilan lama); prioritas & urutan panel di kolom Panel (dropdown, ⋮); klik baris kartu kapasitas = Atur Kapasitas; seret ⠿ = ubah urutan panel; klik header tanggal = daftar pekerjaan hari itu; Delete = hapus WP sel header terpilih; klik penanda QC/PACKING = tambah/hapus; klik kanan = menu (Edit, Hapus WP). <b>Ini data produksi asli</b> - setiap perubahan dikonfirmasi dulu.
         </div>
       </div>
 
@@ -993,7 +1036,9 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
               {kolom.map(d => {
                 const dl = deadlinePerTanggal.get(d)
                 return (
-                  <th key={d} data-tgl={d} style={{ ...thS, width: LEBAR_TGL, background: d === TODAY ? '#1e40af' : isMinggu(d) ? '#7f1d1d' : '#1e3a8a', borderBottom: d === TODAY ? '2px solid #60a5fa' : 'none' }}>
+                  <th key={d} data-tgl={d} title={(potongan.length || salinan.length) ? 'Klik = hari tujuan tempel' : 'Klik = daftar pekerjaan hari ini'}
+                    onClick={() => { if (potongan.length || salinan.length) { setTujuanTempel(d); return } kartuHari.setSelDate(d === kartuHari.selDate ? null : d) }}
+                    style={{ ...thS, width: LEBAR_TGL, cursor: 'pointer', background: (potongan.length || salinan.length) && tujuanTempel === d ? '#15803d' : d === TODAY ? '#1e40af' : isMinggu(d) ? '#7f1d1d' : kartuHari.selDate === d ? '#1d4ed8' : '#1e3a8a', borderBottom: d === TODAY ? '2px solid #60a5fa' : kartuHari.selDate === d ? '2px solid #fde047' : 'none' }}>
                     <div>{getDayLabel(d)}{d === TODAY && <span style={{ opacity: .8 }}> · hari ini</span>}</div>
                     {dl && <div title={'Deadline:\n' + dl.join('\n')} style={{ fontSize: 8.5, fontWeight: 800, color: '#fecaca' }}>🚩 {dl.length} deadline</div>}
                   </th>
@@ -1022,6 +1067,20 @@ export function RawScheduleAccordion({ woData, rawData, setRawData, updateRaw, r
         </table>
         {blokTampil.length === 0 && <div style={{ padding: 24, textAlign: 'center', color: '#94a3b8', fontSize: 12 }}>Tidak ada panel yang cocok dengan filter.</div>}
       </div>
+      {dragPanel && (() => {
+        const cr = scrollRef.current?.getBoundingClientRect(); if (!cr) return null
+        const w = dragPanel.lintas ? '#f59e0b' : '#2563eb'
+        return <>
+          {dragPanel.target && <div aria-hidden="true" data-garis-drop style={{ position: 'fixed', left: cr.left, width: cr.width, top: dragPanel.garisY - 1.25, height: 2.5, background: w, zIndex: 9500, pointerEvents: 'none', borderRadius: 2 }}>
+            <span style={{ position: 'absolute', left: 2, top: '50%', width: 9, height: 9, borderRadius: '50%', background: w, transform: 'translateY(-50%)', boxShadow: '0 0 0 2px #fff' }} />
+            {dragPanel.lintas && <span style={{ position: 'absolute', left: 18, top: '50%', transform: 'translateY(-50%)', background: '#f59e0b', color: '#fff', fontSize: 10, fontWeight: 800, borderRadius: 99, padding: '2px 9px', whiteSpace: 'nowrap' }}>→ jadi {dragPanel.target.zona}</span>}
+          </div>}
+          <div aria-hidden="true" style={{ position: 'fixed', left: cr.left + 12, top: cr.top + 8, zIndex: 9501, pointerEvents: 'none', background: '#1e293b', color: '#fff', borderRadius: 8, padding: '6px 12px', fontSize: 11, fontWeight: 700, boxShadow: '0 6px 20px #0003' }}>
+            ⠿ {dragPanel.nama}{dragPanel.lintas ? ` → prioritas ${dragPanel.target?.zona}` : ''}
+          </div>
+        </>
+      })()}
+      {kartuHari.elemen}
       <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6 }}>
         Chip putus-putus ➡️ = histori (sudah digeser) · ✓ = selesai · 👥 = kebutuhan orang WIRING · arahkan kursor ke chip untuk detail.
       </div>
