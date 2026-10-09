@@ -10,7 +10,7 @@ import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getPro
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
-import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
+import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -709,13 +709,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const toggleMarkerCell=async(rawId:number,date:string)=>{
     const rowM=rawData.find((r:any)=>r.id===rawId);
     if(!rowM)return;
-    const existing=rowM.schedule?.[date]||[];
-    const newSchedule={...(rowM.schedule||{})};
-    if(existing.length>0){
-      delete newSchedule[date];
-    } else {
-      newSchedule[date]=[{wp:rowM.proses,komponen:["MARKED"]}];
-    }
+    const newSchedule=togglePenanda(rowM.schedule,date,rowM.proses); // lib/jadwalPindah.ts (satu sumber dgn tampilan per WP)
     await updateRaw(rowM.id,{schedule:newSchedule});
     markRawDirty(rawId);
     setRawData((prev:any)=>prev.map((r:any)=>r.id===rawId?{...r,schedule:newSchedule}:r));

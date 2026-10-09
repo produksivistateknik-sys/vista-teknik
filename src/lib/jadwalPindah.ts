@@ -123,3 +123,32 @@ export function rencanakanPindahMultiV2(jadwalPerBaris: Map<number, Jadwal4>, se
 }
 
 export const isMinggu = (d: string) => { const [y, m, dd] = d.split('-').map(Number); return new Date(Date.UTC(y, m - 1, dd)).getUTCDay() === 0 }
+
+// ── PENANDA QC TEST / PACKING (Tahap 3a) - logika toggleMarkerCell tampilan lama APA ADANYA: sel berisi ->
+// dikosongkan (tanggal dihapus); sel kosong -> diisi 1 penanda {wp: proses, komponen: ["MARKED"]}.
+export function togglePenanda(schedule: Jadwal, date: string, proses: string): Jadwal {
+  const existing = schedule?.[date] || []
+  const baru: Jadwal = { ...(schedule || {}) }
+  if (existing.length > 0) delete baru[date]
+  else baru[date] = [{ wp: proses, komponen: ['MARKED'] }]
+  return baru
+}
+
+// ── SALIN (gabung) BANYAK SEL (Tahap 3a, keputusan user: salin MENGGABUNG ke tujuan, bukan menimpa) - sama
+// dgn salin 1 sel tampilan lama (confirmDrag mode copy): taruh di tujuan (gabung per WP + manualPin; BUSBAR:
+// gabung + busbar_manual_pin), sel asal TIDAK diubah. Rencana harian tidak ikut (sama dgn copy lama).
+export function rencanakanSalinMultiV2(jadwalPerBaris: Map<number, Jadwal4>, sel: SelPindahV2[], nowIso: string): { raw_id: number; sebelum: Jadwal4; sesudah: Jadwal4 }[] {
+  const perBaris = new Map<number, SelPindahV2[]>()
+  sel.forEach((s) => { if (!perBaris.has(s.rawId)) perBaris.set(s.rawId, []); perBaris.get(s.rawId)!.push(s) })
+  const rows: { raw_id: number; sebelum: Jadwal4; sesudah: Jadwal4 }[] = []
+  perBaris.forEach((daftar, rawId) => {
+    const sebelum = jadwalPerBaris.get(rawId) || ambilJadwal4(null)
+    let j: Jadwal4 = JSON.parse(JSON.stringify(sebelum))
+    daftar.forEach((s) => {
+      if (s.kodeBusbar) j = { ...j, ...taruhBusbar(j, s.ke, s.kodeBusbar, nowIso) }
+      else j = { ...j, schedule: taruhDiTujuan(j.schedule, s.ke, s.entries || [], nowIso) }
+    })
+    rows.push({ raw_id: rawId, sebelum, sesudah: j })
+  })
+  return rows
+}

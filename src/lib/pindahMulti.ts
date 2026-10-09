@@ -6,7 +6,7 @@
 // Rumus jadwal ada di lib/jadwalPindah.ts, kapasitas di lib/kapasitasHari.ts, aturan pilih di
 // lib/isiSelJadwal.ts.
 import { supabase } from './supabase'
-import { isMinggu, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2, type RencanaPindahMultiV2 } from './jadwalPindah'
+import { isMinggu, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, rencanakanSalinMultiV2, ambilJadwal4, type SelPindahV2, type RencanaPindahMultiV2 } from './jadwalPindah'
 
 export type SelAsal = { rawId: number; date: string }
 export type SelTujuan = SelAsal & { ke: string }
@@ -92,14 +92,15 @@ export function cekPindahMulti(rawData: any[], cells: SelAsal[], offset: number,
 // sumber yang berkurang) <= kapasitas. Hasil: grup berurutan kemunculan, kunci "rawId|tanggalAsal",
 // alasan null = boleh.
 export type KonteksMinggu = { kapasitasPada: (d: string, pr: string) => number; hitungTerpakaiHari: (rows: any[], d: string, pr: string) => number }
-export function cekMingguKapasitas(rawData: any[], sel: SelPindahV2[], ctx: KonteksMinggu) {
+// mode 'salin' (Tahap 3a): sumber TETAP ada -> pemakaian dihitung dari jadwal setelah DISALIN (bukan dipindah).
+export function cekMingguKapasitas(rawData: any[], sel: SelPindahV2[], ctx: KonteksMinggu, mode: 'pindah' | 'salin' = 'pindah') {
   const keMinggu = sel.filter(s => isMinggu(s.ke))
   const hasil: { ke: string; pr: string; kunci: string[]; alasan: string | null }[] = []
   if (keMinggu.length === 0) return hasil
   const jadwal = new Map<number, any>()
   sel.forEach(s => { if (!jadwal.has(s.rawId)) { const row = rawData.find((r: any) => r.id === s.rawId); if (row) jadwal.set(s.rawId, ambilJadwal4(row)) } })
-  const rencana = rencanakanPindahMultiV2(jadwal, sel, 'cek')
-  const sesudahById = new Map(rencana.rows.map(r => [r.raw_id, r.sesudah]))
+  const rowsRencana = mode === 'salin' ? rencanakanSalinMultiV2(jadwal, sel, 'cek') : rencanakanPindahMultiV2(jadwal, sel, 'cek').rows
+  const sesudahById = new Map(rowsRencana.map(r => [r.raw_id, r.sesudah]))
   const rowsSetelah = rawData.map((r: any) => sesudahById.has(r.id) ? { ...r, ...sesudahById.get(r.id) } : r)
   const grup = new Map<string, { ke: string; pr: string; kunci: string[]; alasan: string | null }>()
   keMinggu.forEach(s => {

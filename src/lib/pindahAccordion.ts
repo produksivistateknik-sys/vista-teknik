@@ -10,7 +10,7 @@
 // aturan drag/pindah tampilan lama (entriesTanpaSelesai, kodeBusbarBisaDipindah).
 // Validasi sama dgn tampilan lama: di luar rentang, sel rentang WIRING, timer BUSBAR berjalan, Minggu
 // berkapasitas (cekMingguKapasitas). Rumus jadwal/RPC/Undo tetap lib/jadwalPindah + hooks/usePindahMulti.
-import { kodeBusbarBisaDipindah, ambilJadwal4, type SelPindahV2 } from './jadwalPindah'
+import { kodeBusbarBisaDipindah, ambilJadwal4, rencanakanSalinMultiV2, type SelPindahV2 } from './jadwalPindah'
 import { cekMingguKapasitas, type KonteksMinggu } from './pindahMulti'
 import { rentangInfoUntukTanggal } from './isiSelJadwal'
 import type { BlokPanel } from './rawPivot'
@@ -62,9 +62,12 @@ export type HasilPindahAcc = {
   tujuan: Map<string, 'ok' | 'minggu' | 'bad'> // "<kunciBaris>|<tanggalTujuan>" -> status (bayangan drag)
   alasanTujuan: Map<string, string>
   jumlahKomponen: number // kode berbeda yang ikut (teks pesan)
+  rowsSalin?: { raw_id: number; sebelum: any; sesudah: any }[] // mode salin: jadwal sebelum/sesudah per baris
 }
 
-export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number, ctx: KonteksPindahAcc): HasilPindahAcc {
+// mode 'salin' (Tahap 3a): sel asal tidak diubah, tujuan DIGABUNG; tidak ada tolak "sel rentang"/"timer BUSBAR"
+// (asal tidak disentuh); Minggu berkapasitas dihitung dgn sumber tetap ada. Hasil + rowsSalin (sebelum/sesudah).
+export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number, ctx: KonteksPindahAcc, mode: 'pindah' | 'salin' = 'pindah'): HasilPindahAcc {
   const rowById = new Map<number, any>(ctx.rawData.map((r: any) => [r.id, r]))
   // 1) jabarkan pilihan -> unit, catat kunci asal per (rawId|dari)
   const unitPer = new Map<string, Unit[]>() // rawId|dari -> unit
@@ -96,7 +99,7 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
       const dipilih = new Set(units.map(u => u.kode!))
       const kode = (row.busbar_schedule?.[dari] || []).filter((k: string) => dipilih.has(k) && boleh.has(k))
       if (kode.length === 0) continue
-      if (kode.some((k: string) => ctx.timerBusbar.has(pid + '|' + k))) alasanSel.set(kk, 'timer BUSBAR berjalan')
+      if (mode === 'pindah' && kode.some((k: string) => ctx.timerBusbar.has(pid + '|' + k))) alasanSel.set(kk, 'timer BUSBAR berjalan')
       sel.push({ rawId: row.id, dari, ke, kodeBusbar: kode }); kode.forEach((k: string) => kodeIkut.add(pid + '|BB|' + k))
     } else if (u0.jenis === 'penanda') {
       const entries = ctx.entriesTanpaSelesai(row, row.schedule?.[dari] || [])
@@ -106,7 +109,7 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
       const bisa = ctx.entriesTanpaSelesai(row, row.schedule?.[dari] || []) // tanpa selesai/jejak
       // Sel rentang WIRING tidak bisa dipindah - aturan SAMA dgn tampilan lama (tanggal tercakup rentang
       // komponen mana pun di baris itu, rentangInfoUntukTanggal).
-      if (rentangInfoUntukTanggal(row, dari)) alasanSel.set(kk, 'Sel rentang tidak bisa dipindah.')
+      if (mode === 'pindah' && rentangInfoUntukTanggal(row, dari)) alasanSel.set(kk, 'Sel rentang tidak bisa dipindah.')
       const dipilih = new Set(units.map(u => u.wp + '\u0000' + u.kode))
       const entries: any[] = []
       for (const e of bisa) {
@@ -127,7 +130,7 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
   if (offset !== 0) {
     // Sama dgn tampilan lama: yang sudah ditolak (rentang/timer) TIDAK ikut dihitung di cek kapasitas Minggu.
     const selLolos = sel.filter(s => !alasanSel.has(s.rawId + '|' + s.dari))
-    for (const g of cekMingguKapasitas(ctx.rawData, selLolos, ctx)) g.kunci.forEach(k => { if (g.alasan) alasanSel.set(k, g.alasan); else mingguOk.add(k) })
+    for (const g of cekMingguKapasitas(ctx.rawData, selLolos, ctx, mode)) g.kunci.forEach(k => { if (g.alasan) alasanSel.set(k, g.alasan); else mingguOk.add(k) })
   }
   // 4) status tujuan per baris tampilan (bayangan) & bentrok per kunci pilihan
   const tujuan = new Map<string, 'ok' | 'minggu' | 'bad'>(); const alasanTujuan = new Map<string, string>()
@@ -140,5 +143,6 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
       else if (tujuan.get(t) !== 'bad') tujuan.set(t, mingguOk.has(kk) ? 'minggu' : (tujuan.get(t) === 'minggu' ? 'minggu' : 'ok'))
     }
   }
-  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size }
+  const rowsSalin = mode === 'salin' ? rencanakanSalinMultiV2(jadwal, sel, new Date().toISOString()) : undefined
+  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size, rowsSalin }
 }
