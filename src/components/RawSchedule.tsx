@@ -12,6 +12,7 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
+import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
@@ -2146,44 +2147,19 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // deadline per panel di Manajemen WO sudah diwujudkan dgn memecah panel ke baris WO sibling per
   // tanggal (saveWOWithSplit), jadi target WO = deadline panel. Baca-saja di sini (ubah lewat Manajemen
   // WO). Dari woData yang sudah dimuat - tanpa request tambahan.
-  const deadlinePanel=useMemo(()=>{
-    const m=new Map<number,{target:string;wo:string}>();
-    woData.forEach((w:any)=>(w.panels||[]).forEach((p:any)=>{const k=Number(p.id);if(!m.has(k)&&w.target)m.set(k,{target:String(w.target).slice(0,10),wo:w.wo});}));
-    return m;
-  },[woData]);
-  // Filter baris yang tampil - SATU sumber utk grid & penanda deadline di header.
-  const lolosFilterBaris=(row:any)=>
-    (filterProses.length===0||filterProses.includes(row.proses))&&
-    (filterProyek.length===0||filterProyek.includes(row.proyek))&&
-    (filterPanel.length===0||filterPanel.includes(row.panel));
+  const deadlinePanel=useMemo(()=>buatPetaDeadlinePanel(woData),[woData]);
+  // Filter baris yang tampil - SATU sumber utk grid & penanda deadline di header (lib/deadlineRaw.ts).
+  const lolosFilterBaris=(row:any)=>lolosFilterBarisLib(row,{proses:filterProses,proyek:filterProyek,panel:filterPanel});
   // 🚩 di header tanggal: panel (yang tampil) dgn deadline di tanggal itu.
-  const deadlinePerTanggal=useMemo(()=>{
-    const m=new Map<string,string[]>();const sudah=new Set<number>();
-    rawData.forEach((row:any)=>{
-      const pid=Number(row.panel_id||row.panelId);if(sudah.has(pid)||!lolosFilterBaris(row))return;
-      sudah.add(pid);const dl=deadlinePanel.get(pid);if(!dl)return;
-      if(!m.has(dl.target))m.set(dl.target,[]);m.get(dl.target)!.push(`${row.panel} (WO ${dl.wo})`);
-    });
-    return m;
+  const deadlinePerTanggal=useMemo(()=>petaDeadlinePerTanggal(rawData,deadlinePanel,lolosFilterBaris),
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[rawData,deadlinePanel,filterProses,filterProyek,filterPanel]);
+  [rawData,deadlinePanel,filterProses,filterProyek,filterPanel]);
   // PEMAKAIAN KAPASITAS 1 hari x 1 proses (9 Okt 2026) - rumus kartu Capacity Utilization APA ADANYA,
   // dipindah ke sini supaya SATU sumber dgn validasi pindah banyak sel ke hari Minggu. `rows` = baris
   // raw_schedule (bisa versi "setelah dipindah"). Proses jam = qty x menit/pcs, WIRING = kebutuhan orang
   // (+ proyeksi), jejak digeserKe tidak dihitung. Tanpa request (data sudah dimuat).
   const hitungTerpakaiHari=(rows:any[],d:string,pr:string)=>hitungTerpakaiHariLib(rows,d,pr,{panelById,menitPerPcs:getMenitPerPcs,wiringHariKerjaMap});
-  const infoDeadline=(target:string)=>{
-    const sisa=Math.round((Date.UTC(+target.slice(0,4),+target.slice(5,7)-1,+target.slice(8,10))-Date.UTC(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8,10)))/86400000);
-    // Tampilan teks polos (8 Okt 2026 koreksi): warna HANYA di teks. normal >7 hari = abu gelap seperti
-    // teks PANEL; segera 4-7 = oranye tua; mepet 0-3 (termasuk hari ini) = merah tua; terlambat = merah
-    // tua tebal.
-    // >=100 hari terlambat: bentuk pendek supaya tidak terpotong di kolom 96px.
-    const label=sisa>0?`${sisa} hari lagi`:sisa===0?"Hari ini":-sisa>=100?`Telat ${-sisa} hr`:`Terlambat ${-sisa} hari`;
-    const warna=sisa<0?{tgl:"#b91c1c",ket:"#b91c1c",tebal:true}:sisa<=3?{tgl:"#b91c1c",ket:"#b91c1c",tebal:false}
-      :sisa<=7?{tgl:"#c2410c",ket:"#c2410c",tebal:false}:{tgl:"#1e293b",ket:"#64748b",tebal:false};
-    const tgl=new Date(target+"T00:00:00").toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
-    return{sisa,label,warna,tgl};
-  };
+  const infoDeadline=(target:string)=>infoDeadlineLib(target,TODAY);
 
   const dateTasks=useMemo(()=>{
     if(!selDate)return[];
