@@ -14,13 +14,13 @@ import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeB
 import { renharService } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
-import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
+import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, jadwalLanjutanWiring, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
-import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
+import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib, muatDataKapasitas } from '../lib/kapasitasHari'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core'
-import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, cmpPanelDalamZona, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
+import { useRawPanelOrder, fetchPanelOrderMap, zonaDari, cmpPanelDalamZona, bandingkanBarisRaw, hitungTargetDrop, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, ZONA_URUTAN, type Zona, type TargetDrop, type TargetPindah } from '../lib/rawPanelOrder'
 
 // Handle geser urutan panel (⠿) di sel PANEL - @dnd-kit (pointer events), SENGAJA bukan HTML5
 // drag: grid tanggal sudah pakai HTML5 draggable/onDragOver/onDrop buat geser jadwal antar
@@ -312,29 +312,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // kebetulan masuk 71 baris yang kepotong. Bukan gagal simpan - data-nya selalu benar,
     // cuma gak pernah ke-load semua ke fcsKapasitas jadi badge status salah baca "belum diatur".
     // Kelas bug SAMA PERSIS dengan saga "renhar 1000-row" (lihat memory sesi) - paginasi penuh.
-    const fetchAllKapasitasOverride=async()=>{
-      let all:any[]=[],from=0;
-      const PAGE=1000;
-      for(;;){
-        const{data,error}=await supabase.from("fcs_kapasitas_override")
-          .select("tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas")
-          .range(from,from+PAGE-1);
-        if(error){console.error("gagal ambil fcs_kapasitas_override:",error);break;}
-        const rows=data??[];
-        all=all.concat(rows);
-        if(rows.length<PAGE)break;
-        from+=PAGE;
-      }
-      return all;
-    };
+    // Muat kapasitas + process time: lib/kapasitasHari.ts muatDataKapasitas (paginasi penuh - BUG FIX 21 Sep 2026).
     const fetchCap=async()=>{
-      const [k,{data:pt,error:ptErr}]=await Promise.all([
-        fetchAllKapasitasOverride(),
-        supabase.from("fcs_process_time").select("tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs").eq("is_active",true),
-      ]);
-      if(ptErr)console.error("gagal ambil fcs_process_time:",ptErr);
-      setFcsKapasitas(k??[]);
-      setProcessTimeList(pt??[]);
+      const{kapasitas,processTime}=await muatDataKapasitas();
+      setFcsKapasitas(kapasitas);
+      setProcessTimeList(processTime);
     };
     fetchCap();
     fetchNotifAvailable();
@@ -2304,18 +2286,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             </tr>
           </thead>
             {(()=>{
-              const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
-              const visibleRows=rawData.filter(lolosFilterBaris).sort((a,b)=>{
-                const pa=PRIO_ORDER[a.prioritas]??1;const pb=PRIO_ORDER[b.prioritas]??1;
-                if(pa!==pb)return pa-pb;
-                const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
-                // Dalam 1 zona prioritas: order_key (geser panel, byte compare) -> panel_id (panel
-                // belum punya key = panel baru, di belakang zona = perilaku lama). Lihat rawPanelOrder.ts.
-                if(aId!==bId)return cmpPanelDalamZona(Number(aId),Number(bId),orderMap);
-                const idx=(pr:string)=>{const i=ALL_PROSES.indexOf(pr);return i<0?999:i;}; // proses penanda (NAMEPLATE/YELLOWMARK) gak ada di ALL_PROSES - taruh di akhir grup panel, bukan di depan
-                const ai=idx(a.proses);const bi=idx(b.proses);
-                return ai-bi;
-              });
+              // Urutan baris (zona prioritas -> urutan panel -> proses): lib/rawPanelOrder.ts bandingkanBarisRaw.
+              const visibleRows=rawData.filter(lolosFilterBaris).sort((a,b)=>bandingkanBarisRaw(a,b,orderMap,ALL_PROSES));
               const panelRowCount:Record<string,number>={};
               visibleRows.forEach(row=>{
                 const pid=String(row.panel_id||row.panelId);
@@ -2346,28 +2318,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                 // dipakai kalkulasi kapasitas asli) tiap render - jadi kalau posisi live-nya
                 // berubah (kena geser/skip/selesai lebih cepat), proyeksi otomatis ikut geser,
                 // BUKAN snapshot beku dari saat assign.
-                const wiringForwardMap:Record<string,{kode:string;wp:string;hariKeN:number;orang:number}[]>=(()=>{
-                  if(!PROSES_ORANG_RAW.includes(row.proses))return{};
-                  const map:Record<string,{kode:string;wp:string;hariKeN:number;orang:number}[]>={};
-                  const panelIdRow=row.panel_id||row.panelId;
-                  const panelDataRow=panelById.get(Number(panelIdRow));
-                  Object.entries(row.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
-                    (liveEntries||[]).forEach((e:any)=>{
-                      (e.komponen||[]).forEach((kode:string)=>{
-                        if(kode.startsWith("__wiring_"))return;
-                        if(e.digeserKe?.[kode])return; // jejak - bukan posisi live
-                        const progress=panelDataRow?.checklist?.[kode]?.progress?.[row.proses]||0;
-                        if(progress>=100)return;
-                        const bobot=row.bobot_komponen?.[kode];
-                        hitungProyeksiWiring(panelIdRow,kode,row.proses,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(({tanggal,...proj})=>{
-                          if(!map[tanggal])map[tanggal]=[];
-                          map[tanggal].push(proj);
-                        });
-                      });
-                    });
-                  });
-                  return map;
-                })();
+                const wiringForwardMap=jadwalLanjutanWiring(row,panelById.get(Number(row.panel_id||row.panelId)),wiringHariKerjaMap); // lib/isiSelJadwal.ts
 
                 if(false&&subBarisKomponen&&subBarisKomponen.length>0){
                   return(

@@ -34,6 +34,20 @@ export function cmpPanelDalamZona(aId: number, bId: number, keyMap: Record<numbe
   return aId - bId
 }
 
+// URUTAN BARIS RAW SCHEDULE (Tahap 1 migrasi accordion, 9 Okt 2026 - dipindah APA ADANYA dari
+// RawSchedule.tsx, satu sumber utk tampilan lama & accordion): ① zona prioritas (PRIO_ORDER lama:
+// Tinggi/Sedang/Rendah, lainnya dianggap Sedang) ② dalam zona: order_key -> panel_id (cmpPanelDalamZona)
+// ③ dalam 1 panel: urutan proses ALL_PROSES (proses di luar ALL_PROSES di akhir grup panel).
+const PRIO_ORDER: Record<string, number> = { Tinggi: 0, Sedang: 1, Rendah: 2 }
+export function bandingkanBarisRaw(a: any, b: any, orderMap: Record<number, string>, semuaProses: string[]): number {
+  const pa = PRIO_ORDER[a.prioritas] ?? 1; const pb = PRIO_ORDER[b.prioritas] ?? 1
+  if (pa !== pb) return pa - pb
+  const aId = a.panel_id || a.panelId; const bId = b.panel_id || b.panelId
+  if (aId !== bId) return cmpPanelDalamZona(Number(aId), Number(bId), orderMap)
+  const idx = (pr: string) => { const i = semuaProses.indexOf(pr); return i < 0 ? 999 : i }
+  return idx(a.proses) - idx(b.proses)
+}
+
 // Semua key (paginated - CLAUDE.md A.1, tabel tumbuh 1 baris per panel).
 export async function fetchPanelOrderMap(): Promise<Record<number, string>> {
   const map: Record<number, string> = {}

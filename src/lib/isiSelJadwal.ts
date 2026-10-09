@@ -3,6 +3,7 @@
 // sudah selesai/jejak, rentang & sub-baris WIRING, dan aturan "boleh ikut dipilih" (multi-pilih/pindah).
 // Fungsi murni - data panel dicari oleh pemanggil (lookup-nya beda-beda & dipertahankan apa adanya).
 import { kodeBusbarBisaDipindah } from './jadwalPindah'
+import { hitungProyeksiWiring } from '../services/fcsService'
 
 export const PROSES_ORANG_RAW = ['WIRING POWER', 'WIRING CONTROL']
 
@@ -93,4 +94,31 @@ export function alasanTakBisaMultiPilih(row: any, date: string, kosongBoleh: boo
   if (entries.length === 0) return kosongBoleh ? null : 'Sel kosong.'
   if (ctx.entriesTanpaSelesai(row, entries).length === 0) return 'Semua pekerjaan di sel ini sudah selesai / sudah digeser (jejak) - tidak bisa dipilih.'
   return null
+}
+
+// WIRING: JADWAL LANJUTAN (12 Agu 2026; dipindah APA ADANYA dari RawSchedule.tsx di Tahap 1) - tampilan
+// MURNI (tidak menulis raw_schedule): komponen wiring yang LIVE (belum jejak, belum 100%) di suatu tanggal
+// tampil juga di tanggal-tanggal SETELAHNYA sepanjang sisa durasi standar bobotnya, dihitung dari POSISI
+// LIVE + hari kerja aktual (hitungProyeksiWiring, sumber yang sama dgn kapasitas). Bukan WIRING -> {}.
+// Hasil: tanggal -> [{kode, wp, hariKeN, orang}].
+export function jadwalLanjutanWiring(row: any, panelData: any, wiringHariKerjaMap: any): Record<string, { kode: string; wp: string; hariKeN: number; orang: number }[]> {
+  if (!PROSES_ORANG_RAW.includes(row.proses)) return {}
+  const map: Record<string, { kode: string; wp: string; hariKeN: number; orang: number }[]> = {}
+  const panelIdRow = row.panel_id || row.panelId
+  Object.entries(row.schedule || {}).forEach(([liveDate, liveEntries]: [string, any]) => {
+    (liveEntries || []).forEach((e: any) => {
+      (e.komponen || []).forEach((kode: string) => {
+        if (kode.startsWith('__wiring_')) return
+        if (e.digeserKe?.[kode]) return // jejak - bukan posisi live
+        const progress = panelData?.checklist?.[kode]?.progress?.[row.proses] || 0
+        if (progress >= 100) return
+        const bobot = row.bobot_komponen?.[kode]
+        hitungProyeksiWiring(panelIdRow, kode, row.proses, e.wp, liveDate, bobot, wiringHariKerjaMap).forEach(({ tanggal, ...proj }: any) => {
+          if (!map[tanggal]) map[tanggal] = []
+          map[tanggal].push(proj)
+        })
+      })
+    })
+  })
+  return map
 }
