@@ -12,6 +12,7 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
+import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib } from '../lib/kapasitasHari'
 import { TODAY, addDays, fmtDate, getDayLabel, fmtDateFull, getRenharWindowRange } from '../lib/dateHelpers'
 import { Modal, Card, Badge, Lbl, Btn, Inp, Sel } from './ui/Primitives'
 import { DndContext, DragOverlay, PointerSensor, useSensor, useSensors, useDraggable } from '@dnd-kit/core'
@@ -413,10 +414,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return hasil;
   };
 
-  const getMenitPerPcs=(tipePanel:string,proses:string,kode:string):number=>{
-    const pt=processTimeList.find((p:any)=>p.tipe_panel===tipePanel&&p.jenis_pekerjaan===proses&&p.kode_komponen===kode);
-    return pt?Number(pt.menit_per_pcs):0;
-  };
+  // Rumus kapasitas di lib/kapasitasHari.ts (Tahap 0 migrasi accordion - satu sumber utk tampilan lama & baru).
+  const getMenitPerPcs=(tipePanel:string,proses:string,kode:string):number=>menitPerPcs(processTimeList,tipePanel,proses,kode);
 
   const getKomponenStatus=(panelId,proses,kode)=>{
     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
@@ -500,11 +499,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     if(error){console.error("[Pindah banyak sel] gagal cek timer BUSBAR (server tetap mengecek):",error);return;}
     timerBusbarRef.current=new Set((data||[]).map((t:any)=>Number(t.panel_id)+"|"+t.kode_komponen));
   };
-  const kapasitasPada=(d:string,pr:string)=>{
-    const ov=fcsKapasitas.find((k:any)=>k.jenis_pekerjaan===pr&&k.tanggal===d);
-    if(!ov)return 0;
-    return PROSES_ORANG_RAW_GLOBAL.includes(pr)?Number(ov.jumlah_orang||0):Number(ov.kapasitas_menit||0);
-  };
+  const kapasitasPada=(d:string,pr:string)=>kapasitasPadaLib(fcsKapasitas,d,pr);
   // Sel -> data pindah (BUSBAR: kode busbar yang boleh pindah; lainnya termasuk QC/PACKING: entries
   // tanpa yang selesai/jejak). Jejak (adaPengerjaan) diisi belakangan oleh jalankanPindahMulti.
   const buatSelV2=(ikut:{rawId:number;date:string;ke:string}[])=>{
@@ -2176,66 +2171,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // dipindah ke sini supaya SATU sumber dgn validasi pindah banyak sel ke hari Minggu. `rows` = baris
   // raw_schedule (bisa versi "setelah dipindah"). Proses jam = qty x menit/pcs, WIRING = kebutuhan orang
   // (+ proyeksi), jejak digeserKe tidak dihitung. Tanpa request (data sudah dimuat).
-  const hitungTerpakaiHari=(rows:any[],d:string,pr:string)=>{
-    const isOrangPr=PROSES_ORANG_RAW_GLOBAL.includes(pr);
-    let terpakaiPr=0;
-    rows.filter((r:any)=>r.proses===pr).forEach((r:any)=>{
-      const panelId=r.panel_id||r.panelId;
-      const panelData=panelById.get(Number(panelId));
-      if(!panelData)return;
-      const entries=r.schedule?.[d]||[];
-      // Kode wiring yang UDAH punya entry REAL di tanggal d - dipakai buat dedup
-      // proyeksi di bawah (real selalu menang, gak boleh dobel-hitung).
-      const kodeRealHariIni=new Set<string>(isOrangPr?entries.flatMap((e:any)=>(e.komponen||[]).filter((k:string)=>!k.startsWith('__wiring_'))):[]);
-      entries.forEach((e:any)=>{
-        if(isOrangPr){
-          // REVISI TOTAL (12 Agu 2026): kebutuhan orang PER KOMPONEN, dari bobot_komponen
-          // (row-level) + hari kerja aktual (fcs_timer_kerja) - lihat panelHelpers.ts
-          // WIRING_BOBOT_TABLE. Jejak (digeserKe) tetap dikecualikan seperti proses lain.
-          (e.komponen||[]).forEach((kode:string)=>{
-            if(kode.startsWith('__wiring_'))return;
-            if(e.digeserKe?.[kode])return;
-            const bobot=r.bobot_komponen?.[kode];
-            const hariKeN=hariKeNFromMap(wiringHariKerjaMap,panelId,kode,pr,d);
-            terpakaiPr+=kebutuhanOrangWiring(bobot,hariKeN);
-          });
-        } else {
-          (e.komponen||[]).forEach((kode:string)=>{
-            // Jejak (digeserKe) itu histori read-only - JANGAN dihitung kapasitas
-            // (sama rule dgn checkKapasitasDanKomponenSwapV2/auto-geser-harian).
-            if(e.digeserKe?.[kode])return;
-            const qty=panelData.checklist?.[kode]?.qty||0;
-            const menitPcs=getMenitPerPcs(panelData.tipe,pr,kode);
-            terpakaiPr+=qty*menitPcs;
-          });
-        }
-      });
-      // TAMBAHAN (12 Agu 2026): kartu proyeksi (wiringForwardMap di grid) sekarang ikut
-      // kehitung badge juga - reuse hitungProyeksiWiring yang SAMA dipakai kartu, biar
-      // planner lain gak overbook di hari yang "keliatan" udah terisi kartu proyeksi
-      // (mis. komponen VERY_HARD 4 hari yang cuma punya 1 entry real). Kode yang UDAH
-      // ada entry real di tanggal d (kodeRealHariIni) di-skip - real selalu menang.
-      if(isOrangPr){
-        Object.entries(r.schedule||{}).forEach(([liveDate,liveEntries]:[string,any])=>{
-          if(liveDate===d)return;
-          (liveEntries||[]).forEach((e:any)=>{
-            (e.komponen||[]).forEach((kode:string)=>{
-              if(kode.startsWith('__wiring_'))return;
-              if(e.digeserKe?.[kode])return;
-              if(kodeRealHariIni.has(kode))return;
-              const progress=panelData?.checklist?.[kode]?.progress?.[pr]||0;
-              if(progress>=100)return;
-              const bobot=r.bobot_komponen?.[kode];
-              hitungProyeksiWiring(panelId,kode,pr,e.wp,liveDate,bobot,wiringHariKerjaMap).forEach(p=>{
-                if(p.tanggal===d)terpakaiPr+=p.orang;
-              });
-            });
-          });
-        });
-      }
-    });
-    return terpakaiPr;
-  };
+  const hitungTerpakaiHari=(rows:any[],d:string,pr:string)=>hitungTerpakaiHariLib(rows,d,pr,{panelById,menitPerPcs:getMenitPerPcs,wiringHariKerjaMap});
   const infoDeadline=(target:string)=>{
     const sisa=Math.round((Date.UTC(+target.slice(0,4),+target.slice(5,7)-1,+target.slice(8,10))-Date.UTC(+TODAY.slice(0,4),+TODAY.slice(5,7)-1,+TODAY.slice(8,10)))/86400000);
     // Tampilan teks polos (8 Okt 2026 koreksi): warna HANYA di teks. normal >7 hari = abu gelap seperti
