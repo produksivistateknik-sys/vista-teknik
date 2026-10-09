@@ -7,11 +7,17 @@ import { fetchWiringHariKerjaMap } from '../services/fcsService'
 import { useRawPanelOrder, bandingkanBarisRaw } from '../lib/rawPanelOrder'
 import { muatDataKapasitas, menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
-import { PROSES_ORANG_RAW } from '../lib/isiSelJadwal'
+import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
+import { kodeBusbarBisaDipindah } from '../lib/jadwalPindah'
+import { rencanakanPindahAccordion, pecahKunci } from '../lib/pindahAccordion'
+import { usePindahMulti } from '../hooks/usePindahMulti'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses } from '../lib/rawPivot'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
-// RAW SCHEDULE ACCORDION PER WP (Tahap 1 migrasi, 9 Okt 2026) - TAMPILAN BACA-SAJA dari data produksi.
+// RAW SCHEDULE ACCORDION PER WP (Tahap 1 migrasi, 9 Okt 2026) - tampilan per WP dari data produksi.
+// Tahap 2 (9 Okt 2026): pilih & PINDAH (Ctrl/Alt/Shift+klik, lasso, drag grup, Ctrl+X/V, Ctrl+Z) lewat jalur
+// yang SAMA dgn tampilan lama (lib/pindahAccordion -> hooks/usePindahMulti -> RPC v2 + Undo). Selama masa
+// uji, pindah HANYA untuk WO "TRIAL ACCORDION" (Preview memakai database produksi). Edit/hapus/copy: Tahap 3.
 // Menggantikan maket dummy RawScheduleSandbox (keputusan user). Raw Schedule asli TETAP jalan berdampingan
 // sampai paritas tercapai; semua aksi tulis (pindah/edit/hapus) dibawa di Tahap 2-3.
 //
@@ -39,16 +45,20 @@ const TINGGI = { grup: 40, komp: 36, penanda: 30 }
 const MAKS_CHIP = 3
 const BUFFER_BARIS = 12
 const PROSES_KARTU = ['POTONG', 'BENDING', 'STEL', 'FINISHING', 'PAINTING', 'WIRING CONTROL', 'WIRING POWER']
+// MASA UJI (keputusan user, Tahap 2-3): tulis dari tampilan baru hanya untuk WO uji. Hapus saat penggantian.
+const HANYA_WO_UJI = true
+const POLA_WO_UJI = /TRIAL ACCORDION/i
 
 const idxKeTanggal = (i: number) => addDays(TODAY, i - RENTANG_HARI)
 const tanggalKeIdx = (d: string) => { const [y, m, dd] = d.split('-').map(Number); const [y0, m0, d0] = TODAY.split('-').map(Number); return Math.round((Date.UTC(y, m - 1, dd) - Date.UTC(y0, m0 - 1, d0)) / 86400000) + RENTANG_HARI }
 const isMinggu = (d: string) => new Date(d + 'T00:00:00').getDay() === 0
 const fmtTglPendek = (d: string) => new Date(d + 'T00:00:00').toLocaleDateString('id-ID', { day: 'numeric', month: 'short' })
 
+// kb = kunci baris utk pilihan (lib/pindahAccordion): g:<panel>:<grup> | k:<panel>:<grup>:<kode> | p:<panel>:<proses>
 type Baris =
-  | { t: 'grup'; blok: BlokPanel; g: GrupKomponen; pertama: boolean; kunci: string; buka: boolean }
-  | { t: 'komp'; blok: BlokPanel; g: GrupKomponen; k: BarisKomponen; pertama: boolean }
-  | { t: 'penanda'; blok: BlokPanel; p: Penanda; pertama: boolean }
+  | { t: 'grup'; blok: BlokPanel; g: GrupKomponen; pertama: boolean; kunci: string; buka: boolean; kb: string }
+  | { t: 'komp'; blok: BlokPanel; g: GrupKomponen; k: BarisKomponen; pertama: boolean; kb: string }
+  | { t: 'penanda'; blok: BlokPanel; p: Penanda; pertama: boolean; kb: string }
 
 const kunciStorage = (user: any) => 'vt_raw_accordion_buka_v1:' + (user?.id ?? user?.username ?? user?.nama ?? 'anon')
 function bacaBuka(user: any): Set<string> {
@@ -114,7 +124,9 @@ function MultiPilih({ label, opsi, nilai, setNilai }: { label: string; opsi: str
   )
 }
 
-export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: { woData: any[]; rawData: any[]; livePanelTypes?: any; user?: any }) {
+export function RawScheduleAccordion({ woData, rawData, setRawData, refetchRaw, refetchRenhar, livePanelTypes, user }: {
+  woData: any[]; rawData: any[]; setRawData?: (f: (prev: any[]) => any[]) => void; refetchRaw?: () => void; refetchRenhar?: () => void; livePanelTypes?: any; user?: any
+}) {
   // ── data pendukung (sama sumber dgn Raw Schedule lama) ──
   const [fcsKapasitas, setFcsKapasitas] = useState<any[]>([])
   const [processTimeList, setProcessTimeList] = useState<any[]>([])
@@ -195,10 +207,10 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
       let pertama = true
       for (const g of b.grup) {
         const kunci = b.panelId + ':' + g.key; const isBuka = buka.has(kunci)
-        out.push({ t: 'grup', blok: b, g, pertama, kunci, buka: isBuka }); pertama = false
-        if (isBuka) for (const k of g.komponen) out.push({ t: 'komp', blok: b, g, k, pertama: false })
+        out.push({ t: 'grup', blok: b, g, pertama, kunci, buka: isBuka, kb: `g:${b.panelId}:${g.key}` }); pertama = false
+        if (isBuka) for (const k of g.komponen) out.push({ t: 'komp', blok: b, g, k, pertama: false, kb: `k:${b.panelId}:${g.key}:${k.kode}` })
       }
-      for (const p of b.penanda) { out.push({ t: 'penanda', blok: b, p, pertama }); pertama = false }
+      for (const p of b.penanda) { out.push({ t: 'penanda', blok: b, p, pertama, kb: `p:${b.panelId}:${p.proses}` }); pertama = false }
     }
     return out
   }, [blokTampil, buka])
@@ -222,6 +234,219 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
   const kolom: string[] = []; for (let i = kAwal; i <= kAkhir; i++) kolom.push(idxKeTanggal(i))
   const spasiKiri = kAwal * LEBAR_TGL, spasiKanan = (TOTAL_KOLOM - 1 - kAkhir) * LEBAR_TGL
   const labelRentang = `${getDayLabel(idxKeTanggal(Math.floor(pos.left / LEBAR_TGL)))} – ${getDayLabel(idxKeTanggal(Math.min(TOTAL_KOLOM - 1, Math.floor((pos.left + Math.max(0, pos.w - LEBAR_KIRI)) / LEBAR_TGL))))}`
+
+  // ════════ PILIH & PINDAH (Tahap 2) ════════════════════════════════════════════════════════════
+  const [toast, setToast] = useState<{ pesan: string; jenis: 'ok' | 'err'; aksi?: { label: string; fn: () => void }[] } | null>(null)
+  const toastTimer = useRef<any>(0)
+  const tampilToastAksi = (pesan: string, jenis: 'ok' | 'err', aksi?: { label: string; fn: () => void }[]) => {
+    clearTimeout(toastTimer.current); setToast({ pesan, jenis, aksi })
+    toastTimer.current = setTimeout(() => setToast(null), aksi?.length ? 12000 : 6000)
+  }
+  const [pilihan, setPilihan] = useState<Set<string>>(new Set()) // kunci "<kb>|<tanggal>"
+  const [jangkar, setJangkar] = useState<{ i: number; d: string } | null>(null) // utk Shift+klik (indeks baris DATA)
+  const [potongan, setPotongan] = useState<string[]>([])
+  const [tujuanTempel, setTujuanTempel] = useState<string | null>(null)
+  const [konfirmasi, setKonfirmasi] = useState<{ kunci: string[]; offset: number } | null>(null)
+  const blokById = useMemo(() => new Map(blokTampil.map(b => [b.panelId, b])), [blokTampil])
+  const panelSemua = useMemo(() => woData.flatMap((w: any) => w.panels || []), [woData])
+  const entriesTanpaSelesaiRow = (row: any, entries: any[]) => { const pid = row.panel_id || row.panelId; return entriesTanpaSelesai(row.proses, entries, panelSemua.find((p: any) => p.id === pid)) }
+  const checklistPanel = (row: any) => panelById.get(Number(row.panel_id || row.panelId))?.checklist
+  const pindahMulti = usePindahMulti(() => ({ rawData, user, setRawData: setRawData || (() => {}), refetchRaw, refetchRenhar, tampilToastAksi }))
+  const ctxPindah = () => ({
+    rawData, blokById, checklistPanel, entriesTanpaSelesai: entriesTanpaSelesaiRow, tanggalKeIdx, idxKeTanggal, totalKolom: TOTAL_KOLOM,
+    timerBusbar: pindahMulti.timerBusbarRef.current, kapasitasPada: (d: string, pr: string) => kapasitasPada(fcsKapasitas, d, pr),
+    hitungTerpakaiHari: (rows: any[], d: string, pr: string) => hitungTerpakaiHari(rows, d, pr, ctxKap),
+  })
+  // Sel berisi pekerjaan yang BISA dipindah (cek cepat utk tampilan; validasi pasti di rencanakanPindahAccordion).
+  const bisaPindah = (r: Baris, d: string): boolean => {
+    if (r.t === 'penanda') return !!r.p.sel[d]
+    const kompBisa = (k: BarisKomponen) => (k.sel[d] || []).some(c => !c.jejakKe && !c.lanjutan && !(r.g.jenis === 'wp' && c.selesai)
+      && (r.g.jenis !== 'busbar' || kodeBusbarBisaDipindah(rawData.find((x: any) => x.id === c.rawId), panelById.get(r.blok.panelId)?.checklist, d).includes(k.kode)))
+    return r.t === 'komp' ? kompBisa(r.k) : r.g.komponen.some(kompBisa)
+  }
+  const kunciSel = (r: Baris, d: string) => r.kb + '|' + d
+  const bolehTulis = (kunci: string[]) => {
+    if (!setRawData) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
+    if (!HANYA_WO_UJI) return true
+    const pids = new Set(kunci.map(k => pecahKunci(k).panelId))
+    const bukanUji = [...pids].filter(pid => { const b = blokById.get(pid); return !(POLA_WO_UJI.test(b?.proyek || '') || POLA_WO_UJI.test(String(woData.find((w: any) => (w.panels || []).some((p: any) => Number(p.id) === pid))?.wo || ''))) })
+    if (bukanUji.length) { tampilToastAksi('Masa uji: pindah dari tampilan baru hanya untuk WO "TRIAL ACCORDION". Data produksi lain tetap lewat menu Raw Schedule.', 'err'); return false }
+    return true
+  }
+  const muatTimerUntuk = (kunci: string[]) => {
+    const cells = kunci.flatMap(k => { const x = pecahKunci(k); const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup && y.jenis === 'busbar'); return g ? g.komponen.flatMap(km => (km.sel[x.tanggal] || []).map(c => ({ rawId: c.rawId, date: x.tanggal }))) : [] })
+    return pindahMulti.muatTimerBusbar(cells)
+  }
+  const jalankanPindah = async (kunci: string[], offset: number) => {
+    if (offset === 0) return false
+    if (!bolehTulis(kunci)) return false
+    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah())
+    if (rencana.bentrok.length > 0) {
+      tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err')
+      return false
+    }
+    return pindahMulti.jalankanPindahSel(rencana.sel, rencana.jadwal, {
+      jumlah: `${rencana.jumlahKomponen} komponen`, offset,
+      ulangi: () => { jalankanPindahRef.current(kunci, offset) },
+      onSukses: () => {
+        const geser = (k: string) => { const x = pecahKunci(k); const i = tanggalKeIdx(x.tanggal) + offset; return x.baris + '|' + idxKeTanggal(i) }
+        setPilihan(prev => new Set([...prev].map(k => kunci.includes(k) ? geser(k) : k)))
+        setJangkar(null)
+      },
+    })
+  }
+  const jalankanPindahRef = useRef(jalankanPindah); jalankanPindahRef.current = jalankanPindah
+  const batalkan = () => { setPilihan(new Set()); setJangkar(null); setPotongan([]); setTujuanTempel(null) }
+  const potong = () => {
+    const isi = [...pilihan]
+    if (isi.length === 0) { tampilToastAksi('Pilih sel dulu (Ctrl+klik / lasso), lalu Ctrl+X.', 'err'); return }
+    setPotongan(isi); setTujuanTempel(null); muatTimerUntuk(isi)
+    tampilToastAksi(`${isi.length} sel dipotong. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
+  }
+  const tempel = async () => {
+    if (potongan.length === 0) return
+    if (!tujuanTempel) { tampilToastAksi('Klik hari tujuan di jadwal dulu, lalu Ctrl+V.', 'err'); return }
+    const offset = tanggalKeIdx(tujuanTempel) - Math.min(...potongan.map(k => tanggalKeIdx(pecahKunci(k).tanggal)))
+    if (offset === 0) { tampilToastAksi('Hari tujuan sama dengan posisi sekarang - tidak ada yang dipindah.', 'err'); return }
+    const ok = await jalankanPindah(potongan, offset)
+    if (ok) { setPotongan([]); setTujuanTempel(null) }
+  }
+  const aksiRef = useRef<any>({}); aksiRef.current = { potong, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan }
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return
+      if (!scrollRef.current || scrollRef.current.offsetParent === null) return // tab tidak tampil
+      const mod = e.ctrlKey || e.metaKey; const k = e.key.toLowerCase()
+      if (mod && k === 'x' && aksiRef.current.pilihan.size) { e.preventDefault(); aksiRef.current.potong() }
+      else if (mod && k === 'v' && aksiRef.current.potongan.length) { e.preventDefault(); aksiRef.current.tempel() }
+      else if (mod && k === 'z' && !e.shiftKey && pindahMulti.undoMultiRef.current.length) { e.preventDefault(); aksiRef.current.undo() }
+      else if (e.key === 'Escape') aksiRef.current.batalkan()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  const klikSel = (e: React.MouseEvent, r: Baris, d: string, i: number) => {
+    if (potongan.length && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { setTujuanTempel(d); return }
+    const kunci = kunciSel(r, d)
+    if (e.shiftKey && jangkar) {
+      const [a, b] = [Math.min(jangkar.i, i), Math.max(jangkar.i, i)]
+      const [da, db] = [Math.min(tanggalKeIdx(jangkar.d), tanggalKeIdx(d)), Math.max(tanggalKeIdx(jangkar.d), tanggalKeIdx(d))]
+      const s = new Set(pilihan)
+      for (let x = a; x <= b; x++) for (let y = da; y <= db; y++) { const dd = idxKeTanggal(y); if (bisaPindah(baris[x], dd)) s.add(kunciSel(baris[x], dd)) }
+      setPilihan(s); return
+    }
+    if (e.ctrlKey || e.metaKey || e.altKey) {
+      const s = new Set(pilihan)
+      if (s.has(kunci)) s.delete(kunci)
+      else { if (!bisaPindah(r, d)) { tampilToastAksi('Sel ini kosong / semua isinya sudah selesai atau sudah digeser - tidak bisa dipilih.', 'err'); return } s.add(kunci) }
+      setPilihan(s); setJangkar({ i, d }); return
+    }
+    // klik biasa: Edit jadwal menyusul (Tahap 3) - di tahap ini klik biasa tidak mengubah apa pun
+  }
+
+  // Lasso: tekan di area kosong sel tanggal lalu seret. Baris & kolom dihitung dari DATA (offset kumulatif +
+  // lebar kolom tetap), bukan DOM - aman utk baris lazy & kolom yang divirtualisasi.
+  const lassoRef = useRef<{ x: number; y: number; tambah: boolean; aktif: boolean } | null>(null)
+  const kotakRef = useRef<HTMLDivElement | null>(null)
+  const lassoCtx = useRef<any>({}); lassoCtx.current = { baris, offset, pilihan, bisaPindah, cariIdx }
+  useEffect(() => {
+    const cont = scrollRef.current; if (!cont) return
+    const kotak = document.createElement('div'); kotak.style.cssText = 'position:fixed;z-index:9000;pointer-events:none;border:1.5px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none'
+    document.body.appendChild(kotak); kotakRef.current = kotak
+    const onDown = (e: PointerEvent) => {
+      if (e.pointerType !== 'mouse' || e.button !== 0 || e.shiftKey || e.altKey) return
+      const t = e.target as HTMLElement
+      if (t.closest('[draggable="true"]') || !t.closest('td[data-tgl]')) return
+      lassoRef.current = { x: e.clientX, y: e.clientY, tambah: e.ctrlKey || e.metaKey, aktif: false }
+    }
+    const onMove = (e: PointerEvent) => {
+      const m = lassoRef.current; if (!m) return
+      if (!m.aktif && Math.hypot(e.clientX - m.x, e.clientY - m.y) < 6) return
+      m.aktif = true; document.body.style.userSelect = 'none'
+      Object.assign(kotak.style, { display: 'block', left: Math.min(m.x, e.clientX) + 'px', top: Math.min(m.y, e.clientY) + 'px', width: Math.abs(e.clientX - m.x) + 'px', height: Math.abs(e.clientY - m.y) + 'px' })
+    }
+    const onUp = (e: PointerEvent) => {
+      const m = lassoRef.current; lassoRef.current = null; if (!m || !m.aktif) return
+      kotak.style.display = 'none'; document.body.style.userSelect = ''
+      const telan = (ev: MouseEvent) => { ev.stopPropagation(); ev.preventDefault() }
+      cont.addEventListener('click', telan, { capture: true, once: true }); setTimeout(() => cont.removeEventListener('click', telan, { capture: true }), 0)
+      const cr = cont.getBoundingClientRect(); const L = lassoCtx.current
+      const x1 = Math.max(Math.min(m.x, e.clientX), cr.left + LEBAR_KIRI), x2 = Math.max(m.x, e.clientX)
+      const y1 = Math.max(Math.min(m.y, e.clientY), cr.top + TINGGI_HEADER), y2 = Math.max(m.y, e.clientY)
+      if (x2 < x1 || y2 < y1) return
+      const kol = (cx: number) => Math.floor((cx - cr.left - cont.clientLeft + cont.scrollLeft - LEBAR_KIRI) / LEBAR_TGL)
+      const brs = (cy: number) => L.cariIdx(cy - cr.top - cont.clientTop + cont.scrollTop - TINGGI_HEADER)
+      const s = new Set<string>(m.tambah ? L.pilihan : [])
+      const i1 = Math.max(0, brs(y1)), i2 = Math.min(L.baris.length - 1, brs(y2))
+      for (let i = i1; i <= i2; i++) for (let c = Math.max(0, kol(x1)); c <= Math.min(TOTAL_KOLOM - 1, kol(x2)); c++) {
+        const d = idxKeTanggal(c); if (L.bisaPindah(L.baris[i], d)) s.add(L.baris[i].kb + '|' + d)
+      }
+      setPilihan(s)
+    }
+    cont.addEventListener('pointerdown', onDown); window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
+    return () => { cont.removeEventListener('pointerdown', onDown); window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); kotak.remove() }
+  }, [])
+
+  // Drag grup: sel di dalam pilihan -> seluruh pilihan ikut (offset hari sama, baris tetap); sel di luar
+  // pilihan -> sel itu saja. Bayangan tujuan lewat class CSS di DOM (tanpa setState per gerakan mouse).
+  useEffect(() => {
+    if (document.getElementById('rs-acc-css')) return
+    const st = document.createElement('style'); st.id = 'rs-acc-css'
+    st.textContent = '.rsa-ok{box-shadow:inset 0 0 0 2px #16a34a!important;background:#f0fdf4!important}.rsa-minggu{box-shadow:inset 0 0 0 2px #16a34a!important;background:#dcfce7!important}.rsa-bad{box-shadow:inset 0 0 0 2px #dc2626!important;background:#fef2f2!important}'
+      + '.rsa-ok[data-lbl],.rsa-minggu[data-lbl],.rsa-bad[data-lbl]{position:relative}.rsa-minggu[data-lbl]::after,.rsa-bad[data-lbl]::after{content:attr(data-lbl);position:absolute;left:2px;right:2px;bottom:1px;font:700 7.5px system-ui,sans-serif;text-align:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}.rsa-minggu[data-lbl]::after{color:#15803d}.rsa-bad[data-lbl]::after{color:#b91c1c}'
+    document.head.appendChild(st)
+  }, [])
+  const dragRef = useRef<{ kunci: string[]; jangkar: string; offset: number | null; ditandai: HTMLElement[]; badge: HTMLDivElement } | null>(null)
+  const bersihkanDrag = () => { const m = dragRef.current; if (!m) return; m.ditandai.forEach(el => { el.classList.remove('rsa-ok', 'rsa-minggu', 'rsa-bad'); delete el.dataset.lbl }); m.badge.remove(); dragRef.current = null }
+  const onDragStart = (e: React.DragEvent, r: Baris, d: string) => {
+    const kunci = kunciSel(r, d)
+    const isi = pilihan.has(kunci) ? [...pilihan] : [kunci]
+    if (!pilihan.has(kunci) && pilihan.size) { setPilihan(new Set()); setJangkar(null) }
+    e.dataTransfer.effectAllowed = 'move'
+    const badge = document.createElement('div')
+    badge.style.cssText = 'position:fixed;z-index:10001;pointer-events:none;padding:5px 11px;border-radius:99px;background:#2563eb;color:#fff;font:700 12px system-ui,sans-serif;white-space:nowrap;left:-1000px;top:-1000px'
+    badge.textContent = isi.length + ' sel'; document.body.appendChild(badge)
+    try { e.dataTransfer.setDragImage(badge, 12, 12) } catch { /* browser lama */ }
+    dragRef.current = { kunci: isi, jangkar: d, offset: null, ditandai: [], badge }
+    muatTimerUntuk(isi).then(() => { if (dragRef.current) dragRef.current.offset = null })
+  }
+  const onDragOver = (e: React.DragEvent, d: string) => {
+    const m = dragRef.current; if (!m) return
+    e.preventDefault(); e.dataTransfer.dropEffect = 'move'
+    m.badge.style.left = (e.clientX + 16) + 'px'; m.badge.style.top = (e.clientY + 16) + 'px'
+    const offset = tanggalKeIdx(d) - tanggalKeIdx(m.jangkar)
+    if (offset === m.offset) return
+    m.offset = offset
+    m.ditandai.forEach(el => { el.classList.remove('rsa-ok', 'rsa-minggu', 'rsa-bad'); delete el.dataset.lbl }); m.ditandai = []
+    if (offset === 0) { m.badge.textContent = m.kunci.length + ' sel'; m.badge.style.background = '#2563eb'; return }
+    const rencana = rencanakanPindahAccordion(m.kunci, offset, ctxPindah())
+    const cont = scrollRef.current
+    rencana.tujuan.forEach((st, t) => {
+      const i = t.lastIndexOf('|'); const kb = t.slice(0, i), tgl = t.slice(i + 1)
+      const td = cont?.querySelector(`tr[data-kb="${kb}"] td[data-tgl="${tgl}"]`) as HTMLElement | null
+      if (!td) return
+      td.classList.add(st === 'bad' ? 'rsa-bad' : st === 'minggu' ? 'rsa-minggu' : 'rsa-ok')
+      if (st === 'minggu') td.dataset.lbl = 'Minggu · kapasitas tersedia'; else if (st === 'bad') td.dataset.lbl = rencana.alasanTujuan.get(t) || 'bentrok'
+      m.ditandai.push(td)
+    })
+    const nb = rencana.bentrok.length
+    m.badge.textContent = `${m.kunci.length} sel · ${offset > 0 ? '+' : ''}${offset} hari${nb ? ` · ${nb} bentrok` : ''}`
+    m.badge.style.background = nb ? '#dc2626' : '#2563eb'
+  }
+  const onDrop = (e: React.DragEvent, d: string) => {
+    const m = dragRef.current; if (!m) return
+    e.preventDefault()
+    const offset = tanggalKeIdx(d) - tanggalKeIdx(m.jangkar); const kunci = m.kunci
+    bersihkanDrag()
+    if (offset === 0) return
+    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah())
+    if (rencana.bentrok.length) { tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err'); return }
+    if (rencana.sel.length === 0) return
+    setKonfirmasi({ kunci, offset })
+  }
 
   // 🚩 deadline per tanggal (panel yang tampil)
   const deadlinePerTanggal = useMemo(() => {
@@ -292,9 +517,17 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
     )
   }
 
-  const renderSelTanggal = (r: Baris, d: string, bgDasar: string) => {
+  const renderSelTanggal = (r: Baris, d: string, bgDasar: string, nomor: number) => {
     const garisAtas = r.pertama ? '2px solid #cbd5e1' : r.t === 'komp' ? '1px solid #f1f5f9' : '1px solid #e2e8f0'
-    const td: any = { borderTop: garisAtas, borderRight: '1px solid #f1f5f9', padding: '2px 4px', verticalAlign: 'middle', background: bgSel(d, bgDasar), width: LEBAR_TGL, minWidth: LEBAR_TGL, maxWidth: LEBAR_TGL, boxSizing: 'border-box', overflow: 'hidden' }
+    const kunci = kunciSel(r, d); const dipilih = pilihan.has(kunci); const dipotong = potongan.includes(kunci)
+    const bisa = bisaPindah(r, d)
+    const td: any = { borderTop: garisAtas, borderRight: '1px solid #f1f5f9', padding: '2px 4px', verticalAlign: 'middle', background: dipilih ? '#dbeafe' : bgSel(d, bgDasar), width: LEBAR_TGL, minWidth: LEBAR_TGL, maxWidth: LEBAR_TGL, boxSizing: 'border-box', overflow: 'hidden',
+      outline: dipilih ? '2px solid #2563eb' : 'none', outlineOffset: -2, opacity: dipotong ? .45 : 1, cursor: potongan.length ? 'crosshair' : bisa ? 'grab' : 'default' }
+    const ev = {
+      onClick: (e: any) => klikSel(e, r, d, nomor),
+      onDragOver: (e: any) => onDragOver(e, d), onDrop: (e: any) => onDrop(e, d),
+      draggable: bisa && !potongan.length, onDragStart: (e: any) => onDragStart(e, r, d), onDragEnd: () => bersihkanDrag(),
+    }
     const wadah = (isi: any, sisa: number, judulSemua: string) => (
       <div title={sisa > 0 ? judulSemua : undefined} style={{ display: 'flex', flexWrap: 'wrap', alignContent: 'center', gap: 2, height: TINGGI[r.t] - 6, overflow: 'hidden' }}>
         {isi}
@@ -304,7 +537,7 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
     if (r.t === 'grup') {
       const rsSemua = r.buka ? [] : (r.g.ringkasan[d] || [])
       const rs = rsSemua.length > MAKS_CHIP ? rsSemua.slice(0, MAKS_CHIP - 1) : rsSemua
-      return <td key={d} data-tgl={d} style={td}>{wadah(<>
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(<>
         {rs.map(x => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; return (
           <span key={x.proses} title={`${r.g.key}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%' }}>
             <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.proses}</span>
@@ -315,11 +548,11 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
     if (r.t === 'komp') {
       const csSemua = r.k.sel[d] || []
       const cs = csSemua.length > MAKS_CHIP ? csSemua.slice(0, MAKS_CHIP - 1) : csSemua
-      return <td key={d} data-tgl={d} style={td}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} />),
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} />),
         csSemua.length - cs.length, `${r.k.kode} ${getDayLabel(d)}:\n` + csSemua.map(c => c.proses + (c.selesai ? ' ✓' : '') + (c.jejakKe ? ' (histori)' : '')).join('\n'))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'
-    return <td key={d} data-tgl={d} style={td}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1 }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
+    return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1 }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
   }
 
   const jumlahKomponen = blokTampil.reduce((s, b) => s + b.grup.reduce((t, g) => t + g.komponen.length, 0), 0)
@@ -330,7 +563,7 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan baru (uji) — baca saja.</b> Data produksi asli, dikelompokkan per WP. Ubah jadwal masih lewat menu <b>Raw Schedule</b> sampai tahap berikutnya.
+          <b>Raw Schedule tampilan baru (uji).</b> Data produksi asli, dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; batalkan: Ctrl+Z. <b>Masa uji: pindah hanya untuk WO "TRIAL ACCORDION"</b> - data lain tetap lewat menu <b>Raw Schedule</b>.
         </div>
       </div>
 
@@ -395,6 +628,37 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
         </div>
       )}
 
+      {(pilihan.size > 0 || potongan.length > 0 || pindahMulti.undoMultiRef.current.length > 0) && (
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '6px 10px', fontSize: 11 }}>
+          {pilihan.size > 0 && <b style={{ color: '#1d4ed8' }}>{pilihan.size} sel dipilih</b>}
+          {potongan.length > 0 && <span style={{ color: '#92400e', fontWeight: 700 }}>✂ {potongan.length} sel dipotong{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
+          {pilihan.size > 0 && <button onClick={potong} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>✂ Potong (Ctrl+X)</button>}
+          {potongan.length > 0 && <button onClick={tempel} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Tempel (Ctrl+V)</button>}
+          {pindahMulti.undoMultiRef.current.length > 0 && <button onClick={() => pindahMulti.batalkanPindahTerakhir()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>↶ Batalkan pindah terakhir (Ctrl+Z)</button>}
+          {(pilihan.size > 0 || potongan.length > 0) && <button onClick={batalkan} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Bersihkan (Esc)</button>}
+        </div>
+      )}
+      {toast && (
+        <div role="status" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 10050, maxWidth: 460, background: toast.jenis === 'ok' ? '#065f46' : '#991b1b', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,.25)', display: 'flex', gap: 10, alignItems: 'center' }}>
+          <span style={{ flex: 1 }}>{toast.pesan}</span>
+          {toast.aksi?.map(a => <button key={a.label} onClick={() => { setToast(null); a.fn() }} style={{ border: '1px solid #ffffff80', background: 'transparent', color: '#fff', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{a.label}</button>)}
+          <button onClick={() => setToast(null)} aria-label="Tutup" style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 14 }}>×</button>
+        </div>
+      )}
+      {konfirmasi && (
+        <div onClick={() => setKonfirmasi(null)} style={{ position: 'fixed', inset: 0, zIndex: 10040, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 18, width: 360, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 16px 40px rgba(0,0,0,.25)' }}>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Pindah {konfirmasi.kunci.length} sel {konfirmasi.offset > 0 ? '+' : ''}{konfirmasi.offset} hari?</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginBottom: 14 }}>Komponen yang sudah selesai atau sudah digeser tetap di tempatnya. Bisa dibatalkan dengan Ctrl+Z.</div>
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+              <button title="Copy menyusul di Tahap 3" disabled style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #e2e8f0', background: '#f8fafc', color: '#94a3b8', fontSize: 12, fontFamily: 'inherit' }}>Copy (tahap 3)</button>
+              <button onClick={() => setKonfirmasi(null)} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #d1d5db', background: '#fff', fontSize: 12, cursor: 'pointer', fontFamily: 'inherit' }}>Batal</button>
+              <button onClick={async () => { const k = konfirmasi; setKonfirmasi(null); await jalankanPindah(k.kunci, k.offset) }} style={{ height: 30, padding: '0 14px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>Pindah</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {orderMapError && <div style={{ fontSize: 11, color: '#b45309', marginBottom: 8 }}>Urutan panel gagal dimuat - panel diurutkan per prioritas & nomor panel.</div>}
 
       <div ref={scrollRef} onScroll={onScroll} style={{ overflow: 'auto', height: 'calc(100vh - 230px)', minHeight: 420, border: '1px solid #e2e8f0', borderRadius: 10, background: '#fff' }}>
@@ -425,10 +689,10 @@ export function RawScheduleAccordion({ woData, rawData, livePanelTypes, user }: 
               const bg = r.t === 'komp' ? (nomor % 2 ? '#fafbfe' : '#fff') : r.t === 'grup' ? (r.buka ? '#f3f6fc' : '#f8fafd') : '#fff'
               const key = r.t === 'grup' ? 'g' + r.kunci : r.t === 'komp' ? 'k' + r.blok.panelId + ':' + r.g.key + ':' + r.k.kode : 'p' + r.blok.panelId + ':' + r.p.proses
               return (
-                <tr key={key} data-panel={r.blok.panelId} data-jenis={r.t} style={{ height: TINGGI[r.t] }}>
+                <tr key={key} data-panel={r.blok.panelId} data-jenis={r.t} data-kb={r.kb} style={{ height: TINGGI[r.t] }}>
                   {renderSelKiri(r, bg)}
                   {spasiKiri > 0 && <td aria-hidden="true" style={{ padding: 0, border: 'none', background: bg }} />}
-                  {kolom.map(d => renderSelTanggal(r, d, bg))}
+                  {kolom.map(d => renderSelTanggal(r, d, bg, nomor))}
                   {spasiKanan > 0 && <td aria-hidden="true" style={{ padding: 0, border: 'none', background: bg }} />}
                 </tr>
               )

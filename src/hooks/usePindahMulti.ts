@@ -18,8 +18,10 @@ export type DepsPindahMulti = {
   refetchRaw?: () => void
   refetchRenhar?: () => void
   tampilToastAksi: (pesan: string, jenis: 'ok' | 'err', aksi?: AksiToast[]) => void
-  cekPindahMulti: (cells: SelAsal[], offset: number) => { ikut: SelTujuan[]; bentrok: SelBentrok[]; mingguOk: Set<string> }
-  buatSelV2: (ikut: SelTujuan[]) => { sel: SelPindahV2[]; jadwal: Map<number, any> }
+  // Wajib utk jalankanPindahMulti (tampilan lama: pilihan = sel baris proses). Accordion memakai
+  // jalankanPindahSel dgn data pindah dari lib/pindahAccordion sehingga tidak perlu keduanya.
+  cekPindahMulti?: (cells: SelAsal[], offset: number) => { ikut: SelTujuan[]; bentrok: SelBentrok[]; mingguOk: Set<string> }
+  buatSelV2?: (ikut: SelTujuan[]) => { sel: SelPindahV2[]; jadwal: Map<number, any> }
   // Sukses pindah: peta "rawId|tanggalAsal" -> tanggal tujuan (pemanggil menggeser pilihan sel).
   onSesudahPindah?: (pindahan: Map<string, string>) => void
   // Sukses batalkan (pemanggil membersihkan pilihan sel).
@@ -61,6 +63,7 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
   }
   const jalankanPindahMultiInti = async (cells: SelAsal[], offset: number) => {
     const d = ambil()
+    if (!d.cekPindahMulti || !d.buatSelV2) throw new Error('usePindahMulti: cekPindahMulti/buatSelV2 wajib utk jalankanPindahMulti')
     const { ikut, bentrok } = d.cekPindahMulti(cells, offset)
     if (bentrok.length > 0) {
       d.tampilToastAksi(`Dibatalkan: ${bentrok.length} sel tidak bisa mendarat (${[...new Set(bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err')
