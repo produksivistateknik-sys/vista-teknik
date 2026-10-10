@@ -5,7 +5,8 @@ import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 import { WP_COLOR } from '../constants/panelTypes'
 
-export function useRiwayatQty({setFilterProyek,setFilterPanel}:{setFilterProyek:(v:string[])=>void;setFilterPanel:(v:string[])=>void}){
+// bacaSaja (Raw Schedule per WP, mode baca saja 10 Okt 2026): tombol "✓ Konfirmasi" (tulis qty_change_log) disembunyikan.
+export function useRiwayatQty({setFilterProyek,setFilterPanel,bacaSaja=false}:{setFilterProyek:(v:string[])=>void;setFilterPanel:(v:string[])=>void;bacaSaja?:boolean}){
   const [riwayatOpen,setRiwayatOpen]=useState(false);
   const [qtyChangeLog,setQtyChangeLog]=useState<any[]>([]);
   const [qtyChangeUnread,setQtyChangeUnread]=useState(0);
@@ -66,6 +67,8 @@ export function useRiwayatQty({setFilterProyek,setFilterPanel}:{setFilterProyek:
                         <div style={{fontSize:10,color:"#94a3b8"}}>Diubah oleh {d.changed_by}</div>
                         {d.is_read?(
                           <span style={{fontSize:10,color:"#16a34a",fontWeight:600}}>✓ Sudah dibaca</span>
+                        ):bacaSaja?(
+                          <span style={{fontSize:10,color:"#94a3b8"}}>Belum dibaca</span>
                         ):(
                           <button onClick={(e:any)=>{e.stopPropagation();confirmQtyChange(d.id);}} style={{padding:"3px 10px",borderRadius:6,border:"1px solid #16a34a",background:"#f0fdf4",color:"#16a34a",fontSize:10,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>✓ Konfirmasi</button>
                         )}
