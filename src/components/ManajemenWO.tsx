@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, lazy, Suspense } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
+import { konfirmasiHapusPanel } from '../lib/konfirmasiHapusPanel'
 import { rawScheduleService } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
@@ -325,6 +326,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       const origWo=woData.find((w:any)=>w.id===editId);
       const woFieldsChanged=origWo&&(origWo.wo!==form.wo||origWo.proyek!==form.proyek||origWo.target!==form.target);
       const newPanelNames=panels.filter(p=>p.nama&&!(p as any).id).map(p=>p.nama);
+      // (10 Okt 2026, insiden WO 076) Panel yang tidak ada di form (baris dihapus / nama dikosongkan) akan
+      // DIHAPUS PERMANEN - konfirmasi dampaknya SEBELUM apa pun disimpan; ber-permintaan = dibatalkan.
+      if(!(await konfirmasiHapusPanel(editId,panels.filter(p=>p.nama&&(p as any).id).map(p=>(p as any).id))))return;
       const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
       if(result.success){
         // ambil checklist TERBARU dari DB biar gak nimpa edit qty admin lain yang masuk selagi modal ini kebuka
@@ -416,6 +420,10 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       }
     }
     setOpen(false);
+    }catch(err:any){
+      // (10 Okt 2026) dulu tanpa catch - kegagalan simpan (mis. hapus panel ditolak) tidak terlihat sama sekali.
+      console.error('[Manajemen WO] simpan WO gagal:',err);
+      alert('Gagal simpan WO: '+(err?.message||err)+'\n\nData WO/panel mungkin belum lengkap tersimpan - muat ulang dan cek sebelum mengulang.');
     }finally{
       setSavingWO(false);
     }

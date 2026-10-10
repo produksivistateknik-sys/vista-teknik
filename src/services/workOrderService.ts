@@ -166,8 +166,55 @@ export const workOrderService = {
     return woToDelete
   },
 
+  // ── HAPUS PANEL AMAN (10 Okt 2026, insiden WO 076 panel 521) ─────────────────────────────────────────────
+  // Dampak bila panel dihapus (utk konfirmasi di form SEBELUM simpan): jadwal, rencana harian, progres,
+  // permintaan barang. Panel ber-permintaan TIDAK BOLEH dihapus (keputusan user) - RPC menolak juga.
+  async cekDampakHapusPanel(panelIds: number[]): Promise<{ id: number; nama: string; jadwal: number; tanggalTerisi: number; renhar: number; komponenBerprogres: number; permintaan: number }[]> {
+    if (!panelIds.length) return []
+    const [pn, raw, rh, perm] = await Promise.all([
+      supabase.from('panels').select('id,nama,checklist').in('id', panelIds),
+      supabase.from('raw_schedule').select('panel_id,schedule,busbar_schedule').in('panel_id', panelIds).range(0, 4999),
+      supabase.from('renhar').select('panel_id').in('panel_id', panelIds).range(0, 9999),
+      supabase.from('permintaan').select('panel_id').in('panel_id', panelIds).range(0, 9999),
+    ])
+    for (const [label, r] of [['panels', pn], ['raw_schedule', raw], ['renhar', rh], ['permintaan', perm]] as const) {
+      if ((r as any).error) throw new Error('Gagal membaca dampak hapus panel (' + label + '): ' + (r as any).error.message)
+    }
+    return (pn.data || []).map((p: any) => {
+      const rows = (raw.data || []).filter((r: any) => r.panel_id === p.id)
+      const tgl = new Set<string>()
+      rows.forEach((r: any) => {
+        Object.entries(r.schedule || {}).forEach(([d, es]: any) => { if ((es || []).length) tgl.add(d) })
+        Object.entries(r.busbar_schedule || {}).forEach(([d, es]: any) => { if ((es || []).length) tgl.add(d) })
+      })
+      const komponenBerprogres = Object.values(p.checklist || {}).filter((v: any) => Object.values(v?.progress || {}).some((x: any) => Number(x) > 0)).length
+      return { id: p.id, nama: String(p.nama || '').trim(), jadwal: rows.length, tanggalTerisi: tgl.size,
+        renhar: (rh.data || []).filter((r: any) => r.panel_id === p.id).length, komponenBerprogres,
+        permintaan: (perm.data || []).filter((r: any) => r.panel_id === p.id).length }
+    })
+  },
+
+  // Hapus panel + data turunannya lewat RPC hapus_panel_aman (1 transaksi, semua-atau-tidak, menolak panel
+  // ber-permintaan). Gagal = THROW (pemanggil berhenti, tidak ada yang terhapus).
+  async hapusPanelAman(panelIds: number[], uname: string, wo?: string, proyek?: string) {
+    if (!panelIds.length) return null
+    const { data, error } = await supabase.rpc('hapus_panel_aman' as any, { p_panel_ids: panelIds, p_user: uname, p_wo: wo ?? null, p_proyek: proyek ?? null } as any)
+    if (error) throw new Error(error.message || 'Gagal menghapus panel')
+    return data
+  },
+
+  // Panel existing WO yang AKAN dihapus bila form disimpan (tidak ada di form) - logika SAMA dgn savePanels &
+  // saveWOWithSplit, dipakai form utk konfirmasi sebelum simpan.
+  async panelAkanDihapus(woId: number, idDiForm: number[]): Promise<number[]> {
+    const { data, error } = await supabase.from('panels').select('id').eq('wo_id', woId)
+    if (error) throw new Error('Gagal membaca panel WO: ' + error.message)
+    const keep = new Set(idDiForm)
+    return (data || []).map((p: any) => p.id).filter((id: number) => !keep.has(id))
+  },
+
   async savePanels(woId: number, panels: any[], uname = 'Admin') {
-    const { data: existingRows } = await supabase.from('panels').select('id').eq('wo_id', woId)
+    const { data: existingRows, error: existingErr } = await supabase.from('panels').select('id').eq('wo_id', woId)
+    if (existingErr) throw new Error('Gagal membaca panel WO: ' + existingErr.message)
     const existingIds = new Set((existingRows || []).map((p: any) => p.id))
 
     const withId = panels.filter(p => p.id && existingIds.has(p.id))
@@ -176,7 +223,8 @@ export const workOrderService = {
     const idsToDelete = [...existingIds].filter(id => !keepIds.has(id))
 
     if (idsToDelete.length > 0) {
-      await supabase.from('panels').delete().in('id', idsToDelete)
+      // (10 Okt 2026) dulu delete panels polos tanpa cek & tanpa data turunan -> sekarang RPC atomik.
+      await this.hapusPanelAman(idsToDelete, uname)
     }
 
     const perubahanTipe = await sesuaikanChecklistJikaTipeBerubah(withId, uname)
@@ -234,7 +282,8 @@ export const workOrderService = {
     groupedPanels: { tanggal: string; panels: any[] }[],
     uname = 'Admin'
   ) {
-    const { data: existingRows } = await supabase.from('panels').select('id').eq('wo_id', editWoId)
+    const { data: existingRows, error: existingErr } = await supabase.from('panels').select('id').eq('wo_id', editWoId)
+    if (existingErr) throw new Error('Gagal membaca panel WO: ' + existingErr.message)
     const existingIds = new Set((existingRows || []).map((p: any) => p.id))
 
     const allIncomingIds = new Set<number>()
@@ -249,20 +298,12 @@ export const workOrderService = {
       // sama sekali. Ambil nama panel dulu SEBELUM dihapus, log eksplisit sesudahnya - supaya
       // insiden serupa "panel hilang dari Raw Schedule" ke depan langsung ketahuan dari Activity Log,
       // gak perlu investigasi manual lintas tabel lagi.
-      const { data: panelsAkanDihapus } = await supabase.from('panels').select('id,nama').in('id', idsToDelete)
-      const namaList = (panelsAkanDihapus || []).map((p: any) => p.nama).join(', ') || idsToDelete.join(',')
-
-      await supabase.from('renhar').delete().in('panel_id', idsToDelete)
-      await supabase.from('raw_schedule').delete().in('panel_id', idsToDelete)
-      // fcs_schedule step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
-      await supabase.from('fcs_timer_kerja').delete().in('panel_id', idsToDelete)
-      await supabase.from('progress_checkpoint_log').delete().in('panel_id', idsToDelete)
-      await supabase.from('kendala').delete().in('panel_id', idsToDelete)
-      await supabase.from('panels').delete().in('id', idsToDelete)
-
-      await logActivity(uname, 'HAPUS PANEL (EDIT WO)',
-        `Hapus ${idsToDelete.length} panel dari WO ${wo} - ${proyek} (tidak ada di form saat disimpan): ${namaList}. Ikut terhapus: renhar, raw_schedule, fcs_timer_kerja, progress_checkpoint_log, kendala.`,
-        { proyek, wo_number: wo })
+      // INSIDEN 10 Okt 2026 (WO 076 panel 521): dulu di sini renhar/raw_schedule/fcs_timer_kerja/
+      // progress_checkpoint_log/kendala dihapus LEBIH DULU tanpa cek hasil, baru panels - DELETE panels ditolak FK
+      // permintaan -> panel tetap hidup tapi jadwal & riwayat timernya hilang. Sekarang 1 RPC atomik
+      // (hapus_panel_aman): semua-atau-tidak, menolak panel ber-permintaan, log 'HAPUS PANEL (EDIT WO)' di server.
+      // Gagal = THROW sebelum panel lain diubah (pemanggil menampilkan pesannya).
+      await this.hapusPanelAman(idsToDelete, uname, wo, proyek)
     }
 
     // Cache no_pnl max per WO tujuan - panel baru (belum punya id) bisa ke-route ke WO lain
@@ -353,7 +394,8 @@ export const workOrderService = {
       }
     }
 
-    const { data: sisaPanel } = await supabase.from('panels').select('id').eq('wo_id', editWoId).limit(1)
+    const { data: sisaPanel, error: sisaErr } = await supabase.from('panels').select('id').eq('wo_id', editWoId).limit(1)
+    if (sisaErr) throw new Error('Gagal membaca sisa panel WO: ' + sisaErr.message)
     if (!sisaPanel || sisaPanel.length === 0) {
       // FIX (5 Agu 2026): dulu delete polos by wo_id=editWoId di sini - kalau ada baris
       // raw_schedule/renhar/fcs_schedule yang somehow MASIH ke-tag wo_id lama ini (harusnya udah
@@ -366,12 +408,14 @@ export const workOrderService = {
       // panel_id-nya BENERAN gak ada lagi di tabel panels (yatim piatu murni, panelnya sendiri
       // udah kehapus dari jalur idsToDelete di atas).
       const cekYatimPiatu = async (table: string, beforeDelete?: (ids: number[]) => Promise<void>) => {
-        const { data: candidates } = await supabase.from(table as any).select('id,panel_id').eq('wo_id', editWoId)
+        const { data: candidates, error: candErr } = await supabase.from(table as any).select('id,panel_id').eq('wo_id', editWoId)
+        if (candErr) throw new Error('Gagal membaca ' + table + ' WO ' + editWoId + ': ' + candErr.message)
         if (!candidates || candidates.length === 0) return
         const panelIds = [...new Set(candidates.map((r: any) => r.panel_id).filter(Boolean))]
         let masihHidup = new Set<number>()
         if (panelIds.length > 0) {
-          const { data: alive } = await supabase.from('panels').select('id').in('id', panelIds)
+          const { data: alive, error: aliveErr } = await supabase.from('panels').select('id').in('id', panelIds)
+          if (aliveErr) throw new Error('Gagal membaca panel aktif: ' + aliveErr.message)
           masihHidup = new Set((alive || []).map((p: any) => p.id))
         }
         const idsAmanDihapus = candidates.filter((r: any) => !r.panel_id || !masihHidup.has(r.panel_id)).map((r: any) => r.id)

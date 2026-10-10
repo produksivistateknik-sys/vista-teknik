@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { workOrderService } from "../services/workOrderService";
+import { konfirmasiHapusPanel } from "../lib/konfirmasiHapusPanel";
 import { rawScheduleService } from "../services/rawScheduleService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
@@ -191,6 +192,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
     try{
       const panelsToSave=buildPanelsForSave();
       if(formEditId){
+        // (10 Okt 2026, insiden WO 076 dari form ini) Panel yang tidak ada di form akan DIHAPUS PERMANEN -
+        // konfirmasi dampaknya SEBELUM apa pun disimpan; panel ber-permintaan = simpan dibatalkan.
+        if(!(await konfirmasiHapusPanel(formEditId,formPanels.filter((p:any)=>p.id).map((p:any)=>p.id)))){setFormSaving(false);return;}
         // Snapshot SEBELUM update - buat deteksi "revisi WO"/"tambah panel" notifikasi (REVISI
         // 5 Sep 2026), sama pola ManajemenWO.tsx. Diambil dari woList (belum ke-overwrite
         // sampai fetchAll() di bawah).
