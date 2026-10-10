@@ -1,12 +1,12 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
-import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
+import { formatBusbarTahapTooltip, isKomponenRelevant, getBusbarTahapBreakdown, getProgressAsOfDate, BUSBAR_TAHAP_LABEL as BUSBAR_TAHAP_NAMA } from '../lib/panelHelpers'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
-import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
+import { kodeBusbarBisaDipindah, togglePenanda, ambilJadwal4 } from '../lib/jadwalPindah'
 import { withRetry } from '../lib/withRetry'
 import { rencanakanPindahAccordion, pecahKunci } from '../lib/pindahAccordion'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -464,7 +464,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (r.t === 'penanda') return []
     const pid = r.blok.panelId
     const rows = rawData.filter((x: any) => Number(x.panel_id || x.panelId) === pid)
-    if (r.g.jenis === 'busbar') return rows.filter((x: any) => x.proses === 'BUSBAR').map((x: any) => ({ proses: 'BUSBAR', rawId: x.id, terisi: (x.busbar_schedule?.[d] || []).length > 0 }))
+    // BUSBAR: header = ada jenis apa pun di sel; baris jenis = jenis ITU ada di busbar_schedule[d]
+    if (r.g.jenis === 'busbar') return rows.filter((x: any) => x.proses === 'BUSBAR').map((x: any) => ({ proses: 'BUSBAR', rawId: x.id, terisi: r.t === 'komp' ? (x.busbar_schedule?.[d] || []).includes(r.k.kode) : (x.busbar_schedule?.[d] || []).length > 0 }))
     const tipe = panelById.get(pid)?.tipe || ''
     return rows.filter((x: any) => !['QC TEST', 'PACKING', 'BUSBAR'].includes(x.proses) && (r.t !== 'komp' || isKomponenRelevant(r.k.kode, tipe, x.proses)))
       .sort((a: any, b: any) => ALL_PROSES.indexOf(a.proses) - ALL_PROSES.indexOf(b.proses))
@@ -499,12 +500,53 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   }
   // Klik biasa sel non-penanda: 1 pilihan proses / tepat 1 proses terisi -> langsung modal; selain itu pilih proses dulu.
   const klikEdit = (e: React.MouseEvent | null, r: Baris, d: string, paksaPilih = false, xy?: { x: number; y: number }) => {
+    // Baris JENIS busbar (H-BUS dll.): bukan modal pilih jenis - popover (kosong) / panel Pekerjaan busbar (terisi)
+    if (r.t === 'komp' && r.g.jenis === 'busbar') { bukaPekerjaanBusbar(r, d, { x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200 }); return }
     const opsi = opsiProsesSel(r, d)
     if (opsi.length === 0) { tampilToastAksi('Panel ini belum punya baris jadwal proses yang bisa diisi di sini.', 'err'); return }
     const terisi = opsi.filter(o => o.terisi)
     if (!paksaPilih && (opsi.length === 1 || terisi.length === 1)) { bukaEdit(opsi.length === 1 ? opsi[0] : terisi[0], r, d); return }
     setPopProses({ x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200, r, d, opsi })
   }
+  // ════════ PEKERJAAN BUSBAR per jenis (10 Okt 2026, keputusan user) ════════════════════════════════════════
+  // Jadwal busbar = busbar_schedule[tgl] = daftar KODE (tanpa tahapan). Tahapan hanya ada sbg REALISASI: progres per
+  // tahap checklist[kode].busbarTahap (Vista Pekerja) & timer fcs_timer_kerja.tahap - ditampilkan apa adanya (baca saja).
+  // "+ Jadwalkan" / "Hapus dari tanggal ini" = simpanBusbarSel (fungsi tombol "Selesai" modal BUSBAR) + masuk Undo.
+  type PanelBusbar = { x: number; y: number; r: Baris; d: string; kode: string; rawId: number; terisi: boolean; timer: any[] | null }
+  const [pekerjaanBb, setPekerjaanBb] = useState<PanelBusbar | null>(null)
+  const namaPekerjaRef = useRef<Map<number, string> | null>(null)
+  const bukaPekerjaanBusbar = async (r: Baris, d: string, xy: { x: number; y: number }) => {
+    if (r.t !== 'komp') return
+    const o = opsiProsesSel(r, d)[0]
+    if (!o) { tampilToastAksi('Panel ini belum punya baris jadwal BUSBAR.', 'err'); return }
+    const dasar: PanelBusbar = { x: xy.x, y: xy.y, r, d, kode: r.k.kode, rawId: o.rawId, terisi: o.terisi, timer: null }
+    setPopProses(null); setPekerjaanBb(dasar)
+    try {
+      if (!namaPekerjaRef.current) { const { data } = await io.db.from('pekerja').select('id,nama'); namaPekerjaRef.current = new Map((data || []).map((p: any) => [Number(p.id), p.nama])) }
+      const { data, error } = await io.db.from('fcs_timer_kerja').select('*').eq('panel_id', r.blok.panelId).eq('proses', 'BUSBAR').eq('kode_komponen', r.k.kode).eq('tanggal', d).order('mulai', { ascending: true })
+      if (error) throw error
+      setPekerjaanBb(p => p && p.kode === dasar.kode && p.d === d && p.rawId === dasar.rawId ? { ...p, timer: data || [] } : p)
+    } catch (err) { console.error('[Raw per WP] gagal baca realisasi timer busbar (salinan):', err); setPekerjaanBb(p => p ? { ...p, timer: [] } : p) }
+  }
+  const renharBusbarSalinan = async (rawId: number, d: string) => { const { data } = await io.db.from('renhar').select('*').eq('raw_id', rawId).eq('wp', 'BUSBAR').eq('tanggal', d); return data || [] }
+  const aksiBusbar = async (pb: PanelBusbar, mode: 'jadwalkan' | 'hapus') => {
+    const row = rawData.find((x: any) => x.id === pb.rawId); if (!row) return
+    const kini: string[] = row.busbar_schedule?.[pb.d] || []
+    const daftar = mode === 'jadwalkan' ? (kini.includes(pb.kode) ? kini : [...kini, pb.kode]) : kini.filter(k => k !== pb.kode)
+    if (mode === 'hapus' && !(await mintaIzinWajib(`Hapus ${pb.kode} dari jadwal BUSBAR ${pb.r.blok.panel} pada ${getDayLabel(pb.d)} (salinan uji)? Bisa dibatalkan dgn Ctrl+Z.`))) return
+    const sebelum = ambilJadwal4(row), rhSebelum = await renharBusbarSalinan(pb.rawId, pb.d)
+    setPekerjaanBb(null)
+    const ok = await modalJadwal.simpanBusbarSel(pb.rawId, pb.d, daftar)
+    if (!ok) return
+    const sesudah = ambilJadwal4({ ...row, busbar_schedule: { ...(row.busbar_schedule || {}), [pb.d]: daftar } })
+    const rhSesudah = await renharBusbarSalinan(pb.rawId, pb.d)
+    const idSeb = new Set(rhSebelum.map((x: any) => String(x.id)))
+    // Undo = pulihkan (jalur Ctrl+Z yang sama dgn pindah): 4 kolom jadwal + rencana harian salinan kembali persis
+    pindahMulti.undoMultiRef.current.push({ snap: { versi: 2, raw: [{ raw_id: pb.rawId, sebelum, sesudah }], renhar_sebelum: rhSebelum, renhar_dibuat: rhSesudah.filter((x: any) => !idSeb.has(String(x.id))).map((x: any) => x.id), renhar_sesudah: rhSesudah },
+      label: `${mode === 'hapus' ? 'hapus' : 'jadwalkan'} ${pb.kode} ${getDayLabel(pb.d)}` })
+    tampilToastAksi(`${pb.kode} ${mode === 'hapus' ? 'dihapus dari' : 'dijadwalkan di'} ${getDayLabel(pb.d)} (salinan uji).`, 'ok', [{ label: 'Batalkan', fn: () => pindahMulti.batalkanPindahTerakhir() }])
+  }
+
   // HAPUS WP (menu klik kanan): sel header WP terpilih (atau sel yang diklik kanan) -> WP itu dihapus dari SEMUA proses
   // pada tanggal itu, lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal (sinkron renhar + log per proses).
   const hapusWpTerpilih = async (r: Baris, d: string) => {
@@ -961,6 +1003,45 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
           </div>
         </>
       )}
+      {pekerjaanBb && (() => {
+        const pb = pekerjaanBb; const row = rawData.find((x: any) => x.id === pb.rawId)
+        const cl = panelById.get(pb.r.blok.panelId)?.checklist?.[pb.kode]
+        const tahap = getBusbarTahapBreakdown(cl) || []
+        const pctHari = getProgressAsOfDate(cl, 'BUSBAR', pb.d)
+        const jejak = row?.busbar_jejak?.[pb.d]?.[pb.kode]; const pin = row?.busbar_manual_pin?.[pb.d]?.[pb.kode]
+        const timer = pb.timer
+        const jam = (t: string) => t ? new Date(t).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
+        const kotak: any = { position: 'fixed', left: Math.min(pb.x, window.innerWidth - (pb.terisi ? 380 : 300)), top: Math.min(pb.y, window.innerHeight - (pb.terisi ? 420 : 220)), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 10, boxShadow: '0 10px 28px rgba(0,0,0,.18)', padding: '10px 14px', width: pb.terisi ? 360 : 280, fontSize: 12 }
+        return <>
+          <div onClick={() => setPekerjaanBb(null)} onContextMenu={e => { e.preventDefault(); setPekerjaanBb(null) }} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
+          <div role="dialog" aria-label={pb.terisi ? 'Pekerjaan busbar' : 'Jadwalkan busbar'} style={kotak}>
+            <div style={{ fontWeight: 800, fontSize: 13, color: '#1e293b' }}>{pb.terisi ? 'Pekerjaan busbar' : 'BUSBAR'} · {pb.kode} · {getDayLabel(pb.d)}</div>
+            <div style={{ fontSize: 10.5, color: '#64748b', marginBottom: 8 }}>{pb.r.blok.panel}{pb.terisi ? (jejak ? ` · sudah digeser ke ${fmtTglPendek(jejak)} (histori, hanya baca)` : pin ? ' · dipin manual' : ' · terjadwal') : ' · belum terjadwal di tanggal ini'}{pb.terisi && ` · progres s/d tanggal ini ${pctHari}%`}</div>
+            <div style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', marginBottom: 3 }}>Progres per tahap (saat ini)</div>
+            {tahap.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginBottom: 8 }}>{tahap.map(t => (
+              <div key={t.key} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                <span style={{ width: 82, color: '#334155' }}>{t.label}</span>
+                <span style={{ flex: 1, height: 5, background: '#e2e8f0', borderRadius: 99, overflow: 'hidden' }}><span style={{ display: 'block', width: Math.min(100, t.pct) + '%', height: '100%', background: t.pct >= 100 ? '#16a34a' : '#f59e0b' }} /></span>
+                <b style={{ width: 36, textAlign: 'right', color: t.pct >= 100 ? '#16a34a' : '#1e293b' }}>{Math.round(t.pct)}%</b>
+              </div>))}</div> : <div style={{ color: '#94a3b8', marginBottom: 8 }}>belum ada realisasi</div>}
+            {pb.terisi && <>
+              <div style={{ fontSize: 10.5, fontWeight: 700, color: '#475569', marginBottom: 3 }}>Realisasi kerja {getDayLabel(pb.d)} (timer)</div>
+              {timer === null ? <div style={{ color: '#94a3b8', marginBottom: 8 }}>memuat…</div> : timer.length ? <div style={{ display: 'flex', flexDirection: 'column', gap: 2, marginBottom: 8, maxHeight: 140, overflowY: 'auto' }}>{timer.map((t: any) => (
+                <div key={t.id} style={{ display: 'flex', gap: 6, fontSize: 11 }}>
+                  <span style={{ width: 72, fontWeight: 700 }}>{(BUSBAR_TAHAP_NAMA as any)[t.tahap] || t.tahap || '-'}</span>
+                  <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{namaPekerjaRef.current?.get(Number(t.pekerja_id)) || `Pekerja #${t.pekerja_id}`}</span>
+                  <span style={{ color: '#64748b' }}>{jam(t.mulai)}–{t.selesai ? jam(t.selesai) : 'berjalan'}</span>
+                  <b style={{ width: 34, textAlign: 'right' }}>{t.progress != null ? Math.round(t.progress) + '%' : ''}</b>
+                </div>))}</div> : <div style={{ color: '#94a3b8', marginBottom: 8 }}>belum ada realisasi di tanggal ini</div>}
+            </>}
+            <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center', marginTop: 4 }}>
+              {pb.terisi && !jejak && <span style={{ fontSize: 10, color: '#94a3b8', marginRight: 'auto' }}>pindah tanggal: seret / Ctrl+X → Ctrl+V</span>}
+              {!pb.terisi && <button onClick={() => aksiBusbar(pb, 'jadwalkan')} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: 'none', background: '#2563eb', color: '#fff', fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>+ Jadwalkan {pb.kode} di tanggal ini</button>}
+              {pb.terisi && <button disabled={!!jejak} title={jejak ? 'Histori (sudah digeser) - tidak bisa dihapus dari sini' : undefined} onClick={() => aksiBusbar(pb, 'hapus')} style={{ height: 30, padding: '0 12px', borderRadius: 7, border: '1px solid #fecaca', background: jejak ? '#f8fafc' : '#fef2f2', color: jejak ? '#cbd5e1' : '#dc2626', fontSize: 12, fontWeight: 700, cursor: jejak ? 'not-allowed' : 'pointer', fontFamily: 'inherit' }}>Hapus dari tanggal ini</button>}
+            </div>
+          </div>
+        </>
+      })()}
       {modalJadwal.elemen}
       {notifAvailable.elemenModal}
       {aturKapasitas.elemen}
@@ -1099,6 +1180,7 @@ export function RawScheduleAccordion({ woData, livePanelTypes, user }: { woData:
   useEffect(() => {
     if (!sb) return
     setRaw(sb.repo.rawSemua()); setOrderMap(sb.repo.orderMap())
+    try { (window as any).__rawPerWpUji = sb.repo.uji } catch { /* abaikan */ } // salinan memori utk uji otomatis
     return sb.repo.dengar(t => { if (t === 'raw_schedule') setRaw(sb.repo.rawSemua()); if (t === 'raw_schedule_panel_order') setOrderMap(sb.repo.orderMap()) })
   }, [sb])
   const idWo = useMemo(() => new Set((sb?.wo || []).map((w: any) => w.id)), [sb])

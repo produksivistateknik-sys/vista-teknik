@@ -379,6 +379,78 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     return true;
   };
   const removeEntry=async(wp)=>{await hapusWpDariSel(cellModal.rawId,cellModal.date,wp);};
+  // Simpan jadwal BUSBAR 1 sel (raw BUSBAR, tanggal) = daftar kode busbar: busbar_schedule + sinkron renhar
+  // + log JADWAL BUSBAR. Isi = handler tombol "Selesai" modal BUSBAR APA ADANYA (dipecah 10 Okt 2026 supaya
+  // tombol "+ Jadwalkan" / "Hapus dari tanggal ini" Raw Schedule per WP memakai jalur yang SAMA). true = tersimpan.
+  const simpanBusbarSel=async(rawId:number,date:string,kodeList:string[]):Promise<boolean>=>{
+    const rawRow=rawData.find((r:any)=>r.id===rawId);
+    const busbarSel=kodeList;
+    const cellModal={rawId,date};
+    const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
+    markRawDirty(cellModal.rawId);
+    setRawData(prev=>prev.map(r=>{
+      if(r.id!==cellModal.rawId)return r;
+      return{...r,busbar_schedule:newBusbarSch};
+    }));
+    const resRaw=await updateRaw(cellModal.rawId,{busbar_schedule:newBusbarSch});
+    // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron.
+    if(!resRaw?.success){
+      console.error("[Raw Schedule] simpan jadwal BUSBAR gagal:",resRaw?.error);
+      alert("Gagal menyimpan jadwal BUSBAR ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
+      return false;
+    }
+    const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
+    const uname=user?.name||user?.nama||sess?.nama||'Admin';
+    // Sync ke renhar - fresh-fetch lewat withRenharQueue, bukan cari di state renhar
+    // yang bisa stale (Raw Schedule & Rencana Harian bisa mounted bareng).
+    const busbarTask={rawId:cellModal.rawId,wp:"BUSBAR",tanggal:cellModal.date};
+    if(busbarSel.length>0){
+      const renharPayload={
+        raw_id:cellModal.rawId,
+        wo_id:rawRow?.wo_id||rawRow?.woId,
+        panel_id:rawRow?.panel_id||rawRow?.panelId,
+        panel:rawRow?.panel,
+        proyek:rawRow?.proyek,
+        proses:rawRow?.proses,
+        wp:"BUSBAR",
+        komponen:busbarSel,
+        tanggal:cellModal.date,
+        divisi:"assembling",
+        prioritas:rawRow?.prioritas||"Sedang",
+      };
+      const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
+        if(existRenhar){
+          markRenharDirty(existRenhar.id);
+          const upd=await updateRenhar(existRenhar.id,{...renharPayload});
+          if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
+          setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
+        } else {
+          const res=await createRenhar(renharPayload);
+          if(!(res?.success&&res?.data))throw Object.assign(new Error(res?.error||"Gagal membuat renhar"),{code:(res as any)?.code});
+          markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);
+        }
+      });
+      try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date})`,sinkron);}
+    } else {
+      // Hapus renhar busbar jika kosong
+      const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
+        if(existRenhar){
+          const del=await removeRenhar(existRenhar.id);
+          if(!del?.success)throw Object.assign(new Error(del?.error||"Gagal menghapus rencana harian"),{code:(del as any)?.code});
+          setRenhar((prev:any[])=>prev.filter((r:any)=>r.id!==existRenhar.id));
+        }
+      });
+      try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date}) - hapus`,sinkron);}
+    }
+    await activityLogService.insert({
+      user_name:uname,
+      action:'JADWAL BUSBAR',
+      description:`Jadwal busbar ${rawRow?.panel} - ${rawRow?.proyek} (${cellModal?.date}): ${busbarSel.join(', ')||'kosong'}`,
+      module:'raw',halaman:'Raw Schedule',
+      proyek:rawRow?.proyek||'',panel:rawRow?.panel||''
+    });
+    return true;
+  };
   // Modal edit sel + modal kapasitas/kuota ikutannya (dirender induk di posisi yang sama seperti dulu).
   const elemen=(
     <>
@@ -670,69 +742,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
             <Btn color="#16a34a" onClick={async()=>{
               // Save busbar schedule saat klik Selesai
               if(rawRow?.proses==="BUSBAR"){
-                const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
-                markRawDirty(cellModal.rawId);
-                setRawData(prev=>prev.map(r=>{
-                  if(r.id!==cellModal.rawId)return r;
-                  return{...r,busbar_schedule:newBusbarSch};
-                }));
-                const resRaw=await updateRaw(cellModal.rawId,{busbar_schedule:newBusbarSch});
-                // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron.
-                if(!resRaw?.success){
-                  console.error("[Raw Schedule] simpan jadwal BUSBAR gagal:",resRaw?.error);
-                  alert("Gagal menyimpan jadwal BUSBAR ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
-                  return;
-                }
-                const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');
-                const uname=user?.name||user?.nama||sess?.nama||'Admin';
-                // Sync ke renhar - fresh-fetch lewat withRenharQueue, bukan cari di state renhar
-                // yang bisa stale (Raw Schedule & Rencana Harian bisa mounted bareng).
-                const busbarTask={rawId:cellModal.rawId,wp:"BUSBAR",tanggal:cellModal.date};
-                if(busbarSel.length>0){
-                  const renharPayload={
-                    raw_id:cellModal.rawId,
-                    wo_id:rawRow?.wo_id||rawRow?.woId,
-                    panel_id:rawRow?.panel_id||rawRow?.panelId,
-                    panel:rawRow?.panel,
-                    proyek:rawRow?.proyek,
-                    proses:rawRow?.proses,
-                    wp:"BUSBAR",
-                    komponen:busbarSel,
-                    tanggal:cellModal.date,
-                    divisi:"assembling",
-                    prioritas:rawRow?.prioritas||"Sedang",
-                  };
-                  const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
-                    if(existRenhar){
-                      markRenharDirty(existRenhar.id);
-                      const upd=await updateRenhar(existRenhar.id,{...renharPayload});
-                      if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
-                      setRenhar((prev:any[])=>prev.map((r:any)=>r.id===existRenhar.id?{...r,...renharPayload}:r));
-                    } else {
-                      const res=await createRenhar(renharPayload);
-                      if(!(res?.success&&res?.data))throw Object.assign(new Error(res?.error||"Gagal membuat renhar"),{code:(res as any)?.code});
-                      markRenharDirty(res.data.id);setRenhar((prev:any[])=>[...prev,res.data]);
-                    }
-                  });
-                  try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date})`,sinkron);}
-                } else {
-                  // Hapus renhar busbar jika kosong
-                  const sinkron=()=>withRenharQueue(busbarTask,async(existRenhar)=>{
-                    if(existRenhar){
-                      const del=await removeRenhar(existRenhar.id);
-                      if(!del?.success)throw Object.assign(new Error(del?.error||"Gagal menghapus rencana harian"),{code:(del as any)?.code});
-                      setRenhar((prev:any[])=>prev.filter((r:any)=>r.id!==existRenhar.id));
-                    }
-                  });
-                  try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} BUSBAR (${cellModal.date}) - hapus`,sinkron);}
-                }
-                await activityLogService.insert({
-                  user_name:uname,
-                  action:'JADWAL BUSBAR',
-                  description:`Jadwal busbar ${rawRow?.panel} - ${rawRow?.proyek} (${cellModal?.date}): ${busbarSel.join(', ')||'kosong'}`,
-                  module:'raw',halaman:'Raw Schedule',
-                  proyek:rawRow?.proyek||'',panel:rawRow?.panel||''
-                });
+                if(!(await simpanBusbarSel(cellModal.rawId,cellModal.date,busbarSel)))return;
               }
               setCellModal(null);
             }}>Selesai</Btn>
@@ -979,5 +989,5 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       )}
     </>
   );
-  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel};
+  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel,simpanBusbarSel};
 }

@@ -28,4 +28,6 @@ export interface RepoJadwalRaw {
   orderMap(): Record<number, string>
   // perubahan data (MemoryRepo: perubahan di memori; SupabaseRepo: realtime) -> nama tabel
   dengar(f: (tabel: string) => void): () => void
+  // MemoryRepo saja: akses salinan utk uji otomatis
+  uji?: { db: any }
 }

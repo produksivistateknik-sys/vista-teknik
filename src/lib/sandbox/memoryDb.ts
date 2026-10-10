@@ -8,7 +8,8 @@
 //  - pindah_multi_sel_v2  : cek Minggu berkapasitas, timer BUSBAR berjalan, jadwal belum diubah sejak layar
 //                           dimuat (4 kolom), lalu tulis 4 kolom; renhar = no-op (sandbox tidak menyentuh
 //                           rencana harian). Hasil = snapshot utk Undo, bentuk sama dgn server.
-//  - pulihkan_multi_sel_v2: cek 4 kolom masih PERSIS hasil pindah, lalu pulihkan PERSIS keadaan sebelumnya.
+//  - pulihkan_multi_sel_v2: cek 4 kolom (+ renhar salinan) masih PERSIS hasil aksi, lalu pulihkan PERSIS keadaan
+//                           sebelumnya (renhar salinan: kembalikan renhar_sebelum, buang renhar_dibuat).
 //  - pindah_urutan_panel_raw: prioritas semua baris panel + key urutan (+ key panel lain yg di-materialize),
 //                           key unik global (bentrok -> 23505 seperti index unik di server).
 
@@ -171,8 +172,15 @@ export class MemoryDb {
       const i = byId.get(Number(x.raw_id))
       if (i === undefined || !sama(this.empat(raw[i]), x.sesudah)) return { data: null, error: galat(`Tidak bisa dibatalkan: jadwal baris ${x.raw_id} sudah diubah lagi sejak dipindah. Tidak ada yang diubah.`) }
     }
+    // renhar (salinan memori): masih persis seperti sesudah aksi? lalu kembalikan yang lama & buang yang dibuat
+    const rh = this.baris('renhar')
+    for (const r of p.p_snap?.renhar_sesudah || []) { const cur = rh.find(x => samaNilai(x.id, r.id)); if (!cur || !sama(cur, r)) return { data: null, error: galat(`Tidak bisa dibatalkan: rencana harian (id ${r.id}) sudah berubah lagi sejak dipindah. Tidak ada yang diubah.`) } }
     const kini = new Date().toISOString()
     for (const x of daftar) { const i = byId.get(Number(x.raw_id))!; raw[i] = { ...raw[i], ...salin(x.sebelum), updated_at: kini } }
+    const dibuat = new Set((p.p_snap?.renhar_dibuat || []).map((x: any) => String(x)))
+    const rh2 = rh.filter(x => !dibuat.has(String(x.id)))
+    for (const r of p.p_snap?.renhar_sebelum || []) { const i = rh2.findIndex(x => samaNilai(x.id, r.id)); if (i >= 0) rh2[i] = salin(r); else rh2.push(salin(r)) }
+    this.ganti('renhar', rh2); this.kabari('renhar')
     this.catatan.push({ user_name: p.p_user, action: 'BATALKAN PINDAH BANYAK SEL', description: `Batalkan pindah (salinan uji, ${daftar.length} baris jadwal)`, module: 'raw', halaman: 'Raw Schedule per WP (uji)', created_at: kini })
     this.kabari('raw_schedule')
     return { data: { ok: true }, error: null }
