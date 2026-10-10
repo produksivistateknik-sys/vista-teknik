@@ -3,14 +3,16 @@
 // (Tahap 3c migrasi accordion, 10 Okt 2026) supaya tampilan lama & "Raw Schedule per WP" sama. Muat ulang
 // (fetchNotifAvailable) dipanggil induk - tampilan lama dari effect realtime kapasitasnya.
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase as supabaseAsli } from '../lib/supabase'
 import { TODAY, fmtDate } from '../lib/dateHelpers'
 import { Modal } from './ui/Primitives'
 
-export function useNotifAvailable({rawData,woData,getEffCfg,openCellModal,setModalWp,setModalKomponen,setModalBobotPerKomponen}:{
+export function useNotifAvailable({rawData,woData,getEffCfg,openCellModal,setModalWp,setModalKomponen,setModalBobotPerKomponen,db}:{
   rawData:any[];woData:any[];getEffCfg:(tipe:string)=>any;openCellModal:(rawId:number,date:string)=>void;
   setModalWp:(v:string)=>void;setModalKomponen:(v:any)=>void;setModalBobotPerKomponen:(f:any)=>void;
+  db?:any; // opsional: klien bergaya Supabase lain (sandbox: salinan di memori)
 }){
+  const supabase=db??supabaseAsli;
   const [notifAvailable,setNotifAvailable]=useState<any[]>([]);
   const fetchNotifAvailable=async()=>{
     const{data}=await supabase.from("fcs_notifikasi").select("*").eq("dibaca",false).eq("tipe","available").order("created_at",{ascending:false});

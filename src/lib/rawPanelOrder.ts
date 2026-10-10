@@ -15,7 +15,7 @@
 // karakter; localeCompare gak case-sensitive dgn benar & bikin urutan kacau.
 import { useEffect, useState } from 'react'
 import { generateKeyBetween, generateNKeysBetween } from 'fractional-indexing'
-import { supabase } from './supabase'
+import { supabase as supabaseAsli } from './supabase'
 
 export type Zona = 'Tinggi' | 'Sedang' | 'Rendah'
 export const ZONA_URUTAN: Zona[] = ['Tinggi', 'Sedang', 'Rendah']
@@ -49,18 +49,6 @@ export function bandingkanBarisRaw(a: any, b: any, orderMap: Record<number, stri
 }
 
 // Semua key (paginated - CLAUDE.md A.1, tabel tumbuh 1 baris per panel).
-export async function fetchPanelOrderMap(): Promise<Record<number, string>> {
-  const map: Record<number, string> = {}
-  const PAGE = 1000
-  for (let from = 0; ; from += PAGE) {
-    const { data, error } = await supabase.from('raw_schedule_panel_order' as any)
-      .select('panel_id,order_key').order('panel_id').range(from, from + PAGE - 1)
-    if (error) throw new Error(error.message)
-    ;(data as any[] || []).forEach((r: any) => { map[Number(r.panel_id)] = r.order_key })
-    if (!data || data.length < PAGE) break
-  }
-  return map
-}
 
 // Map key + realtime (urutan sinkron antar user tanpa reload). Gagal fetch -> map kosong =
 // tampilan jatuh ke urutan lama (prioritas -> panel_id), bukan crash; error dilaporkan lewat
@@ -74,7 +62,7 @@ export function useRawPanelOrder() {
       .then(m => { if (alive) { setOrderMap(m); setError(null) } })
       .catch(e => { console.error('gagal ambil urutan panel Raw Schedule:', e); if (alive) setError(String(e?.message || e)) })
     load()
-    const ch = supabase.channel('realtime-raw-schedule-panel-order')
+    const ch = supabaseAsli.channel('realtime-raw-schedule-panel-order')
       .on('postgres_changes' as any, { event: '*', schema: 'public', table: 'raw_schedule_panel_order' }, (p: any) => {
         if (p.eventType === 'DELETE') {
           const id = Number(p.old?.panel_id)
@@ -85,7 +73,7 @@ export function useRawPanelOrder() {
         }
       })
       .subscribe()
-    return () => { alive = false; supabase.removeChannel(ch) }
+    return () => { alive = false; supabaseAsli.removeChannel(ch) }
   }, [])
   return { orderMap, setOrderMap, error }
 }
@@ -175,14 +163,35 @@ export function hitungKeyPindah(semua: PanelInfo[], draggedId: number, t: Target
 // ─── Simpan (RPC atomik) ────────────────────────────────────────────────────────────────────
 // Satu transaksi Postgres: prioritas raw_schedule + renhar panel ini (kalau p_prioritas diisi)
 // + materialize + key panel ini (kalau p_order_key diisi). Gagal di langkah manapun = semua batal.
-export async function simpanPindahPanel(args: { panelId: number; orderKey: string | null; prioritas: Zona | null; materialize: { panel_id: number; order_key: string }[]; user: string }): Promise<{ ok: boolean; code?: string; message?: string }> {
-  const { error } = await supabase.rpc('pindah_urutan_panel_raw' as any, {
-    p_panel_id: args.panelId,
-    p_order_key: args.orderKey,
-    p_prioritas: args.prioritas,
-    p_materialize: args.materialize,
-    p_user: args.user,
-  } as any)
-  if (error) { console.error('pindah_urutan_panel_raw gagal:', error); return { ok: false, code: (error as any).code, message: error.message } }
-  return { ok: true }
+
+// PABRIK AKSES DATA (10 Okt 2026, sandbox Raw Schedule per WP): fungsi yang membaca/menulis database dibungkus pabrik supaya bisa dijalankan terhadap MemoryDb (salinan uji). Parameter `supabase` bernama sama dgn impor asli -> isi fungsi tidak diubah; ekspor bernama = instans Supabase asli (pemanggil lama tidak berubah).
+export function buatAksesUrutanPanel(supabase: typeof supabaseAsli = supabaseAsli) {
+  async function fetchPanelOrderMap(): Promise<Record<number, string>> {
+    const map: Record<number, string> = {}
+    const PAGE = 1000
+    for (let from = 0; ; from += PAGE) {
+      const { data, error } = await supabase.from('raw_schedule_panel_order' as any)
+        .select('panel_id,order_key').order('panel_id').range(from, from + PAGE - 1)
+      if (error) throw new Error(error.message)
+      ;(data as any[] || []).forEach((r: any) => { map[Number(r.panel_id)] = r.order_key })
+      if (!data || data.length < PAGE) break
+    }
+    return map
+  }
+
+  async function simpanPindahPanel(args: { panelId: number; orderKey: string | null; prioritas: Zona | null; materialize: { panel_id: number; order_key: string }[]; user: string }): Promise<{ ok: boolean; code?: string; message?: string }> {
+    const { error } = await supabase.rpc('pindah_urutan_panel_raw' as any, {
+      p_panel_id: args.panelId,
+      p_order_key: args.orderKey,
+      p_prioritas: args.prioritas,
+      p_materialize: args.materialize,
+      p_user: args.user,
+    } as any)
+    if (error) { console.error('pindah_urutan_panel_raw gagal:', error); return { ok: false, code: (error as any).code, message: error.message } }
+    return { ok: true }
+  }
+  return { fetchPanelOrderMap, simpanPindahPanel }
 }
+const aksesAsli = buatAksesUrutanPanel()
+export const fetchPanelOrderMap = aksesAsli.fetchPanelOrderMap
+export const simpanPindahPanel = aksesAsli.simpanPindahPanel

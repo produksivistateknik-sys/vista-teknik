@@ -2,12 +2,14 @@
 // DIPINDAH APA ADANYA dari RawSchedule.tsx (Tahap 3c migrasi accordion, 10 Okt 2026) supaya tampilan lama &
 // "Raw Schedule per WP" memakai modal & jalur simpan yang SAMA (setOverrideAndRebalance) - CLAUDE.md B.1.
 import { useState } from 'react'
-import { setOverrideAndRebalance } from '../services/fcsService'
+import * as fcsAsli from '../services/fcsService'
+import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { ALL_PROSES } from '../constants/panelTypes'
 import { fmtDate } from '../lib/dateHelpers'
 import { Modal, Lbl, Btn, Inp } from './ui/Primitives'
 
-export function useAturKapasitas({user,refetchRaw}:{user:any;refetchRaw?:()=>any}){
+export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>any;io?:IoJadwalRaw}){
+  const{setOverrideAndRebalance}=io?.fcs??fcsAsli; // tanpa io = Supabase asli
   const [overrideModal,setOverrideModal]=useState<{tanggalMulai:string,tanggalAkhir:string,proses:string[]}|null>(null);
   const [overrideValue,setOverrideValue]=useState("");
   const [overrideJamKerja,setOverrideJamKerja]=useState("8");

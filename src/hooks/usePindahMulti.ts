@@ -6,9 +6,11 @@
 // Data & fungsi tampilan diambil lewat `ambil()` SAAT AKSI dijalankan (bukan saat render) - jadi selalu
 // nilai terbaru, dan boleh merujuk fungsi yang didefinisikan belakangan di komponen pemanggil.
 import { useRef } from 'react'
-import { markRawDirty, clearRawDirty } from '../lib/globalState'
+import { markRawDirty as markRawDirtyAsli, clearRawDirty as clearRawDirtyAsli } from '../lib/globalState'
 import { rencanakanPindahMultiV2, type SelPindahV2 } from '../lib/jadwalPindah'
-import { muatTimerBusbarAktif, isiPengerjaanAsal, rpcPindahMultiV2, rpcPulihkanMultiV2, type SelAsal, type SelTujuan, type SelBentrok } from '../lib/pindahMulti'
+import * as aksesPindahAsli from '../lib/pindahMulti'
+import type { SelAsal, SelTujuan, SelBentrok } from '../lib/pindahMulti'
+import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 
 type AksiToast = { label: string; fn: () => void }
 export type DepsPindahMulti = {
@@ -26,6 +28,8 @@ export type DepsPindahMulti = {
   onSesudahPindah?: (pindahan: Map<string, string>) => void
   // Sukses batalkan (pemanggil membersihkan pilihan sel).
   onSesudahBatal?: () => void
+  // opsional - sumber data lain (sandbox Raw Schedule per WP); tanpa io = RPC/Supabase asli
+  io?: IoJadwalRaw
 }
 
 export function usePindahMulti(ambil: () => DepsPindahMulti) {
@@ -39,6 +43,14 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
   const sedangBatalkanRef = useRef(false)
   const timerBusbarRef = useRef<Set<string>>(new Set()) // "panelId|kode" yang timer BUSBAR-nya berjalan
   const apiRef = useRef<any>(null)
+  // I/O dibaca SAAT AKSI (nama sama dgn impor lama -> isi fungsi di bawah tidak diubah)
+  const akses = () => ambil().io?.pindah ?? aksesPindahAsli
+  const muatTimerBusbarAktif = (...a: Parameters<typeof aksesPindahAsli.muatTimerBusbarAktif>) => akses().muatTimerBusbarAktif(...a)
+  const isiPengerjaanAsal = (...a: Parameters<typeof aksesPindahAsli.isiPengerjaanAsal>) => akses().isiPengerjaanAsal(...a)
+  const rpcPindahMultiV2 = (...a: Parameters<typeof aksesPindahAsli.rpcPindahMultiV2>) => akses().rpcPindahMultiV2(...a)
+  const rpcPulihkanMultiV2 = (...a: Parameters<typeof aksesPindahAsli.rpcPulihkanMultiV2>) => akses().rpcPulihkanMultiV2(...a)
+  const markRawDirty = (id: number) => (ambil().io?.kotor.markRaw ?? markRawDirtyAsli)(id)
+  const clearRawDirty = (id: number) => (ambil().io?.kotor.clearRaw ?? clearRawDirtyAsli)(id)
 
   // Status timer BUSBAR dimuat 1x saat drag/potong dimulai. Dikosongkan dulu (9 Okt 2026, review): selama
   // muat / bila gagal, jangan pakai daftar aksi sebelumnya (bisa menolak palsu "timer berjalan").

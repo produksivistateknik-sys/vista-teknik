@@ -5,7 +5,7 @@
 import { PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { kebutuhanOrangWiring } from './panelHelpers'
 import { hariKeNFromMap, hitungProyeksiWiring } from '../services/fcsService'
-import { supabase } from './supabase'
+import { supabase as supabaseAsli } from './supabase'
 
 // Menit per pcs dari Master Data Process Time (fcs_process_time aktif) utk tipe+proses+kode. 0 bila
 // tidak ada (komponen tanpa timer tidak menambah beban).
@@ -94,26 +94,35 @@ export function hitungTerpakaiHari(rows: any[], d: string, pr: string, ctx: Kont
 // MUAT DATA KAPASITAS (Tahap 1 - dipindah APA ADANYA dari RawSchedule.tsx fetchCap, satu sumber utk tampilan
 // lama & accordion). fcs_kapasitas_override WAJIB paginasi penuh (BUG FIX 21 Sep 2026: tanpa .range() kena
 // batas 1000 baris -> badge "Belum diatur" salah). Gagal dicatat di console; yang berhasil tetap dipakai.
-export async function muatKapasitasOverride(): Promise<any[]> {
-  let all: any[] = [], from = 0
-  const PAGE = 1000
-  for (;;) {
-    const { data, error } = await supabase.from('fcs_kapasitas_override')
-      .select('tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas')
-      .range(from, from + PAGE - 1)
-    if (error) { console.error('gagal ambil fcs_kapasitas_override:', error); break }
-    const rows = data ?? []
-    all = all.concat(rows)
-    if (rows.length < PAGE) break
-    from += PAGE
+
+// PABRIK AKSES DATA (10 Okt 2026, sandbox Raw Schedule per WP): fungsi yang membaca/menulis database dibungkus pabrik supaya bisa dijalankan terhadap MemoryDb (salinan uji). Parameter `supabase` bernama sama dgn impor asli -> isi fungsi tidak diubah; ekspor bernama = instans Supabase asli (pemanggil lama tidak berubah).
+export function buatAksesKapasitas(supabase: typeof supabaseAsli = supabaseAsli) {
+  async function muatKapasitasOverride(): Promise<any[]> {
+    let all: any[] = [], from = 0
+    const PAGE = 1000
+    for (;;) {
+      const { data, error } = await supabase.from('fcs_kapasitas_override')
+        .select('tanggal,jenis_pekerjaan,kapasitas_menit,jumlah_orang,tipe_kapasitas')
+        .range(from, from + PAGE - 1)
+      if (error) { console.error('gagal ambil fcs_kapasitas_override:', error); break }
+      const rows = data ?? []
+      all = all.concat(rows)
+      if (rows.length < PAGE) break
+      from += PAGE
+    }
+    return all
   }
-  return all
+
+  async function muatDataKapasitas(): Promise<{ kapasitas: any[]; processTime: any[] }> {
+    const [k, { data: pt, error: ptErr }] = await Promise.all([
+      muatKapasitasOverride(),
+      supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs').eq('is_active', true),
+    ])
+    if (ptErr) console.error('gagal ambil fcs_process_time:', ptErr)
+    return { kapasitas: k ?? [], processTime: pt ?? [] }
+  }
+  return { muatKapasitasOverride, muatDataKapasitas }
 }
-export async function muatDataKapasitas(): Promise<{ kapasitas: any[]; processTime: any[] }> {
-  const [k, { data: pt, error: ptErr }] = await Promise.all([
-    muatKapasitasOverride(),
-    supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs').eq('is_active', true),
-  ])
-  if (ptErr) console.error('gagal ambil fcs_process_time:', ptErr)
-  return { kapasitas: k ?? [], processTime: pt ?? [] }
-}
+const aksesAsli = buatAksesKapasitas()
+export const muatKapasitasOverride = aksesAsli.muatKapasitasOverride
+export const muatDataKapasitas = aksesAsli.muatDataKapasitas

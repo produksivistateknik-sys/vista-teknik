@@ -2,11 +2,13 @@
 // RawSchedule.tsx (Tahap 3c migrasi accordion, 10 Okt 2026) supaya tampilan lama & "Raw Schedule per WP" sama.
 // Klik baris = saring tampilan ke proyek/panel itu (setFilterProyek/setFilterPanel milik induk).
 import { useState, useEffect } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase as supabaseAsli } from '../lib/supabase'
 import { WP_COLOR } from '../constants/panelTypes'
 
 // bacaSaja (Raw Schedule per WP, mode baca saja 10 Okt 2026): tombol "✓ Konfirmasi" (tulis qty_change_log) disembunyikan.
-export function useRiwayatQty({setFilterProyek,setFilterPanel,bacaSaja=false}:{setFilterProyek:(v:string[])=>void;setFilterPanel:(v:string[])=>void;bacaSaja?:boolean}){
+// db (opsional): klien bergaya Supabase lain (sandbox Raw Schedule per WP: salinan di memori, tanpa realtime nyata).
+export function useRiwayatQty({setFilterProyek,setFilterPanel,bacaSaja=false,db}:{setFilterProyek:(v:string[])=>void;setFilterPanel:(v:string[])=>void;bacaSaja?:boolean;db?:any}){
+  const supabase=db??supabaseAsli;
   const [riwayatOpen,setRiwayatOpen]=useState(false);
   const [qtyChangeLog,setQtyChangeLog]=useState<any[]>([]);
   const [qtyChangeUnread,setQtyChangeUnread]=useState(0);

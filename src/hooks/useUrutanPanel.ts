@@ -3,9 +3,11 @@
 // memakai jalur simpan yang SAMA (RPC atomik pindah_urutan_panel_raw lewat simpanPindahPanel, rollback lokal,
 // activity_log UBAH PRIORITAS) - CLAUDE.md B.1. Isi fungsi tidak diubah.
 import { useState } from 'react'
-import { activityLogService } from '../services/activityLogService'
-import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
-import { fetchPanelOrderMap, zonaDari, tetanggaSekarang, hitungKeyPindah, simpanPindahPanel, type Zona, type TargetPindah } from '../lib/rawPanelOrder'
+import { activityLogService as activityLogServiceAsli } from '../services/activityLogService'
+import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli, clearRawDirty as clearRawDirtyAsli } from '../lib/globalState'
+import * as urutanAsli from '../lib/rawPanelOrder'
+import { zonaDari, tetanggaSekarang, hitungKeyPindah, type Zona, type TargetPindah } from '../lib/rawPanelOrder'
+import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 
 export type DepsUrutanPanel={
   rawData:any[];setRawData:(f:any)=>void;
@@ -17,11 +19,19 @@ export type DepsUrutanPanel={
   blokUrutRef:{current:{panelId:number;zona:Zona}[]};
   tampilToastUrutan:(msg:string)=>void;
   setMenuUrutanPanel:(v:number|null)=>void;
+  // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = RPC/activity_log asli
+  io?:IoJadwalRaw;
 };
 
 export function useUrutanPanel(deps:DepsUrutanPanel){
   const{rawData,setRawData,effectiveRenhar,setRenhar,orderMap,setOrderMap,user,blokUrutRef,tampilToastUrutan,setMenuUrutanPanel}=deps;
   const [savingUrutan,setSavingUrutan]=useState(false);
+  // I/O (nama sama dgn impor lama -> isi fungsi di bawah tidak diubah)
+  const{fetchPanelOrderMap,simpanPindahPanel}=deps.io?.urutan??urutanAsli;
+  const activityLogService=deps.io?.log??activityLogServiceAsli;
+  const markRawDirty=deps.io?.kotor.markRaw??markRawDirtyAsli;
+  const clearRawDirty=deps.io?.kotor.clearRaw??clearRawDirtyAsli;
+  const markRenharDirty=deps.io?.kotor.markRenhar??markRenharDirtyAsli;
   const namaUserAktif=()=>{
     let sess:any={};try{sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");}catch{}
     return user?.name||user?.nama||sess?.nama||"Admin";

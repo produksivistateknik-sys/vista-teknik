@@ -5,11 +5,13 @@
 // satu-satunya tambahan: pilih-komponen-untuk-"Pindahin" hanya aktif bila induk menyediakan alurnya
 // (setMoveKomponenState) - tampilan accordion punya alur pindah sendiri.
 import { useState } from 'react'
-import { activityLogService } from '../services/activityLogService'
-import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, hariKeNFromMap } from '../services/fcsService'
+import { activityLogService as activityLogServiceAsli } from '../services/activityLogService'
+import * as fcsAsli from '../services/fcsService'
+import { hariKeNFromMap } from '../services/fcsService'
+import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { ALL_PROSES, WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
 import { isKomponenRelevant, getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
-import { markRenharDirty, markRawDirty } from '../lib/globalState'
+import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { TODAY, fmtDate, getDayLabel } from '../lib/dateHelpers'
 import { Modal, Lbl, Btn } from './ui/Primitives'
@@ -41,6 +43,8 @@ export type DepsModalJadwalSel={
   withRenharQueue:(task:any,fn:(existing:any)=>Promise<void>)=>Promise<any>;createRenhar:(d:any)=>Promise<any>;updateRenhar:(id:any,d:any)=>Promise<any>;removeRenhar:(id:any)=>Promise<any>;setRenhar:(f:any)=>void;
   // opsional - alur "pilih komponen lalu Pindahin → klik tanggal tujuan" milik tampilan lama
   selectedForMove?:{wp:string;kode:string}[];setSelectedForMove?:(v:any)=>void;toggleSelectForMove?:(wp:string,kode:string)=>void;setMoveKomponenState?:(v:any)=>void;
+  // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = Supabase & activity_log asli
+  io?:IoJadwalRaw;
 };
 
 export function useModalJadwalSel(deps:DepsModalJadwalSel){
@@ -53,6 +57,11 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const getNamaKomponenDariKode=(panelId:number,kode:string):string=>namaKomponenDariKode(woData,getEffCfg,panelId,kode);
   const isWpDone=(panelData:any,wp:string,proses:string)=>wpSelesai(getEffCfg,panelData,wp,proses);
   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
+  // I/O (nama sama dgn impor lama -> isi fungsi di bawah tidak diubah)
+  const{checkKapasitasDanKomponenSwapV2,executeSwapKomponenV2,checkKuotaOrangDanKomponenSwap,executeSwapKomponenOrang}=deps.io?.fcs??fcsAsli;
+  const activityLogService=deps.io?.log??activityLogServiceAsli;
+  const markRawDirty=deps.io?.kotor.markRaw??markRawDirtyAsli;
+  const markRenharDirty=deps.io?.kotor.markRenhar??markRenharDirtyAsli;
   const [cellModal,setCellModal]=useState(null);
   const [modalWp,setModalWp]=useState("");
   const [modalKomponen,setModalKomponen]=useState([]);
