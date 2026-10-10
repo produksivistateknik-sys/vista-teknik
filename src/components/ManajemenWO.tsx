@@ -329,13 +329,16 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       // (10 Okt 2026, insiden WO 076) Panel yang tidak ada di form (baris dihapus / nama dikosongkan) akan
       // DIHAPUS PERMANEN - konfirmasi dampaknya SEBELUM apa pun disimpan; ber-permintaan = dibatalkan.
       if(!(await konfirmasiHapusPanel(editId,panels.filter(p=>p.nama&&(p as any).id).map(p=>(p as any).id))))return;
-      const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
-      if(result.success){
+      // (10 Okt 2026) URUTAN SIMPAN: semua baca/konfirmasi dulu -> hapus panel (RPC atomik, bisa DITOLAK)
+      // -> BARU header WO. Dulu header WO disimpan paling awal, jadi kalau hapus panel ditolak (atau
+      // konfirmasi qty dibatalkan) header sudah terlanjur berubah = WO setengah tersimpan.
+      {
         // ambil checklist TERBARU dari DB biar gak nimpa edit qty admin lain yang masuk selagi modal ini kebuka
         const panelIds=panels.filter(p=>p.nama&&(p as any).id).map(p=>(p as any).id);
         let freshChecklistMap:Record<string,any>={};
         if(panelIds.length>0){
-          const{data:freshRows}=await supabase.from("panels").select("id,checklist").in("id",panelIds);
+          const{data:freshRows,error:freshErr}=await supabase.from("panels").select("id,checklist").in("id",panelIds);
+          if(freshErr)throw new Error('Gagal membaca checklist panel: '+freshErr.message);
           freshChecklistMap=Object.fromEntries((freshRows||[]).map((r:any)=>[String(r.id),r.checklist]));
         }
         const groups:Record<string,any[]>={};
@@ -356,6 +359,11 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           );
           if(!lanjutPanel)return;
         }
+        // Hapus panel yang tidak ada di form SEBELUM header WO disimpan (gagal/ditolak = throw, header utuh).
+        const idHapus=await workOrderService.panelAkanDihapus(editId,panelIds);
+        if(idHapus.length>0)await workOrderService.hapusPanelAman(idHapus,uname,form.wo,form.proyek);
+        const result=await updateWO(editId,{wo:form.wo,proyek:form.proyek,target:form.target});
+        if(!result.success)throw new Error('Header WO gagal disimpan: '+(result.error||'tidak diketahui')+(idHapus.length>0?' (panel yang dihapus sudah terhapus)':''));
         await workOrderService.saveWOWithSplit(editId,form.wo,form.proyek,form.target,groupedPanels,uname);
         // FITUR (8 Agu 2026): sync qtyPerKomponen di raw_schedule yang udah ada - sama seperti
         // saveQtyEdit, biar jalur qty PANEL ini juga gak ninggalin raw_schedule basi.
