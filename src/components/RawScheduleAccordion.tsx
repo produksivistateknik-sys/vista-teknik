@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
-import { ringkasOperator, formatOperator, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
+import { teksOperatorPerTanggal, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
@@ -99,7 +99,7 @@ function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checkli
     c.lanjutan ? 'Hari lanjutan sesuai durasi standar bobot wiring' : null,
     c.orang != null ? `Kebutuhan ${Number(c.orang.toFixed(1))} orang` : null,
     c.proses === 'BUSBAR' ? (opBusbar ?? formatBusbarTahapTooltip(checklist?.[kode])) : null,
-    op && !opBusbar ? `Operator: ${formatOperator(ringkasOperator(op.timers, op.nama))}` : null,
+    op && !opBusbar ? teksOperatorPerTanggal(op.timers, op.nama) : null,
   ].filter(Boolean).join('\n')
   const jejak = !!c.jejakKe
   return (

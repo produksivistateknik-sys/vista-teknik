@@ -2,7 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
-import { ringkasOperator, formatOperator } from '../lib/operatorProgres'
+import { ringkasPerTanggal, formatOperator, fmtTanggalPendek } from '../lib/operatorProgres'
+import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { mintaMuatOperator, useOperatorPanel, timerOperator, namaOperatorRiwayat } from '../lib/operatorPanelLoader'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
@@ -28,13 +29,28 @@ const NamaRiwayat=({panelId,kode,proses,tanggal,pct}:{panelId:any,kode:string,pr
   const d=useOperatorPanel(panelId);
   return <span style={{color:"#e2e8f0"}}>{namaOperatorRiwayat(d,panelId,kode,proses,tanggal,pct)}</span>;
 };
+// Riwayat pengerjaan BUSBAR per tanggal (WIB jam mulai, terbaru di atas, maks 6) + tahap + operator + menit,
+// lalu Total (12 Okt 2026) - helper bersama lib/operatorProgres (sama dgn tooltip Raw per WP/Rencana/Task Monitoring).
 const OperatorBusbar=({panelId,kode}:{panelId:any,kode:string})=>{
   const d=useOperatorPanel(panelId);
-  const teks=!d||d.status==="muat"?"…":d.status==="gagal"?"(gagal memuat)":formatOperator(ringkasOperator(timerOperator(d,panelId,kode,"BUSBAR"),d.nama));
+  if(!d||d.status!=="siap") return <div style={{color:"#94a3b8",marginTop:4}}>Operator: {d?.status==="gagal"?"(gagal memuat)":"…"}</div>;
+  const r=ringkasPerTanggal(timerOperator(d,panelId,kode,"BUSBAR"),d.nama,true);
+  if(r.baris.length===0) return <div style={{color:"#94a3b8",marginTop:4}}>Operator: —</div>;
+  const mnt=(m:number)=>m<=0?"0 mnt":m<1?"<1 mnt":Math.round(m)+" mnt";
   return(
-    <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
-      <span style={{color:"#94a3b8"}}>Operator</span>
-      <span style={{color:"#e2e8f0"}}>{teks}</span>
+    <div style={{marginTop:5,borderTop:"1px solid #334155",paddingTop:4}}>
+      {r.baris.map((b,i)=>(
+        <div key={i} style={{display:"flex",gap:8,padding:"1px 0"}}>
+          <span style={{color:"#94a3b8",minWidth:40}}>{fmtTanggalPendek(b.tanggal)}</span>
+          {b.tahap&&<span style={{color:"#67e8f9",minWidth:62}}>{BUSBAR_TAHAP_LABEL[b.tahap]||b.tahap}</span>}
+          <span style={{color:"#e2e8f0",flex:1}}>{formatOperator(b.ringkas)}</span>
+        </div>
+      ))}
+      {r.sisaTanggal>0&&<div style={{color:"#94a3b8",fontStyle:"italic" as const}}>+{r.sisaTanggal} tanggal lagi</div>}
+      <div style={{display:"flex",justifyContent:"space-between",gap:8,borderTop:"1px solid #334155",marginTop:3,paddingTop:3}}>
+        <span style={{color:"#94a3b8"}}>Total</span>
+        <span style={{color:"#fbbf24",fontWeight:700}}>{mnt(r.total.menit)}{r.total.basi?` (${r.total.basi} timer tidak ditutup)`:""}</span>
+      </div>
     </div>
   );
 };
