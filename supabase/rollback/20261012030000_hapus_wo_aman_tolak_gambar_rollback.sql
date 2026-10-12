@@ -1,0 +1,2 @@
+-- ROLLBACK: kembali ke versi 20261012020000 (tanpa tolak gambar) - jalankan ulang file migration itu.
+-- Isi file migration 20261012020000_hapus_wo_aman.sql di SQL Editor (create or replace).

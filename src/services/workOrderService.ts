@@ -370,6 +370,11 @@ export const workOrderService = {
             if (permErr) throw new Error('Gagal sinkron wo_id permintaan panel ' + p.id + ': ' + permErr.message)
             const { error: ftkErr } = await supabase.from('fcs_tracking_komponen').update({ wo_id: targetWoId }).eq('panel_id', p.id)
             if (ftkErr) throw new Error('Gagal sinkron wo_id fcs_tracking_komponen panel ' + p.id + ': ' + ftkErr.message)
+            // BUG FIX (12 Okt 2026, insiden WO 076 panel 521) - dokumen gambar WO Digital (work_instructions,
+            // FK wo_id ON DELETE CASCADE) tidak ikut dipindah -> WO lama yang jadi kosong dihapus otomatis di bawah
+            // -> gambar + semua revisinya ikut terhapus permanen. Sekarang ikut pindah ke WO sibling.
+            const { error: wiErr } = await supabase.from('work_instructions' as any).update({ wo_id: targetWoId }).eq('panel_id', p.id)
+            if (wiErr) throw new Error('Gagal sinkron wo_id dokumen gambar panel ' + p.id + ': ' + wiErr.message)
           }
         } else {
           const { error } = await supabase.from('panels').insert(row)
@@ -421,6 +426,16 @@ export const workOrderService = {
       }
       await cekYatimPiatu('renhar')
       await cekYatimPiatu('raw_schedule')
+      // PENGAMAN (12 Okt 2026, insiden WO 076): WO yang masih punya dokumen gambar WO Digital (mis. gambar milik
+      // panel yang sudah dihapus - panel_id-nya jadi NULL) TIDAK dihapus otomatis - hapus WO = cascade hapus
+      // gambar + revisinya. WO kosong dibiarkan; admin bisa menghapusnya sendiri bila memang tidak dipakai.
+      const { count: jmlGambar, error: wiCekErr } = await supabase.from('work_instructions' as any).select('id', { count: 'exact', head: true }).eq('wo_id', editWoId)
+      if (wiCekErr) throw new Error('Gagal membaca dokumen gambar WO ' + editWoId + ': ' + wiCekErr.message)
+      if ((jmlGambar || 0) > 0) {
+        console.warn('[saveWOWithSplit] WO kosong id=' + editWoId + ' TIDAK dihapus otomatis: masih punya ' + jmlGambar + ' dokumen gambar.')
+        await logActivity(uname, 'WO KOSONG DIPERTAHANKAN', `WO ${wo} - ${proyek} (id ${editWoId}) tidak lagi punya panel tapi TIDAK dihapus otomatis karena masih punya ${jmlGambar} dokumen gambar WO Digital.`, { proyek, wo_number: wo })
+        return
+      }
       // cekYatimPiatu('fcs_schedule') DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
       // BUG FIX (29 Agu 2026): fcs_tracking_komponen & permintaan punya FK constraint ASLI ke
       // work_orders.id (beda dari fcs_schedule yang cuma konvensi kolom tanpa FK sungguhan) tapi
