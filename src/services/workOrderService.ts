@@ -446,11 +446,17 @@ export const workOrderService = {
       // harus tetap punya row permintaan/fcs_tracking_komponen-nya utuh, jangan ikut kehapus
       // cuma karena wo_id-nya masih nyantol ke editWoId (kelas bug yang sama persis dengan
       // insiden CIMORY CITEUREUP yang dijelaskan di komentar atas).
+      // REVISI (12 Okt 2026, keputusan user: permintaan barang TIDAK BOLEH dihapus) - dulu di sini permintaan +
+      // permintaan_item milik panel yang sudah tidak ada ikut dihapus (cekYatimPiatu) supaya WO kosong bisa dihapus.
+      // Sekarang WO kosong yang masih punya permintaan (termasuk milik panel arsip) DIPERTAHANKAN, permintaan utuh.
+      const { count: jmlPerm, error: permCekErr } = await supabase.from('permintaan').select('id', { count: 'exact', head: true }).eq('wo_id', editWoId)
+      if (permCekErr) throw new Error('Gagal membaca permintaan barang WO ' + editWoId + ': ' + permCekErr.message)
+      if ((jmlPerm || 0) > 0) {
+        console.warn('[saveWOWithSplit] WO kosong id=' + editWoId + ' TIDAK dihapus otomatis: masih punya ' + jmlPerm + ' permintaan barang.')
+        await logActivity(uname, 'WO KOSONG DIPERTAHANKAN', `WO ${wo} - ${proyek} (id ${editWoId}) tidak lagi punya panel tapi TIDAK dihapus otomatis karena masih punya ${jmlPerm} permintaan barang.`, { proyek, wo_number: wo })
+        return
+      }
       await cekYatimPiatu('fcs_tracking_komponen')
-      await cekYatimPiatu('permintaan', async (permIds) => {
-        const { error: piErr } = await supabase.from('permintaan_item').delete().in('permintaan_id', permIds)
-        if (piErr) throw new Error('Gagal cleanup permintaan_item yatim piatu WO ' + editWoId + ': ' + piErr.message)
-      })
       const { error: delWoErr } = await supabase.from('work_orders').delete().eq('id', editWoId)
       if (delWoErr) {
         // BUG FIX (29 Agu 2026): dulu hasil delete ini gak pernah dicek - kalau gagal (masih ada
