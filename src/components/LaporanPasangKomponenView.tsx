@@ -6,6 +6,7 @@ import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineSta
 import { FotoZoomViewer } from './FotoZoomViewer'
 import { ThumbMedia } from './ui/ThumbMedia'
 import { isVideoFoto, ekstensiMedia } from '../lib/mediaThumb'
+import { fotoPasangKomponen } from '../lib/fotoPasangKomponen'
 
 const STATUS_LABEL_PK:Record<string,{label:string,bg:string,color:string}>={
   belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
@@ -79,8 +80,9 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
   const[woFilterId,setWoFilterId]=useState<number|"ALL">("ALL")
 
   const fotoPkPanel=(panel:any):FotoZipItem[]=>{
-    const fotoList=panel.pasang_komponen_photos||[]
-    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`foto_${fi+1}.${ekstensiMedia(f)}`}))
+    // (12 Okt 2026) ikut foto per komponen (checklist[kode].fotoPemasangan), bukan cuma galeri panel.
+    const fotoList=fotoPasangKomponen(panel)
+    return fotoList.map((f:any,fi:number)=>({url:f.url,path:`${f._kode?sanitizeNamaFile(f._kode)+'_':''}foto_${fi+1}.${ekstensiMedia(f)}`}))
   }
 
   const downloadZipPanelPk=async(panel:any)=>{
@@ -175,7 +177,8 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
   const refCetak=useRef<HTMLDivElement>(null)
   if(selectedPanel){
     const sb=STATUS_LABEL_PK[selectedPanel._pkStatus]
-    const foto=selectedPanel.pasang_komponen_photos||[]
+    // (12 Okt 2026) dulu cuma galeri panel - foto "Tambah Foto" per komponen tidak pernah tampil di sini.
+    const foto=fotoPasangKomponen(selectedPanel)
     const komponenList=komponenPanel(selectedPanel)
     return(
       <div className="fi" ref={refCetak}>
@@ -235,7 +238,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
               {foto.map((f:any,fi:number)=>(
                 <div key={fi} onClick={()=>setLightbox({fotos:foto,index:fi,label:`PasangKomponen_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="pk-foto-print">
                   <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
-                  <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
+                  <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{f._kode?<b style={{color:"#475569"}}>{f._kode} · </b>:null}{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                 </div>
               ))}
             </div>
