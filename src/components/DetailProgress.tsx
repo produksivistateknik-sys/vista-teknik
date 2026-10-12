@@ -2,6 +2,8 @@ import { useState, useMemo, useEffect, useRef } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
 import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
+import { ringkasOperator, formatOperator } from '../lib/operatorProgres'
+import { mintaMuatOperator, useOperatorPanel, timerOperator, namaOperatorRiwayat } from '../lib/operatorPanelLoader'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 
 // PERFORMA (4 Okt 2026): style & ProsesPctCell dipindah ke luar komponen - dulu didefinisikan
@@ -20,7 +22,23 @@ const tdSL={...tdS,textAlign:"left" as const};
 // PERFORMA (7 Okt 2026): tooltip histori dulu SELALU dirender (tersembunyi opacity/visibility) di
 // tiap sel ber-histori - 24.430 dari 62.592 elemen halaman ini (3.135 tooltip). Sekarang isinya baru
 // dibuat saat kursor masuk sel (hover); CSS .hist-cell:hover tetap yang menampilkan - tampilan sama.
-const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl?:any,nama?:string})=>{
+// Nama operator per baris riwayat (12 Okt 2026) - komponen terpisah supaya hook data operator hanya hidup
+// selama tooltip tampil (hover); datanya dimuat 1x per panel saat hover pertama, di-cache.
+const NamaRiwayat=({panelId,kode,proses,tanggal,pct}:{panelId:any,kode:string,proses:string,tanggal:string,pct:number})=>{
+  const d=useOperatorPanel(panelId);
+  return <span style={{color:"#e2e8f0"}}>{namaOperatorRiwayat(d,panelId,kode,proses,tanggal,pct)}</span>;
+};
+const OperatorBusbar=({panelId,kode}:{panelId:any,kode:string})=>{
+  const d=useOperatorPanel(panelId);
+  const teks=!d||d.status==="muat"?"…":d.status==="gagal"?"(gagal memuat)":formatOperator(ringkasOperator(timerOperator(d,panelId,kode,"BUSBAR"),d.nama));
+  return(
+    <div style={{display:"flex",justifyContent:"space-between",gap:8}}>
+      <span style={{color:"#94a3b8"}}>Operator</span>
+      <span style={{color:"#e2e8f0"}}>{teks}</span>
+    </div>
+  );
+};
+const ProsesPctCell=({pct,proses,cl,nama,panelId,kode}:{pct:number|undefined,proses:string,cl?:any,nama?:string,panelId?:any,kode?:string})=>{
   const[hover,setHover]=useState(false);
   if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
   const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
@@ -28,7 +46,7 @@ const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl
   const history=cl?.history?.[proses]||[];
   const pctFinal=pct!==undefined&&pct!==null?pct:getBestProgress(cl,proses);
   return(
-    <td style={tdS} className="hist-cell" onMouseEnter={history.length>0?()=>setHover(true):undefined} onMouseLeave={hover?()=>setHover(false):undefined}>
+    <td style={tdS} className="hist-cell" onMouseEnter={history.length>0?()=>{setHover(true);if(panelId!=null&&kode)mintaMuatOperator(panelId);}:undefined} onMouseLeave={hover?()=>setHover(false):undefined}>
       <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
         <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
           <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
@@ -53,6 +71,7 @@ const ProsesPctCell=({pct,proses,cl,nama}:{pct:number|undefined,proses:string,cl
                 <span style={{color:"#94a3b8"}}>📅 {new Date(h.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
                 <span style={{color:"#fbbf24"}}>Shift {h.shift}</span>
                 <span style={{color:h.pct>=100?"#4ade80":h.pct>0?"#fb923c":"#94a3b8",fontWeight:700}}>{h.pct}%</span>
+                {panelId!=null&&kode&&<NamaRiwayat panelId={panelId} kode={kode} proses={proses} tanggal={h.tanggal} pct={h.pct}/>}
               </div>
             ))}
             <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
@@ -345,7 +364,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                             if(pr==="BUSBAR") return <ProsesPctCell key={pr} pct={undefined} proses={pr}/>;
                             const relevant=isKomponenRelevant(it.kode,p.tipe,pr);
                             const pct=relevant?ccpAwarePct(p.id,it.kode,pr,cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0):undefined;
-                            return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name}/>;
+                            return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name} panelId={p.id} kode={it.kode}/>;
                           })}
                           {wp===firstRenderedWp&&ii===0&&(
                             <>
@@ -393,7 +412,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                             const isDone=pct>=100;
                             const color=PROSES_COLOR["BUSBAR"]||"#06b6d4";
                             return(
-                              <td key={pr} style={{...tdS,background:"#f0fdfe"}} className="hist-cell">
+                              <td key={pr} style={{...tdS,background:"#f0fdfe"}} className="hist-cell" onMouseEnter={pct>0?()=>mintaMuatOperator(p.id):undefined}>
                                 <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:2,position:"relative" as const}}>
                                   <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
                                     <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
@@ -418,6 +437,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                                         <span style={{color:"#94a3b8"}}>Progress</span>
                                         <span style={{color:isDone?"#4ade80":"#fb923c",fontWeight:700}}>{pct}%</span>
                                       </div>
+                                      <OperatorBusbar panelId={p.id} kode={nama}/>
                                       <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
                                     </div>
                                   )}

@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, statusPenandaPanel, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
+import { formatBusbarTahapOperator } from '../lib/operatorProgres'
+import { mintaMuatOperator, useOperatorPanel, timerOperator } from '../lib/operatorPanelLoader'
 import { Card, Lbl, Sel } from './ui/Primitives'
 
 export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],rawData?:any[],livePanelTypes?:any}){
@@ -31,6 +33,9 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
   const selectedWo=woData.find((w:any)=>w.id===selectedWoId);
   const panelList=selectedWo?.panels||[];
   const selectedPanel=panelList.find((p:any)=>p.id===selectedPanelId);
+  // Nama operator per tahap di tooltip BUSBAR (12 Okt 2026) - dimuat 1x saat panel dibuka, di-cache.
+  useEffect(()=>{mintaMuatOperator(selectedPanel?.id);},[selectedPanel?.id]);
+  const opPanel=useOperatorPanel(selectedPanel?.id);
   const cfg=selectedPanel?getEffCfg(selectedPanel.tipe):null;
 
   // progressMap "campuran" - ccp menang kalau barisnya ADA, checklist tetap fallback (satu
@@ -179,7 +184,7 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
                     // Breakdown SEMUA tahap (Fabrikasi/Plating/Heat-Shrink/Pasang) buat tooltip
                     // on-hover - selalu ditampilkan gak peduli status, undefined kalau busbarTahap
                     // belum pernah ditulis (komponen lama/belum disentuh).
-                    const tahapTooltip=formatBusbarTahapTooltip(selectedPanel.checklist?.[k]);
+                    const tahapTooltip=(opPanel?.status==="siap"?formatBusbarTahapOperator(selectedPanel.checklist?.[k],timerOperator(opPanel,selectedPanel.id,k,"BUSBAR"),opPanel.nama):undefined)??formatBusbarTahapTooltip(selectedPanel.checklist?.[k]);
                     // Tahap yang LAGI BERJALAN (bisa >1 sekaligus, model busbar sengaja gak ada
                     // "tahap aktif tunggal") - badge diperpanjang biar kelihatan langsung tanpa
                     // hover, mis. "IN PROGRESS 93.8% · Pasang (75%)".

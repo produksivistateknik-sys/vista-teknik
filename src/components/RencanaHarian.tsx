@@ -1,5 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
+import { formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, getCcpAwareValue, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
@@ -388,6 +389,10 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       .subscribe();
     return()=>{cancelled=true;tunda.batal();supabase.removeChannel(ch);};
   },[selDate]);
+  // Tooltip BUSBAR per tahap + nama operator & menit (12 Okt 2026) - dari busbarTahapOperatorData yang SUDAH
+  // dimuat utk kolom Operator (tanpa query tambahan), lewat helper bersama lib/operatorProgres.
+  const idxTimerBusbar=useMemo(()=>indeksTimer(busbarTahapOperatorData.map((t:any)=>({...t,proses:"BUSBAR"}))),[busbarTahapOperatorData]);
+  const namaPekerjaById=useMemo(()=>{const m=new Map((pekerja||[]).map((p:any)=>[String(p.id),p.nama]));return(id:any)=>m.get(String(id)) as string|undefined;},[pekerja]);
   const getOperatorNamesForKode=(panelId:any,kode:string,proses:string):string[]=>{
     const ids=[...new Set(operatorHistoryData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode&&t.proses===proses).map((t:any)=>t.pekerja_id))];
     return ids.map((id:any)=>pekerja.find((p:any)=>p.id===id)?.nama).filter(Boolean);
@@ -1296,7 +1301,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                 // selalu ditampilkan di badge Status manapun (bukan cuma pas "Sedang
                                 // Dikerjakan"), undefined kalau busbarTahap belum pernah ditulis (fallback
                                 // title kosong, gak ganggu proses non-BUSBAR sama sekali).
-                                const busbarTooltip=t.proses==="BUSBAR"?formatBusbarTahapTooltip(panelData?.checklist?.[kode]):undefined;
+                                const busbarTooltip=t.proses==="BUSBAR"?(formatBusbarTahapOperator(panelData?.checklist?.[kode],idxTimerBusbar.get(kunciTimer(t.panelId,kode,"BUSBAR"))||[],namaPekerjaById)??formatBusbarTahapTooltip(panelData?.checklist?.[kode])):undefined;
                                 // REVISI (17 Sep 2026, dilaporkan user 2x) - timer aktif SEKARANG dicek
                                 // PALING DULU, sebelum pctKerja. Dulu urutannya kebalik (pctKerja>0 dicek
                                 // duluan) - begitu progress BUSBAR sudah >0% (yang notabene HAMPIR SELALU

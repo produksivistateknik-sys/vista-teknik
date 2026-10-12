@@ -2,6 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
+import { ringkasOperator, formatOperator, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
@@ -84,8 +85,11 @@ function simpanBuka(user: any, s: Set<string>) {
   try { localStorage.setItem(kunciStorage(user), JSON.stringify([...s])) } catch { /* privat/penuh - abaikan, tampilan tetap jalan */ }
 }
 
-function Chip({ c, kode, checklist }: { c: ChipProses; kode: string; checklist: any }) {
+// Operator per chip (12 Okt 2026): timer komponen+proses ini & peta nama pekerja (dari snapshot memori).
+type OpChip = { timers: any[]; nama: (id: any) => string | undefined } | null
+function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checklist: any; op?: OpChip }) {
   const warna = (PROSES_COLOR as any)[c.proses] || '#64748b'
+  const opBusbar = c.proses === 'BUSBAR' && op ? formatBusbarTahapOperator(checklist?.[kode], op.timers, op.nama) : undefined
   const judul = [
     `${c.proses} · ${kode}`,
     c.selesai ? 'Selesai (100%)' : null,
@@ -94,7 +98,8 @@ function Chip({ c, kode, checklist }: { c: ChipProses; kode: string; checklist: 
     c.dariTanggal ? `Lanjutan dari ${fmtTglPendek(c.dariTanggal)}` : null,
     c.lanjutan ? 'Hari lanjutan sesuai durasi standar bobot wiring' : null,
     c.orang != null ? `Kebutuhan ${Number(c.orang.toFixed(1))} orang` : null,
-    c.proses === 'BUSBAR' ? formatBusbarTahapTooltip(checklist?.[kode]) : null,
+    c.proses === 'BUSBAR' ? (opBusbar ?? formatBusbarTahapTooltip(checklist?.[kode])) : null,
+    op && !opBusbar ? `Operator: ${formatOperator(ringkasOperator(op.timers, op.nama))}` : null,
   ].filter(Boolean).join('\n')
   const jejak = !!c.jejakKe
   return (
@@ -149,6 +154,20 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   // sandbox: I/O logika bersama (MemoryRepo), urutan panel salinan, kabar perubahan salinan
   io: IoJadwalRaw; orderMap: Record<number, string>; setOrderMap: (f: any) => void; dengar: RepoJadwalRaw['dengar']
 }) {
+  // ── nama operator utk tooltip chip (12 Okt 2026): timer & master pekerja dari salinan memori, dibaca SEKALI ──
+  const [opData, setOpData] = useState<{ idx: Map<string, any[]>; nama: (id: any) => string | undefined } | null>(null)
+  useEffect(() => {
+    let batal = false
+    ;(async () => {
+      const [t, p] = await Promise.all([io.db.from('fcs_timer_kerja').select('panel_id,kode_komponen,proses,tahap,pekerja_id,mulai,selesai,durasi_menit'), io.db.from('pekerja').select('id,nama')])
+      if (t.error || p.error) { console.error('[Raw per WP] gagal baca operator (tooltip tanpa nama):', t.error || p.error); return }
+      const peta = new Map<string, string>((p.data || []).map((x: any) => [String(x.id), x.nama]))
+      if (!batal) setOpData({ idx: indeksTimer(t.data || []), nama: (id: any) => peta.get(String(id)) })
+    })()
+    return () => { batal = true }
+  }, [io])
+  const opChip = (panelId: any, kode: string, proses: string): OpChip => opData ? { timers: opData.idx.get(kunciTimer(panelId, kode, proses)) || [], nama: opData.nama } : null
+
   // ── data pendukung (sama sumber dgn Raw Schedule lama) ──
   const [fcsKapasitas, setFcsKapasitas] = useState<any[]>([])
   const [processTimeList, setProcessTimeList] = useState<any[]>([])
@@ -811,7 +830,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (r.t === 'komp') {
       const csSemua = r.k.sel[d] || []
       const cs = csSemua.length > MAKS_CHIP ? csSemua.slice(0, MAKS_CHIP - 1) : csSemua
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} />),
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} />),
         csSemua.length - cs.length, `${r.k.kode} ${getDayLabel(d)}:\n` + csSemua.map(c => c.proses + (c.selesai ? ' ✓' : '') + (c.jejakKe ? ' (histori)' : '')).join('\n'))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'

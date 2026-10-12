@@ -13,15 +13,16 @@ import type { RepoJadwalRaw, HasilSimpan } from '../repoJadwalRaw'
 import type { IoJadwalRaw } from '../ioJadwalRaw'
 
 export async function muatSnapshotSandbox(): Promise<MemoryDb> {
-  const [raw, panels, wo, pt, ov, timer, urutan, qty, notif] = await Promise.all([
+  const [raw, panels, wo, pt, ov, timer, urutan, qty, notif, pekerja] = await Promise.all([
     bacaTabel('raw_schedule'), bacaTabel('panels'), bacaTabel('work_orders'), bacaTabel('fcs_process_time'),
     bacaTabel('fcs_kapasitas_override'), bacaTabel('fcs_timer_kerja'), bacaTabel('raw_schedule_panel_order'),
     bacaTabel('qty_change_log', '*', { urut: { kolom: 'created_at', naik: false }, maks: 200 }),
     bacaTabel('fcs_notifikasi', '*', { eq: [['dibaca', false], ['tipe', 'available']] }),
+    bacaTabel('pekerja', 'id,nama'), // nama operator di tooltip chip (12 Okt 2026)
   ])
   return new MemoryDb({
     raw_schedule: raw, panels, work_orders: wo, fcs_process_time: pt, fcs_kapasitas_override: ov, fcs_timer_kerja: timer,
-    raw_schedule_panel_order: urutan, qty_change_log: qty, fcs_notifikasi: notif,
+    raw_schedule_panel_order: urutan, qty_change_log: qty, fcs_notifikasi: notif, pekerja,
     renhar: [], activity_log: [], // sandbox: rencana harian & log tidak disalin; tulis ke sini hanya di memori
   })
 }
