@@ -730,7 +730,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   try{
     await workOrderService.removeWithDependencies(delId as number,uname,{halaman:'Manajemen WO'});
   }catch(err:any){
-    alert('Gagal menghapus WO: masih ada data terkait di tabel "'+err.message+'".\n\nProses dihentikan - tidak ada data yang berubah/terhapus. Cek data terkait sebelum coba lagi.');
+    console.error('[Hapus WO] gagal',err);
+    alert('Gagal menghapus WO: '+(err?.message||err)+'\n\nTidak ada data yang terhapus.');
     return;
   }
   setWoData(prev=>prev.filter(w=>w.id!==delId));

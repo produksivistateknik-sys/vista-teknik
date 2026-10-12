@@ -138,31 +138,15 @@ export const workOrderService = {
   // (helper `step`, throw kalau gagal) sebelum lanjut ke step berikutnya - kalau ada yang
   // gagal, PROSES BERHENTI TOTAL (gak ada activity_log, gak ada apa pun yang keburu terhapus
   // dianggap sukses), caller dapat pesan jelas tabel mana yang masih megang data terkait.
+  // REVISI (12 Okt 2026, tahap C insiden WO 076): dulu hapus tabel per tabel dari browser (dicek tapi TIDAK
+  // atomik - gagal di tengah = sebagian sudah terhapus) & ikut menghapus permintaan barang. Sekarang 1 RPC
+  // atomik hapus_wo_aman: WO yang masih punya permintaan barang DITOLAK, selain itu semua-atau-tidak,
+  // activity_log 'HAPUS WO' ditulis di server. Gagal = THROW (pesan dari server).
   async removeWithDependencies(id: number, user_name = 'Admin', extra?: { halaman?: string }) {
-    const { data: woToDelete } = await supabase.from('work_orders').select('*, panels(*)').eq('id', id).single()
-    const panelIds = (woToDelete?.panels || []).map((p: any) => p.id)
-    const step = async (label: string, query: PromiseLike<{ error: any }>) => {
-      const { error } = await query
-      if (error) throw new Error(label + ': ' + error.message)
-    }
-    if (panelIds.length > 0) {
-      await step('fcs_timer_kerja', supabase.from('fcs_timer_kerja').delete().in('panel_id', panelIds))
-      await step('progress_checkpoint_log', supabase.from('progress_checkpoint_log').delete().in('panel_id', panelIds))
-      await step('kendala', supabase.from('kendala').delete().in('panel_id', panelIds))
-    }
-    await step('fcs_tracking_komponen', supabase.from('fcs_tracking_komponen').delete().eq('wo_id', id))
-    const { data: permRows, error: permSelErr } = await supabase.from('permintaan').select('id').eq('wo_id', id)
-    if (permSelErr) throw new Error('baca permintaan: ' + permSelErr.message)
-    if (permRows && permRows.length > 0) {
-      await step('permintaan_item', supabase.from('permintaan_item').delete().in('permintaan_id', permRows.map((r: any) => r.id)))
-    }
-    await step('permintaan', supabase.from('permintaan').delete().eq('wo_id', id))
-    await step('renhar', supabase.from('renhar').delete().eq('wo_id', id))
-    await step('raw_schedule', supabase.from('raw_schedule').delete().eq('wo_id', id))
-    // fcs_schedule step DIHAPUS (20 Sep 2026, retirement Fase 1) - tabel sudah kosong & di-drop
-    await step('panels', supabase.from('panels').delete().eq('wo_id', id))
-    await step('work_orders', supabase.from('work_orders').delete().eq('id', id))
-    await logActivity(user_name, 'HAPUS WO', `Hapus WO ${woToDelete?.wo} - ${woToDelete?.proyek} beserta semua data terkait`, { proyek: woToDelete?.proyek || '', wo_number: woToDelete?.wo || '', halaman: extra?.halaman })
+    const { data: woToDelete, error: bacaErr } = await supabase.from('work_orders').select('*').eq('id', id).maybeSingle()
+    if (bacaErr) throw new Error('Gagal membaca WO: ' + bacaErr.message)
+    const { error } = await supabase.rpc('hapus_wo_aman' as any, { p_wo_id: id, p_user: user_name, p_halaman: extra?.halaman ?? null } as any)
+    if (error) throw new Error(error.message || 'Gagal menghapus WO')
     return woToDelete
   },
 

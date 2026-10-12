@@ -290,7 +290,8 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
       setWoList(prev=>prev.filter((w:any)=>w.id!==delId));
       setDelId(null);
     }catch(err:any){
-      alert('Gagal menghapus WO: masih ada data terkait di tabel "'+(err?.message||"unknown error")+'".\n\nProses dihentikan - tidak ada data yang berubah/terhapus. Cek data terkait sebelum coba lagi.');
+      console.error('[Hapus WO] gagal',err);
+      alert('Gagal menghapus WO: '+(err?.message||err)+'\n\nTidak ada data yang terhapus.');
     }
     setDelLoading(false);
   };
