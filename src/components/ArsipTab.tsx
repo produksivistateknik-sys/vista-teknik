@@ -272,7 +272,8 @@ export function ArsipTab({user,refetchWO}:any){
   const unarsipkan=async(p:any)=>{
     if(!confirm(`Kembalikan panel "${p.nama}" ke tampilan aktif? Semua data (checklist, progress, riwayat timer, QC) dikembalikan utuh.`))return;
     setUnarsipLoadingId(p.id);
-    const{error}=await supabase.rpc("unarsip_panel",{p_panel_id:p.id});
+    // (12 Okt 2026) lewat unarsip_panel_aman: sekaligus menyambung kembali permintaan barang panel ini.
+    const{error}=await supabase.rpc("unarsip_panel_aman" as any,{p_panel_id:p.id} as any);
     setUnarsipLoadingId(null);
     if(error){alert("Gagal unarchive: "+error.message);return;}
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
