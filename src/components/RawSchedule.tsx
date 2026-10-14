@@ -149,6 +149,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       const existingEntry=toEntries.find((e:any)=>e.wp===wp);
       if(existingEntry){
         if(!existingEntry.komponen.includes(kode))existingEntry.komponen=[...existingEntry.komponen,kode];
+        // (14 Okt 2026) kode yang dipindah ke tanggal tempat JEJAK-nya berada -> jejak dihapus (aktif lagi),
+        // sama dgn taruhDiTujuan. Dulu kode cuma "sudah ada" sebagai jejak -> hilang dari jadwal aktif.
+        if(existingEntry.digeserKe?.[kode]){const{[kode]:_j,...sisaJejak}=existingEntry.digeserKe;if(Object.keys(sisaJejak).length>0)existingEntry.digeserKe=sisaJejak;else delete existingEntry.digeserKe;}
         toEntries=toEntries.map((e:any)=>e.wp===wp?existingEntry:e);
       } else {
         toEntries=[...toEntries,{wp,komponen:[kode]}];
