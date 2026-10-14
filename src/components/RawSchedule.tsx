@@ -119,50 +119,66 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       return exists?prev.filter(x=>!(x.wp===wp&&x.kode===kode)):[...prev,{wp,kode}];
     });
   };
+  // "Pindahin" komponen terpilih dari modal sel -> klik tanggal tujuan.
+  // REVISI (14 Okt 2026, investigasi renhar 7197 SDP CT GALLON): dulu jalur ini menulis raw_schedule langsung
+  // TANPA cek hasil, TANPA sinkron rencana harian (renhar tanggal asal tertinggal -> komponen tampil di renhar
+  // 2 tanggal), TANPA log & tanpa pin. Sekarang SAMA dgn drag sel (confirmDrag): logika jadwal bersama
+  // lib/jadwalPindah (lepasDariAsal/taruhDiTujuan - jejak bila ada pengerjaan di asal, pin di tujuan, jejak di
+  // tujuan dihapus), simpan dicek + dikembalikan bila gagal, renhar lewat lib/renharSinkron, dicatat di log.
   const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,items:{wp:string;kode:string}[])=>{
     const row=rawData.find((r:any)=>r.id===rawId);
     if(!row)return;
-    const schedule={...(row.schedule||{})};
-    // REVISI (10 Agu 2026): jejak (digeserKe) di tanggal asal cuma ditinggalkan kalau BENERAN
-    // ADA pengerjaan (fcs_timer_kerja) di fromDate - kalau enggak (komponen berprogres tapi gak
-    // disentuh hari itu), pindah senyap tanpa jejak (reuse field digeserKe yang sama dgn
-    // auto-geser-harian, skema jejak-vs-remove yang sama juga).
+    const perWp:Record<string,string[]>={};
+    items.forEach(({wp,kode})=>{(perWp[wp]=perWp[wp]||[]);if(!perWp[wp].includes(kode))perWp[wp].push(kode);});
+    const entries=Object.entries(perWp).map(([wp,komponen])=>({wp,komponen}));
     const kodeUnik=[...new Set(items.map(it=>it.kode))];
-    const{data:timerRows}=kodeUnik.length>0?await supabase.from("fcs_timer_kerja").select("kode_komponen")
-      .eq("panel_id",row.panel_id||row.panelId).eq("proses",row.proses).eq("tanggal",fromDate).in("kode_komponen",kodeUnik):{data:[]};
-    const adaPengerjaanSet=new Set((timerRows||[]).map((t:any)=>t.kode_komponen));
-    let fromEntries=(schedule[fromDate]||[]).map((e:any)=>({...e,komponen:[...(e.komponen||[])],digeserKe:{...(e.digeserKe||{})}}));
-    for(const{wp,kode}of items){
-      fromEntries=fromEntries.map((e:any)=>{
-        if(e.wp!==wp)return e;
-        if(adaPengerjaanSet.has(kode)){
-          return{...e,digeserKe:{...e.digeserKe,[kode]:toDate}};
-        }
-        return{...e,komponen:e.komponen.filter((k:string)=>k!==kode)};
-      });
+    let adaPengerjaanSet=new Set<string>();
+    if(kodeUnik.length>0){
+      const{data:timerRows,error:timerErr}=await supabase.from("fcs_timer_kerja").select("kode_komponen")
+        .eq("panel_id",row.panel_id||row.panelId).eq("proses",row.proses).eq("tanggal",fromDate).in("kode_komponen",kodeUnik);
+      if(timerErr){console.error("[Pindahin komponen] baca timer gagal:",timerErr);alert("Gagal membaca data pengerjaan: "+timerErr.message+"\n\nTidak ada yang dipindah.");return;}
+      adaPengerjaanSet=new Set((timerRows||[]).map((t:any)=>t.kode_komponen));
     }
-    fromEntries=fromEntries.filter((e:any)=>e.komponen.length>0)
-      .map((e:any)=>Object.keys(e.digeserKe).length===0?(({digeserKe,...rest}:any)=>rest)(e):e);
-    schedule[fromDate]=fromEntries;
-    let toEntries=schedule[toDate]||[];
-    for(const{wp,kode}of items){
-      const existingEntry=toEntries.find((e:any)=>e.wp===wp);
-      if(existingEntry){
-        if(!existingEntry.komponen.includes(kode))existingEntry.komponen=[...existingEntry.komponen,kode];
-        // (14 Okt 2026) kode yang dipindah ke tanggal tempat JEJAK-nya berada -> jejak dihapus (aktif lagi),
-        // sama dgn taruhDiTujuan. Dulu kode cuma "sudah ada" sebagai jejak -> hilang dari jadwal aktif.
-        if(existingEntry.digeserKe?.[kode]){const{[kode]:_j,...sisaJejak}=existingEntry.digeserKe;if(Object.keys(sisaJejak).length>0)existingEntry.digeserKe=sisaJejak;else delete existingEntry.digeserKe;}
-        toEntries=toEntries.map((e:any)=>e.wp===wp?existingEntry:e);
-      } else {
-        toEntries=[...toEntries,{wp,komponen:[kode]}];
-      }
-    }
-    schedule[toDate]=toEntries;
+    let newSch=lepasDariAsal(row.schedule||{},fromDate,toDate,entries,adaPengerjaanSet);
+    newSch=taruhDiTujuan(newSch,toDate,entries,new Date().toISOString());
     markRawDirty(rawId);
-    setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule}:r));
-    await supabase.from("raw_schedule").update({schedule}).eq("id",rawId);
+    setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule:newSch}:r));
     setMoveKomponenState(null);
     setSelectedForMove([]);
+    try{
+      await withRetry(async()=>{
+        const result=await updateRaw(rawId,{schedule:newSch});
+        if(!result?.success)throw new Error(result?.error||"Gagal menyimpan jadwal ke server");
+        return result;
+      });
+    }catch(err:any){
+      clearRawDirty(rawId);
+      setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule:row.schedule}:r));
+      alert("Gagal memindah komponen: "+(err?.message||"koneksi bermasalah")+"\n\nTampilan sudah dikembalikan ke posisi semula - coba lagi.");
+      return;
+    }
+    clearRawDirty(rawId);
+    let sinkronRenharGagal=false;
+    const wpGagal:any[]=[];
+    const jalankan=async(daftar:any[])=>{
+      wpGagal.length=0;
+      let errPertama:any=null;
+      for(const e of daftar){
+        try{await pindahKomponenRenhar({withRenharQueue,updateRenhar,createRenhar,setRenhar},{rawId,wp:e.wp,fromDate,toDate,kode:e.komponen});}
+        catch(err){wpGagal.push(e);errPertama=errPertama||err;}
+      }
+      if(errPertama)throw errPertama;
+    };
+    try{await jalankan(entries);}catch(err:any){
+      sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${row.panel||""} ${row.proses||""} ${wpGagal.map((e:any)=>e.wp).join(", ")} (${fromDate} → ${toDate})`,()=>jalankan([...wpGagal])));
+    }
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({
+      user_name:uname,action:"PINDAH KOMPONEN",
+      description:"Pindah komponen "+row.panel+" ("+row.proyek+") proses "+row.proses+": "+entries.map(e=>e.wp+" "+e.komponen.join(", ")).join("; ")+" dari "+fromDate+" ke "+toDate+(sinkronRenharGagal?" (SINKRON RENCANA HARIAN GAGAL)":""),
+      module:"raw",halaman:"Raw Schedule",proyek:row.proyek||"",panel:row.panel||"",
+    });
   };
   const [dragInfo,setDragInfo]=useState(null);
   const [dragOverCell,setDragOverCell]=useState(null);
