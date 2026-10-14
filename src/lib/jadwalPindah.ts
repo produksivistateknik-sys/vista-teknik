@@ -32,6 +32,10 @@ export function lepasDariAsal(schedule: Jadwal, fromDate: string, toDate: string
   return newSch
 }
 
+// BUG FIX (14 Okt 2026, insiden SDP CT GALLON & FRESH AIR POTONG FS.30): kalau tanggal tujuan MASIH berisi
+// JEJAK kode yang ditaruh (digeserKe[kode] di entry WP yang sama - mis. ditarik balik ke tanggal asal
+// auto-geser), jejaknya DIHAPUS supaya kode aktif lagi di sini. Dulu kode cuma digabung + diberi pin, jejak
+// tetap -> kode abu-abu di sini & sudah hilang dari tanggal asal = hilang dari jadwal aktif.
 export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJadwal[], nowIso: string): Jadwal {
   const newSch: Jadwal = { ...(schedule || {}) }
   const merged: EntriJadwal[] = (newSch[toDate] || []).map((m) => ({ ...m }))
@@ -43,6 +47,11 @@ export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJa
       const manualPin = { ...(found.manualPin || {}) }
       kodeAsliDrag.forEach((k: string) => { manualPin[k] = nowIso })
       found.manualPin = manualPin
+      if (found.digeserKe && kodeAsliDrag.some((k: string) => found.digeserKe![k])) {
+        const digeserKe = { ...found.digeserKe }
+        kodeAsliDrag.forEach((k: string) => { delete digeserKe[k] })
+        if (Object.keys(digeserKe).length > 0) found.digeserKe = digeserKe; else delete found.digeserKe
+      }
     } else {
       const manualPin: Record<string, string> = {}
       kodeAsliDrag.forEach((k: string) => { manualPin[k] = nowIso })
@@ -65,6 +74,8 @@ export function lepasBusbar(j: JadwalBusbar, fromDate: string, toDate: string, k
   return { ...j, busbar_jejak: { ...(j.busbar_jejak || {}), [fromDate]: jejakFromDate } }
 }
 
+// (14 Okt 2026) sama dgn taruhDiTujuan: kode BUSBAR yang ditaruh di tanggal tempat jejaknya berada
+// (busbar_jejak[toDate][kode]) -> jejak dihapus, kode aktif lagi di sini.
 export function taruhBusbar(j: JadwalBusbar, toDate: string, kode: string[], nowIso: string): JadwalBusbar {
   const bs = { ...(j.busbar_schedule || {}) }
   bs[toDate] = [...new Set([...(bs[toDate] || []), ...kode])]
@@ -72,7 +83,70 @@ export function taruhBusbar(j: JadwalBusbar, toDate: string, kode: string[], now
   const pinAtTarget = { ...(pin[toDate] || {}) }
   kode.forEach((k) => { pinAtTarget[k] = nowIso })
   pin[toDate] = pinAtTarget
+  const jejakTujuan = (j.busbar_jejak || {})[toDate]
+  if (jejakTujuan && kode.some((k) => jejakTujuan[k])) {
+    const sisa = { ...jejakTujuan }
+    kode.forEach((k) => { delete sisa[k] })
+    const jejak = { ...(j.busbar_jejak || {}) }
+    if (Object.keys(sisa).length > 0) jejak[toDate] = sisa; else delete jejak[toDate]
+    return { ...j, busbar_schedule: bs, busbar_manual_pin: pin, busbar_jejak: jejak }
+  }
   return { ...j, busbar_schedule: bs, busbar_manual_pin: pin }
+}
+
+// ── JEJAK yang menunjuk ke suatu tanggal (14 Okt 2026, hapus WP & "Aktifkan di sini") ──────────────────
+// Kode di entry WP `wp` tanggal `tanggal` yang merupakan TUJUAN jejak dari tanggal lain:
+// [{ kode, dari }] (dari = tanggal tempat jejak digeserKe[kode] === tanggal, WP sama).
+export function jejakMenujuTanggal(schedule: Jadwal, tanggal: string, wp: string, kode: string[]): { kode: string; dari: string }[] {
+  const set = new Set(kode)
+  const out: { kode: string; dari: string }[] = []
+  Object.entries(schedule || {}).forEach(([d, es]) => {
+    if (d === tanggal) return
+    ;(es || []).forEach((e) => {
+      if (e.wp !== wp) return
+      Object.entries(e.digeserKe || {}).forEach(([k, ke]) => { if (ke === tanggal && set.has(k)) out.push({ kode: k, dari: d }) })
+    })
+  })
+  return out
+}
+// Hapus jejak digeserKe[kode] di (tanggal, wp) -> kode aktif lagi di tanggal itu.
+export function aktifkanJejak(schedule: Jadwal, tanggal: string, wp: string, kode: string[]): Jadwal {
+  const set = new Set(kode)
+  const es = (schedule?.[tanggal] || []).map((e) => {
+    if (e.wp !== wp || !e.digeserKe || !Object.keys(e.digeserKe).some((k) => set.has(k))) return e
+    const digeserKe = { ...e.digeserKe }
+    set.forEach((k) => { delete digeserKe[k] })
+    const { digeserKe: _lama, ...rest } = e
+    return Object.keys(digeserKe).length > 0 ? { ...rest, digeserKe } : rest
+  })
+  return { ...(schedule || {}), [tanggal]: es as EntriJadwal[] }
+}
+// Buang kode (jejaknya) dari (tanggal, wp) sepenuhnya - entry kosong dihapus.
+export function buangJejak(schedule: Jadwal, tanggal: string, wp: string, kode: string[]): Jadwal {
+  const set = new Set(kode)
+  const es = (schedule?.[tanggal] || []).map((e) => {
+    if (e.wp !== wp) return e
+    const komponen = (e.komponen || []).filter((k) => !(set.has(k) && e.digeserKe?.[k]))
+    if (komponen.length === (e.komponen || []).length) return e
+    const digeserKe = { ...(e.digeserKe || {}) }
+    set.forEach((k) => { delete digeserKe[k] })
+    const { digeserKe: _lama, ...rest } = e
+    return { ...rest, komponen, ...(Object.keys(digeserKe).length > 0 ? { digeserKe } : {}) }
+  }).filter((e) => (e.komponen || []).length > 0)
+  const baru: Jadwal = { ...(schedule || {}) }
+  if (es.length > 0) baru[tanggal] = es as EntriJadwal[]; else delete baru[tanggal]
+  return baru
+}
+// Ikuti rantai jejak kode dari (tanggal, wp) sampai entri NYATA: tanggal nyata atau null (rantai putus).
+export function tanggalNyataDariJejak(schedule: Jadwal, tanggal: string, wp: string, kode: string): string | null {
+  let cur = (schedule?.[tanggal] || []).find((e) => e.wp === wp)?.digeserKe?.[kode]
+  for (let i = 0; cur && i < 60; i++) {
+    const e = (schedule?.[cur] || []).find((x) => x.wp === wp && (x.komponen || []).includes(kode))
+    if (!e) return null
+    if (!e.digeserKe?.[kode]) return cur
+    cur = e.digeserKe[kode]
+  }
+  return null
 }
 
 // Kode BUSBAR di sel yang boleh ikut pindah: belum jejak di tanggal itu & progress BUSBAR < 100 (sama
