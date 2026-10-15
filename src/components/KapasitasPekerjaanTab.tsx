@@ -158,11 +158,18 @@ export function KapasitasPekerjaanTab(){
   const [prosesRelevanModal,setProsesRelevanModal]=useState<any>(null);
   const [selectedProsesRelevan,setSelectedProsesRelevan]=useState<string[]>([]);
   const [savingProsesRelevan,setSavingProsesRelevan]=useState(false);
+  // Isi mapping saat modal dibuka - pembanding utk log perubahan (15 Okt 2026).
+  const [prosesRelevanAwal,setProsesRelevanAwal]=useState<string[]>([]);
 
   const openProsesModal=async(b:any)=>{
-    const{data}=await supabase.from("bom_proses_relevan").select("jenis_pekerjaan")
+    const{data,error}=await supabase.from("bom_proses_relevan").select("jenis_pekerjaan")
       .eq("kode_komponen",b.kode_komponen).eq("tipe_panel",b.tipe_panel);
-    setSelectedProsesRelevan((data||[]).map((r:any)=>r.jenis_pekerjaan));
+    // (15 Okt 2026) dulu tanpa cek error - gagal = modal tampil semua proses TIDAK tercentang, lalu bila disimpan
+    // mapping yang ada ikut terhapus.
+    if(error){console.error("[Proses relevan] gagal membaca mapping:",error);alert("Gagal membaca proses relevan "+b.kode_komponen+": "+error.message);return;}
+    const awal=(data||[]).map((r:any)=>r.jenis_pekerjaan);
+    setSelectedProsesRelevan(awal);
+    setProsesRelevanAwal(awal);
     setProsesRelevanModal(b);
   };
   const toggleProsesRelevan=(proses:string)=>{
@@ -186,6 +193,17 @@ export function KapasitasPekerjaanTab(){
       alert("Gagal menyimpan proses relevan: "+error.message);
       setSavingProsesRelevan(false);
       return;
+    }
+    // LOG PERUBAHAN (15 Okt 2026, permintaan user) - dulu simpan mapping tidak tercatat sama sekali, sehingga
+    // perubahan master (mis. proses yang hilang tapi sudah dikerjakan operator) tidak bisa ditelusuri.
+    const ditambah=selectedProsesRelevan.filter(p=>!prosesRelevanAwal.includes(p));
+    const dihapus=prosesRelevanAwal.filter(p=>!selectedProsesRelevan.includes(p));
+    if(ditambah.length||dihapus.length){
+      const{error:logErr}=await supabase.from("activity_log").insert({user_name:namaUserSesi(),action:"ATUR PROSES RELEVAN",module:"master_data",halaman:"Kapasitas Pekerjaan",
+        description:`${prosesRelevanModal.tipe_panel} ${prosesRelevanModal.kode_komponen} ${prosesRelevanModal.nama_komponen||""}: `
+          +[ditambah.length?"+"+ditambah.join(", +"):"",dihapus.length?"-"+dihapus.join(", -"):""].filter(Boolean).join(" ; ")
+          +` | sekarang: ${selectedProsesRelevan.join(", ")||"(kosong)"}`});
+      if(logErr)console.error("[Proses relevan] tersimpan, tapi catat activity_log gagal:",logErr);
     }
     // (15 Okt 2026) dulu select("*") tanpa range -> terpotong 1000 baris; sekarang helper bersama.
     await segarkanProsesRelevanGlobal();
