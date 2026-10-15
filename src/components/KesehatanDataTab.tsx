@@ -36,11 +36,11 @@ const LABEL_KOLOM: Record<string, string> = {
   panel_id: 'Panel id', panel: 'Panel', wo: 'WO', proyek: 'Proyek', kode_komponen: 'Komponen', proses: 'Proses', tahap: 'Tahap',
   operator: 'Operator', timer_id: 'Timer id', tanggal: 'Tanggal', mulai: 'Mulai', jam: 'Jam', jenis: 'Jenis', ref: 'Ref', info: 'Info',
   ccp: 'CCP %', checklist: 'Checklist %', last_operator_nama: 'Operator terakhir', updated_at: 'Diubah', tabel: 'Data', jumlah: 'Jumlah',
-  tingkat: 'Tingkat', waktu_terakhir: 'Terakhir', jam_lalu: 'Jam lalu',
+  tingkat: 'Tingkat', waktu_terakhir: 'Terakhir', jam_lalu: 'Jam lalu', disimpan: 'Disimpan %', waktu: 'Waktu',
 }
 // urutan kolom contoh baris: yang paling membantu dibaca dulu (sampel jsonb tidak menjaga urutan kolom query)
 const URUTAN_KOLOM = ['jenis', 'operator', 'proses', 'tahap', 'kode_komponen', 'panel', 'panel_id', 'wo', 'proyek', 'tanggal', 'mulai', 'jam',
-  'ccp', 'checklist', 'last_operator_nama', 'updated_at', 'timer_id', 'ref', 'info', 'tabel', 'jumlah', 'tingkat', 'waktu_terakhir', 'jam_lalu']
+  'disimpan', 'ccp', 'checklist', 'waktu', 'last_operator_nama', 'updated_at', 'timer_id', 'ref', 'info', 'tabel', 'jumlah', 'tingkat', 'waktu_terakhir', 'jam_lalu']
 const posisiKolom = (k: string) => { const i = URUTAN_KOLOM.indexOf(k); return i < 0 ? 999 : i }
 const fmtWaktu = (s?: string | null) => s ? new Date(s).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 const tglWib = (s: string) => new Date(Date.parse(s) + 7 * 3600000).toISOString().slice(0, 10)
