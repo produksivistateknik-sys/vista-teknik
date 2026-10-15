@@ -115,6 +115,16 @@ jobs:
             --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"
           echo "Upload sukses: $FILENAME"
 
+      # (15 Okt 2026) Catat backup ke tabel kesehatan_backup -> cek K11 "Kesehatan Data" (backup terakhir >30 jam =
+      # kritis). Tidak boleh menggagalkan backup: kalau tabel belum dibuat / koneksi gagal, cukup peringatan.
+      - name: Catat backup ke Kesehatan Data
+        continue-on-error: true
+        env:
+          PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
+        run: |
+          SIZE=$(stat -c%s "$FILENAME")
+          /usr/lib/postgresql/17/bin/psql "$DB_CONN" -v ON_ERROR_STOP=1 -c "insert into public.kesehatan_backup (file, ukuran_byte) values ('$FILENAME', $SIZE)"             || echo "::warning::Gagal mencatat backup ke kesehatan_backup (tabel belum ada?)"
+
       - name: Hapus dump lebih tua dari RETENTION_DAYS hari
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}

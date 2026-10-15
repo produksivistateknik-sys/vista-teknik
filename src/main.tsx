@@ -4,6 +4,10 @@ import './index.css'
 import App from './App.tsx'
 import MesinPublic from './MesinPublic.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import { pasangPencatatErrorGlobal } from './lib/laporError'
+
+// (15 Okt 2026) pencatat error terpusat -> log_error_app (window error, unhandledrejection, kirim saat tab disembunyikan)
+pasangPencatatErrorGlobal()
 
 const path = window.location.pathname
 const isMesinPage = path === '/mesin' || path.startsWith('/mesin?')

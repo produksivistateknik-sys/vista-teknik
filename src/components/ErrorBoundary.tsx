@@ -1,4 +1,5 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react'
+import { laporError } from '../lib/laporError'
 import { activityLogService } from '../services/activityLogService'
 
 // React.lazy()/import() dinamis TIDAK bisa ditangkap oleh Suspense kalau gagal (Suspense cuma
@@ -69,6 +70,7 @@ export class ErrorBoundary extends Component<Props, State> {
     console.error('ErrorBoundary menangkap error:', error, errorInfo)
     const isChunk = isChunkLoadError(error)
     logErrorBestEffort(error, errorInfo, isChunk)
+    laporError(isChunk ? 'chunk' : 'crash', error, { komponen: (errorInfo.componentStack || '').slice(0, 300) })
 
     if (isChunk) {
       // Auto-reload SEKALI aja - kalau setelah reload errornya masih sama (deploy beneran
