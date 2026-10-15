@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { activityLogService } from '../services/activityLogService'
 import { checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang } from '../services/fcsService'
 import { PANEL_TYPES, ALL_PROSES, PROSES_COLOR } from '../constants/panelTypes'
@@ -42,8 +43,11 @@ export function OutstandingView({ woData, rawData, setRawData, renhar, setRenhar
     // checkKuotaOrangDanKomponenSwap baca langsung dari DB tiap dipanggil, jadi cukup fetch process_time
     // (dipakai buat hitung menitDibutuhkan sebelum panggil fungsi capacity-check itu).
     const fetchPT = async () => {
-      const { data: pt } = await supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs').eq('is_active', true)
-      setProcessTimeList(pt ?? [])
+      // (15 Okt 2026) semua halaman + cek error; gagal = daftar lama tetap dipakai (tidak diganti data setengah).
+      try {
+        const pt = await fetchAllPaged((dari, sampai) => supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs').eq('is_active', true).order('id').range(dari, sampai))
+        setProcessTimeList(pt)
+      } catch (err) { console.error('[Outstanding] gagal ambil fcs_process_time (dipakai data lama):', err) }
     }
     fetchPT()
     const ch = supabase.channel('realtime-fcs-process-time-outstanding')

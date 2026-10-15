@@ -6,6 +6,7 @@ import { PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { kebutuhanOrangWiring } from './panelHelpers'
 import { hariKeNFromMap, hitungProyeksiWiring } from '../services/fcsService'
 import { supabase as supabaseAsli } from './supabase'
+import { fetchAllPaged } from './fetchAllPaged'
 
 // Menit per pcs dari Master Data Process Time (fcs_process_time aktif) utk tipe+proses+kode. 0 bila
 // tidak ada (komponen tanpa timer tidak menambah beban).
@@ -113,13 +114,18 @@ export function buatAksesKapasitas(supabase: typeof supabaseAsli = supabaseAsli)
     return all
   }
 
+  // (15 Okt 2026, audit paginasi) fcs_process_time dibaca semua halaman (.range + .order('id')). Gagal = kembalikan
+  // daftar process time TERAKHIR yang berhasil dimuat (bukan kosong/setengah) supaya hitungan kapasitas tidak mendadak salah.
+  let processTimeTerakhir: any[] = []
   async function muatDataKapasitas(): Promise<{ kapasitas: any[]; processTime: any[] }> {
-    const [k, { data: pt, error: ptErr }] = await Promise.all([
+    const [k, pt] = await Promise.all([
       muatKapasitasOverride(),
-      supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs').eq('is_active', true),
+      fetchAllPaged((dari, sampai) => (supabase.from('fcs_process_time').select('tipe_panel,jenis_pekerjaan,kode_komponen,menit_per_pcs') as any)
+        .eq('is_active', true).order('id').range(dari, sampai))
+        .then((rows) => { processTimeTerakhir = rows; return rows })
+        .catch((err) => { console.error('gagal ambil fcs_process_time (dipakai data terakhir):', err); return processTimeTerakhir }),
     ])
-    if (ptErr) console.error('gagal ambil fcs_process_time:', ptErr)
-    return { kapasitas: k ?? [], processTime: pt ?? [] }
+    return { kapasitas: k ?? [], processTime: pt }
   }
   return { muatKapasitasOverride, muatDataKapasitas }
 }

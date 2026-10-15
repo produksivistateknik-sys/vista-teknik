@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant } from '../lib/panelHelpers'
 import { muatProsesRelevanGlobal } from '../lib/prosesRelevan'
@@ -372,8 +373,11 @@ export function KapasitasPekerjaanTab(){
   };
 
   const fetchBom=async()=>{
-    const{data}=await supabase.from("bom_master").select("*");
-    const sorted=(data??[]).slice().sort((a:any,b:any)=>{
+    // (15 Okt 2026) semua halaman + cek error; gagal = daftar BOM lama tetap (tidak diganti data setengah).
+    let data:any[];
+    try{data=await fetchAllPaged((dari,sampai)=>supabase.from("bom_master").select("*").order("id").range(dari,sampai));}
+    catch(err:any){console.error("[Kapasitas] gagal muat bom_master:",err);alert("Gagal memuat Master Data BOM: "+(err?.message||err));return;}
+    const sorted=data.slice().sort((a:any,b:any)=>{
       if(a.tipe_panel!==b.tipe_panel)return a.tipe_panel.localeCompare(b.tipe_panel);
       if(a.wp!==b.wp)return String(a.wp).localeCompare(String(b.wp));
       const ua=Number(a.urutan)||0,ub=Number(b.urutan)||0;
@@ -574,8 +578,11 @@ export function KapasitasPekerjaanTab(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const{data:p}=await supabase.from("fcs_process_time").select("*").order("tipe_panel,wp,kode_komponen");
-    setProcessList(p??[]);
+    // (15 Okt 2026) semua halaman (urutan sama + id sbg pemutus seri) + cek error; gagal = daftar lama tetap.
+    try{
+      const p=await fetchAllPaged((dari,sampai)=>supabase.from("fcs_process_time").select("*").order("tipe_panel").order("wp").order("kode_komponen").order("id").range(dari,sampai));
+      setProcessList(p);
+    }catch(err:any){console.error("[Kapasitas] gagal muat process time:",err);alert("Gagal memuat daftar waktu proses: "+(err?.message||err));}
     setLoading(false);
   };
 
@@ -992,7 +999,8 @@ export function KapasitasPekerjaanTab(){
                               ))}
                               <button onClick={()=>{
                                 setWizardTipe(w.tipe_panel);setWizardWp(w.wp);setWizardColor(w.color);setWizardRange(w.range_label||"");
-                                supabase.from("bom_master").select("nama_komponen").then(({data}:any)=>{
+                                fetchAllPaged((dari,sampai)=>supabase.from("bom_master").select("nama_komponen").order("id").range(dari,sampai)).catch((err:any)=>{console.error("[Wizard BOM] gagal muat nama komponen:",err);alert("Gagal memuat daftar nama komponen: "+(err?.message||err));return null;}).then((data:any)=>{
+                                  if(!data)return;
                                   const uniqueNama=(Array.from(new Set((data||[]).map((r:any)=>r.nama_komponen))) as string[]).sort();
                                   setWizardAllNama(uniqueNama);
                                   setWizardSelectedNama([]);setWizardProsesPerNama({});setWizardStep(2);

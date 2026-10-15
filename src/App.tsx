@@ -36,6 +36,7 @@ import {
   markRenharDirty, markRawDirty,
 } from './lib/globalState'
 import { muatProsesRelevanGlobal } from './lib/prosesRelevan'
+import { fetchAllPaged } from './lib/fetchAllPaged'
 import { GCss } from './styles/globalCss'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
 import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
@@ -350,15 +351,19 @@ const [pekerja, setPekerja] = useState<any[]>([]);
 const { data: woList, loading: woLoading, create: createWO, update: updateWO, refetch: refetchWO } = useWorkOrders()
 const [livePanelTypes,setLivePanelTypes]=useState<any>({});
 useEffect(()=>{
+  // (15 Okt 2026, audit paginasi) bom_master dibaca semua halaman + semua hasil dicek; gagal = konfigurasi BOM lama
+  // tetap dipakai (tidak diganti data setengah).
   const fetchBomCfg=async()=>{
-    const [bomRes,typeMetaRes,wpMetaRes]:any=await Promise.all([
-      supabase.from("bom_master").select("*"),
-      supabase.from("panel_type_meta").select("*"),
-      supabase.from("panel_wp_meta").select("*"),
-    ]);
-    if(bomRes.data&&bomRes.data.length>0){
-      setLivePanelTypes(buildPanelTypesFromBom(bomRes.data,typeMetaRes.data,wpMetaRes.data));
-    }
+    try{
+      const [bomRows,typeMetaRes,wpMetaRes]:any=await Promise.all([
+        fetchAllPaged((dari,sampai)=>supabase.from("bom_master").select("*").order("id").range(dari,sampai)),
+        supabase.from("panel_type_meta").select("*"),
+        supabase.from("panel_wp_meta").select("*"),
+      ]);
+      if(typeMetaRes.error)throw typeMetaRes.error;
+      if(wpMetaRes.error)throw wpMetaRes.error;
+      if(bomRows.length>0)setLivePanelTypes(buildPanelTypesFromBom(bomRows,typeMetaRes.data,wpMetaRes.data));
+    }catch(err:any){console.error("[BOM] gagal memuat konfigurasi BOM (dipakai data lama):",err);}
   };
   fetchBomCfg();
   // Ditulis lewat wizard BOM (KapasitasPekerjaanTab) - kalau ada tab admin lain kebuka

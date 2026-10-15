@@ -2,6 +2,7 @@ import { supabase as supabaseAsli } from '../lib/supabase'
 import { ALL_PROSES } from '../constants/panelTypes'
 import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE, getBusbarKomponen } from '../lib/panelHelpers'
 import { activityLogService as activityLogServiceAsli } from './activityLogService'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
 
 // PABRIK LAYANAN FCS (10 Okt 2026, sandbox Raw Schedule per WP): seluruh isi modul ini dibungkus pabrik supaya
 // logika yang SAMA bisa dijalankan terhadap sumber data lain (MemoryDb salinan uji). Parameter `supabase` &
@@ -53,6 +54,19 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
   // Sinyal "hari kerja aktual" (BUKAN hari kalender) - dipakai bareng kebutuhanOrangWiring() buat
   // tau kebutuhan orang komponen wiring di tanggal manapun. Di-fetch BATCHED (satu query per
   // panelIds, bukan N+1 per kode) - fcs_timer_kerja tumbuh terus tiap hari, jangan query per-kode.
+  // (15 Okt 2026, audit paginasi) fcs_process_time & bom_master dibaca SEMUA halaman lewat fetchAllPaged (.range()
+  // + .order('id') tetap) - dulu select tanpa range (terpotong diam-diam di 1000 baris saat tabel tumbuh).
+  // Error DILEMPAR (bukan ditelan) - pemanggil mengembalikan pesan / dibatalkan oleh try-catch fungsinya.
+  const bacaProcessTime = (kolom: string, saring: { jenisPekerjaan?: string; tipeSet?: string[] } = {}): Promise<any[]> =>
+    fetchAllPaged((dari, sampai) => {
+      let q: any = supabase.from('fcs_process_time').select(kolom)
+      if (saring.jenisPekerjaan) q = q.eq('jenis_pekerjaan', saring.jenisPekerjaan).eq('is_active', true)
+      if (saring.tipeSet) q = q.in('tipe_panel', saring.tipeSet)
+      return q.order('id').range(dari, sampai)
+    })
+  const bacaBomMaster = (kolom: string, tipeSet: string[]): Promise<any[]> =>
+    fetchAllPaged((dari, sampai) => (supabase.from('bom_master').select(kolom) as any).in('tipe_panel', tipeSet).order('id').range(dari, sampai))
+
   async function fetchWiringHariKerjaMap(panelIds: number[]): Promise<Record<string, string[]>> {
     if (panelIds.length === 0) return {}
     const map: Record<string, Set<string>> = {}
@@ -193,11 +207,12 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       .select('id, wo_id, panel_id, panel, proyek, proses, schedule')
       .eq('proses', jenisPekerjaan)
 
-    const { data: ptData } = await supabase
-      .from('fcs_process_time')
-      .select('tipe_panel, jenis_pekerjaan, kode_komponen, nama_komponen, menit_per_pcs')
-      .eq('jenis_pekerjaan', jenisPekerjaan)
-      .eq('is_active', true)
+    let ptData: any[]
+    try { ptData = await bacaProcessTime('tipe_panel, jenis_pekerjaan, kode_komponen, nama_komponen, menit_per_pcs', { jenisPekerjaan }) }
+    catch (e: any) {
+      console.error('[cek kapasitas] gagal baca fcs_process_time:', e)
+      return { cukup: false, kapasitasHari, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [], error: 'Gagal membaca waktu proses (process time): ' + (e?.message || e) }
+    }
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
     const { data: panelRows } = await supabase
@@ -286,11 +301,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       .select('panel_id, schedule')
       .eq('proses', jenisPekerjaan)
 
-    const { data: ptData } = await supabase
-      .from('fcs_process_time')
-      .select('tipe_panel, kode_komponen, menit_per_pcs')
-      .eq('jenis_pekerjaan', jenisPekerjaan)
-      .eq('is_active', true)
+    const ptData = await bacaProcessTime('tipe_panel, kode_komponen, menit_per_pcs', { jenisPekerjaan })
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
     const { data: panelRows } = await supabase
@@ -476,11 +487,12 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     const panelMap: Record<number, any> = {}
     ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
 
-    const { data: ptData } = await supabase
-      .from('fcs_process_time')
-      .select('tipe_panel, kode_komponen, nama_komponen')
-      .eq('jenis_pekerjaan', jenisPekerjaan)
-      .eq('is_active', true)
+    let ptData: any[]
+    try { ptData = await bacaProcessTime('tipe_panel, kode_komponen, nama_komponen', { jenisPekerjaan }) }
+    catch (e: any) {
+      console.error('[cek kuota orang] gagal baca fcs_process_time:', e)
+      return { cukup: false, kuotaHari, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [], error: 'Gagal membaca waktu proses (process time): ' + (e?.message || e) }
+    }
     const ptNamaMap: Record<string, string> = {}
     ;(ptData || []).forEach((pt: any) => { ptNamaMap[`${pt.tipe_panel}|${pt.kode_komponen}`] = pt.nama_komponen })
 
@@ -729,10 +741,11 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const kapasitasBaru = isOrang ? (Number(jumlahOrang) || 0) : (Number(kapasitasMenit) || 0)
 
       const tanggalBatas = addDays(tanggal, 60)
-      const { data: overrideRows } = await supabase.from('fcs_kapasitas_override')
+      const { data: overrideRows, error: overrideErr } = await supabase.from('fcs_kapasitas_override')
         .select('tanggal, kapasitas_menit, jumlah_orang')
         .eq('jenis_pekerjaan', jenisPekerjaan)
         .gte('tanggal', tanggal).lte('tanggal', tanggalBatas)
+      if (overrideErr) throw new Error('Gagal membaca kapasitas 60 hari ke depan: ' + overrideErr.message)
       const kapasitasMap: Record<string, number> = {}
       ;(overrideRows || []).forEach((r: any) => {
         kapasitasMap[r.tanggal] = isOrang ? Number(r.jumlah_orang || 0) : Number(r.kapasitas_menit || 0)
@@ -757,9 +770,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const woMap: Record<number, { wo: string; target: string }> = {}
       ;(woRows || []).forEach((w: any) => { woMap[w.id] = { wo: w.wo, target: w.target || '' } })
 
-      const { data: ptData } = await supabase.from('fcs_process_time')
-        .select('tipe_panel, kode_komponen, nama_komponen, menit_per_pcs')
-        .eq('jenis_pekerjaan', jenisPekerjaan).eq('is_active', true)
+      const ptData = await bacaProcessTime('tipe_panel, kode_komponen, nama_komponen, menit_per_pcs', { jenisPekerjaan })
       const ptMap: Record<string, any> = {}
       ;(ptData || []).forEach((pt: any) => { ptMap[pt.tipe_panel + '|' + pt.kode_komponen] = pt })
 
@@ -1125,7 +1136,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
 
       const tipeSet = [...new Set(panels.map((p: any) => p.tipe))]
 
-      const { data: bomRows } = await supabase.from('bom_master').select('*').in('tipe_panel', tipeSet)
+      const bomRows = await bacaBomMaster('*', tipeSet)
       const kodeToWp: Record<string, string> = {}
       ;(bomRows || []).forEach((b: any) => { kodeToWp[b.tipe_panel + '|' + b.kode_komponen] = b.wp })
 
@@ -1151,7 +1162,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         hasMappingSet.add(r.kode_komponen + '|' + r.tipe_panel)
       })
 
-      const { data: ptRows } = await supabase.from('fcs_process_time').select('*').in('tipe_panel', tipeSet)
+      const ptRows = await bacaProcessTime('*', { tipeSet })
       const menitMap: Record<string, number> = {}
       ;(ptRows || []).forEach((p: any) => {
         menitMap[p.tipe_panel + '|' + p.kode_komponen + '|' + p.jenis_pekerjaan] = Number(p.menit_per_pcs) || 0

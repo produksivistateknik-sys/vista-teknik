@@ -17,7 +17,9 @@ export function TimerAktifTab({user}:any){
 
   const fetchTimers=async()=>{
     setLoading(true);
-    const{data}=await supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").is("selesai",null).order("mulai",{ascending:true});
+    // (15 Okt 2026) dulu tanpa cek error - gagal = daftar timer aktif tampil kosong seolah tidak ada timer.
+    const{data,error}=await supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").is("selesai",null).order("mulai",{ascending:true});
+    if(error){console.error("[Timer Aktif] gagal memuat:",error);alert("Gagal memuat timer aktif: "+error.message);setLoading(false);return;}
     const rows=data??[];
     const panelIds=[...new Set(rows.map((t:any)=>t.panel_id).filter(Boolean))];
     const{data:panels}=panelIds.length>0?await supabase.from("panels").select("id,nama,wo_id").in("id",panelIds):{data:[]};
