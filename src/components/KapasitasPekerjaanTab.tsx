@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant } from '../lib/panelHelpers'
-import { setGlobalProsesRelevan } from '../lib/globalState'
+import { muatProsesRelevanGlobal } from '../lib/prosesRelevan'
 import { Lbl, Inp, Sel, Btn } from './ui/Primitives'
 
 export function KapasitasPekerjaanTab(){
@@ -97,21 +97,10 @@ export function KapasitasPekerjaanTab(){
   };
 
   // Muat ulang mapping proses-relevan global (dipakai setelah wizard / hapus jenis / hapus komponen).
+  // (15 Okt 2026) satu helper bersama lib/prosesRelevan (paginasi + urutan tetap + cek error), sama dgn App.tsx.
   const segarkanProsesRelevanGlobal=async()=>{
-    let semua:any[]=[];
-    for(let from=0;;from+=1000){
-      const{data,error}=await supabase.from("bom_proses_relevan").select("kode_komponen,tipe_panel,jenis_pekerjaan").range(from,from+999);
-      if(error){console.error("gagal muat ulang bom_proses_relevan:",error);return;}
-      semua=semua.concat(data||[]);
-      if(!data||data.length<1000)break;
-    }
-    const relevanSet=new Set<string>();
-    const hasMappingSet=new Set<string>();
-    semua.forEach((r:any)=>{
-      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
-      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
-    });
-    setGlobalProsesRelevan(relevanSet,hasMappingSet);
+    const ok=await muatProsesRelevanGlobal();
+    if(!ok)alert("Data tersimpan, tapi gagal memuat ulang daftar proses relevan. Muat ulang halaman supaya tampilan proses komponen benar.");
   };
 
   // PERBAIKAN (8 Okt 2026, insiden OU_FS): dulu semua langkah tanpa cek error (gagal = diam-diam
@@ -197,14 +186,8 @@ export function KapasitasPekerjaanTab(){
       setSavingProsesRelevan(false);
       return;
     }
-    const{data:allRelevan}=await supabase.from("bom_proses_relevan").select("*");
-    const relevanSet=new Set<string>();
-    const hasMappingSet=new Set<string>();
-    (allRelevan||[]).forEach((r:any)=>{
-      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
-      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
-    });
-    setGlobalProsesRelevan(relevanSet,hasMappingSet);
+    // (15 Okt 2026) dulu select("*") tanpa range -> terpotong 1000 baris; sekarang helper bersama.
+    await segarkanProsesRelevanGlobal();
     setSavingProsesRelevan(false);
     setProsesRelevanModal(null);
   };

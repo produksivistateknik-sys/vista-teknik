@@ -35,6 +35,7 @@ import {
   setGlobalProsesRelevan, setGlobalLivePanelTypes, setGlobalDirtyPanelIds, uid,
   markRenharDirty, markRawDirty,
 } from './lib/globalState'
+import { muatProsesRelevanGlobal } from './lib/prosesRelevan'
 import { GCss } from './styles/globalCss'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
 import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
@@ -371,15 +372,16 @@ useEffect(()=>{
 },[]);
 useEffect(()=>{setGlobalLivePanelTypes(livePanelTypes);},[livePanelTypes]);
 useEffect(()=>{
+  // (15 Okt 2026, insiden WO 069 DP-ROOF OU_FS) lewat helper bersama lib/prosesRelevan: paginasi .range() +
+  // urutan tetap + cek error. Dulu select("*") tanpa range -> terpotong 1000 baris (tabel 1005) -> proses
+  // relevan sebagian komponen hilang dari semua tampilan progres.
+  let sudahLaporGagal=false;
   const fetchProsesRelevan=async()=>{
-    const{data}=await supabase.from("bom_proses_relevan").select("*");
-    const relevanSet=new Set<string>();
-    const hasMappingSet=new Set<string>();
-    (data||[]).forEach((r:any)=>{
-      relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
-      hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
-    });
-    setGlobalProsesRelevan(relevanSet,hasMappingSet);
+    const ok=await muatProsesRelevanGlobal();
+    if(!ok&&!sudahLaporGagal){
+      sudahLaporGagal=true;
+      alert("Gagal memuat daftar proses relevan komponen (Master Data BOM). Sebagian kolom proses di tabel progres bisa tidak tampil - muat ulang halaman.");
+    }
   };
   fetchProsesRelevan();
   const ch=supabase.channel("realtime-bom-proses-relevan-app")
