@@ -13,6 +13,7 @@ import { KapasitasPekerjaanTab } from './KapasitasPekerjaanTab'
 import { RecycleBinTab } from './RecycleBinTab'
 import { TimerAktifTab } from './TimerAktifTab'
 import { AppDocumentationTab } from './AppDocumentationTab'
+import { KesehatanDataTab } from './KesehatanDataTab'
 
 export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,pekerja,setPekerja,createPekerja,updatePekerja,removePekerja,logActivity,woData}){
   // Tombol "Lihat" toast Sesi Produksi Stok -> langsung sub-tab Stok (lib/navProduksiStok.ts).
@@ -80,6 +81,7 @@ export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,peke
     {id:"recycle",label:"🗑 Recycle Bin"},
     {id:"timeraktif",label:"⏱ Timer Aktif"},
     {id:"appdocs",label:"📄 Dokumentasi App"},
+    {id:"kesehatan",label:"🩺 Kesehatan Data"},
   ];
 
   return(
@@ -188,6 +190,7 @@ export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,peke
           {subTab==="recycle"&&<RecycleBinTab user={user}/>}
           {subTab==="timeraktif"&&<TimerAktifTab user={user}/>}
           {subTab==="appdocs"&&<AppDocumentationTab/>}
+          {subTab==="kesehatan"&&<KesehatanDataTab/>}
         </>
       )}
     </div>
