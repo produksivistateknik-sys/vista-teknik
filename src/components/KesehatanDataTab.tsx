@@ -16,7 +16,11 @@ type Hasil = { id: number; kode: string; waktu: string; jumlah: number | null; s
 type Detail = { sampel: any[]; pesan_error: string | null }
 type Status = 'kritis' | 'error' | 'peringatan' | 'info' | 'ok' | 'belum'
 type Pola = { kode: string; nama: string; pola: string; jenis: string[]; aplikasi: string[]; apa_terjadi: string | null; penyebab: string | null; dampak: string | null; langkah: string[]; urutan: number }
-type Baris = { cek: Cek; akhir?: Hasil; status: Status; tren: (number | null)[]; hari: string[]; pulihSejak: string | null; aplikasi: string[] }
+type StatusErr = { sidik: string; status: 'baru' | 'ditangani' | 'selesai' | 'diabaikan'; catatan: string | null; versi_ditandai: string | null; jumlah_saat_ditandai: number; ditandai_oleh: string | null; ditandai_pada: string | null; muncul_lagi: boolean; muncul_lagi_pada: string | null; muncul_lagi_versi: string | null }
+type Tunda = { kode: string; sampai: string; jumlah_saat_tunda: number | null; status_saat_tunda: string | null; catatan: string | null; ditunda_oleh: string | null; ditunda_pada: string }
+type Sifat = 'baru' | 'memburuk' | 'stabil' | null
+type Baris = { cek: Cek; akhir?: Hasil; status: Status; tren: (number | null)[]; hari: string[]; pulihSejak: string | null; aplikasi: string[]
+  sifat: Sifat; tunda: Tunda | null; tundaAktif: boolean; tundaBerakhir: string | null }
 
 const C = {
   bg: '#f6f7f9', surface: '#ffffff', line: '#e2e5ea', lineSoft: '#eceef2', fg: '#1b2230', fg2: '#4a5468', fg3: '#76809a',
@@ -43,6 +47,23 @@ const LABEL_KOLOM: Record<string, string> = {
 const URUTAN_KOLOM = ['jenis', 'operator', 'proses', 'tahap', 'kode_komponen', 'panel', 'panel_id', 'wo', 'proyek', 'tanggal', 'mulai', 'jam',
   'disimpan', 'ccp', 'checklist', 'waktu', 'last_operator_nama', 'updated_at', 'timer_id', 'ref', 'info', 'tabel', 'jumlah', 'tingkat', 'waktu_terakhir', 'jam_lalu']
 const posisiKolom = (k: string) => { const i = URUTAN_KOLOM.indexOf(k); return i < 0 ? 999 : i }
+const LABEL_STATUS_ERR: Record<string, { label: string; bg: string; fg: string }> = {
+  baru: { label: 'Baru', bg: '#fdeceb', fg: '#b42318' },
+  ditangani: { label: 'Sedang ditangani', bg: '#e6effc', fg: '#1a56b0' },
+  selesai: { label: 'Selesai', bg: '#e3f4ea', fg: '#157347' },
+  diabaikan: { label: 'Diabaikan', bg: '#f1f5f9', fg: '#475569' },
+}
+const LABEL_SIFAT: Record<string, { label: string; bg: string; fg: string }> = {
+  baru: { label: 'Baru', bg: '#fdeceb', fg: '#b42318' },
+  memburuk: { label: 'Memburuk', bg: '#fdeceb', fg: '#b42318' },
+  stabil: { label: 'Stabil', bg: '#f1f5f9', fg: '#475569' },
+}
+const namaPenanda = () => { try { const x = JSON.parse(localStorage.getItem('vista_admin_session') || '{}'); return String(x?.nama || x?.name || 'Unknown') } catch { return 'Unknown' } }
+// versi build LIVE aplikasi terkait saat ditandai (version.json; vista-pekerja mengizinkan dibaca lintas domain)
+async function versiLive(aplikasi: string): Promise<string | null> {
+  const url = aplikasi === 'vista-pekerja' ? 'https://operator.vistaproduksi.com/version.json' : '/version.json'
+  try { const r0 = await fetch(url + '?t=' + Date.now(), { cache: 'no-store' }); if (!r0.ok) return null; return String((await r0.json())?.buildId || '') || null } catch { return null }
+}
 // Aturan kerja standar yang ikut tersalin (tombol "Salin" error) supaya bisa langsung ditempel ke Claude Code.
 const ATURAN_KERJA = [
   'INVESTIGASI dulu (baca saja, jangan ubah data/kode, jangan push).',
@@ -171,6 +192,11 @@ export function KesehatanDataTab() {
   const [pola, setPola] = useState<Pola[]>([])
   const [bukaErr, setBukaErr] = useState<Record<number, boolean>>({})
   const [statusSalin, setStatusSalin] = useState<Record<string, string>>({})
+  const [statusErr, setStatusErr] = useState<Record<string, StatusErr>>({})
+  const [tunda, setTunda] = useState<Record<string, Tunda>>({})
+  const [filterStatus, setFilterStatus] = useState<'aktif' | 'selesai' | 'diabaikan' | 'semua'>('aktif')
+  const [lipatBuka, setLipatBuka] = useState(false)
+  const [sibuk, setSibuk] = useState<string | null>(null)
   const [filterApp, setFilterApp] = useState<'Semua' | 'Admin' | 'Operator'>('Semua')
   const [menjalankan, setMenjalankan] = useState(false)
   const [salin, setSalin] = useState('Salin laporan')
@@ -199,6 +225,13 @@ export function KesehatanDataTab() {
       const { data: pl, error: plErr } = await supabase.from('kesehatan_pola_error' as any).select('*').eq('aktif', true).order('urutan')
       if (plErr && !tabelBelumAda(plErr)) throw plErr
       setPola(((pl as any[]) || []) as Pola[])
+      // status kelompok error & tunda cek (migration 20261016060000) - belum dipasang = semua Baru, tidak ada tunda
+      const { data: se, error: seErr } = await supabase.from('kesehatan_status_error' as any).select('*').limit(1000)
+      if (seErr && !tabelBelumAda(seErr)) throw seErr
+      setStatusErr(Object.fromEntries(((se as any[]) || []).map((x: any) => [x.sidik, x])))
+      const { data: td, error: tdErr } = await supabase.from('kesehatan_tunda_cek' as any).select('*')
+      if (tdErr && !tabelBelumAda(tdErr)) throw tdErr
+      setTunda(Object.fromEntries(((td as any[]) || []).map((x: any) => [x.kode, x])))
       setCek((c as any[]) || []); setHasil(h as Hasil[]); setDetail(det); setErrors((e as any[]) || [])
       // cek berstatus Kritis terbuka otomatis (pilihan buka/tutup user tetap dihormati sesudahnya)
       setBuka(prev => {
@@ -236,15 +269,39 @@ export function KesehatanDataTab() {
         const idxMasalah = daftar.findIndex(x => x.status !== 'ok')
         if (idxMasalah > 0) pulihSejak = daftar[idxMasalah - 1].waktu
       }
-      return { cek: c, akhir, status, tren, hari, pulihSejak, aplikasi: c.aplikasi?.length ? c.aplikasi : ['Admin'] }
+      // Baru = belum ada temuan >= 24 jam lalu; Memburuk = jumlah naik dibanding hasil terakhir >= 24 jam lalu; selain itu Stabil
+      let sifat: Sifat = null
+      if (status !== 'ok' && status !== 'belum') {
+        const batas = Date.now() - 24 * 3600000
+        const dulu = daftar.find(x => Date.parse(x.waktu) <= batas)
+        if (!dulu || dulu.status === 'ok') sifat = 'baru'
+        else if ((akhir?.jumlah ?? 0) > (dulu.jumlah ?? 0)) sifat = 'memburuk'
+        else sifat = 'stabil'
+      }
+      // tunda aktif = belum habis & jumlah tidak naik melebihi jumlah saat ditunda (cek Aman: tunda tidak berarti)
+      const t = tunda[c.kode] || null
+      let tundaAktif = false, tundaBerakhir: string | null = null
+      if (t && status !== 'ok' && status !== 'belum') {
+        const habis = Date.parse(t.sampai) <= Date.now()
+        const naik = (akhir?.jumlah ?? 0) > (t.jumlah_saat_tunda ?? 0)
+        tundaAktif = !habis && !naik
+        if (habis) tundaBerakhir = 'masa tunda habis ' + fmtWaktu(t.sampai)
+        else if (naik) tundaBerakhir = `jumlah naik ${t.jumlah_saat_tunda ?? 0} -> ${akhir?.jumlah ?? 0} sejak ditunda`
+      }
+      return { cek: c, akhir, status, tren, hari, pulihSejak, aplikasi: c.aplikasi?.length ? c.aplikasi : ['Admin'], sifat, tunda: t, tundaAktif, tundaBerakhir }
     })
-  }, [cek, hasil])
+  }, [cek, hasil, tunda])
 
   const kelompok = useMemo(() => {
     const urut = (a: Baris, b: Baris) => (PERINGKAT[a.status] ?? 9) - (PERINGKAT[b.status] ?? 9) || a.cek.urutan - b.cek.urutan
+    // tampilan utama: Kritis/Cek gagal (kecuali sedang ditunda), Peringatan/Info yang Baru atau Memburuk.
+    // Ditunda (aktif) & Stabil -> bagian terlipat "Ditunda dan stabil". Ringkasan chip tetap menghitung semuanya.
+    const utama = (b: Baris) => !b.tundaAktif && (b.status === 'kritis' || b.status === 'error' || b.sifat === 'baru' || b.sifat === 'memburuk')
+    const bermasalah = (b: Baris) => b.status !== 'ok' && b.status !== 'belum'
     return {
-      tindakan: baris.filter(b => ['kritis', 'error', 'peringatan'].includes(b.status)).sort(urut),
-      informasi: baris.filter(b => b.status === 'info').sort(urut),
+      tindakan: baris.filter(b => ['kritis', 'error', 'peringatan'].includes(b.status) && utama(b)).sort(urut),
+      informasi: baris.filter(b => b.status === 'info' && utama(b)).sort(urut),
+      lipat: baris.filter(b => bermasalah(b) && !utama(b)).sort(urut),
       aman: baris.filter(b => b.status === 'ok' || b.status === 'belum').sort(urut),
     }
   }, [baris])
@@ -267,6 +324,9 @@ export function KesehatanDataTab() {
     if (ref) baris.push(`Data     : ${ref}`)
     if (k.lokasi) baris.push(`Lokasi kode: ${k.lokasi}`)
     if (k.jenisGagal) baris.push(`Jenis gagal: ${k.jenisGagal}${k.online === false ? ' (HP offline)' : ''}`)
+    const st = statusErr[e.sidik]
+    baris.push(`Status   : ${LABEL_STATUS_ERR[st?.status || 'baru'].label}${st?.ditandai_pada ? ` (ditandai ${st.ditandai_oleh || '-'}, ${fmtWaktu(st.ditandai_pada)} WIB, versi ${st.versi_ditandai || '-'}${st.catatan ? ', catatan: ' + st.catatan : ''})` : ''}`)
+    if (st?.muncul_lagi) baris.push(`MUNCUL LAGI: ${fmtWaktu(st.muncul_lagi_pada)} WIB di versi ${st.muncul_lagi_versi || '-'} (sebelumnya ditandai selesai, ${st.jumlah_saat_ditandai} kejadian s.d. ditandai, sekarang ${e.jumlah} dalam 7 hari)`)
     baris.push('')
     if (p) {
       baris.push(`POLA DIKENAL: ${p.kode} - ${p.nama}`)
@@ -285,12 +345,55 @@ export function KesehatanDataTab() {
     setStatusSalin(p => ({ ...p, [kunci]: ok ? 'Tersalin' : 'Gagal menyalin' }))
     setTimeout(() => setStatusSalin(p => { const n = { ...p }; delete n[kunci]; return n }), 1600)
   }
-  const errorTampil = errors.filter(e => filterApp === 'Semua' || (NAMA_APLIKASI[e.aplikasi] || e.aplikasi) === filterApp)
+  // kelompok error per sidik (1 sidik bisa punya beberapa baris log: digabung per jam di server)
+  const grupError = useMemo(() => {
+    const m = new Map<string, any>()
+    for (const e of errors) {
+      const g = m.get(e.sidik)
+      if (!g) { m.set(e.sidik, { ...e, jumlah: Number(e.jumlah) || 0, pengguna_semua: new Set([e.pengguna].filter(Boolean)) }); continue }
+      g.jumlah += Number(e.jumlah) || 0
+      if (e.waktu_pertama < g.waktu_pertama) g.waktu_pertama = e.waktu_pertama
+      if (e.waktu_terakhir > g.waktu_terakhir) { Object.assign(g, { waktu_terakhir: e.waktu_terakhir, versi: e.versi, pesan: e.pesan, halaman: e.halaman, konteks: e.konteks, pengguna: e.pengguna }) }
+      if (e.pengguna) g.pengguna_semua.add(e.pengguna)
+    }
+    return [...m.values()].map(g => ({ ...g, pengguna: [...g.pengguna_semua].join(', ') || g.pengguna })).sort((a, b) => (a.waktu_terakhir < b.waktu_terakhir ? 1 : -1))
+  }, [errors])
+  const statusDari = (g: any): StatusErr['status'] => statusErr[g.sidik]?.status || 'baru'
+  const tandai = async (g: any, statusBaru: StatusErr['status']) => {
+    const label = LABEL_STATUS_ERR[statusBaru].label
+    const catatan = window.prompt(`Tandai "${label}" - catatan singkat (opsional), mis. commit/perbaikan:`, statusErr[g.sidik]?.catatan || '')
+    if (catatan === null) return
+    setSibuk('e' + g.sidik)
+    const versi = (await versiLive(g.aplikasi)) || g.versi || null
+    const { error } = await supabase.rpc('tandai_status_error' as any, { p_sidik: g.sidik, p_status: statusBaru, p_catatan: catatan, p_versi: versi, p_oleh: namaPenanda() } as any)
+    setSibuk(null)
+    if (error) { console.error('[Kesehatan Data] tandai status error gagal:', error); alert('Gagal menandai: ' + error.message); return }
+    await muat()
+  }
+  const tundaCek = async (b: Baris) => {
+    const kritis = b.status === 'kritis' || b.status === 'error'
+    const catatan = window.prompt(`Tunda ${b.cek.kode} ${kritis ? '24 jam (Kritis maksimal 24 jam)' : '7 hari'} - catatan (alasan ditunda):`, '')
+    if (catatan === null) return
+    setSibuk('c' + b.cek.kode)
+    const { error } = await supabase.rpc('tunda_cek_kesehatan' as any, { p_kode: b.cek.kode, p_jam: kritis ? 24 : 168, p_catatan: catatan, p_oleh: namaPenanda() } as any)
+    setSibuk(null)
+    if (error) { console.error('[Kesehatan Data] tunda cek gagal:', error); alert('Gagal menunda: ' + error.message); return }
+    await muat()
+  }
+  const batalTunda = async (kode: string) => {
+    setSibuk('c' + kode)
+    const { error } = await supabase.rpc('batal_tunda_cek_kesehatan' as any, { p_kode: kode, p_oleh: namaPenanda() } as any)
+    setSibuk(null)
+    if (error) { console.error('[Kesehatan Data] batal tunda gagal:', error); alert('Gagal membatalkan tunda: ' + error.message); return }
+    await muat()
+  }
+  const errorTampil = grupError.filter(e => filterApp === 'Semua' || (NAMA_APLIKASI[e.aplikasi] || e.aplikasi) === filterApp)
+    .filter(e => { const st = statusDari(e); return filterStatus === 'semua' || (filterStatus === 'aktif' ? (st === 'baru' || st === 'ditangani') : st === filterStatus) })
   const terakhirJalan = hasil[0]?.waktu
 
   const salinLaporan = () => {
     const teks = ['KESEHATAN DATA - ' + fmtWaktu(terakhirJalan) + ' WIB']
-      .concat([...kelompok.tindakan, ...kelompok.informasi, ...kelompok.aman].map(b => `${b.cek.kode} ${WARNA[b.status].label} (${b.akhir?.jumlah ?? '-'}): ${b.cek.nama}`))
+      .concat([...kelompok.tindakan, ...kelompok.informasi, ...kelompok.lipat, ...kelompok.aman].map(b => `${b.cek.kode} ${WARNA[b.status].label} (${b.akhir?.jumlah ?? '-'}): ${b.cek.nama}`))
       .join('\n')
     const selesai = (m: string) => { setSalin(m); setTimeout(() => setSalin('Salin laporan'), 1600) }
     if (navigator.clipboard?.writeText) navigator.clipboard.writeText(teks).then(() => selesai('Tersalin'), () => selesai('Gagal menyalin'))
@@ -325,7 +428,11 @@ export function KesehatanDataTab() {
           <span className="kd-main">
             <p className="kd-title">{c.nama}</p>
             <p className="kd-meta">{c.kategori} · {c.frekuensi === 'per_jam' ? 'per jam' : 'harian'} · terakhir {fmtWaktu(akhir?.waktu)}{pulihSejak ? ' · sudah tidak terdeteksi' : ''}</p>
-            <span className="kd-tags">{aplikasi.map(a => <Tag key={a} app={a} />)}</span>
+            <span className="kd-tags">{aplikasi.map(a => <Tag key={a} app={a} />)}
+              {b.sifat && <span className="kd-tag" style={{ background: LABEL_SIFAT[b.sifat].bg, color: LABEL_SIFAT[b.sifat].fg, borderColor: 'transparent' }}>{LABEL_SIFAT[b.sifat].label}</span>}
+              {b.tundaAktif && b.tunda && <span className="kd-tag">Ditunda s.d. {fmtWaktu(b.tunda.sampai)}</span>}
+              {b.tundaBerakhir && <span className="kd-tag" style={{ background: '#fdf1d8', color: '#92580a', borderColor: 'transparent' }}>Muncul lagi: {b.tundaBerakhir}</span>}
+            </span>
           </span>
           <span className="kd-tren" title={'Riwayat 14 hari (temuan terbanyak per hari): ' + tren.map((t, i) => hari[i].slice(5) + '=' + (t ?? '-')).join(', ')} style={{ display: 'flex', alignItems: 'flex-end', gap: 2, height: 24 }}>
             {tren.map((t, i) => <span key={i} style={{ width: 5, height: t == null ? 2 : Math.max(3, Math.round((t / maks) * 24)), background: t == null ? C.line : t > 0 ? (c.kode === 'K10' ? '#93b4e8' : '#f0b44c') : '#4fbf85', borderRadius: 1, display: 'block' }} />)}
@@ -337,6 +444,13 @@ export function KesehatanDataTab() {
           <div className="kd-detail">
             {pulihSejak && <p className="kd-resolved">Sudah tidak terdeteksi sejak {fmtWaktu(pulihSejak)}. Riwayat 14 hari tetap tersimpan di grafik.</p>}
             {d?.pesan_error && <p className="kd-resolved" style={{ color: WARNA.error.fg }}>Cek gagal dijalankan: {d.pesan_error}</p>}
+            {adaMasalah && (
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', margin: '0 0 12px 56px' }} className="kd-aksi">
+                {b.tunda && (b.tundaAktif || b.tundaBerakhir) && <span className="kd-foot" style={{ margin: 0 }}>Ditunda {fmtWaktu(b.tunda.ditunda_pada)} oleh {b.tunda.ditunda_oleh || '-'} saat {b.tunda.jumlah_saat_tunda ?? '-'} temuan, s.d. {fmtWaktu(b.tunda.sampai)}{b.tunda.catatan ? ' · ' + b.tunda.catatan : ''}</span>}
+                <button type="button" className="kd-btn" data-tunda={c.kode} disabled={sibuk === 'c' + c.kode} onClick={() => tundaCek(b)}>{status === 'kritis' || status === 'error' ? 'Tunda 24 jam' : 'Tunda 7 hari'}</button>
+                {b.tunda && <button type="button" className="kd-btn" disabled={sibuk === 'c' + c.kode} onClick={() => batalTunda(c.kode)}>Batalkan tunda</button>}
+              </div>
+            )}
             <div className="kd-grid">
               {apa && <div className="kd-block"><h3>Apa yang terjadi</h3><p>{apa}</p></div>}
               {c.penyebab_umum && <div className="kd-block"><h3>Penyebab</h3><p>{c.penyebab_umum}</p></div>}
@@ -387,6 +501,8 @@ export function KesehatanDataTab() {
           {daftar(kelompok.tindakan, 'Tidak ada masalah yang perlu tindakan.')}
           <h2>Informasi</h2>
           {daftar(kelompok.informasi, 'Tidak ada informasi.')}
+          <h2 style={{ cursor: 'pointer' }} onClick={() => setLipatBuka(v => !v)} data-lipat>{lipatBuka ? '▾' : '▸'} Ditunda dan stabil ({kelompok.lipat.length})</h2>
+          {lipatBuka && daftar(kelompok.lipat, 'Tidak ada cek yang ditunda atau stabil.')}
           <h2>Aman</h2>
           {daftar(kelompok.aman, 'Belum ada cek yang aman.')}
         </>
@@ -396,6 +512,11 @@ export function KesehatanDataTab() {
       <div className="kd-seg" role="group" aria-label="Filter aplikasi">
         {(['Semua', 'Admin', 'Operator'] as const).map(a => (
           <button key={a} type="button" aria-pressed={filterApp === a} onClick={() => setFilterApp(a)}>{a}</button>
+        ))}
+      </div>
+      <div className="kd-seg" role="group" aria-label="Filter status" style={{ marginLeft: 8 }}>
+        {([['aktif', 'Baru & ditangani'], ['selesai', 'Selesai'], ['diabaikan', 'Diabaikan'], ['semua', 'Semua status']] as const).map(([k, l]) => (
+          <button key={k} type="button" data-filter-status={k} aria-pressed={filterStatus === k} onClick={() => setFilterStatus(k)}>{l}</button>
         ))}
       </div>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 10 }}>
@@ -423,7 +544,7 @@ export function KesehatanDataTab() {
           const p = polaUntuk(e, pola)
           const terbuka = !!bukaErr[e.id]
           return (
-            <div key={e.id} className={'kd-item' + (terbuka ? ' open' : '')} data-error-app={app} data-pola={p?.kode || 'belum'}>
+            <div key={e.id} className={'kd-item' + (terbuka ? ' open' : '')} data-error-app={app} data-pola={p?.kode || 'belum'} data-status={statusDari(e)}>
               <div className="kd-err" style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto' }} title={(e.konteks?.lokasi || '') + (e.versi ? '\nversi ' + e.versi : '')}>
                 <span className="m" style={{ cursor: 'pointer' }} onClick={() => setBukaErr(s0 => ({ ...s0, [e.id]: !terbuka }))}>{terbuka ? '▾ ' : '▸ '}{e.pesan}</span>
                 <span className="n">{e.jumlah}x</span>
@@ -432,6 +553,8 @@ export function KesehatanDataTab() {
                 <span className="d"><Tag app={app} /> {p
                   ? <span className="kd-tag" style={{ background: '#e3f4ea', color: '#157347', borderColor: 'transparent' }}>{p.kode} · {p.nama}</span>
                   : <span className="kd-tag" style={{ background: '#fdf1d8', color: '#92580a', borderColor: 'transparent' }}>Belum dianalisis</span>}
+                  {' '}<span className="kd-tag" style={{ background: LABEL_STATUS_ERR[statusDari(e)].bg, color: LABEL_STATUS_ERR[statusDari(e)].fg, borderColor: 'transparent' }}>{LABEL_STATUS_ERR[statusDari(e)].label}</span>
+                  {statusErr[e.sidik]?.muncul_lagi && <span className="kd-tag" style={{ background: '#fdeceb', color: '#b42318', borderColor: 'transparent' }}>Muncul lagi {fmtWaktu(statusErr[e.sidik].muncul_lagi_pada)}</span>}
                   {' '}{e.jenis} · {String(e.halaman || '').trim() || '-'} · {fmtWaktu(e.waktu_terakhir)}{e.pengguna ? ' · ' + e.pengguna : ''}</span>
               </div>
               {terbuka && (
@@ -449,6 +572,14 @@ export function KesehatanDataTab() {
                     <p className="kd-foot" style={{ fontSize: 13 }}>Pola error ini belum dianalisis. Tekan <b>Salin</b> lalu tempel ke Claude Code untuk diinvestigasi; hasilnya bisa ditambahkan ke tabel <code>kesehatan_pola_error</code> (tanpa deploy).</p>
                   )}
                   <p className="kd-foot">Pertama {fmtWaktu(e.waktu_pertama)} · terakhir {fmtWaktu(e.waktu_terakhir)} · versi {e.versi || '-'}{e.konteks?.lokasi ? ' · ' + e.konteks.lokasi : ''}</p>
+                  {statusErr[e.sidik]?.ditandai_pada && <p className="kd-foot">Status {LABEL_STATUS_ERR[statusDari(e)].label} · ditandai {statusErr[e.sidik].ditandai_oleh || '-'} {fmtWaktu(statusErr[e.sidik].ditandai_pada)} · versi {statusErr[e.sidik].versi_ditandai || '-'}{statusErr[e.sidik].catatan ? ' · ' + statusErr[e.sidik].catatan : ''}</p>}
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {(['ditangani', 'selesai', 'diabaikan', 'baru'] as const).filter(sx => sx !== statusDari(e)).map(sx => (
+                      <button key={sx} type="button" className="kd-btn" data-tandai={sx} disabled={sibuk === 'e' + e.sidik} onClick={() => tandai(e, sx)}>
+                        {sx === 'selesai' ? 'Tandai selesai' : sx === 'ditangani' ? 'Sedang ditangani' : sx === 'diabaikan' ? 'Abaikan' : 'Buka lagi (Baru)'}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
