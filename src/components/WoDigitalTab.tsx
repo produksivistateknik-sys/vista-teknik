@@ -142,7 +142,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
   // Qty-per-komponen editor (reuse usePanelQtyEditor.ts - SAMA PERSIS logic Manajemen WO, lihat
   // komentar di file hook-nya). getPanel/getWoContext/applyChecklist di-bind ke panelsAll flat
   // (beda dari ManajemenWO yang nested per-WO) - behavior tetap identik.
-  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
+  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,updateItemQtyBanyak,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
     getPanel:(panelId)=>panelsAll.find((p:any)=>String(p.id)===panelId),
     getWoContext:(panelId)=>{const p=panelsAll.find((p2:any)=>String(p2.id)===panelId);const w=p?woList.find((w2:any)=>w2.id===p.wo_id):null;return w?{id:w.id,wo:w.wo,proyek:w.proyek}:undefined;},
     applyChecklist:(panelId,newChecklist)=>setPanelsAll(prev=>prev.map((p:any)=>String(p.id)===panelId?{...p,checklist:newChecklist}:p)),
@@ -676,6 +676,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                                           flatKodes={flatKodes} isLocked={isLocked} isSelected={!!isSel}
                                           pakaiPasteMulti={!!(isSel&&selectedQtyCells&&selectedQtyCells.kodes.length>1)}
                                           onQtyChange={(kode,nilai)=>updateItemQty(String(p.id),kode,nilai)}
+                                          onQtyChangeBanyak={entri=>updateItemQtyBanyak(String(p.id),entri)}
                                           onCellClick={(kode,shift)=>handleQtyCellClick(String(p.id),kode,flatKodes,shift)}
                                           onCopy={e=>handleQtyCopy(String(p.id),e)}
                                           onPasteMulti={e=>handleQtyPasteMulti(String(p.id),e)}

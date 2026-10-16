@@ -64,16 +64,23 @@ export function usePanelQtyEditor({
     const values = text.split(/\r?\n|\t/).map((v: string) => v.trim()).filter((v: string) => v !== '')
     if (values.length === 0) return
     e.preventDefault()
+    const entri: { kode: string; qty: number }[] = []
     selectedQtyCells.kodes.forEach((kode, idx) => {
       const val = values.length === 1 ? values[0] : values[idx]
       if (val === undefined) return
-      updateItemQty(panelId, kode, parseFloat(val) || 0)
+      entri.push({ kode, qty: parseFloat(val) || 0 })
     })
+    updateItemQtyBanyak(panelId, entri)
   }
 
-  const updateItemQty = (panelId: string, kode: string, qty: number | string) => {
+  // BUG FIX (16 Okt 2026) - tempel beberapa nilai sekaligus dulu memanggil updateItemQty berulang dalam 1 event:
+  // tiap panggilan menyusun checklist dari data panel SEBELUM tempel (getPanel belum melihat hasil panggilan
+  // sebelumnya), jadi layar cuma menampilkan nilai TERAKHIR sementara dirtyQty mencatat semuanya (yang tersimpan
+  // beda dgn yang terlihat). Sekarang semua nilai diterapkan berurutan ke SATU checklist & sekali applyChecklist.
+  // Rumus per komponen TIDAK berubah (sama persis versi 1-nilai sebelumnya).
+  const updateItemQtyBanyak = (panelId: string, entri: { kode: string; qty: number | string }[]) => {
     const panel = getPanel(panelId)
-    if (!panel) return
+    if (!panel || entri.length === 0) return
     setOrigChecklist(prev => {
       if (prev[panelId]) return prev
       return { ...prev, [panelId]: JSON.parse(JSON.stringify(panel.checklist || {})) }
@@ -83,27 +90,35 @@ export function usePanelQtyEditor({
     // qty_change_log/activity_log, dan rasio skala dihitung dari 1). Sekarang oldQty = qty ASLI
     // sebelum edit dimulai (entri dirty pertama), preview dihitung dari entri checklist asli.
     setDirtyQty(prev => {
-      const oldQty = prev[panelId]?.[kode]?.oldQty ?? (panel.checklist?.[kode]?.qty ?? 0)
-      return { ...prev, [panelId]: { ...prev[panelId], [kode]: { newQty: Number(qty) || 0, oldQty } } }
+      const perPanel = { ...prev[panelId] }
+      for (const { kode, qty } of entri) {
+        const oldQty = perPanel[kode]?.oldQty ?? (panel.checklist?.[kode]?.qty ?? 0)
+        perPanel[kode] = { newQty: Number(qty) || 0, oldQty }
+      }
+      return { ...prev, [panelId]: perPanel }
     })
-    const nq2 = Number(qty) || 0
-    const asli = origChecklist[panelId]?.[kode] ?? panel.checklist?.[kode]
-    const qtyAsli = Number(asli?.qty) || 0
-    const nc = { ...panel.checklist, [kode]: { ...panel.checklist[kode], qty: nq2 } }
-    if (nq2 > 0 && qtyAsli > 0) {
-      // preview = hasil yang SAMA PERSIS dgn yang disimpan saveQtyEdit (helper bersama)
-      nc[kode] = sesuaikanProgressKeQtyBaru({ ...asli, qty: qtyAsli }, qtyAsli, nq2) || nc[kode]
-      applyChecklist(panelId, nc)
-      return
-    }
-    if (nq2 === 0) {
-      // qty 0 -> reset semua progress
-      nc[kode].progress = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: 0 }), {})
-      nc[kode].progressByDate = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: {} }), {})
-      nc[kode].history = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: [] }), {})
+    const nc = { ...panel.checklist }
+    for (const { kode, qty } of entri) {
+      const nq2 = Number(qty) || 0
+      const asli = origChecklist[panelId]?.[kode] ?? panel.checklist?.[kode]
+      const qtyAsli = Number(asli?.qty) || 0
+      nc[kode] = { ...panel.checklist[kode], qty: nq2 }
+      if (nq2 > 0 && qtyAsli > 0) {
+        // preview = hasil yang SAMA PERSIS dgn yang disimpan saveQtyEdit (helper bersama)
+        nc[kode] = sesuaikanProgressKeQtyBaru({ ...asli, qty: qtyAsli }, qtyAsli, nq2) || nc[kode]
+        continue
+      }
+      if (nq2 === 0) {
+        // qty 0 -> reset semua progress
+        nc[kode].progress = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: 0 }), {})
+        nc[kode].progressByDate = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: {} }), {})
+        nc[kode].history = ALL_PROSES.reduce((a: any, pr: string) => ({ ...a, [pr]: [] }), {})
+      }
     }
     applyChecklist(panelId, nc)
   }
+
+  const updateItemQty = (panelId: string, kode: string, qty: number | string) => updateItemQtyBanyak(panelId, [{ kode, qty }])
 
   const cancelQtyEdit = (panelId: string) => {
     const orig = origChecklist[panelId]
@@ -120,7 +135,10 @@ export function usePanelQtyEditor({
     const dirty = dirtyQty[panelId] || {}
     const panelQtyMultiplier = Number(panel.qty) || 1
     // ambil checklist TERBARU dari DB (bukan state lokal) biar gak nimpa edit qty admin lain yang barusan masuk
-    const { data: freshPanelRow } = await supabase.from('panels').select('checklist').eq('id', panel.id).single()
+    const { data: freshPanelRow, error: freshErr } = await supabase.from('panels').select('checklist').eq('id', panel.id).single()
+    // (16 Okt 2026, CLAUDE.md A.2) dulu error diabaikan -> diam-diam pakai checklist lokal (bisa basi & menimpa edit
+    // qty admin lain). Sekarang dibatalkan, perubahan di layar tetap ada, tinggal tekan Simpan lagi.
+    if (freshErr) { console.error('[saveQtyEdit] gagal baca checklist terbaru:', freshErr); alert('Gagal membaca data terbaru panel: ' + freshErr.message + '\n\nPerubahan belum disimpan. Coba tekan Simpan Perubahan lagi.'); return }
     const finalChecklist = { ...(freshPanelRow?.checklist || panel.checklist) }
 
     const konflikList: string[] = []
@@ -271,6 +289,6 @@ export function usePanelQtyEditor({
 
   return {
     selectedQtyCells, qtyAnchor, dirtyQty,
-    handleQtyCellClick, handleQtyCopy, handleQtyPasteMulti, updateItemQty, cancelQtyEdit, saveQtyEdit,
+    handleQtyCellClick, handleQtyCopy, handleQtyPasteMulti, updateItemQty, updateItemQtyBanyak, cancelQtyEdit, saveQtyEdit,
   }
 }

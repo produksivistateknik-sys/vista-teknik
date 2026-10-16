@@ -61,7 +61,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   // Qty-per-komponen editor (3 Sep 2026, di-extract ke usePanelQtyEditor.ts - dipakai bareng
   // WoDigitalTab.tsx/Engineering juga). getPanel/getWoContext/applyChecklist di-bind ke woData
   // nested-per-WO punya komponen ini - behavior SAMA PERSIS kayak sebelum di-extract.
-  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
+  const{selectedQtyCells,dirtyQty,handleQtyCellClick,handleQtyCopy,handleQtyPasteMulti,updateItemQty,updateItemQtyBanyak,cancelQtyEdit,saveQtyEdit}=usePanelQtyEditor({
     getPanel:(panelId)=>woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===panelId),
     getWoContext:(panelId)=>{const wo=woData.find((w:any)=>(w.panels||[]).some((p:any)=>String(p.id)===panelId));return wo?{id:wo.id,wo:wo.wo,proyek:wo.proyek}:undefined;},
     applyChecklist:(panelId,newChecklist)=>setWoData((prev:any)=>prev.map((w:any)=>({...w,panels:(w.panels||[]).map((p:any)=>String(p.id)===panelId?{...p,checklist:newChecklist}:p)}))),
@@ -586,6 +586,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                       isSelected={!!(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode))}
                                       pakaiPasteMulti={!!(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode))}
                                       onQtyChange={(kode,nilai)=>updateItemQty(String(p.id),kode,nilai)}
+                                      onQtyChangeBanyak={entri=>updateItemQtyBanyak(String(p.id),entri)}
                                       onCellClick={(kode,shift)=>handleQtyCellClick(String(p.id),kode,cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode),shift)}
                                       onCopy={e=>handleQtyCopy(String(p.id),e)}
                                       onPasteMulti={e=>handleQtyPasteMulti(String(p.id),e)}/>

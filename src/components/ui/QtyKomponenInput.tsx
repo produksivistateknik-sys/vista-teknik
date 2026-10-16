@@ -15,7 +15,7 @@ export function qtyInputId(idPrefix: string, panelId: string | number, kode: str
 
 export function QtyKomponenInput({
   idPrefix, panelId, kode, qty, flatKodes, isLocked, isSelected, pakaiPasteMulti,
-  onQtyChange, onCellClick, onCopy, onPasteMulti, latar = '#fff', garis = '#e2e8f0',
+  onQtyChange, onQtyChangeBanyak, onCellClick, onCopy, onPasteMulti, latar = '#fff', garis = '#e2e8f0',
 }: {
   idPrefix: string                       // pembeda id antar tampilan (tab Admin & Engineering bisa sama-sama ter-mount)
   panelId: string
@@ -26,6 +26,7 @@ export function QtyKomponenInput({
   isSelected: boolean                    // termasuk sel terpilih (Shift+klik)
   pakaiPasteMulti: boolean               // >1 sel terpilih & sel ini termasuk -> tempel ke sel terpilih
   onQtyChange: (kode: string, nilai: number | string) => void
+  onQtyChangeBanyak: (entri: { kode: string; qty: number }[]) => void   // tempel beberapa nilai: SATU kali pembaruan
   onCellClick: (kode: string, shiftKey: boolean) => void
   onCopy: (e: React.ClipboardEvent<HTMLInputElement>) => void
   onPasteMulti: (e: React.ClipboardEvent<HTMLInputElement>) => void
@@ -59,11 +60,13 @@ export function QtyKomponenInput({
         if (values.length <= 1) return
         e.preventDefault()
         if (idx === -1) return
+        const entri: { kode: string; qty: number }[] = []
         values.forEach((val, i) => {
           const target = flatKodes[idx + i]
           if (!target) return
-          onQtyChange(target, parseFloat(val) || 0)
+          entri.push({ kode: target, qty: parseFloat(val) || 0 })
         })
+        onQtyChangeBanyak(entri)
       }}
       style={{ width: 56, padding: '4px 6px', borderRadius: 6,
         border: isSelected ? '1.5px solid #2563eb' : `1.5px solid ${isLocked ? '#fecaca' : garis}`,
