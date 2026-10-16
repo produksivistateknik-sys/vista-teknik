@@ -1,4 +1,5 @@
-import { useState, useEffect, useRef, lazy, Suspense } from 'react'
+import { useState, useEffect, useRef, Suspense } from 'react'
+import { lazyP } from '../lib/lazyPrefetch';
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
@@ -20,7 +21,7 @@ import { QtyKomponenInput } from './ui/QtyKomponenInput'
 import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
-const PdfViewer=lazy(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
+const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
 // Pola sama persis PermintaanAdminTab.tsx/RiwayatGudangTab.tsx - Supabase .select() diam-diam
 // batasin max 1000 baris tanpa .range() (TANPA error, tanpa peringatan). Dipakai arsipkanWO() di

@@ -1,4 +1,5 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo, Suspense } from "react";
+import { lazyP } from "../lib/lazyPrefetch";
 import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { workOrderService } from "../services/workOrderService";
@@ -13,7 +14,7 @@ import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 
-const PdfViewer=lazy(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
+const PdfViewer=lazyP(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
 // Banner broadcast "WO diubah Engineering" (17 Sep 2026, fitur baru) - broadcastWoEngineeringEvent
 // dipindah ke lib/useWoEngineeringBroadcast.ts (17 Sep 2026, sore) supaya bisa dipakai ulang di

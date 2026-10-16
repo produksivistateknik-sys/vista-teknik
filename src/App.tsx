@@ -1,4 +1,5 @@
-import { useState, useMemo, useEffect, useRef, Fragment, lazy, Suspense, memo, type ReactNode } from 'react';
+import { useState, useMemo, useEffect, useRef, Fragment, Suspense, memo, type ReactNode } from 'react';
+import { lazyP, unduhSemuaHalaman } from './lib/lazyPrefetch';
 import { samakanReferensi } from './lib/samakanReferensi';
 import { realtimeSemuaSehat } from './lib/statusRealtime';
 import QRCode from 'qrcode';
@@ -48,28 +49,28 @@ import { WoEngineeringBanner } from './components/WoEngineeringBanner'
 import { SesiProduksiStokToast } from './components/SesiProduksiStokToast'
 import { mintaBukaSesiProduksiStok } from './lib/navProduksiStok'
 
-const TrackingView = lazy(() => import('./components/TrackingView').then(m => ({ default: m.TrackingView })))
-const TrackingPekerja = lazy(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
-const RencanaHarian = lazy(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
-const ActivityLogView = lazy(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
-const KendalaInbox = lazy(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
-const Dashboard = lazy(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
-const AiAssistantChat = lazy(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
-const TaskMonitoring = lazy(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
-const SummaryProgress = lazy(() => import('./components/SummaryProgress').then(m => ({ default: m.SummaryProgress })))
-const DetailProgress = lazy(() => import('./components/DetailProgress').then(m => ({ default: m.DetailProgress })))
-const RawSchedule = lazy(() => import('./components/RawSchedule').then(m => ({ default: m.RawSchedule })))
-const RawScheduleAccordion = lazy(() => import('./components/RawScheduleAccordion').then(m => ({ default: m.RawScheduleAccordion })))
-const OutstandingView = lazy(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
-const ManajemenWO = lazy(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
-const MaintenancePageTab = lazy(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
-const StokMonitoringTab = lazy(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
-const PermintaanAdminTab = lazy(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
-const ArsipTab = lazy(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
-const SystemTab = lazy(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
-const ProyekLuarTab = lazy(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
-const MomFatTab = lazy(() => import('./components/MomFatTab').then(m => ({ default: m.MomFatTab })))
-const WoDigitalTab = lazy(() => import('./components/WoDigitalTab').then(m => ({ default: m.WoDigitalTab })))
+const TrackingView = lazyP(() => import('./components/TrackingView').then(m => ({ default: m.TrackingView })))
+const TrackingPekerja = lazyP(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
+const RencanaHarian = lazyP(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
+const ActivityLogView = lazyP(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
+const KendalaInbox = lazyP(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
+const Dashboard = lazyP(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
+const AiAssistantChat = lazyP(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
+const TaskMonitoring = lazyP(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
+const SummaryProgress = lazyP(() => import('./components/SummaryProgress').then(m => ({ default: m.SummaryProgress })))
+const DetailProgress = lazyP(() => import('./components/DetailProgress').then(m => ({ default: m.DetailProgress })))
+const RawSchedule = lazyP(() => import('./components/RawSchedule').then(m => ({ default: m.RawSchedule })))
+const RawScheduleAccordion = lazyP(() => import('./components/RawScheduleAccordion').then(m => ({ default: m.RawScheduleAccordion })))
+const OutstandingView = lazyP(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
+const ManajemenWO = lazyP(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
+const MaintenancePageTab = lazyP(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
+const StokMonitoringTab = lazyP(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
+const PermintaanAdminTab = lazyP(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
+const ArsipTab = lazyP(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
+const SystemTab = lazyP(() => import('./components/SystemTab').then(m => ({ default: m.SystemTab })))
+const ProyekLuarTab = lazyP(() => import('./components/ProyekLuarTab').then(m => ({ default: m.ProyekLuarTab })))
+const MomFatTab = lazyP(() => import('./components/MomFatTab').then(m => ({ default: m.MomFatTab })))
+const WoDigitalTab = lazyP(() => import('./components/WoDigitalTab').then(m => ({ default: m.WoDigitalTab })))
 
 const TabFallback = <div style={{textAlign:"center" as const,padding:60,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
 // PERFORMA (4 Okt 2026, audit lambat) - tab yang pernah dibuka tetap mounted (display:none, lihat
@@ -112,6 +113,10 @@ export default function App(){
   const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[localStorage.getItem("vista_teknik_active_tab")||"dashboard"]);
+  const tabDibukaSesiIni=useRef<Set<string>>(new Set());
+  // (16 Okt 2026) unduh semua halaman di belakang layar setelah login - menu yang dibuka belakangan tidak gagal walau
+  // ada deploy baru sementara tab ini terbuka (lib/lazyPrefetch.ts).
+  useEffect(()=>{if(user)unduhSemuaHalaman();},[user]);
   useEffect(()=>{
     // Guard role Engineering (5 Sep 2026, BUG FIX - celah eskalasi privilese) - `visitedTabs.
     // includes(id)` adalah SATU-SATUNYA syarat komponen admin (ManajemenWO/SystemTab/dst) ke-mount
@@ -128,6 +133,11 @@ export default function App(){
       return;
     }
     localStorage.setItem("vista_teknik_active_tab",tab);
+    // (16 Okt 2026) versi baru sudah ter-deploy & tab ini mau membuka menu yang BELUM pernah dibuka di sesi ini ->
+    // muat ulang langsung ke menu itu (tab tersimpan di atas) daripada gagal memuat file versi lama (chunk error).
+    // Menu yang sudah pernah dibuka tidak memicu reload (isian yang belum disimpan di menu lain tidak hilang).
+    if(hasNewVersion&&tabDibukaSesiIni.current.size>0&&!tabDibukaSesiIni.current.has(tab)){window.location.reload();return;}
+    tabDibukaSesiIni.current.add(tab);
     setVisitedTabs(prev=>{
       const allowed=engineeringGuard?prev.filter(t=>ENGINEERING_ALLOWED_TABS.has(t)):prev;
       const without=allowed.filter(t=>t!==tab);

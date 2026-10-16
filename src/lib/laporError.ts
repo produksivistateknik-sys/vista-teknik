@@ -4,8 +4,7 @@
 // dikirim berkelompok tiap 15 detik (atau segera saat tab disembunyikan / sebelum reload), maks 30 kejadian per menit
 // per perangkat; server menggabungkan lagi per sidik per jam. Fungsi ini TIDAK PERNAH melempar error.
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
-
-declare const __BUILD_ID__: string
+import { buildIdAplikasi } from './buildId'
 
 export type JenisError = 'crash' | 'chunk' | 'unhandled' | 'window_error' | 'supabase_error' | 'gagal_simpan' | 'console_error'
 type Item = { aplikasi: string; versi: string; jenis: string; sidik: string; pesan: string; halaman: string; pengguna: string; konteks: any; jumlah: number }
@@ -18,7 +17,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let menitMulai = Date.now(), terkirimMenitIni = 0
 let sedangMencatat = false
 
-const versi = () => { try { return typeof __BUILD_ID__ !== 'undefined' ? String(__BUILD_ID__) : 'dev' } catch { return 'dev' } }
+const versi = () => buildIdAplikasi()
 const pengguna = () => { try { const s = JSON.parse(localStorage.getItem('vista_admin_session') || '{}'); return String(s?.nama || s?.name || '') } catch { return '' } }
 const halaman = () => { try { return (localStorage.getItem('vista_teknik_active_tab') || '') + ' ' + window.location.pathname } catch { return '' } }
 

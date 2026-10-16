@@ -15,6 +15,7 @@ type Cek = {
 type Hasil = { id: number; kode: string; waktu: string; jumlah: number | null; status: string; durasi_ms: number | null }
 type Detail = { sampel: any[]; pesan_error: string | null }
 type Status = 'kritis' | 'error' | 'peringatan' | 'info' | 'ok' | 'belum'
+type Pola = { kode: string; nama: string; pola: string; jenis: string[]; aplikasi: string[]; apa_terjadi: string | null; penyebab: string | null; dampak: string | null; langkah: string[]; urutan: number }
 type Baris = { cek: Cek; akhir?: Hasil; status: Status; tren: (number | null)[]; hari: string[]; pulihSejak: string | null; aplikasi: string[] }
 
 const C = {
@@ -42,6 +43,31 @@ const LABEL_KOLOM: Record<string, string> = {
 const URUTAN_KOLOM = ['jenis', 'operator', 'proses', 'tahap', 'kode_komponen', 'panel', 'panel_id', 'wo', 'proyek', 'tanggal', 'mulai', 'jam',
   'disimpan', 'ccp', 'checklist', 'waktu', 'last_operator_nama', 'updated_at', 'timer_id', 'ref', 'info', 'tabel', 'jumlah', 'tingkat', 'waktu_terakhir', 'jam_lalu']
 const posisiKolom = (k: string) => { const i = URUTAN_KOLOM.indexOf(k); return i < 0 ? 999 : i }
+// Aturan kerja standar yang ikut tersalin (tombol "Salin" error) supaya bisa langsung ditempel ke Claude Code.
+const ATURAN_KERJA = [
+  'INVESTIGASI dulu (baca saja, jangan ubah data/kode, jangan push).',
+  'Laporkan temuan dengan bukti (query nyata ke database / activity_log / log_error_app + hasilnya), bukan teori dari kode saja.',
+  'Sajikan usulan perbaikan, lalu TUNGGU konfirmasi saya.',
+  'Setelah disetujui: kerjakan di branch, tes di Preview, tanpa push ke main sebelum izin saya.',
+  'Perubahan skema (migration) saya jalankan sendiri di SQL Editor dengan verifikasi + rollback.',
+  'Rilis vista-pekerja (aplikasi operator) hanya di luar jam kerja.',
+]
+// pola pertama (urutan kecil dulu) yang cocok dgn pesan + jenis + aplikasi; regex rusak dilewati
+function polaUntuk(e: any, daftarPola: Pola[]): Pola | null {
+  for (const p of daftarPola) {
+    if (p.jenis?.length && !p.jenis.includes(e.jenis)) continue
+    if (p.aplikasi?.length && !p.aplikasi.includes(e.aplikasi)) continue
+    try { if (new RegExp(p.pola, 'i').test(String(e.pesan || ''))) return p } catch { /* pola tidak valid - lewati */ }
+  }
+  return null
+}
+async function salinKeClipboard(teks: string): Promise<boolean> {
+  try { if (navigator.clipboard?.writeText) { await navigator.clipboard.writeText(teks); return true } } catch { /* coba cara lama */ }
+  try {
+    const ta = document.createElement('textarea'); ta.value = teks; ta.style.position = 'fixed'; ta.style.opacity = '0'
+    document.body.appendChild(ta); ta.select(); const ok = document.execCommand('copy'); document.body.removeChild(ta); return ok
+  } catch { return false }
+}
 const fmtWaktu = (s?: string | null) => s ? new Date(s).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 const tglWib = (s: string) => new Date(Date.parse(s) + 7 * 3600000).toISOString().slice(0, 10)
 const tabelBelumAda = (e: any) => /does not exist|PGRST205|42P01|schema cache/i.test(String(e?.message || e?.code || ''))
@@ -142,6 +168,9 @@ export function KesehatanDataTab() {
   const [detail, setDetail] = useState<Record<string, Detail>>({})
   const [buka, setBuka] = useState<Record<string, boolean>>({})
   const [errors, setErrors] = useState<any[]>([])
+  const [pola, setPola] = useState<Pola[]>([])
+  const [bukaErr, setBukaErr] = useState<Record<number, boolean>>({})
+  const [statusSalin, setStatusSalin] = useState<Record<string, string>>({})
   const [filterApp, setFilterApp] = useState<'Semua' | 'Admin' | 'Operator'>('Semua')
   const [menjalankan, setMenjalankan] = useState(false)
   const [salin, setSalin] = useState('Salin laporan')
@@ -166,6 +195,10 @@ export function KesehatanDataTab() {
       }
       const { data: e, error: eErr } = await supabase.from('log_error_app' as any).select('*').gte('waktu_terakhir', new Date(Date.now() - 7 * 86400000).toISOString()).order('waktu_terakhir', { ascending: false }).limit(200)
       if (eErr) throw eErr
+      // pola error dikenal (tabel kesehatan_pola_error) - belum dipasang = semua error tampil "Belum dianalisis"
+      const { data: pl, error: plErr } = await supabase.from('kesehatan_pola_error' as any).select('*').eq('aktif', true).order('urutan')
+      if (plErr && !tabelBelumAda(plErr)) throw plErr
+      setPola(((pl as any[]) || []) as Pola[])
       setCek((c as any[]) || []); setHasil(h as Hasil[]); setDetail(det); setErrors((e as any[]) || [])
       // cek berstatus Kritis terbuka otomatis (pilihan buka/tutup user tetap dihormati sesudahnya)
       setBuka(prev => {
@@ -216,6 +249,42 @@ export function KesehatanDataTab() {
     }
   }, [baris])
 
+  const teksError = (e: any, p: Pola | null) => {
+    const app = NAMA_APLIKASI[e.aplikasi] || e.aplikasi
+    const baris = [
+      `LAPORAN ERROR - Kesehatan Data (${app})`,
+      `Pesan    : ${e.pesan}`,
+      `Aplikasi : ${e.aplikasi} (${app})`,
+      `Jenis    : ${e.jenis}`,
+      `Halaman  : ${String(e.halaman || '').trim() || '-'}`,
+      `Pengguna : ${e.pengguna || '-'}`,
+      `Waktu    : pertama ${fmtWaktu(e.waktu_pertama)} WIB, terakhir ${fmtWaktu(e.waktu_terakhir)} WIB`,
+      `Jumlah   : ${e.jumlah}x`,
+      `Versi    : ${e.versi || '-'}`,
+    ]
+    const k = e.konteks || {}
+    const ref = [k.panelId != null ? `panel ${k.panelId}` : '', k.kode ? `komponen ${k.kode}` : '', k.proses ? `proses ${k.proses}` : '', k.tahap ? `tahap ${k.tahap}` : ''].filter(Boolean).join(', ')
+    if (ref) baris.push(`Data     : ${ref}`)
+    if (k.lokasi) baris.push(`Lokasi kode: ${k.lokasi}`)
+    if (k.jenisGagal) baris.push(`Jenis gagal: ${k.jenisGagal}${k.online === false ? ' (HP offline)' : ''}`)
+    baris.push('')
+    if (p) {
+      baris.push(`POLA DIKENAL: ${p.kode} - ${p.nama}`)
+      if (p.apa_terjadi) baris.push(`Apa yang terjadi: ${p.apa_terjadi}`)
+      if (p.penyebab) baris.push(`Penyebab: ${p.penyebab}`)
+      if (p.dampak) baris.push(`Dampak bagi aplikasi: ${p.dampak}`)
+      if (p.langkah?.length) baris.push('Langkah penanganan:', ...p.langkah.map((l, i) => `  ${i + 1}. ${l}`))
+    } else {
+      baris.push('POLA: Belum dianalisis - tolong investigasi penyebab, cakupan (berapa kali, siapa, halaman apa), dan dampaknya.')
+    }
+    return baris.join('\n')
+  }
+  const aturanTeks = () => ['', '', 'ATURAN KERJA:', ...ATURAN_KERJA.map(a => '- ' + a)].join('\n')
+  const salinTeks = async (kunci: string, teks: string) => {
+    const ok = await salinKeClipboard(teks)
+    setStatusSalin(p => ({ ...p, [kunci]: ok ? 'Tersalin' : 'Gagal menyalin' }))
+    setTimeout(() => setStatusSalin(p => { const n = { ...p }; delete n[kunci]; return n }), 1600)
+  }
   const errorTampil = errors.filter(e => filterApp === 'Semua' || (NAMA_APLIKASI[e.aplikasi] || e.aplikasi) === filterApp)
   const terakhirJalan = hasil[0]?.waktu
 
@@ -329,16 +398,59 @@ export function KesehatanDataTab() {
           <button key={a} type="button" aria-pressed={filterApp === a} onClick={() => setFilterApp(a)}>{a}</button>
         ))}
       </div>
-      <div className="kd-list" style={{ marginTop: 10 }}>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, alignItems: 'center', marginTop: 10 }}>
+        <span className="kd-foot" style={{ margin: 0 }}>{errorTampil.length} kelompok error · {errorTampil.filter(e => !polaUntuk(e, pola)).length} belum dianalisis</span>
+        <div style={{ flex: 1 }} />
+        {errorTampil.length > 0 && (
+          <button type="button" className="kd-btn" onClick={() => {
+            const kelompokPola = new Map<string, any[]>()
+            for (const e of errorTampil) { const p = polaUntuk(e, pola); const k = p ? `${p.kode} - ${p.nama}` : 'Belum dianalisis'; kelompokPola.set(k, [...(kelompokPola.get(k) || []), e]) }
+            const teks = [`RINGKASAN ERROR APLIKASI - Kesehatan Data (${filterApp}), 7 hari terakhir, disalin ${fmtWaktu(new Date().toISOString())} WIB`,
+              `${errorTampil.length} kelompok error, ${errorTampil.reduce((n, e) => n + (Number(e.jumlah) || 0), 0)} kejadian.`, '']
+            for (const [k, list] of kelompokPola) {
+              teks.push(`== ${k} (${list.length} kelompok, ${list.reduce((n, e) => n + (Number(e.jumlah) || 0), 0)} kejadian)`)
+              for (const e of list) teks.push(`- ${fmtWaktu(e.waktu_terakhir)} | ${e.aplikasi} | ${e.jenis} | ${e.pengguna || '-'} | ${String(e.halaman || '').trim() || '-'} | ${e.jumlah}x | ${e.pesan}`)
+              teks.push('')
+            }
+            teks.push('Rincian tiap error (pola, sebab, akibat, langkah) bisa disalin dari tombol "Salin" per error.')
+            salinTeks('semua', teks.join('\n') + aturanTeks())
+          }}>{statusSalin['semua'] || 'Salin semua'}</button>
+        )}
+      </div>
+      <div className="kd-list" style={{ marginTop: 8 }}>
         {errorTampil.length === 0 ? <div className="kd-empty">Tidak ada error tercatat.</div> : errorTampil.map(e => {
           const app = NAMA_APLIKASI[e.aplikasi] || e.aplikasi
+          const p = polaUntuk(e, pola)
+          const terbuka = !!bukaErr[e.id]
           return (
-            <div key={e.id} className="kd-item" data-error-app={app}>
-              <div className="kd-err" title={(e.konteks?.lokasi || '') + (e.versi ? '\nversi ' + e.versi : '')}>
-                <span className="m">{e.pesan}</span>
+            <div key={e.id} className={'kd-item' + (terbuka ? ' open' : '')} data-error-app={app} data-pola={p?.kode || 'belum'}>
+              <div className="kd-err" style={{ gridTemplateColumns: 'minmax(0,1fr) auto auto' }} title={(e.konteks?.lokasi || '') + (e.versi ? '\nversi ' + e.versi : '')}>
+                <span className="m" style={{ cursor: 'pointer' }} onClick={() => setBukaErr(s0 => ({ ...s0, [e.id]: !terbuka }))}>{terbuka ? '▾ ' : '▸ '}{e.pesan}</span>
                 <span className="n">{e.jumlah}x</span>
-                <span className="d"><Tag app={app} /> {e.jenis} · {String(e.halaman || '').trim() || '-'} · {fmtWaktu(e.waktu_terakhir)}{e.pengguna ? ' · ' + e.pengguna : ''}</span>
+                <button type="button" className="kd-btn" data-salin={e.id} style={{ gridRow: '1/3', alignSelf: 'center', padding: '4px 10px', fontSize: 12 }}
+                  onClick={() => salinTeks('e' + e.id, teksError(e, p) + aturanTeks())}>{statusSalin['e' + e.id] || 'Salin'}</button>
+                <span className="d"><Tag app={app} /> {p
+                  ? <span className="kd-tag" style={{ background: '#e3f4ea', color: '#157347', borderColor: 'transparent' }}>{p.kode} · {p.nama}</span>
+                  : <span className="kd-tag" style={{ background: '#fdf1d8', color: '#92580a', borderColor: 'transparent' }}>Belum dianalisis</span>}
+                  {' '}{e.jenis} · {String(e.halaman || '').trim() || '-'} · {fmtWaktu(e.waktu_terakhir)}{e.pengguna ? ' · ' + e.pengguna : ''}</span>
               </div>
+              {terbuka && (
+                <div className="kd-detail" style={{ paddingTop: 0 }}>
+                  {p ? (
+                    <>
+                      <div className="kd-grid" style={{ marginLeft: 0 }}>
+                        {p.apa_terjadi && <div className="kd-block"><h3>Apa yang terjadi</h3><p>{p.apa_terjadi}</p></div>}
+                        {p.penyebab && <div className="kd-block"><h3>Penyebab</h3><p>{p.penyebab}</p></div>}
+                        {p.dampak && <div className="kd-block"><h3>Dampak bagi aplikasi</h3><p>{p.dampak}</p></div>}
+                      </div>
+                      {p.langkah?.length > 0 && <div className="kd-extra" style={{ marginLeft: 0 }}><div className="kd-block"><h3>Langkah penanganan</h3><ol className="kd-steps">{p.langkah.map((l, i) => <li key={i}>{l}</li>)}</ol></div></div>}
+                    </>
+                  ) : (
+                    <p className="kd-foot" style={{ fontSize: 13 }}>Pola error ini belum dianalisis. Tekan <b>Salin</b> lalu tempel ke Claude Code untuk diinvestigasi; hasilnya bisa ditambahkan ke tabel <code>kesehatan_pola_error</code> (tanpa deploy).</p>
+                  )}
+                  <p className="kd-foot">Pertama {fmtWaktu(e.waktu_pertama)} · terakhir {fmtWaktu(e.waktu_terakhir)} · versi {e.versi || '-'}{e.konteks?.lokasi ? ' · ' + e.konteks.lokasi : ''}</p>
+                </div>
+              )}
             </div>
           )
         })}
