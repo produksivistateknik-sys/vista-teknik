@@ -16,7 +16,7 @@ type Hasil = { id: number; kode: string; waktu: string; jumlah: number | null; s
 type Detail = { sampel: any[]; pesan_error: string | null }
 type Status = 'kritis' | 'error' | 'peringatan' | 'info' | 'ok' | 'belum'
 type Pola = { kode: string; nama: string; pola: string; jenis: string[]; aplikasi: string[]; apa_terjadi: string | null; penyebab: string | null; dampak: string | null; langkah: string[]; urutan: number }
-type StatusErr = { sidik: string; status: 'baru' | 'ditangani' | 'selesai' | 'diabaikan'; catatan: string | null; versi_ditandai: string | null; jumlah_saat_ditandai: number; ditandai_oleh: string | null; ditandai_pada: string | null; muncul_lagi: boolean; muncul_lagi_pada: string | null; muncul_lagi_versi: string | null }
+type StatusErr = { sidik: string; status: 'baru' | 'ditangani' | 'selesai' | 'diabaikan'; catatan: string | null; versi_ditandai: string | null; jumlah_saat_ditandai: number; ditandai_oleh: string | null; ditandai_pada: string | null; muncul_lagi: boolean; muncul_lagi_pada: string | null; muncul_lagi_versi: string | null; otomatis?: boolean }
 type Tunda = { kode: string; sampai: string; jumlah_saat_tunda: number | null; status_saat_tunda: string | null; catatan: string | null; ditunda_oleh: string | null; ditunda_pada: string }
 type Sifat = 'baru' | 'memburuk' | 'stabil' | null
 type Baris = { cek: Cek; akhir?: Hasil; status: Status; tren: (number | null)[]; hari: string[]; pulihSejak: string | null; aplikasi: string[]
@@ -325,7 +325,7 @@ export function KesehatanDataTab() {
     if (k.lokasi) baris.push(`Lokasi kode: ${k.lokasi}`)
     if (k.jenisGagal) baris.push(`Jenis gagal: ${k.jenisGagal}${k.online === false ? ' (HP offline)' : ''}`)
     const st = statusErr[e.sidik]
-    baris.push(`Status   : ${LABEL_STATUS_ERR[st?.status || 'baru'].label}${st?.ditandai_pada ? ` (ditandai ${st.ditandai_oleh || '-'}, ${fmtWaktu(st.ditandai_pada)} WIB, versi ${st.versi_ditandai || '-'}${st.catatan ? ', catatan: ' + st.catatan : ''})` : ''}`)
+    baris.push(`Status   : ${LABEL_STATUS_ERR[st?.status || 'baru'].label}${st?.status === 'selesai' && st?.otomatis ? ' (otomatis, 48 jam tanpa kejadian)' : ''}${st?.ditandai_pada ? ` (ditandai ${st.ditandai_oleh || '-'}, ${fmtWaktu(st.ditandai_pada)} WIB, versi ${st.versi_ditandai || '-'}${st.catatan ? ', catatan: ' + st.catatan : ''})` : ''}`)
     if (st?.muncul_lagi) baris.push(`MUNCUL LAGI: ${fmtWaktu(st.muncul_lagi_pada)} WIB di versi ${st.muncul_lagi_versi || '-'} (sebelumnya ditandai selesai, ${st.jumlah_saat_ditandai} kejadian s.d. ditandai, sekarang ${e.jumlah} dalam 7 hari)`)
     baris.push('')
     if (p) {
@@ -359,6 +359,8 @@ export function KesehatanDataTab() {
     return [...m.values()].map(g => ({ ...g, pengguna: [...g.pengguna_semua].join(', ') || g.pengguna })).sort((a, b) => (a.waktu_terakhir < b.waktu_terakhir ? 1 : -1))
   }, [errors])
   const statusDari = (g: any): StatusErr['status'] => statusErr[g.sidik]?.status || 'baru'
+  // label status; Selesai yang ditandai sistem (48 jam tanpa kejadian, migration 20261016070000) diberi akhiran "(otomatis)"
+  const labelStatus = (g: any) => LABEL_STATUS_ERR[statusDari(g)].label + (statusDari(g) === 'selesai' && statusErr[g.sidik]?.otomatis ? ' (otomatis)' : '')
   const tandai = async (g: any, statusBaru: StatusErr['status']) => {
     const label = LABEL_STATUS_ERR[statusBaru].label
     const catatan = window.prompt(`Tandai "${label}" - catatan singkat (opsional), mis. commit/perbaikan:`, statusErr[g.sidik]?.catatan || '')
@@ -553,7 +555,7 @@ export function KesehatanDataTab() {
                 <span className="d"><Tag app={app} /> {p
                   ? <span className="kd-tag" style={{ background: '#e3f4ea', color: '#157347', borderColor: 'transparent' }}>{p.kode} · {p.nama}</span>
                   : <span className="kd-tag" style={{ background: '#fdf1d8', color: '#92580a', borderColor: 'transparent' }}>Belum dianalisis</span>}
-                  {' '}<span className="kd-tag" style={{ background: LABEL_STATUS_ERR[statusDari(e)].bg, color: LABEL_STATUS_ERR[statusDari(e)].fg, borderColor: 'transparent' }}>{LABEL_STATUS_ERR[statusDari(e)].label}</span>
+                  {' '}<span className="kd-tag" style={{ background: LABEL_STATUS_ERR[statusDari(e)].bg, color: LABEL_STATUS_ERR[statusDari(e)].fg, borderColor: 'transparent' }}>{labelStatus(e)}</span>
                   {statusErr[e.sidik]?.muncul_lagi && <span className="kd-tag" style={{ background: '#fdeceb', color: '#b42318', borderColor: 'transparent' }}>Muncul lagi {fmtWaktu(statusErr[e.sidik].muncul_lagi_pada)}</span>}
                   {' '}{e.jenis} · {String(e.halaman || '').trim() || '-'} · {fmtWaktu(e.waktu_terakhir)}{e.pengguna ? ' · ' + e.pengguna : ''}</span>
               </div>
@@ -572,7 +574,7 @@ export function KesehatanDataTab() {
                     <p className="kd-foot" style={{ fontSize: 13 }}>Pola error ini belum dianalisis. Tekan <b>Salin</b> lalu tempel ke Claude Code untuk diinvestigasi; hasilnya bisa ditambahkan ke tabel <code>kesehatan_pola_error</code> (tanpa deploy).</p>
                   )}
                   <p className="kd-foot">Pertama {fmtWaktu(e.waktu_pertama)} · terakhir {fmtWaktu(e.waktu_terakhir)} · versi {e.versi || '-'}{e.konteks?.lokasi ? ' · ' + e.konteks.lokasi : ''}</p>
-                  {statusErr[e.sidik]?.ditandai_pada && <p className="kd-foot">Status {LABEL_STATUS_ERR[statusDari(e)].label} · ditandai {statusErr[e.sidik].ditandai_oleh || '-'} {fmtWaktu(statusErr[e.sidik].ditandai_pada)} · versi {statusErr[e.sidik].versi_ditandai || '-'}{statusErr[e.sidik].catatan ? ' · ' + statusErr[e.sidik].catatan : ''}</p>}
+                  {statusErr[e.sidik]?.ditandai_pada && <p className="kd-foot">Status {labelStatus(e)} · ditandai {statusErr[e.sidik].ditandai_oleh || '-'} {fmtWaktu(statusErr[e.sidik].ditandai_pada)} · versi {statusErr[e.sidik].versi_ditandai || '-'}{statusErr[e.sidik].catatan ? ' · ' + statusErr[e.sidik].catatan : ''}</p>}
                   <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
                     {(['ditangani', 'selesai', 'diabaikan', 'baru'] as const).filter(sx => sx !== statusDari(e)).map(sx => (
                       <button key={sx} type="button" className="kd-btn" data-tandai={sx} disabled={sibuk === 'e' + e.sidik} onClick={() => tandai(e, sx)}>
@@ -593,6 +595,7 @@ export function KesehatanDataTab() {
           <li>Setiap cek dijalankan terjadwal. Kalau masalahnya sudah diperbaiki, statusnya berubah menjadi Aman di pemeriksaan berikutnya dan pindah ke daftar Aman. Tidak perlu dihapus manual.</li>
           <li>Grafik batang kecil menyimpan riwayat 14 hari, jadi tetap terlihat kapan masalah muncul dan hilang.</li>
           <li>Label Operator berarti cek itu membaca data dari aplikasi operator (timer, progres). Error dari kedua aplikasi masuk ke daftar yang sama.</li>
+          <li>Kelompok error yang tidak terjadi lagi selama 48 jam otomatis ditandai Selesai (otomatis) oleh server dan hilang dari daftar utama. Kalau muncul lagi di versi aplikasi yang sama atau lebih baru, otomatis kembali Baru dengan tanda Muncul lagi.</li>
         </ol>
       </div>
     </div>
