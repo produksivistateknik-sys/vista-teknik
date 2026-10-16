@@ -6,6 +6,7 @@ import { konfirmasiHapusPanel } from "../lib/konfirmasiHapusPanel";
 import { rawScheduleService } from "../services/rawScheduleService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
+import { QtyKomponenInput } from "./ui/QtyKomponenInput";
 import { useWoDigitalDocs } from "../lib/useWoDigitalDocs";
 import { broadcastWoEngineeringEvent } from "../lib/useWoEngineeringBroadcast";
 import { initChecklist, woOverall } from "../lib/panelHelpers";
@@ -658,24 +659,27 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
                               <div style={{background:"var(--card-bg,#fff)",borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",overflow:"hidden"}}>
                                 {wpDef.items.map((item:any,ii:number)=>{
                                   const cl=(p.checklist||{})[item.kode]||{qty:0};
+                                  // (16 Okt 2026) tanda qty 0 sama dgn Manajemen WO: merah + 🔒 (tampilan saja, tetap bisa diisi)
+                                  const isLocked=cl.qty===0;
                                   const flatKodes=cfg.wps.flatMap((ww:any)=>ww.items).map((it:any)=>it.kode);
                                   const isSel=selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode);
                                   return(
                                     <div key={item.kode} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
-                                      borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",background:ii%2===0?wpDef.bg+"66":"var(--card-bg,#fff)"}}>
+                                      borderBottom:ii<wpDef.items.length-1?"1px solid #f1f5f9":"none",background:isLocked?"#fffbfb":ii%2===0?wpDef.bg+"66":"var(--card-bg,#fff)",opacity:isLocked?.6:1}}>
                                       <span style={{fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8",minWidth:44}}>{item.kode}</span>
-                                      <span style={{fontSize:12,fontWeight:600,color:"var(--text-primary,#374151)",flex:1}}>{item.nama}</span>
+                                      <span style={{fontSize:12,fontWeight:600,color:"var(--text-primary,#374151)",flex:1}}>
+                                        {item.nama}{isLocked&&<span style={{marginLeft:6,fontSize:10,color:"#fca5a5"}}>🔒</span>}
+                                      </span>
                                       <div style={{display:"flex",alignItems:"center",gap:6}}>
                                         <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
-                                        <input type="number" min="0" id={`engqty_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
-                                          onChange={e=>updateItemQty(String(p.id),item.kode,e.target.value)}
-                                          onClick={e=>{e.stopPropagation();handleQtyCellClick(String(p.id),item.kode,flatKodes,e.shiftKey);}}
+                                        <QtyKomponenInput idPrefix="engqty" panelId={String(p.id)} kode={item.kode} qty={cl.qty}
+                                          flatKodes={flatKodes} isLocked={isLocked} isSelected={!!isSel}
+                                          pakaiPasteMulti={!!(isSel&&selectedQtyCells&&selectedQtyCells.kodes.length>1)}
+                                          onQtyChange={(kode,nilai)=>updateItemQty(String(p.id),kode,nilai)}
+                                          onCellClick={(kode,shift)=>handleQtyCellClick(String(p.id),kode,flatKodes,shift)}
                                           onCopy={e=>handleQtyCopy(String(p.id),e)}
-                                          onPaste={e=>handleQtyPasteMulti(String(p.id),e)}
-                                          style={{width:56,padding:"4px 6px",borderRadius:6,
-                                            border:isSel?"1.5px solid #2563eb":"1.5px solid var(--border-color,#e2e8f0)",
-                                            background:isSel?"#eff6ff":"var(--card-bg,#fff)",fontSize:12,textAlign:"center",
-                                            fontWeight:700,fontFamily:"'DM Mono',monospace",color:"var(--text-primary,#1e293b)"}}/>
+                                          onPasteMulti={e=>handleQtyPasteMulti(String(p.id),e)}
+                                          latar="var(--card-bg,#fff)" garis="var(--border-color,#e2e8f0)"/>
                                       </div>
                                     </div>
                                   );

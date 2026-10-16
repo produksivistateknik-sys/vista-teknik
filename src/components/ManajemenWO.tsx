@@ -16,6 +16,7 @@ import { useCcpMap } from '../lib/componentProcessProgress'
 import { getLocalDateStr, daysUntil, isDelayed, getStatus, pColor } from '../lib/dateHelpers'
 import { setGlobalDirtyPanelIds } from '../lib/globalState'
 import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
+import { QtyKomponenInput } from './ui/QtyKomponenInput'
 import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 
@@ -579,48 +580,15 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                                   </span>
                                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                                     <span style={{fontSize:11,color:"#94a3b8"}}>Qty:</span>
-                                    <input type="number" min="0" id={`qtyinput_${p.id}_${item.kode}`} value={cl.qty===0?"":cl.qty}
-                                      onChange={e=>updateItemQty(String(p.id),item.kode,e.target.value)}
-                                      onKeyDown={e=>{
-                                        if(e.key!=="Enter")return;
-                                        e.preventDefault();
-                                        const flatKodes2=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
-                                        const curIdx=flatKodes2.indexOf(item.kode);
-                                        const nextKode=flatKodes2[curIdx+1];
-                                        if(nextKode){
-                                          const nextEl=document.getElementById(`qtyinput_${p.id}_${nextKode}`);
-                                          if(nextEl){(nextEl as HTMLInputElement).focus();(nextEl as HTMLInputElement).select();}
-                                        }
-                                      }}
-                                      onClick={e=>{
-                                        e.stopPropagation();
-                                        const flatKodes=cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode);
-                                        handleQtyCellClick(String(p.id),item.kode,flatKodes,e.shiftKey);
-                                      }}
+                                    <QtyKomponenInput idPrefix="qtyinput" panelId={String(p.id)} kode={item.kode} qty={cl.qty}
+                                      flatKodes={cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode)}
+                                      isLocked={isLocked}
+                                      isSelected={!!(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode))}
+                                      pakaiPasteMulti={!!(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode))}
+                                      onQtyChange={(kode,nilai)=>updateItemQty(String(p.id),kode,nilai)}
+                                      onCellClick={(kode,shift)=>handleQtyCellClick(String(p.id),kode,cfg.wps.flatMap((w:any)=>w.items).map((it:any)=>it.kode),shift)}
                                       onCopy={e=>handleQtyCopy(String(p.id),e)}
-                                      onPaste={e=>{
-                                        if(selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.length>1&&selectedQtyCells.kodes.includes(item.kode)){
-                                          handleQtyPasteMulti(String(p.id),e);
-                                          return;
-                                        }
-                                        const text=e.clipboardData.getData("text");
-                                        const values=text.split(/\r?\n|\t/).map(v=>v.trim()).filter(v=>v!=="");
-                                        if(values.length<=1)return;
-                                        e.preventDefault();
-                                        const flatItems=cfg.wps.flatMap((w:any)=>w.items);
-                                        const startIdx2=flatItems.findIndex((it:any)=>it.kode===item.kode);
-                                        if(startIdx2===-1)return;
-                                        values.forEach((val,idx)=>{
-                                          const target=flatItems[startIdx2+idx];
-                                          if(!target)return;
-                                          const numVal=parseFloat(val)||0;
-                                          updateItemQty(String(p.id),target.kode,numVal);
-                                        });
-                                      }}
-                                      style={{width:56,padding:"4px 6px",borderRadius:6,
-                                        border:selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode)?"1.5px solid #2563eb":`1.5px solid ${isLocked?"#fecaca":"#e2e8f0"}`,
-                                        background:selectedQtyCells&&selectedQtyCells.panelId===String(p.id)&&selectedQtyCells.kodes.includes(item.kode)?"#eff6ff":isLocked?"#fef2f2":"#fff",fontSize:12,textAlign:"center",
-                                        fontWeight:700,fontFamily:"'DM Mono',monospace",color:isLocked?"#fca5a5":"var(--text-primary,#1e293b)"}}/>
+                                      onPasteMulti={e=>handleQtyPasteMulti(String(p.id),e)}/>
                                   </div>
                                 </div>
                               );
