@@ -1,29 +1,28 @@
 /*
-Reset Permintaan Bulanan - dipicu pg_cron tanggal 3 tiap bulan jam 01:00 WIB (lihat migrasi
-cron.schedule terkait, pola sama dengan timer-reminder-check/maintenance-reminder-check).
+Pembersihan Permintaan Lama - dipicu pg_cron sebulan sekali (nama function tetap "reset-permintaan-bulanan" supaya
+jadwal & URL yang sudah ada bisa dipakai ulang).
 
-Tujuan: kurangi beban penyimpanan tabel permintaan/permintaan_item yang terus tumbuh (fitur
-BBMB/BBMU, Vista Pekerja "Permintaan Barang" & Gudang "Permintaan Masuk"/"Riwayat"). SEMUA data
-permintaan bulan SEBELUMNYA (created_at jatuh di bulan kalender sebelum bulan berjalan saat
-function ini dipanggil) dihapus permanen - TAPI WAJIB backup dulu ke R2
-(backup-permintaan/{YYYY-MM}.json) SEBELUM delete dijalankan. Kalau upload backup gagal (R2
-belum dikonfigurasi, jaringan putus, dll), delete DIBATALKAN SELURUHNYA - lebih baik data lama
-menumpuk 1 bulan ekstra daripada hilang tanpa backup.
+ATURAN BARU (17 Okt 2026, keputusan user): riwayat permintaan barang per panel HARUS utuh sampai arsip. Yang boleh
+dibersihkan HANYA permintaan yang:
+  (1) panelnya sudah DIHAPUS PERMANEN - panel_id kosong DAN panel_id_arsip kosong / tidak ada lagi di panels_archived
+      (panel aktif & panel yang diarsip TIDAK PERNAH disentuh);
+  (2) berumur lebih dari 1 tahun (created_at < sekarang - 365 hari);
+  (3) tidak punya hutang aktif (permintaan_item is_hutang=true & status='pending').
+Sebelum hapus WAJIB backup ke R2 (backup-permintaan/bersih-YYYY-MM-DD.json, berisi permintaan + permintaan_item +
+permintaan_item_koreksi). Upload gagal = TIDAK ADA yang dihapus.
 
-Reuse kredensial R2 yang SAMA dengan r2-storage (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/
-R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME) - upload LANGSUNG server-side (bukan presigned URL, gak
-ada browser yang terlibat di sini, function ini yang pegang body JSON-nya).
+ATURAN LAMA (2 Sep - 17 Okt 2026, DIHENTIKAN): semua permintaan bulan kalender sebelumnya dihapus tiap tanggal 3. Insiden:
+4 Okt 01.00 WIB 248 permintaan / 457 item September terhapus -> rekap per panel tidak lengkap (dipulihkan 17 Okt dari
+backup-permintaan/2026-09.json, lihat supabase/scripts/20261017_pulihkan_permintaan.sql).
 
-FIX (5 Sep 2026, fitur Hutang) - permintaan yang MASIH PUNYA hutang aktif (permintaan_item
-dengan is_hutang=true DAN status='pending' yang menunjuk ke permintaan itu) DIKECUALIKAN dari
-backup+delete bulan lalu, walau created_at-nya sudah lewat bulan kalender. Tanpa ini, hutang
-yang belum lunas pas cron ini jalan bakal HILANG PERMANEN dari aplikasi (cuma ada di file
-backup JSON R2, gak bisa dicicil lagi) - row itu ditunda ke siklus reset bulan berikutnya,
-diulang terus sampai hutangnya beneran lunas baru ikut ke-backup+hapus.
+Reuse kredensial R2 yang SAMA dengan r2-storage (R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME).
+Body opsional {"dryRun": true} -> hanya menghitung kandidat, tidak backup/hapus.
 */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3'
+
+const UMUR_MINIMAL_HARI = 365
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -33,13 +32,14 @@ const CORS_HEADERS = {
 const jsonResponse = (body: any, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json', ...CORS_HEADERS } })
 
+// baca semua halaman (batas 1000 baris Supabase) dgn urutan stabil
 const fetchAll = async (supabase: any, table: string, select: string, filterFn?: (q: any) => any) => {
   let all: any[] = []
   let from = 0
   while (true) {
     let q = supabase.from(table).select(select)
     if (filterFn) q = filterFn(q)
-    const { data, error } = await q.range(from, from + 999)
+    const { data, error } = await q.order('id', { ascending: true }).range(from, from + 999)
     if (error) throw error
     all = all.concat(data ?? [])
     if (!data || data.length < 1000) break
@@ -47,6 +47,7 @@ const fetchAll = async (supabase: any, table: string, select: string, filterFn?:
   }
   return all
 }
+const potong = <T,>(arr: T[], n = 200): T[][] => { const o: T[][] = []; for (let i = 0; i < arr.length; i += n) o.push(arr.slice(i, i + n)); return o }
 
 function getR2Client() {
   const accountId = Deno.env.get('R2_ACCOUNT_ID')
@@ -63,57 +64,63 @@ function getR2Client() {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
   try {
+    let dryRun = false
+    try { dryRun = !!(await req.json())?.dryRun } catch { /* tanpa body */ }
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-
     const now = new Date()
-    const prevMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1))
-    const thisMonthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1))
-    const periode = `${prevMonthStart.getUTCFullYear()}-${String(prevMonthStart.getUTCMonth() + 1).padStart(2, '0')}`
+    const batas = new Date(now.getTime() - UMUR_MINIMAL_HARI * 86400000)
 
-    const allPerms = await fetchAll(supabase, 'permintaan', '*', (q) =>
-      q.gte('created_at', prevMonthStart.toISOString()).lt('created_at', thisMonthStart.toISOString()))
-
-    if (allPerms.length === 0) {
-      return jsonResponse({ periode, permintaan: 0, permintaan_item: 0, message: 'Tidak ada data bulan lalu, tidak ada yang dihapus.' })
+    // (1)+(2) kandidat: tidak terikat panel aktif, berumur > 1 tahun
+    const lama = await fetchAll(supabase, 'permintaan', '*', (q) => q.is('panel_id', null).lt('created_at', batas.toISOString()))
+    if (lama.length === 0) return jsonResponse({ aturan: 'panel dihapus permanen & > 1 tahun', kandidat: 0, message: 'Tidak ada yang perlu dibersihkan.' })
+    // panel arsip yang masih ada -> permintaannya TIDAK disentuh
+    const idArsip = lama.map((p: any) => p.panel_id_arsip).filter((x: any) => x != null)
+    const arsipAda = new Set<number>()
+    for (const bagian of potong([...new Set(idArsip)])) {
+      const rows = await fetchAll(supabase, 'panels_archived', 'id', (q) => q.in('id', bagian))
+      rows.forEach((r: any) => arsipAda.add(r.id))
     }
-
-    const allPermIds = allPerms.map((p: any) => p.id)
-    // Cari permintaan yang MASIH PUNYA hutang aktif (belum lunas) - dikecualikan dari
-    // backup+delete kali ini, ditunda ke siklus reset bulan berikutnya (lihat komentar fix di atas).
-    const hutangAktifItems = await fetchAll(supabase, 'permintaan_item', 'permintaan_id', (q) =>
-      q.in('permintaan_id', allPermIds).eq('is_hutang', true).eq('status', 'pending'))
-    const permIdsHutangAktif = new Set(hutangAktifItems.map((it: any) => it.permintaan_id))
-    const perms = allPerms.filter((p: any) => !permIdsHutangAktif.has(p.id))
-    const ditunda = allPerms.length - perms.length
-
-    if (perms.length === 0) {
-      return jsonResponse({ periode, permintaan: 0, permintaan_item: 0, ditundaKarenaHutangAktif: ditunda, message: 'Semua data bulan lalu masih punya hutang aktif, ditunda ke siklus berikutnya.' })
+    let kandidat = lama.filter((p: any) => p.panel_id_arsip == null || !arsipAda.has(p.panel_id_arsip))
+    // (3) hutang aktif dikecualikan
+    const idK = kandidat.map((p: any) => p.id)
+    const hutang = new Set<number>()
+    for (const bagian of potong(idK)) {
+      const rows = await fetchAll(supabase, 'permintaan_item', 'id,permintaan_id', (q) => q.in('permintaan_id', bagian).eq('is_hutang', true).eq('status', 'pending'))
+      rows.forEach((r: any) => hutang.add(r.permintaan_id))
     }
+    const ditunda = kandidat.filter((p: any) => hutang.has(p.id)).length
+    kandidat = kandidat.filter((p: any) => !hutang.has(p.id))
+    if (kandidat.length === 0) return jsonResponse({ kandidat: 0, ditundaKarenaHutangAktif: ditunda, message: 'Tidak ada yang perlu dibersihkan.' })
+    if (dryRun) return jsonResponse({ dryRun: true, kandidat: kandidat.length, ditundaKarenaHutangAktif: ditunda, contoh: kandidat.slice(0, 10).map((p: any) => ({ id: p.id, panel_nama: p.panel_nama, created_at: p.created_at })) })
 
-    const permIds = perms.map((p: any) => p.id)
-    const items = await fetchAll(supabase, 'permintaan_item', '*', (q) => q.in('permintaan_id', permIds))
+    const permIds = kandidat.map((p: any) => p.id)
+    let items: any[] = []
+    for (const bagian of potong(permIds)) items = items.concat(await fetchAll(supabase, 'permintaan_item', '*', (q) => q.in('permintaan_id', bagian)))
+    let koreksi: any[] = []
+    for (const bagian of potong(items.map((i: any) => i.id))) koreksi = koreksi.concat(await fetchAll(supabase, 'permintaan_item_koreksi', '*', (q) => q.in('permintaan_item_id', bagian)))
 
-    // BACKUP DULU ke R2 - kalau ini gagal, STOP (jangan lanjut ke delete apapun alasannya).
+    // BACKUP DULU ke R2 - gagal = STOP, tidak ada yang dihapus
     const client = getR2Client()
     const bucketName = Deno.env.get('R2_BUCKET_NAME')
-    if (!client || !bucketName) {
-      return jsonResponse({ error: 'R2 belum dikonfigurasi (secret R2_ACCOUNT_ID/R2_ACCESS_KEY_ID/R2_SECRET_ACCESS_KEY/R2_BUCKET_NAME) - delete DIBATALKAN, data bulan lalu masih utuh.' }, 500)
-    }
-    const backupBody = JSON.stringify({ periode, exportedAt: now.toISOString(), permintaan: perms, permintaan_item: items })
-    const backupKey = `backup-permintaan/${periode}.json`
+    if (!client || !bucketName) return jsonResponse({ error: 'R2 belum dikonfigurasi - pembersihan DIBATALKAN, data masih utuh.' }, 500)
+    const backupKey = `backup-permintaan/bersih-${now.toISOString().slice(0, 10)}.json`
     try {
-      await client.send(new PutObjectCommand({ Bucket: bucketName, Key: backupKey, Body: backupBody, ContentType: 'application/json' }))
+      await client.send(new PutObjectCommand({ Bucket: bucketName, Key: backupKey, ContentType: 'application/json',
+        Body: JSON.stringify({ aturan: `panel dihapus permanen & > ${UMUR_MINIMAL_HARI} hari`, exportedAt: now.toISOString(), permintaan: kandidat, permintaan_item: items, permintaan_item_koreksi: koreksi }) }))
     } catch (uploadErr: any) {
-      return jsonResponse({ error: `Backup ke R2 gagal (${String(uploadErr?.message || uploadErr)}) - delete DIBATALKAN, data bulan lalu masih utuh.` }, 500)
+      return jsonResponse({ error: `Backup ke R2 gagal (${String(uploadErr?.message || uploadErr)}) - pembersihan DIBATALKAN, data masih utuh.` }, 500)
     }
 
-    // Backup sukses - baru boleh delete. Item dulu (anak), baru permintaan (induk).
-    const { error: delItemErr } = await supabase.from('permintaan_item').delete().in('permintaan_id', permIds)
-    if (delItemErr) return jsonResponse({ error: `Backup sukses (${backupKey}) tapi delete permintaan_item gagal: ${delItemErr.message}` }, 500)
-    const { error: delPermErr } = await supabase.from('permintaan').delete().in('id', permIds)
-    if (delPermErr) return jsonResponse({ error: `Backup sukses (${backupKey}), permintaan_item terhapus, tapi delete permintaan gagal: ${delPermErr.message}` }, 500)
-
-    return jsonResponse({ periode, backupKey, permintaan: perms.length, permintaan_item: items.length, ditundaKarenaHutangAktif: ditunda, message: 'Backup + hapus bulan lalu selesai.' })
+    // hapus: item dulu (koreksi ikut cascade), baru permintaan
+    for (const bagian of potong(permIds)) {
+      const { error: e1 } = await supabase.from('permintaan_item').delete().in('permintaan_id', bagian)
+      if (e1) return jsonResponse({ error: `Backup sukses (${backupKey}) tapi hapus permintaan_item gagal: ${e1.message}` }, 500)
+      const { error: e2 } = await supabase.from('permintaan').delete().in('id', bagian)
+      if (e2) return jsonResponse({ error: `Backup sukses (${backupKey}), item terhapus, tapi hapus permintaan gagal: ${e2.message}` }, 500)
+    }
+    await supabase.from('activity_log').insert({ user_name: 'Sistem (otomatis)', action: 'BERSIHKAN PERMINTAAN LAMA', module: 'permintaan', halaman: 'Edge Function reset-permintaan-bulanan',
+      description: `${kandidat.length} permintaan + ${items.length} item (panel dihapus permanen & > ${UMUR_MINIMAL_HARI} hari) dibersihkan; backup ${backupKey}. Ditunda (hutang aktif): ${ditunda}.` })
+    return jsonResponse({ backupKey, permintaan: kandidat.length, permintaan_item: items.length, koreksi: koreksi.length, ditundaKarenaHutangAktif: ditunda })
   } catch (e: any) {
     return jsonResponse({ error: String(e?.message || e) }, 500)
   }

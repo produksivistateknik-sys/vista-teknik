@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
+import { gabungDenganArsip, muatItemRekap, type WoRekap } from '../lib/rekapPermintaanArsip'
 import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
@@ -359,29 +360,41 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [rekapSearch, setRekapSearch] = useState('') // filter tabel di layar (poin A), TIDAK ikut query ulang
   const [rekapLoading, setRekapLoading] = useState(false)
   const [rekapRawItems, setRekapRawItems] = useState<{ komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number, divisi: string | null }[]>([])
-  const rekapWo = allWosFlat.find((w: any) => w.id === rekapWoId) || null
-  const rekapWoFiltered = allWosFlat.filter((w: any) => {
+  // (17 Okt 2026) rekap ikut sampai ARSIP - WO/panel aktif (woData) digabung panel arsip & WO arsip
+  // (lib/rekapPermintaanArsip.ts, salinan identik di vista-pekerja). null = belum dimuat -> pakai WO aktif saja dulu.
+  const [rekapWoArsip, setRekapWoArsip] = useState<WoRekap[] | null>(null)
+  const [rekapTampilArsip, setRekapTampilArsip] = useState(true)
+  useEffect(() => {
+    if (viewMode !== 'rekap') return
+    let batal = false
+    gabungDenganArsip((woData || []).map((w: any) => ({ id: w.id, wo: w.wo, proyek: w.proyek, panels: (w.panels || []).map((p: any) => ({ id: p.id, nama: p.nama })) })))
+      .then(v => { if (!batal) setRekapWoArsip(v) })
+      .catch((e: any) => { console.error('[Rekap] gagal memuat panel arsip:', e); alert('Gagal memuat panel arsip untuk rekap: ' + (e?.message || e)) })
+    return () => { batal = true }
+  }, [viewMode, woData])
+  const rekapWos = useMemo(() => {
+    const dasar: WoRekap[] = rekapWoArsip || (woData || []).map((w: any) => ({ id: w.id, wo: w.wo, proyek: w.proyek, arsip: false,
+      panels: (w.panels || []).map((p: any) => ({ id: p.id, nama: p.nama, woId: w.id, arsip: false })) }))
+    return dasar.map(w => ({ ...w, panels: (rekapTampilArsip ? w.panels : w.panels.filter(p => !p.arsip)).slice().sort((a, b) => (a.nama || '').localeCompare(b.nama || '')) }))
+      .filter(w => w.panels.length > 0 && (rekapTampilArsip || !w.arsip))
+      .map(w => ({ ...w, panelCount: w.panels.length, panelArsip: w.panels.filter(p => p.arsip).length }))
+      .sort((a, b) => (a.wo || '').localeCompare(b.wo || ''))
+  }, [rekapWoArsip, woData, rekapTampilArsip])
+  const rekapWo = rekapWos.find((w: any) => w.id === rekapWoId) || null
+  const rekapWoFiltered = rekapWos.filter((w: any) => {
     const q = rekapWoSearch.trim().toLowerCase()
     if (!q) return true
     return [w.wo, w.proyek].join(' ').toLowerCase().includes(q)
   })
-  const rekapPanelsInWo = allPanelsFlat.filter((p: any) => p.woId === rekapWoId)
+  const rekapPanelsInWo = rekapWo?.panels || []
 
   const fetchRekap = async (woId: number) => {
     setRekapLoading(true)
     try {
-      const panelIds = allPanelsFlat.filter((p: any) => p.woId === woId).map((p: any) => p.id)
-      if (panelIds.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
-      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('id,panel_id,divisi').in('panel_id', panelIds).range(from, to))
-      if (perms.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
-      const permIds = perms.map((p: any) => p.id)
-      const permPanelMap: Record<number, number> = {}
-      const permDivisiMap: Record<number, string | null> = {}
-      perms.forEach((p: any) => { permPanelMap[p.id] = p.panel_id; permDivisiMap[p.id] = p.divisi })
-      const itemRows = await fetchAllPaged((from, to) =>
-        supabase.from('permintaan_item').select('permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
-          .in('permintaan_id', permIds).eq('status', 'submit').range(from, to))
-      setRekapRawItems(itemRows.map((it: any) => ({ ...it, panel_id: permPanelMap[it.permintaan_id], divisi: permDivisiMap[it.permintaan_id] })))
+      // (17 Okt 2026) panel aktif lewat permintaan.panel_id, panel arsip lewat permintaan.panel_id_arsip (lib/rekapPermintaanArsip.ts)
+      const panelsWo = rekapWos.find((w: any) => w.id === woId)?.panels || []
+      if (panelsWo.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
+      setRekapRawItems(await muatItemRekap(panelsWo))
     } catch (e: any) {
       alert('Gagal memuat rekap: ' + e.message)
     }
@@ -394,7 +407,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     setRekapScopePanelId(null)
     setRekapSearch('')
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [viewMode, rekapWoId])
+  }, [viewMode, rekapWoId, rekapWoArsip, rekapTampilArsip])
 
   // Agregasi (SUM per divisi+komponen_master_id+satuan) DIHITUNG ULANG tiap kali cakupan panel
   // (rekapScopePanelId) berubah - murni di memori dari rekapRawItems, gak query ulang.
@@ -744,7 +757,7 @@ ${kop.body}
                 <select value={rekapScopePanelId ?? ''} onChange={(e: any) => setRekapScopePanelId(e.target.value ? Number(e.target.value) : null)}
                   style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', background: '#fff', fontFamily: 'inherit', cursor: 'pointer' }}>
                   <option value="">Semua panel di WO ini ({rekapPanelsInWo.length})</option>
-                  {rekapPanelsInWo.map((p: any) => <option key={p.id} value={p.id}>Cuma panel: {p.nama}</option>)}
+                  {rekapPanelsInWo.map((p: any) => <option key={p.id} value={p.id}>Cuma panel: {p.nama}{p.arsip ? ' (arsip)' : ''}</option>)}
                 </select>
               )}
               <input type="text" placeholder="🔍 Cari nama item..." value={rekapSearch}
@@ -832,6 +845,10 @@ ${kop.body}
           </div>
         ) : (
           <div>
+            <label style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, fontWeight: 600, color: '#475569', marginBottom: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={rekapTampilArsip} onChange={(e: any) => setRekapTampilArsip(e.target.checked)} data-rekap-arsip />
+              Tampilkan WO &amp; panel arsip{rekapWoArsip === null ? ' (memuat...)' : ''}
+            </label>
             <input type="text" placeholder="🔍 Cari nomor WO atau nama proyek..." value={rekapWoSearch}
               onChange={(e: any) => setRekapWoSearch(e.target.value)}
               style={{ width: '100%', boxSizing: 'border-box', height: 36, padding: '0 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 500, color: '#1e293b', fontFamily: 'inherit', outline: 'none', marginBottom: 14 }} />
@@ -849,8 +866,8 @@ ${kop.body}
                       <i className="ti ti-folder" style={{ fontSize: 18, color: '#2563eb' }} />
                     </div>
                     <div style={{ minWidth: 0 }}>
-                      <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }}>WO {w.wo}</div>
-                      <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{w.proyek} - {w.panelCount} panel</div>
+                      <div style={{ fontWeight: 700, fontSize: 13, color: '#1e293b' }} data-rekap-wo={w.id}>WO {w.wo}{w.arsip && <span style={{ marginLeft: 6, fontSize: 10.5, fontWeight: 700, color: '#64748b', background: '#f1f5f9', borderRadius: 10, padding: '1px 7px' }}>Arsip</span>}</div>
+                      <div style={{ fontSize: 11.5, color: '#94a3b8' }}>{w.proyek} - {w.panelCount} panel{w.panelArsip > 0 && !w.arsip ? ` (${w.panelArsip} arsip)` : ''}</div>
                     </div>
                   </button>
                 ))}
