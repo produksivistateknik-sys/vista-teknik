@@ -197,6 +197,9 @@ export const BUSBAR_KOMPONEN:Record<string,string[]> = {
   F3B:     ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER","BUSDUCT","COUPLE-AN"],
   WM_MS:   ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
   WM_POLY: ["LINE","INCOMING","OUTGOING","NETRAL","GROUND"],
+  // (17 Okt 2026) jenis panel "BUSBAR" = pekerjaan busbar saja (hanya tahap FABRIKASI, lihat
+  // TIPE_BUSBAR_FABRIKASI_SAJA di lib/panelHelpers.ts) - batang SAMA dgn FS (keputusan user).
+  BUSBAR:  ["H-BUS","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER","BUSDUCT","COUPLE-AN"],
 };
 
 export const BUSBAR_COLORS:Record<string,string>={

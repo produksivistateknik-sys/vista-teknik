@@ -5,6 +5,21 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
   return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
 };
 
+// ================= JENIS PANEL "BUSBAR" (17 Okt 2026, permintaan user) =================
+// Jenis panel yang pekerjaannya HANYA proses BUSBAR tahap FABRIKASI: tanpa proses mekanik (tidak ada
+// mapping bom_proses_relevan), tanpa PLATING/HEATSHRINK/PASANG, tanpa QC TEST & PACKING. SATU sumber
+// aturan di aplikasi admin; aplikasi operator punya cermin yang SAMA (vista-pekerja lib/panelHelpers.tsx
+// TIPE_BUSBAR_FABRIKASI_SAJA + getUrutanTahapBusbar(kode,tipe)) - kalau diubah, ubah keduanya.
+// Trigger DB panels_validate_busbar_cap_progress TIDAK perlu diubah: dgn 1 tahap tidak ada urutan
+// yang bisa dilanggar (tahap lain selalu 0).
+export const TIPE_BUSBAR_FABRIKASI_SAJA=new Set<string>(["BUSBAR"]);
+export const BUSBAR_TAHAP_FABRIKASI_SAJA=["FABRIKASI"];
+// Proses QC TEST/PACKING (penanda per panel) TIDAK berlaku utk jenis busbar-saja.
+export function prosesBerlakuUntukTipe(tipe:string|undefined|null, proses:string):boolean{
+  if(tipe&&TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe)&&(proses==="QC TEST"||proses==="PACKING"))return false;
+  return true;
+}
+
 // ================= BUSBAR: satu sumber baca progress =================
 // Model busbar per-tahap (FABRIKASI/PLATING/HEATSHRINK/PASANG) yang dipakai Vista Pekerja
 // nyimpen progress ke panels.checklist[<komponenBusbar>] (LINE/NETRAL/GROUND/H-BUS/INCOMING/
@@ -156,6 +171,9 @@ export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:
   }
   const tipe=tipeOrProses;
   const proses=prosesMaybe;
+  // (17 Okt 2026) jenis BUSBAR (busbar saja): komponen BOM-nya TIDAK relevan ke proses apa pun (tanpa ini,
+  // komponen tanpa mapping dianggap relevan ke SEMUA proses lewat fallback KOMPONEN_PROSES_MAP di bawah).
+  if(TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe)) return false;
   if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses)) return true;
   const mapKey=kode+"|"+tipe;
   if(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)){
@@ -167,6 +185,7 @@ export const isKomponenRelevant=(kode:string, tipeOrProses:string, prosesMaybe?:
 };
 
 export function getRelevantProsesForKode(kode:string,tipe:string):string[]{
+  if(TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe)) return []; // (17 Okt 2026) lihat isKomponenRelevant
   const mapKey=kode+"|"+tipe;
   const base=(GLOBAL_PROSES_RELEVAN_HAS_MAPPING.has(mapKey)
     ? ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr))
@@ -537,7 +556,10 @@ export function calcPanelProgress(panel, rawData?:any[]): Record<string, number>
 // tapi di sini - OVERALL wajib exclude proses yang genuinely gak applicable ke panel ini, bukan
 // menghitungnya sebagai 0%.
 export function isProsesApplicableForPanel(panel:any, proses:string):boolean{
-  if(proses==="BUSBAR"||proses==="QC TEST"||proses==="PACKING")return true; // whole-panel, selalu applicable
+  if(!prosesBerlakuUntukTipe(panel?.tipe,proses))return false; // (17 Okt 2026) jenis BUSBAR: tanpa QC/PACKING
+  if(proses==="BUSBAR")return true; // whole-panel, selalu applicable
+  // QC TEST/PACKING whole-panel, selalu applicable (kecuali jenis busbar-saja di atas)
+  if(proses==="QC TEST"||proses==="PACKING")return true;
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist)return false;
   const active=cfg.wps.flatMap(w=>w.items).filter(it=>(panel.checklist[it.kode]?.qty||0)>0);

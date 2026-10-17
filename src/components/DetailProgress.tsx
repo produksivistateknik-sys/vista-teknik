@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from 'react'
 import { PANEL_TYPES, PROSES_COLOR, WP_COLOR, ALL_PROSES } from '../constants/panelTypes'
-import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel } from '../lib/panelHelpers'
+import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarProgress, calcPanelProgressCcpAware, panelOverallCcpAware, getCcpAwareValue, statusPenandaPanel, prosesBerlakuUntukTipe } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { ringkasPerTanggal, formatOperator, fmtTanggalPendek } from '../lib/operatorProgres'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
@@ -386,8 +386,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                             <>
                               <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.nameplate_progress||0}%</td>
                               <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.yellowmark_progress||0}%</td>
-                              <td style={{...tdS,fontWeight:700,color:qcStatus==="DONE"?"#16a34a":qcStatus==="IN PROGRESS"?"#d97706":"#94a3b8"}} rowSpan={totalRowsPanel}>{qcStatus==="DONE"?"Selesai":qcStatus==="IN PROGRESS"?"Proses":"Belum"}</td>
-                              <td style={{...tdS,fontWeight:700,color:packingStatus==="DONE"?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{packingStatus==="DONE"?"Selesai":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:qcStatus==="DONE"?"#16a34a":qcStatus==="IN PROGRESS"?"#d97706":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"QC TEST")?"–":qcStatus==="DONE"?"Selesai":qcStatus==="IN PROGRESS"?"Proses":"Belum"}</td>
+                              <td style={{...tdS,fontWeight:700,color:packingStatus==="DONE"?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"PACKING")?"–":packingStatus==="DONE"?"Selesai":"Belum"}</td>
                             </>
                           )}
                         </tr>

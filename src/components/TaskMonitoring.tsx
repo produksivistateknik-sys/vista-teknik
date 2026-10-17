@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
-import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, statusPenandaPanel, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
+import { isKomponenRelevant, getRelevantProsesForKode, computeProsesStatus, statusPenandaPanel, prosesBerlakuUntukTipe, getBestProgressMap, getCcpAwareValue, panelOverallCcpAware, getPanelBusbarKomponen, getBusbarProgress, formatBusbarTahapTooltip, formatBusbarTahapAktif } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { formatBusbarTahapOperator } from '../lib/operatorProgres'
 import { mintaMuatOperator, useOperatorPanel, timerOperator } from '../lib/operatorPanelLoader'
@@ -86,6 +86,10 @@ export function TaskMonitoring({woData,rawData,livePanelTypes}:{woData:any[],raw
   // Detail Progres), status dari statusPenandaPanel (panelHelpers.ts) - sumber sama dgn Detail Progres.
   const PROSES_PENANDA_PANEL=["QC TEST","PACKING"];
   const selPenandaPanel=(proses:string)=>{
+    // (17 Okt 2026) jenis panel BUSBAR (busbar saja): QC/PACKING tidak berlaku -> "-"
+    if(!prosesBerlakuUntukTipe(selectedPanel?.tipe,proses))return(
+      <td key={proses} rowSpan={Math.max(1,itemsAktif.length+bk.length)} title="Tidak berlaku untuk jenis panel ini" style={{padding:4,textAlign:"center" as const,verticalAlign:"middle" as const,color:"#94a3b8"}}>–</td>
+    );
     const status=statusPenandaPanel(selectedPanel,proses as "QC TEST"|"PACKING");
     return(
       <td key={proses} rowSpan={Math.max(1,itemsAktif.length+bk.length)} title="Status per panel (bukan per komponen)" style={{padding:4,textAlign:"center" as const,verticalAlign:"middle" as const,background:"#fff",borderLeft:"1px solid #e2e8f0"}}>

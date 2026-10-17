@@ -1,6 +1,6 @@
 import { supabase as supabaseAsli } from '../lib/supabase'
 import { ALL_PROSES } from '../constants/panelTypes'
-import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE, getBusbarKomponen } from '../lib/panelHelpers'
+import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE, getBusbarKomponen, prosesBerlakuUntukTipe } from '../lib/panelHelpers'
 import { activityLogService as activityLogServiceAsli } from './activityLogService'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
 
@@ -1353,6 +1353,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           // BUSBAR bukan proses komponen mekanikal, gak ada baris bom_proses_relevan yang valid
           // buat itu). Skeleton BUSBAR yang benar dibuat terpisah di bawah (getBusbarKomponen).
           if (prosesSkeleton === 'BUSBAR') continue
+          // (17 Okt 2026) jenis panel BUSBAR (busbar saja): tanpa QC TEST/PACKING
+          if (!prosesBerlakuUntukTipe(panel.tipe, prosesSkeleton)) continue
           const adaRelevan = (PROSES_TANPA_MAPPING_KOMPONEN.includes(prosesSkeleton) && !kodeFilter) || activeKodes.some((kode) => {
             const mapKey = kode + '|' + panel.tipe
             if (hasMappingSet.has(mapKey)) return relevanSet.has(kode + '|' + panel.tipe + '|' + prosesSkeleton)
