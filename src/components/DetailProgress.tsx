@@ -306,7 +306,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                 {late?"Terlambat "+Math.abs(d)+" hari":urg?"H-"+d+" Mendesak":"H-"+d}
               </span>}
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8}}>
-                {(p.nameplate_progress!==undefined||p.yellowmark_progress!==undefined)&&(
+                {(p.nameplate_progress!==undefined||p.yellowmark_progress!==undefined)&&prosesBerlakuUntukTipe(p.tipe,"NAMEPLATE")&&(
                   <div style={{display:"flex",alignItems:"center",gap:6}}>
                     <span style={{fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${(p.nameplate_progress||0)>=100?"#a5f3fc":"#e2e8f0"}`,background:(p.nameplate_progress||0)>=100?"#ecfeff":"#f8fafc",color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8",whiteSpace:"nowrap" as const}}>Nameplate: {p.nameplate_progress||0}%</span>
                     <span style={{fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:5,border:`1px solid ${(p.yellowmark_progress||0)>=100?"#fde68a":"#e2e8f0"}`,background:(p.yellowmark_progress||0)>=100?"#fefce8":"#f8fafc",color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8",whiteSpace:"nowrap" as const}}>Yellowmark: {p.yellowmark_progress||0}%</span>
@@ -384,8 +384,8 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                           })}
                           {wp===firstRenderedWp&&ii===0&&(
                             <>
-                              <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.nameplate_progress||0}%</td>
-                              <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{p.yellowmark_progress||0}%</td>
+                              <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"NAMEPLATE")?"–":(p.nameplate_progress||0)+"%"}</td>
+                              <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"YELLOWMARK")?"–":(p.yellowmark_progress||0)+"%"}</td>
                               <td style={{...tdS,fontWeight:700,color:qcStatus==="DONE"?"#16a34a":qcStatus==="IN PROGRESS"?"#d97706":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"QC TEST")?"–":qcStatus==="DONE"?"Selesai":qcStatus==="IN PROGRESS"?"Proses":"Belum"}</td>
                               <td style={{...tdS,fontWeight:700,color:packingStatus==="DONE"?"#16a34a":"#94a3b8"}} rowSpan={totalRowsPanel}>{!prosesBerlakuUntukTipe(p.tipe,"PACKING")?"–":packingStatus==="DONE"?"Selesai":"Belum"}</td>
                             </>

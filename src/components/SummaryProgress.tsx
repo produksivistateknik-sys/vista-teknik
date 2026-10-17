@@ -277,8 +277,8 @@ export function SummaryProgress({woData}:{woData:any[]}){
                             const qcStatus=statusPenandaPanel(p,"QC TEST"),packingStatus=statusPenandaPanel(p,"PACKING");
                             return(
                               <>
-                                <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>{p.nameplate_progress||0}%</td>
-                                <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>{p.yellowmark_progress||0}%</td>
+                                <td style={{...tdS,fontWeight:700,color:(p.nameplate_progress||0)>=100?"#0891b2":"#94a3b8"}}>{!prosesBerlakuUntukTipe(p.tipe,"NAMEPLATE")?"–":(p.nameplate_progress||0)+"%"}</td>
+                                <td style={{...tdS,fontWeight:700,color:(p.yellowmark_progress||0)>=100?"#ca8a04":"#94a3b8"}}>{!prosesBerlakuUntukTipe(p.tipe,"YELLOWMARK")?"–":(p.yellowmark_progress||0)+"%"}</td>
                                 <td style={{...tdS,fontWeight:700,color:qcStatus==="DONE"?"#16a34a":qcStatus==="IN PROGRESS"?"#ea580c":"#94a3b8",fontSize:9}}>{!prosesBerlakuUntukTipe(p.tipe,"QC TEST")?"–":qcStatus==="DONE"?"Selesai":qcStatus==="IN PROGRESS"?"Proses":"To Do"}</td>
                                 <td style={{...tdS,fontWeight:700,color:packingStatus==="DONE"?"#16a34a":"#94a3b8",fontSize:9}}>{!prosesBerlakuUntukTipe(p.tipe,"PACKING")?"–":packingStatus==="DONE"?"Selesai":"Belum"}</td>
                               </>

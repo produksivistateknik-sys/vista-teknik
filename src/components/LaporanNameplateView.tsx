@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { cetakElemenBerkop } from '../lib/cetakBerkop'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { panelOverall, PROSES_STATUS_GATE_PCT } from '../lib/panelHelpers'
+import { panelOverall, PROSES_STATUS_GATE_PCT, prosesBerlakuUntukTipe } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -76,6 +76,8 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
     const list:any[]=[]
     ;(woData||[]).forEach((w:any)=>{
       (w.panels||[]).forEach((p:any)=>{
+        // (17 Okt 2026) jenis panel BUSBAR (busbar saja) tidak punya Nameplate/Yellowmark
+        if(!prosesBerlakuUntukTipe(p.tipe,"NAMEPLATE"))return
         list.push({...p,_wo:w})
       })
     })

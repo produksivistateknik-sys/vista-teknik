@@ -14,9 +14,10 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
 // yang bisa dilanggar (tahap lain selalu 0).
 export const TIPE_BUSBAR_FABRIKASI_SAJA=new Set<string>(["BUSBAR"]);
 export const BUSBAR_TAHAP_FABRIKASI_SAJA=["FABRIKASI"];
-// Proses QC TEST/PACKING (penanda per panel) TIDAK berlaku utk jenis busbar-saja.
+// Penanda per panel QC TEST/PACKING + NAMEPLATE/YELLOWMARK (17 Okt 2026) TIDAK berlaku utk jenis busbar-saja.
+const PENANDA_TIDAK_BERLAKU_BUSBAR_SAJA=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
 export function prosesBerlakuUntukTipe(tipe:string|undefined|null, proses:string):boolean{
-  if(tipe&&TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe)&&(proses==="QC TEST"||proses==="PACKING"))return false;
+  if(tipe&&TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe)&&PENANDA_TIDAK_BERLAKU_BUSBAR_SAJA.includes(proses))return false;
   return true;
 }
 
