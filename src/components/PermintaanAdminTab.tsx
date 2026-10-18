@@ -5,6 +5,7 @@ import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
 import { bandingDivisiProduksi } from '../lib/urutanDivisi'
+import { fetchAllPaged, fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -36,19 +37,6 @@ const DIVISI_LABEL: Record<string, string> = {
 // SATU sumber di lib/urutanDivisi.ts (dipakai juga tabel Maintenance Rutin).
 const bandingDivisiRekap = (a: string, b: string) => bandingDivisiProduksi(a, b, (k) => DIVISI_LABEL[k] || k)
 
-const fetchAllPaged = async (build: (from: number, to: number) => any): Promise<any[]> => {
-  let all: any[] = []
-  let from = 0
-  const PAGE = 1000
-  while (true) {
-    const { data, error } = await build(from, from + PAGE - 1)
-    if (error) throw error
-    all = all.concat(data ?? [])
-    if (!data || data.length < PAGE) break
-    from += PAGE
-  }
-  return all
-}
 
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
@@ -118,12 +106,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const fetchKoreksi = async (silent = false) => {
     if (!silent) setLoadingKoreksi(true)
     const koreksiRows = await fetchAllPaged((from, to) =>
-      supabase.from('permintaan_item_koreksi').select('*').eq('target_divisi', 'admin').eq('status', 'menunggu').range(from, to))
+      supabase.from('permintaan_item_koreksi').select('*').eq('target_divisi', 'admin').eq('status', 'menunggu').order('id').range(from, to))
     if (koreksiRows.length === 0) { setKoreksiList([]); if (!silent) setLoadingKoreksi(false); return }
     const itemIds = [...new Set(koreksiRows.map((k: any) => k.permintaan_item_id))]
-    const itemRows = await fetchAllPaged((from, to) => supabase.from('permintaan_item').select('*').in('id', itemIds).range(from, to))
+    const itemRows = await fetchAllPagedPerPotongan(itemIds, (bagian, from, to) => supabase.from('permintaan_item').select('*').in('id', bagian).order('id').range(from, to))
     const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
-    const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('*').in('id', permIds).range(from, to))
+    const perms = await fetchAllPagedPerPotongan(permIds, (bagian, from, to) => supabase.from('permintaan').select('*').in('id', bagian).order('id').range(from, to))
     const permMap: Record<number, any> = {}
     perms.forEach((p: any) => { permMap[p.id] = p })
     const itemMap: Record<number, any> = {}
@@ -542,10 +530,10 @@ ${kop.body}
   const fetchData = async (silent = false) => {
     if (!silent) setLoading(true)
     const itemRows = await fetchAllPaged((from, to) =>
-      supabase.from('permintaan_item').select('*').eq('status', 'menunggu_admin').range(from, to))
+      supabase.from('permintaan_item').select('*').eq('status', 'menunggu_admin').order('id').range(from, to))
     if (itemRows.length === 0) { setItems([]); if (!silent) setLoading(false); return }
     const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
-    const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('*').in('id', permIds).range(from, to))
+    const perms = await fetchAllPagedPerPotongan(permIds, (bagian, from, to) => supabase.from('permintaan').select('*').in('id', bagian).order('id').range(from, to))
     const permMap: Record<number, any> = {}
     perms.forEach((p: any) => { permMap[p.id] = p })
     const merged = itemRows.map((it: any) => ({ ...it, perm: permMap[it.permintaan_id] })).filter((it: any) => it.perm)
@@ -579,15 +567,15 @@ ${kop.body}
       const [disetujui, ditolak] = await Promise.all([
         fetchAllPaged((from, to) =>
           supabase.from('permintaan_item').select('*').not('disetujui_admin_at', 'is', null)
-            .gte('disetujui_admin_at', startIso).lte('disetujui_admin_at', endIso).range(from, to)),
+            .gte('disetujui_admin_at', startIso).lte('disetujui_admin_at', endIso).order('id').range(from, to)),
         fetchAllPaged((from, to) =>
           supabase.from('permintaan_item').select('*').eq('status', 'ditolak_admin')
-            .gte('updated_at', startIso).lte('updated_at', endIso).range(from, to)),
+            .gte('updated_at', startIso).lte('updated_at', endIso).order('id').range(from, to)),
       ])
       const itemRows = [...disetujui, ...ditolak]
       if (itemRows.length === 0) { setRiwayatItems([]); setRiwayatLoading(false); return }
       const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
-      const perms = await fetchAllPaged((from, to) => supabase.from('permintaan').select('*').in('id', permIds).range(from, to))
+      const perms = await fetchAllPagedPerPotongan(permIds, (bagian, from, to) => supabase.from('permintaan').select('*').in('id', bagian).order('id').range(from, to))
       const permMap: Record<number, any> = {}
       perms.forEach((p: any) => { permMap[p.id] = p })
       const merged = itemRows.map((it: any) => ({ ...it, perm: permMap[it.permintaan_id] })).filter((it: any) => it.perm)
@@ -603,9 +591,9 @@ ${kop.body}
       const itemIds = merged.map((it: any) => it.id)
       const koreksiMap: Record<number, any[]> = {}
       if (itemIds.length > 0) {
-        const koreksiRows = await fetchAllPaged((from, to) =>
+        const koreksiRows = await fetchAllPagedPerPotongan(itemIds, (bagian, from, to) =>
           supabase.from('permintaan_item_koreksi').select('*').eq('status', 'disetujui')
-            .in('permintaan_item_id', itemIds).range(from, to))
+            .in('permintaan_item_id', bagian).order('id').range(from, to))
         koreksiRows.forEach((k: any) => { (koreksiMap[k.permintaan_item_id] ||= []).push(k) })
       }
       setRiwayatKoreksiMap(koreksiMap)

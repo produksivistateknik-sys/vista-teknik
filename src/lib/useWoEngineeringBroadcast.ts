@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react'
 import { supabase } from './supabase'
+import { fetchAllPaged } from './fetchAllPaged'
 
 // Banner broadcast "WO diubah Engineering" (17 Sep 2026, fitur baru) - hook dipakai App.tsx
 // (Vista Teknik) DAN diduplikasi kecil di Vista Pekerja (repo terpisah, gak bisa share modul -
@@ -34,19 +35,6 @@ export async function broadcastWoEngineeringEvent(params:{woId:number|null,woNum
   if(error){console.error("gagal broadcast wo_engineering_events:",error);throw error}
 }
 
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[]
-  let from=0
-  const PAGE=1000
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1)
-    if(error)throw error
-    all=all.concat(data??[])
-    if(!data||data.length<PAGE)break
-    from+=PAGE
-  }
-  return all
-}
 
 export function useWoEngineeringBroadcast(akun:string|null){
   const[events,setEvents]=useState<WoEngineeringEvent[]>([])

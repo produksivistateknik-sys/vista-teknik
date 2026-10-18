@@ -13,6 +13,7 @@ import { broadcastWoEngineeringEvent } from "../lib/useWoEngineeringBroadcast";
 import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
+import { fetchAllPaged } from "../lib/fetchAllPaged";
 
 const PdfViewer=lazyP(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
@@ -32,19 +33,6 @@ const PdfViewer=lazyP(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer}))
 // ke-cut diam-diam dari daftar WO Digital. Gak pakai workOrderService.getAll() (embedded panels
 // per-WO) karena komponen ini butuh panelsAll FLAT (di-filter/dipetakan lintas WO di banyak
 // tempat) - restrukturnya lebih berisiko daripada nambah paginasi lokal biasa.
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - digitalisasi gambar teknik (construction drawing CAD, PDF dari

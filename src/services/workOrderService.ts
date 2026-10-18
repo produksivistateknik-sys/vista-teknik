@@ -1,6 +1,7 @@
 ﻿import { supabase } from '../lib/supabase'
 import { sesuaikanChecklistKeTipe } from '../lib/panelHelpers'
 import { rawScheduleService } from './rawScheduleService'
+import { fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
@@ -155,15 +156,18 @@ export const workOrderService = {
   // permintaan barang. Panel ber-permintaan TIDAK BOLEH dihapus (keputusan user) - RPC menolak juga.
   async cekDampakHapusPanel(panelIds: number[]): Promise<{ id: number; nama: string; jadwal: number; tanggalTerisi: number; renhar: number; komponenBerprogres: number; permintaan: number }[]> {
     if (!panelIds.length) return []
+    // (18 Okt 2026, audit K5) dulu .range(0, 9999) - server tetap memotong di 1000 baris (terbukti live), renhar
+    // 1 WO sudah 693 baris (WO 184). Sekarang semua halaman, urut stabil, per potongan 200 panel.
+    const baca = (label: string, buat: (bagian: number[], from: number, to: number) => any) =>
+      fetchAllPagedPerPotongan(panelIds, buat).then(
+        (data) => ({ data }),
+        (e: any) => { throw new Error('Gagal membaca dampak hapus panel (' + label + '): ' + (e?.message || e)) })
     const [pn, raw, rh, perm] = await Promise.all([
-      supabase.from('panels').select('id,nama,checklist').in('id', panelIds),
-      supabase.from('raw_schedule').select('panel_id,schedule,busbar_schedule').in('panel_id', panelIds).range(0, 4999),
-      supabase.from('renhar').select('panel_id').in('panel_id', panelIds).range(0, 9999),
-      supabase.from('permintaan').select('panel_id').in('panel_id', panelIds).range(0, 9999),
+      baca('panels', (b, from, to) => supabase.from('panels').select('id,nama,checklist').in('id', b).order('id').range(from, to)),
+      baca('raw_schedule', (b, from, to) => supabase.from('raw_schedule').select('panel_id,schedule,busbar_schedule').in('panel_id', b).order('id').range(from, to)),
+      baca('renhar', (b, from, to) => supabase.from('renhar').select('panel_id').in('panel_id', b).order('id').range(from, to)),
+      baca('permintaan', (b, from, to) => supabase.from('permintaan').select('panel_id').in('panel_id', b).order('id').range(from, to)),
     ])
-    for (const [label, r] of [['panels', pn], ['raw_schedule', raw], ['renhar', rh], ['permintaan', perm]] as const) {
-      if ((r as any).error) throw new Error('Gagal membaca dampak hapus panel (' + label + '): ' + (r as any).error.message)
-    }
     return (pn.data || []).map((p: any) => {
       const rows = (raw.data || []).filter((r: any) => r.panel_id === p.id)
       const tgl = new Set<string>()

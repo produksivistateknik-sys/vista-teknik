@@ -20,6 +20,7 @@ import { usePanelQtyEditor } from '../lib/usePanelQtyEditor'
 import { QtyKomponenInput } from './ui/QtyKomponenInput'
 import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
@@ -30,18 +31,6 @@ const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer}))
 // renhar, dan fcs_timer_kerja TERUS tumbuh tiap hari) - kalau kepotong diam-diam, angka jam kerja/
 // ringkasan operator/snapshot jadwal yang ke-arsip PERMANEN jadi salah tanpa peringatan sama
 // sekali (WO langsung is_archived:true setelahnya, gak ada cara benerin lagi).
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[],from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
   // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
