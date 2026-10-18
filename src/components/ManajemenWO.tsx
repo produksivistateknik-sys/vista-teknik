@@ -283,6 +283,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       return{
         id:(p as any).id,noPnl:Number((p as any).no_pnl??p.noPnl)||i+1,nama:p.nama,tipe:p.tipe,qty:newQty,
         checklist:finalChecklist,
+        // (18 Okt 2026) snapshot dasar finalChecklist - service cuma mengirim SELISIHNYA (lib/checklistMerge)
+        ...(freshChecklist?{checklistDasar:freshChecklist}:{}),
         catatan:(p as any).catatan||"",
         jumlahCell:Number((p as any).jumlahCell)||0,
       };

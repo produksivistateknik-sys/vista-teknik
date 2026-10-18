@@ -2,6 +2,7 @@
 import { sesuaikanChecklistKeTipe } from '../lib/panelHelpers'
 import { rawScheduleService } from './rawScheduleService'
 import { fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
+import { simpanChecklistSelisih } from '../lib/checklistMerge'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
@@ -29,6 +30,25 @@ const logActivity = async (user_name: string, action: string, description: strin
 // Return: per panel id, perubahan qty akibat ganti tipe {kode, oldQty, newQty} - dipakai untuk
 // sinkron jadwal SETELAH panel tersimpan (sinkronJadwalGantiTipe), 3 Okt 2026.
 type PerubahanQty = { kode: string; oldQty: number; newQty: number }
+
+// (18 Okt 2026, audit penulisan checklist admin) tulis panel EXISTING. Checklist:
+// - tidak dikirim pemanggil -> kolom tidak ditulis (aturan 2 Okt 2026, WO Digital);
+// - tipe panel BERUBAH -> ditulis PENUH (checklist memang disusun ulang total oleh sesuaikanChecklistKeTipe);
+// - pemanggil mengirim `checklistDasar` (snapshot yang dipakai menyusun checklist) -> cuma SELISIHNYA yang dikirim
+//   (simpanChecklistSelisih -> merge_panel_checklist_dalam), progres/foto operator yang masuk selama form
+//   terbuka / di jeda baca->tulis tidak tertimpa;
+// - selain itu (pemanggil lama tanpa dasar) -> ditulis penuh seperti dulu.
+async function tulisPanelExisting(p: any, row: Record<string, any>, tipeBerubah: boolean) {
+  const { checklist: _ck, ...tanpaChecklist } = row as any
+  const pakaiSelisih = p.checklist !== undefined && !tipeBerubah && p.checklistDasar && typeof p.checklistDasar === 'object'
+  const isi = p.checklist === undefined || pakaiSelisih ? tanpaChecklist : row
+  const { error } = await supabase.from('panels').update(isi).eq('id', p.id)
+  if (error) throw new Error(error.message)
+  if (pakaiSelisih) {
+    const { error: eCl } = await simpanChecklistSelisih(p.id, p.checklistDasar, p.checklist)
+    if (eCl) throw new Error('simpan checklist panel ' + (p.nama || p.id) + ': ' + eCl.message)
+  }
+}
 async function sesuaikanChecklistJikaTipeBerubah(panels: any[], uname: string): Promise<Record<number, PerubahanQty[]>> {
   const hasilPerubahan: Record<number, PerubahanQty[]> = {}
   const ids = panels.filter(p => p.id).map(p => p.id)
@@ -217,20 +237,19 @@ export const workOrderService = {
 
     const perubahanTipe = await sesuaikanChecklistJikaTipeBerubah(withId, uname)
     for (const p of withId) {
-      const { error } = await supabase.from('panels').update({
+      await tulisPanelExisting(p, {
         no_pnl: p.noPnl || p.no_pnl || 1,
         nama: p.nama,
         tipe: p.tipe,
         qty: p.qty || 1,
         // FIX (2 Okt 2026, insiden WO 069 CLS FONTAINE): checklist panel EXISTING cuma ditulis kalau
         // pemanggil mengirimnya. WO Digital (Engineering) sengaja tidak mengirim -> progress operator
-        // yang tersimpan selama form terbuka tidak tertimpa salinan lama.
+        // yang tersimpan selama form terbuka tidak tertimpa salinan lama. (18 Okt 2026) lihat tulisPanelExisting.
         ...(p.checklist !== undefined ? { checklist: p.checklist } : {}),
         catatan: p.catatan || "",
         tingkat_kesulitan: p.tingkatKesulitan || p.tingkat_kesulitan || "EASY",
         jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
-      }).eq('id', p.id)
-      if (error) throw new Error(error.message)
+      }, p.id in perubahanTipe)
       await sinkronJadwalGantiTipe(p.id, perubahanTipe[p.id], uname)
     }
 
@@ -329,10 +348,9 @@ export const workOrderService = {
           jumlah_cell: p.jumlahCell ?? p.jumlah_cell ?? 0,
         }
         if (p.id) {
-          // Panel existing tanpa checklist dari pemanggil -> kolom checklist TIDAK ditulis (lihat savePanels).
-          const { checklist: _ck, ...rowTanpaChecklist } = row
-          const { error } = await supabase.from('panels').update(p.checklist !== undefined ? row : rowTanpaChecklist).eq('id', p.id)
-          if (error) throw new Error(error.message)
+          // Panel existing tanpa checklist dari pemanggil -> kolom checklist TIDAK ditulis; dgn checklistDasar ->
+          // cuma selisihnya (lihat tulisPanelExisting).
+          await tulisPanelExisting(p, row, p.id in perubahanTipe)
           await sinkronJadwalGantiTipe(p.id, perubahanTipe[p.id], uname)
           // FIX (5 Agu 2026): raw_schedule/renhar/fcs_schedule nyimpen wo_id-nya SENDIRI, cache
           // terpisah dari panels.wo_id di atas (panel_id-nya sendiri gak pernah berubah, cuma

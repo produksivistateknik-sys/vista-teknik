@@ -5,6 +5,7 @@ import { PANEL_TYPES, ALL_PROSES } from '../constants/panelTypes'
 import { isKomponenRelevant } from '../lib/panelHelpers'
 import { muatProsesRelevanGlobal } from '../lib/prosesRelevan'
 import { Lbl, Inp, Sel, Btn } from './ui/Primitives'
+import { simpanChecklistSelisih } from "../lib/checklistMerge";
 
 export function KapasitasPekerjaanTab(){
   const [processList,setProcessList]=useState<any[]>([]);
@@ -424,19 +425,24 @@ export function KapasitasPekerjaanTab(){
   // qty:0, gak nyentuh entry checklist komponen lain sama sekali. Gak perlu tombol generate/
   // regenerate manual apapun lagi (dulu ini kerjaan "Sinkronkan Checklist Panel").
   const propagateKodeBaruKePanel=async(tipe:string,kodeBaru:string)=>{
+    const gagalSebar:number[]=[];
     let from=0;
     const pageSize=1000;
     while(true){
-      const{data:panels,error}=await supabase.from("panels").select("id,checklist").eq("tipe",tipe).range(from,from+pageSize-1);
-      if(error||!panels)break;
+      const{data:panels,error}=await supabase.from("panels").select("id,checklist").eq("tipe",tipe).order("id").range(from,from+pageSize-1);
+      if(error){console.error("[propagateKodeBaruKePanel] gagal baca panel:",error);alert(`Komponen ${kodeBaru} tersimpan di BOM, tapi gagal dibaca daftar panel ${tipe}: ${error.message}\n\nKomponen belum muncul di panel yang sudah ada - laporkan ke admin sistem.`);return;}
+      if(!panels)break;
       for(const p of panels as any[]){
         if(p.checklist&&Object.prototype.hasOwnProperty.call(p.checklist,kodeBaru))continue;
-        const newChecklist={...(p.checklist||{}),[kodeBaru]:blankChecklistEntry()};
-        await supabase.from("panels").update({checklist:newChecklist}).eq("id",p.id);
+        // (18 Okt 2026) cuma kode baru yang ditambahkan (merge_panel_checklist_dalam), bukan seluruh checklist
+        // ditulis ulang (bisa menimpa progres/foto operator yang masuk di jeda baca->tulis); error dicek (A.2).
+        const{error:eTambah}=await simpanChecklistSelisih(p.id,p.checklist||{},{...(p.checklist||{}),[kodeBaru]:blankChecklistEntry()});
+        if(eTambah){gagalSebar.push(p.id);console.error(`[propagateKodeBaruKePanel] gagal tambah ${kodeBaru} ke panel ${p.id}:`,eTambah);}
       }
       if(panels.length<pageSize)break;
       from+=pageSize;
     }
+    if(gagalSebar.length)alert(`Komponen ${kodeBaru} GAGAL ditambahkan ke ${gagalSebar.length} panel (id ${gagalSebar.slice(0,10).join(", ")}${gagalSebar.length>10?", ...":""}). Simpan ulang komponen ini atau laporkan ke admin sistem.`);
   };
 
   // kode_komponen dulu ke-hitung ulang tiap insert/delete (geser semua kode lebih besar/kecil) -

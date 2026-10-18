@@ -3,6 +3,7 @@ import { getLocalDateStr } from '../lib/dateHelpers'
 import { sesuaikanBusbarKeJumlahBaru } from '../lib/progressQtyHelpers'
 import { sinkronCcpBusbarSetelahUbahJumlah } from '../lib/componentProcessProgress'
 import { activityLogService } from './activityLogService'
+import { simpanChecklistSelisih } from '../lib/checklistMerge'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PENYESUAIAN BUSBAR (2 Okt 2026, keputusan user) - komponen busbar tidak punya qty, jadi saat
@@ -26,7 +27,8 @@ export async function simpanPenyesuaianBusbar(panelId: number, items: ItemPenyes
   // 1. checklist - baca SEGAR dari DB (jangan timpa progress operator yang barusan masuk)
   const { data: fresh, error: rErr } = await supabase.from('panels').select('checklist').eq('id', panelId).single()
   if (rErr) throw new Error('baca panel: ' + rErr.message)
-  const checklist = { ...(fresh?.checklist || {}) }
+  const dasar = fresh?.checklist || {}
+  const checklist = { ...dasar }
   const ringkas: string[] = []
   for (const it of berlaku) {
     const cl = checklist[it.kode]
@@ -35,7 +37,9 @@ export async function simpanPenyesuaianBusbar(panelId: number, items: ItemPenyes
     checklist[it.kode] = baru
     ringkas.push(`${it.kode} ${it.jumlahLama}->${it.jumlahBaru} (${cl.progress?.BUSBAR ?? 0}% -> ${baru.progress.BUSBAR}%)`)
   }
-  const { error: uErr } = await supabase.from('panels').update({ checklist }).eq('id', panelId)
+  // (18 Okt 2026) cuma selisih kode busbar yang disesuaikan yang dikirim (merge_panel_checklist_dalam), bukan
+  // seluruh checklist - progres operator yang masuk di jeda baca->tulis tidak tertimpa.
+  const { error: uErr } = await simpanChecklistSelisih(panelId, dasar, checklist)
   if (uErr) throw new Error('simpan checklist: ' + uErr.message)
   const { data: cek, error: cErr } = await supabase.from('panels').select('checklist').eq('id', panelId).single()
   if (cErr) throw new Error('verifikasi baca-balik gagal (koneksi) - cek ulang panel ini: ' + cErr.message)

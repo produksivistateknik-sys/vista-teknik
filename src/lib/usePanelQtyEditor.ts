@@ -6,6 +6,7 @@ import { ALL_PROSES } from '../constants/panelTypes'
 import { checklistEntryPunyaKerja } from './panelHelpers'
 import { sesuaikanProgressKeQtyBaru } from './progressQtyHelpers'
 import { sinkronCcpSetelahUbahQty } from './componentProcessProgress'
+import { simpanChecklistSelisih } from './checklistMerge'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED QTY-PER-KOMPONEN EDITOR (3 Sep 2026, di-extract dari ManajemenWO.tsx)
@@ -189,6 +190,16 @@ export function usePanelQtyEditor({
       if (!lanjut) return
     }
 
+    // (18 Okt 2026, audit penulisan checklist admin) BACA ULANG checklist SESUDAH dialog konfirmasi (admin bisa
+    // membiarkan dialog terbuka lama) lalu susun ulang dari bacaan ini - dan yang dikirim cuma SELISIHNYA
+    // (simpanChecklistSelisih -> merge_panel_checklist_dalam), bukan seluruh checklist. Progres/foto operator di
+    // komponen & proses lain yang tersimpan sementara itu tidak tertimpa.
+    const { data: dasarRow, error: dasarErr } = await supabase.from('panels').select('checklist').eq('id', panel.id).single()
+    if (dasarErr) { console.error('[saveQtyEdit] gagal baca ulang checklist:', dasarErr); alert('Gagal membaca data terbaru panel: ' + dasarErr.message + '\n\nPerubahan belum disimpan. Coba tekan Simpan Perubahan lagi.'); return }
+    const dasarChecklist = dasarRow?.checklist || {}
+    Object.keys(finalChecklist).forEach(k => { delete finalChecklist[k] })
+    Object.assign(finalChecklist, JSON.parse(JSON.stringify(dasarChecklist)))
+
     const qtyLamaAsli: Record<string, number> = {} // qty checklist SEBELUM disimpan (sudah dikali qty panel)
     Object.keys(dirty).forEach(kode => {
       const dirtyEntry = (dirty as any)[kode]
@@ -206,8 +217,8 @@ export function usePanelQtyEditor({
       finalChecklist[kode] = sesuaikanProgressKeQtyBaru({ ...base, qty: qtyLamaAsli[kode] }, qtyLamaAsli[kode], qtyBaruFinal) || { ...base, qty: qtyBaruFinal }
       finalChecklist[kode] = { ...finalChecklist[kode], qty: qtyBaruFinal }
     })
-    const { error } = await supabase.from('panels').update({ checklist: finalChecklist }).eq('id', panel.id)
-    if (error) { alert('Gagal menyimpan: ' + error.message); return }
+    const { error } = await simpanChecklistSelisih(panel.id, dasarChecklist, finalChecklist)
+    if (error) { console.error('[saveQtyEdit] gagal simpan:', error); alert('Gagal menyimpan: ' + error.message); return }
     // Verifikasi baca-balik - jangan percaya "sukses" cuma dari absennya error (lihat riwayat bug
     // "qty balik ke 0 terus" - beberapa kelas bug lolos tanpa error dari Supabase padahal checklist
     // gak beneran berubah).
@@ -225,7 +236,7 @@ export function usePanelQtyEditor({
       alert('Qty GAGAL tersimpan buat: ' + gagalTersimpan.join(', ') + ' - coba tekan Simpan Progress lagi. (Verifikasi baca-balik database gak cocok sama yang dimaksud disimpan)')
       return
     }
-    applyChecklist(panelId, finalChecklist)
+    applyChecklist(panelId, verifyRow?.checklist || finalChecklist) // data server (termasuk simpanan operator di jeda ini)
     const uname = getUname()
     const qtyChangeLogRows: any[] = []
     const changes = Object.entries(dirty)
