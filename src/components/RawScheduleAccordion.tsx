@@ -21,7 +21,7 @@ import { useKartuHari } from './KartuHari'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import type { RepoJadwalRaw } from '../lib/repoJadwalRaw'
 import { muatSnapshotSandbox, buatMemoryRepo } from '../lib/sandbox/memoryRepo'
-import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses } from '../lib/rawPivot'
+import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses, type RingkasanProses } from '../lib/rawPivot'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // RAW SCHEDULE ACCORDION PER WP (Tahap 1 migrasi, 9 Okt 2026) - tampilan per WP dari data produksi.
@@ -60,9 +60,49 @@ const RENTANG_HARI = 400 // kanvas tanggal TODAY +-400 hari (kolom divirtualisas
 const TOTAL_KOLOM = RENTANG_HARI * 2 + 1
 const BUFFER_KOLOM = 6
 const TINGGI = { grup: 40, komp: 36, penanda: 30 }
-// Tinggi baris DIKUNCI (virtualisasi menghitung posisi dari tinggi ini): isi sel dibatasi tinggi tetap,
-// maksimal MAKS_CHIP chip tampil + penanda "+N" (daftar lengkap di tooltip sel).
-const MAKS_CHIP = 3
+// Tinggi baris = TINGGI (minimum) atau lebih bila isi chip-nya butuh (19 Okt 2026, permintaan user: semua chip tampil,
+// tanpa "+N", nama lengkap). Tinggi dihitung dari DATA (isi terbanyak di SEMUA tanggal baris itu) - bukan diukur dari DOM -
+// supaya virtualisasi/lasso/seret panel (semua lewat `offset`) tetap tepat & baris tidak melompat saat digeser kiri-kanan.
+const CHIP = { padX: 3, gapDalam: 2, badgePadX: 2, gap: 2, tinggi: 16, font: 8.5 }
+const LEBAR_ISI_SEL = LEBAR_TGL - 8 // padding sel 4px kiri-kanan
+const tinggiIsi = (garis: number) => garis * CHIP.tinggi + (garis - 1) * CHIP.gap + 6
+// Pengukur lebar teks (canvas, font halaman) - di-cache per teks.
+function buatPengukur(): (teks: string, spasi?: number) => number {
+  let ctx: CanvasRenderingContext2D | null = null
+  let fam = 'sans-serif'
+  try { ctx = document.createElement('canvas').getContext('2d'); fam = getComputedStyle(document.body).fontFamily || fam } catch { /* tanpa canvas: perkiraan */ }
+  const cache = new Map<string, number>()
+  return (teks, spasi = 0) => {
+    const k = teks + '|' + spasi
+    let w = cache.get(k)
+    if (w == null) {
+      if (ctx) { ctx.font = `800 ${CHIP.font}px ${fam}`; w = ctx.measureText(teks).width } else w = teks.length * 6.5
+      w += spasi * [...teks].length
+      cache.set(k, w)
+    }
+    return w
+  }
+}
+// Lebar chip ringkasan header WP / chip komponen - rumus mengikuti gaya chip di bawah (padding, jarak, badge, border).
+const lebarChipRingkas = (u: ReturnType<typeof buatPengukur>, x: RingkasanProses) =>
+  CHIP.padX * 2 + u(x.proses) + CHIP.gapDalam + CHIP.badgePadX * 2 + u(String(x.n)) + (x.selesai ? CHIP.gapDalam + u('✓') : 0) + 2
+const lebarChipKomp = (u: ReturnType<typeof buatPengukur>, c: ChipProses) => {
+  const jejak = !!c.jejakKe
+  return 2 + CHIP.padX * 2 + u(c.proses, .2)
+    + (c.orang != null && !jejak ? CHIP.gapDalam + u('👥' + Number(c.orang.toFixed(1)), .2) : 0)
+    + (c.selesai && !jejak ? CHIP.gapDalam + u('✓', .2) : 0) + (jejak ? CHIP.gapDalam + u('➡️', .2) : 0) + 2
+}
+// Jumlah garis chip dalam satu sel (flex-wrap, kiri ke kanan). Chip yang lebih lebar dari sel membungkus namanya di dalam
+// chip -> dihitung 2 garis sendiri.
+function garisChip(lebar: number[]): number {
+  let n = 0, x = 0
+  for (const w of lebar) {
+    if (w > LEBAR_ISI_SEL) { n += 2; x = 0; continue }
+    if (x > 0 && x + CHIP.gap + w <= LEBAR_ISI_SEL) x += CHIP.gap + w
+    else { n++; x = w }
+  }
+  return n
+}
 const BUFFER_BARIS = 12
 const PROSES_KARTU = ['POTONG', 'BENDING', 'STEL', 'FINISHING', 'PAINTING', 'WIRING CONTROL', 'WIRING POWER']
 
@@ -104,12 +144,12 @@ function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checkli
   const jejak = !!c.jejakKe
   return (
     <span title={judul} style={{
-      display: 'inline-flex', alignItems: 'center', gap: 3, maxWidth: '100%', boxSizing: 'border-box',
-      fontSize: 8.5, fontWeight: 800, letterSpacing: .2, lineHeight: 1.15, padding: '2px 5px', borderRadius: 4,
+      display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, maxWidth: '100%', boxSizing: 'border-box',
+      fontSize: CHIP.font, fontWeight: 800, letterSpacing: .2, lineHeight: 1.15, padding: `2px ${CHIP.padX}px`, borderRadius: 4,
       background: jejak ? 'transparent' : warna, color: jejak ? warna : '#fff',
       border: jejak ? `1px dashed ${warna}` : `1px solid ${warna}`, opacity: c.selesai && !jejak ? .55 : 1,
     }}>
-      <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{c.proses}</span>
+      <span>{c.proses}</span>
       {c.orang != null && !jejak && <span style={{ fontWeight: 700, opacity: .9 }}>👥{Number(c.orang.toFixed(1))}</span>}
       {c.selesai && !jejak && <span>✓</span>}
       {jejak && <span>➡️</span>}
@@ -248,7 +288,27 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
     return out
   }, [blokTampil, buka])
-  const offset = useMemo(() => { const o = new Array(baris.length + 1); o[0] = 0; for (let i = 0; i < baris.length; i++) o[i + 1] = o[i] + TINGGI[baris[i].t]; return o }, [baris])
+  // Tinggi per baris dari isi chip terbanyak (semua tanggal) - dihitung ulang saat data/filter berubah atau font selesai dimuat.
+  const [fontSiap, setFontSiap] = useState(0)
+  useEffect(() => { let batal = false; try { (document as any).fonts?.ready?.then(() => { if (!batal) setFontSiap(x => x + 1) }) } catch { /* abaikan */ } return () => { batal = true } }, [])
+  const tinggiPerKb = useMemo(() => {
+    const u = buatPengukur(); const m = new Map<string, number>()
+    for (const b of blokTampil) for (const g of b.grup) {
+      let gMaks = 1
+      for (const rs of Object.values(g.ringkasan) as RingkasanProses[][]) gMaks = Math.max(gMaks, garisChip(rs.map(x => lebarChipRingkas(u, x))))
+      m.set(`g:${b.panelId}:${g.key}`, Math.max(TINGGI.grup, tinggiIsi(gMaks)))
+      for (const k of g.komponen) {
+        let kMaks = 1
+        for (const cs of Object.values(k.sel) as ChipProses[][]) kMaks = Math.max(kMaks, garisChip(cs.map(c => lebarChipKomp(u, c))))
+        m.set(`k:${b.panelId}:${g.key}:${k.kode}`, Math.max(TINGGI.komp, tinggiIsi(kMaks)))
+      }
+    }
+    return m
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [blokTampil, fontSiap])
+  // header WP yang DIBUKA tidak menampilkan ringkasan -> tinggi minimum
+  const tinggiBaris = (r: Baris) => r.t === 'penanda' || (r.t === 'grup' && r.buka) ? TINGGI[r.t] : (tinggiPerKb.get(r.kb) ?? TINGGI[r.t])
+  const offset = useMemo(() => { const o = new Array(baris.length + 1); o[0] = 0; for (let i = 0; i < baris.length; i++) o[i + 1] = o[i] + tinggiBaris(baris[i]); return o }, [baris, tinggiPerKb]) // eslint-disable-line react-hooks/exhaustive-deps
   const totalTinggi = offset[baris.length] || 0
 
   // ── scroll (virtualisasi baris & kolom) ──
@@ -739,7 +799,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     const dl = deadlinePanel.get(b.panelId); const info = dl ? infoDeadline(dl.target, TODAY) : null
     const garis = r.pertama ? '2px solid #cbd5e1' : '1px solid transparent'
     const td: any = { borderTop: garis, borderRight: '1px solid #f1f5f9', background: '#fff', padding: '2px 6px', verticalAlign: 'top', fontSize: 9, overflow: 'hidden' }
-    const batas = (isi: any) => <div style={{ maxHeight: TINGGI[r.t] - 6, overflow: 'hidden' }}>{isi}</div>
+    const batas = (isi: any) => <div style={{ maxHeight: tinggiBaris(r) - 6, overflow: 'hidden' }}>{isi}</div>
     return (
       <>
         <td style={stickyKiri('proyek', { ...td, color: '#475569', fontWeight: 600 })}>{r.pertama && batas(<div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.proyek}>{b.proyek}</div>)}</td>
@@ -810,28 +870,22 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       onDragOver: (e: any) => onDragOver(e, d), onDrop: (e: any) => onDrop(e, d),
       draggable: bisa && !potongan.length, onDragStart: (e: any) => onDragStart(e, r, d), onDragEnd: () => bersihkanDrag(),
     }
-    const wadah = (isi: any, sisa: number, judulSemua: string) => (
-      <div title={sisa > 0 ? judulSemua : undefined} style={{ display: 'flex', flexWrap: 'wrap', alignContent: 'center', gap: 2, height: TINGGI[r.t] - 6, overflow: 'hidden' }}>
-        {isi}
-        {sisa > 0 && <span style={{ fontSize: 8.5, fontWeight: 800, color: '#475569', background: '#e2e8f0', borderRadius: 4, padding: '2px 4px' }}>+{sisa}</span>}
-      </div>
+    // Semua chip tampil (urut proses dari rawPivot), membungkus ke bawah; tinggi baris sudah disiapkan tinggiPerKb.
+    const wadah = (isi: any) => (
+      <div style={{ display: 'flex', flexWrap: 'wrap', alignContent: 'center', gap: CHIP.gap, maxHeight: tinggiBaris(r) - 4, overflow: 'hidden' }}>{isi}</div>
     )
     if (r.t === 'grup') {
-      const rsSemua = r.buka ? [] : (r.g.ringkasan[d] || [])
-      const rs = rsSemua.length > MAKS_CHIP ? rsSemua.slice(0, MAKS_CHIP - 1) : rsSemua
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(<>
-        {rs.map(x => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; return (
-          <span key={x.proses} title={`${r.g.key}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%' }}>
-            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{x.proses}</span>
-            <span style={{ background: 'rgba(255,255,255,.28)', borderRadius: 3, padding: '0 3px' }}>{x.n}</span>{x.selesai && '✓'}
-          </span>) })}
-      </>, rsSemua.length - rs.length, `${r.g.key} ${getDayLabel(d)}:\n` + rsSemua.map(x => `${x.proses} ${x.n} komponen${x.selesai ? ' ✓' : ''}`).join('\n'))}</td>
+      const rs = r.buka ? [] : (r.g.ringkasan[d] || [])
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(
+        rs.map(x => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; return (
+          <span key={x.proses} title={`${r.g.key} ${getDayLabel(d)}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, background: w, color: '#fff', borderRadius: 4, padding: `2px ${CHIP.padX}px`, fontSize: CHIP.font, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%', boxSizing: 'border-box' }}>
+            <span>{x.proses}</span>
+            <span style={{ background: 'rgba(255,255,255,.28)', borderRadius: 3, padding: `0 ${CHIP.badgePadX}px` }}>{x.n}</span>{x.selesai && '✓'}
+          </span>) }))}</td>
     }
     if (r.t === 'komp') {
-      const csSemua = r.k.sel[d] || []
-      const cs = csSemua.length > MAKS_CHIP ? csSemua.slice(0, MAKS_CHIP - 1) : csSemua
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} />),
-        csSemua.length - cs.length, `${r.k.kode} ${getDayLabel(d)}:\n` + csSemua.map(c => c.proses + (c.selesai ? ' ✓' : '') + (c.jejakKe ? ' (histori)' : '')).join('\n'))}</td>
+      const cs = r.k.sel[d] || []
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} />))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'
     return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1 }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
@@ -1059,7 +1113,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
               const bg = r.t === 'komp' ? (nomor % 2 ? '#fafbfe' : '#fff') : r.t === 'grup' ? (r.buka ? '#f3f6fc' : '#f8fafd') : '#fff'
               const key = r.t === 'grup' ? 'g' + r.kunci : r.t === 'komp' ? 'k' + r.blok.panelId + ':' + r.g.key + ':' + r.k.kode : 'p' + r.blok.panelId + ':' + r.p.proses
               return (
-                <tr key={key} data-panel={r.blok.panelId} data-jenis={r.t} data-kb={r.kb} style={{ height: TINGGI[r.t] }}>
+                <tr key={key} data-panel={r.blok.panelId} data-jenis={r.t} data-kb={r.kb} style={{ height: tinggiBaris(r) }}>
                   {renderSelKiri(r, bg)}
                   {spasiKiri > 0 && <td aria-hidden="true" style={{ padding: 0, border: 'none', background: bg }} />}
                   {kolom.map(d => renderSelTanggal(r, d, bg, nomor))}
