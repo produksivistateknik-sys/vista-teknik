@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
-import { gabungDenganArsip, muatItemRekap, type WoRekap } from '../lib/rekapPermintaanArsip'
+import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from '../lib/rekapPermintaanArsip'
 import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
@@ -351,6 +351,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   // (17 Okt 2026) rekap ikut sampai ARSIP - WO/panel aktif (woData) digabung panel arsip & WO arsip
   // (lib/rekapPermintaanArsip.ts, salinan identik di vista-pekerja). null = belum dimuat -> pakai WO aktif saja dulu.
   const [rekapWoArsip, setRekapWoArsip] = useState<WoRekap[] | null>(null)
+  const [rekapTanpaRincian, setRekapTanpaRincian] = useState<PermintaanTanpaRincian[]>([]) // (18 Okt 2026) kepala tanpa item
   const [rekapTampilArsip, setRekapTampilArsip] = useState(true)
   useEffect(() => {
     if (viewMode !== 'rekap') return
@@ -381,8 +382,10 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     try {
       // (17 Okt 2026) panel aktif lewat permintaan.panel_id, panel arsip lewat permintaan.panel_id_arsip (lib/rekapPermintaanArsip.ts)
       const panelsWo = rekapWos.find((w: any) => w.id === woId)?.panels || []
-      if (panelsWo.length === 0) { setRekapRawItems([]); setRekapLoading(false); return }
-      setRekapRawItems(await muatItemRekap(panelsWo))
+      if (panelsWo.length === 0) { setRekapRawItems([]); setRekapTanpaRincian([]); setRekapLoading(false); return }
+      const [items, tanpaRincian] = await Promise.all([muatItemRekap(panelsWo), muatPermintaanTanpaRincian(panelsWo)])
+      setRekapRawItems(items)
+      setRekapTanpaRincian(tanpaRincian)
     } catch (e: any) {
       alert('Gagal memuat rekap: ' + e.message)
     }
@@ -766,9 +769,34 @@ ${kop.body}
               <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 6 }}>Item yang sudah keluar dari Gudang · dicetak {fmtDateTime(new Date().toISOString())}</div>
             </div>
 
+
+            {/* (18 Okt 2026) permintaan yang kepalanya ada tapi tanpa satu pun item - ditampilkan, kepala tidak dihapus */}
+            {!rekapLoading && (() => {
+              const daftar = rekapTanpaRincian.filter(t => !rekapScopePanelId || t.panel_id === rekapScopePanelId)
+              if (!daftar.length) return null
+              const namaPanel = (id: number) => rekapPanelsInWo.find((p: any) => p.id === id)?.nama || `panel ${id}`
+              const perPenyebab = [...new Set(daftar.map(t => t.penyebab))]
+              return (
+                <div style={{ margin: '12px 0', padding: '12px 14px', borderRadius: 10, background: '#fffbeb', border: '1px solid #fcd34d' }}>
+                  {perPenyebab.map(py => (
+                    <div key={py} style={{ marginBottom: 6 }}>
+                      <div style={{ fontSize: 12.5, fontWeight: 800, color: '#92400e', marginBottom: 4 }}>
+                        <i className="ti ti-alert-triangle" style={{ marginRight: 6 }} />Permintaan tanpa rincian ({py})
+                      </div>
+                      {daftar.filter(t => t.penyebab === py).map(t => (
+                        <div key={t.id} style={{ fontSize: 11.5, color: '#78350f', padding: '2px 0 2px 22px' }}>
+                          #{t.id} · {t.jenis} · {t.divisi || '-'} · {new Date(t.created_at).toLocaleString('id-ID', { day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' })} · {namaPanel(t.panel_id)}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                  <div style={{ fontSize: 10.5, color: '#a16207', marginTop: 4 }}>Kepala permintaan tersimpan, tapi isi barangnya tidak ada di data - tidak ikut terhitung di rekap.</div>
+                </div>
+              )
+            })()}
             {rekapLoading ? (
               <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
-            ) : rekapRowsDisplayed.length === 0 ? (
+            ) : rekapRowsDisplayed.length === 0 && rekapRowsFull.length === 0 && rekapTanpaRincian.some(t => !rekapScopePanelId || t.panel_id === rekapScopePanelId) ? null : rekapRowsDisplayed.length === 0 ? (
               <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
                 <i className="ti ti-package-off" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
                 <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>

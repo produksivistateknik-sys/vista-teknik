@@ -164,15 +164,25 @@ function Tag({ app }: { app: string }) {
   return <span className={'kd-tag' + (app === 'Operator' ? ' op' : '')}>{app}</span>
 }
 
-function TabelSampel({ rows, total }: { rows: any[]; total: number | null | undefined }) {
+// (18 Okt 2026) onTandai: baris yang punya kolom `ref` bisa ditandai "diketahui" (kesehatan_temuan_diketahui) -
+// sudahDitandai = ref yang tandanya aktif (masih tampil di contoh baris sampai cek dijalankan lagi).
+function TabelSampel({ rows, total, onTandai, sudahDitandai, sibuk }: { rows: any[]; total: number | null | undefined
+  onTandai?: (ref: string) => void; sudahDitandai?: Set<string>; sibuk?: boolean }) {
   if (!rows?.length) return <p className="kd-foot">Tidak ada contoh baris.</p>
   const kolom = [...new Set(rows.flatMap(r => Object.keys(r || {})))].sort((x, y) => posisiKolom(x) - posisiKolom(y)).slice(0, 10)
+  const bisaTandai = !!onTandai && rows.some(r => r?.ref != null && r.ref !== '')
   return (
     <>
       <div className="kd-tw">
         <table>
-          <thead><tr>{kolom.map(k => <th key={k}>{LABEL_KOLOM[k] || k}</th>)}</tr></thead>
-          <tbody>{rows.map((r, i) => <tr key={i}>{kolom.map(k => <td key={k} title={nilaiSel(r?.[k])}>{nilaiSel(r?.[k])}</td>)}</tr>)}</tbody>
+          <thead><tr>{kolom.map(k => <th key={k}>{LABEL_KOLOM[k] || k}</th>)}{bisaTandai && <th>Tindakan</th>}</tr></thead>
+          <tbody>{rows.map((r, i) => {
+            const ref = r?.ref != null ? String(r.ref) : ''
+            return <tr key={i}>{kolom.map(k => <td key={k} title={nilaiSel(r?.[k])}>{nilaiSel(r?.[k])}</td>)}
+              {bisaTandai && <td>{!ref ? '' : sudahDitandai?.has(ref) ? <span className="kd-foot" style={{ margin: 0 }}>sudah ditandai</span>
+                : <button type="button" className="kd-btn" data-tandai={ref} disabled={sibuk} onClick={() => onTandai!(ref)}>Tandai diketahui</button>}</td>}
+            </tr>
+          })}</tbody>
         </table>
       </div>
       <p className="kd-foot">Menampilkan {rows.length} dari {total ?? rows.length} temuan (maksimal 50 baris disimpan per pemeriksaan).</p>
@@ -194,6 +204,8 @@ export function KesehatanDataTab() {
   const [statusSalin, setStatusSalin] = useState<Record<string, string>>({})
   const [statusErr, setStatusErr] = useState<Record<string, StatusErr>>({})
   const [tunda, setTunda] = useState<Record<string, Tunda>>({})
+  // (18 Okt 2026) temuan yang ditandai diketahui/diabaikan per cek (kesehatan_temuan_diketahui, migration 20261018030000)
+  const [tandaTemuan, setTandaTemuan] = useState<Record<string, any[]>>({})
   const [filterStatus, setFilterStatus] = useState<'aktif' | 'selesai' | 'diabaikan' | 'semua'>('aktif')
   const [lipatBuka, setLipatBuka] = useState(false)
   const [sibuk, setSibuk] = useState<string | null>(null)
@@ -232,6 +244,11 @@ export function KesehatanDataTab() {
       const { data: td, error: tdErr } = await supabase.from('kesehatan_tunda_cek' as any).select('*')
       if (tdErr && !tabelBelumAda(tdErr)) throw tdErr
       setTunda(Object.fromEntries(((td as any[]) || []).map((x: any) => [x.kode, x])))
+      const tandaRows = await fetchAllPaged((from, to) => (supabase.from('kesehatan_temuan_diketahui' as any) as any).select('*')
+        .eq('aktif', true).eq('sasaran', 'temuan').order('id').range(from, to)).catch((er: any) => { if (tabelBelumAda(er)) return []; throw er })
+      const perKode: Record<string, any[]> = {}
+      for (const t of tandaRows as any[]) (perKode[t.kode] ||= []).push(t)
+      setTandaTemuan(perKode)
       setCek((c as any[]) || []); setHasil(h as Hasil[]); setDetail(det); setErrors((e as any[]) || [])
       // cek berstatus Kritis terbuka otomatis (pilihan buka/tutup user tetap dihormati sesudahnya)
       setBuka(prev => {
@@ -382,6 +399,32 @@ export function KesehatanDataTab() {
     if (error) { console.error('[Kesehatan Data] tunda cek gagal:', error); alert('Gagal menunda: ' + error.message); return }
     await muat()
   }
+  const mintaCatatan = (judul: string): string | null => {
+    for (;;) {
+      const c = window.prompt(judul, '')
+      if (c === null) return null
+      if (c.trim().length >= 3) return c.trim()
+      alert('Catatan wajib diisi (minimal 3 huruf).')
+    }
+  }
+  const tandaiTemuan = async (kode: string, ref: string) => {
+    const catatan = mintaCatatan(`Tandai temuan ${kode} ref ${ref} "diketahui" - catatan WAJIB (alasan, mis. sudah diinvestigasi, tidak bisa dipulihkan):`)
+    if (catatan === null) return
+    setSibuk('t' + kode)
+    const { error } = await supabase.rpc('tandai_kesehatan' as any, { p_sasaran: 'temuan', p_kode: kode, p_ref: ref, p_status: 'diketahui', p_catatan: catatan, p_oleh: namaPenanda() } as any)
+    setSibuk(null)
+    if (error) { console.error('[Kesehatan Data] tandai temuan gagal:', error); alert('Gagal menandai: ' + error.message); return }
+    await muat()
+  }
+  const bukaTanda = async (t: any) => {
+    const alasan = mintaCatatan(`Buka lagi temuan ${t.kode} ref ${t.ref} (muncul lagi di cek) - alasan WAJIB:`)
+    if (alasan === null) return
+    setSibuk('t' + t.kode)
+    const { error } = await supabase.rpc('buka_tanda_kesehatan' as any, { p_id: t.id, p_catatan: alasan, p_oleh: namaPenanda() } as any)
+    setSibuk(null)
+    if (error) { console.error('[Kesehatan Data] buka tanda gagal:', error); alert('Gagal membuka tanda: ' + error.message); return }
+    await muat()
+  }
   const batalTunda = async (kode: string) => {
     setSibuk('c' + kode)
     const { error } = await supabase.rpc('batal_tunda_cek_kesehatan' as any, { p_kode: kode, p_oleh: namaPenanda() } as any)
@@ -463,8 +506,24 @@ export function KesehatanDataTab() {
                 {adaMasalah && langkah.length > 0 && (
                   <div className="kd-block"><h3>Langkah penanganan</h3><ol className="kd-steps">{langkah.map((s, i) => <li key={i}>{s}</li>)}</ol></div>
                 )}
-                {adaSampel && <div className="kd-block"><h3>Contoh baris</h3><TabelSampel rows={d.sampel} total={akhir?.jumlah} /></div>}
+                {adaSampel && <div className="kd-block"><h3>Contoh baris</h3><TabelSampel rows={d.sampel} total={akhir?.jumlah}
+                  onTandai={ref => tandaiTemuan(c.kode, ref)} sudahDitandai={new Set((tandaTemuan[c.kode] || []).map((t: any) => String(t.ref)))} sibuk={sibuk === 't' + c.kode} /></div>}
               </div>
+            )}
+            {(tandaTemuan[c.kode] || []).length > 0 && (
+              <details className="kd-block" style={{ marginTop: 10 }} data-tanda-kode={c.kode}>
+                <summary style={{ cursor: 'pointer', fontWeight: 700 }}>{tandaTemuan[c.kode].length} temuan sudah diketahui (tidak dihitung di cek ini)</summary>
+                <div className="kd-tw" style={{ marginTop: 8 }}>
+                  <table>
+                    <thead><tr><th>Ref</th><th>Status</th><th>Catatan</th><th>Oleh</th><th>Waktu</th><th>Tindakan</th></tr></thead>
+                    <tbody>{tandaTemuan[c.kode].map((t: any) => (
+                      <tr key={t.id}><td>{t.ref}</td><td>{t.status}</td><td>{t.catatan}</td><td>{t.oleh}</td><td>{fmtWaktu(t.dibuat_pada)}</td>
+                        <td><button type="button" className="kd-btn" disabled={sibuk === 't' + c.kode} onClick={() => bukaTanda(t)}>Buka lagi</button></td></tr>
+                    ))}</tbody>
+                  </table>
+                </div>
+                <p className="kd-foot">Temuan yang ditandai tidak dihitung lagi di cek ini. "Buka lagi" = ikut dihitung lagi mulai pemeriksaan berikutnya (riwayat tanda tetap tersimpan).</p>
+              </details>
             )}
           </div>
         )}

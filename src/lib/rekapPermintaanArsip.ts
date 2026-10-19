@@ -60,3 +60,33 @@ export async function muatItemRekap(panels: PanelRekap[]): Promise<ItemRekap[]> 
   }
   return items
 }
+
+// ── PERMINTAAN TANPA RINCIAN (18 Okt 2026, investigasi WO 000 CJI #51-59) ──
+// Kepala permintaan ada tapi TIDAK punya satu pun item (status apa pun). Ditampilkan sbg keterangan di Rekap per
+// Panel & Riwayat (bukan "Belum ada item"); kepala TIDAK dihapus. Penyebab dibedakan menurut tanggal: sebelum 12 Okt
+// 2026 (sebelum arsip_panel_aman) = alur Arsip Panel lama menghapus item; sesudahnya = simpan item gagal saat dikirim.
+// Permintaan < 10 menit diabaikan (kepala tersimpan sebelum item). Aturan SAMA dgn cek Kesehatan Data K15.
+export const BATAS_ALUR_ARSIP_AMAN = '2026-10-12T00:00:00+07:00'
+export const JEDA_ABAIKAN_TANPA_RINCIAN_MS = 10 * 60 * 1000
+export type PermintaanTanpaRincian = { id: number; jenis: string; divisi: string | null; created_at: string; panel_id: number; penyebab: string }
+export const penyebabTanpaRincian = (createdAt: string): string =>
+  new Date(createdAt).getTime() < new Date(BATAS_ALUR_ARSIP_AMAN).getTime() ? 'data hilang, alur arsip lama' : 'rincian tidak tersimpan saat dikirim'
+export const sudahCukupUmurTanpaRincian = (createdAt: string): boolean => Date.now() - new Date(createdAt).getTime() >= JEDA_ABAIKAN_TANPA_RINCIAN_MS
+
+export async function muatPermintaanTanpaRincian(panels: PanelRekap[]): Promise<PermintaanTanpaRincian[]> {
+  const aktif = panels.filter(p => !p.arsip).map(p => p.id)
+  const arsip = panels.filter(p => p.arsip).map(p => p.id)
+  const kolom = 'id,panel_id,panel_id_arsip,divisi,jenis,created_at'
+  const perms: any[] = []
+  for (const bagian of potong(aktif)) perms.push(...await semuaHalaman((a, b) => (supabase.from('permintaan') as any).select(kolom).in('panel_id', bagian).order('id', { ascending: true }).range(a, b)))
+  for (const bagian of potong(arsip)) perms.push(...await semuaHalaman((a, b) => (supabase.from('permintaan') as any).select(kolom).in('panel_id_arsip', bagian).order('id', { ascending: true }).range(a, b)))
+  const calon = perms.filter(p => sudahCukupUmurTanpaRincian(p.created_at))
+  if (calon.length === 0) return []
+  const punyaItem = new Set<number>()
+  for (const bagian of potong(calon.map(p => p.id))) {
+    const rows = await semuaHalaman<any>((a, b) => (supabase.from('permintaan_item') as any).select('id,permintaan_id').in('permintaan_id', bagian).order('id', { ascending: true }).range(a, b))
+    for (const it of rows) punyaItem.add(it.permintaan_id)
+  }
+  return calon.filter(p => !punyaItem.has(p.id)).map(p => ({ id: p.id, jenis: p.jenis, divisi: p.divisi, created_at: p.created_at,
+    panel_id: p.panel_id ?? p.panel_id_arsip, penyebab: penyebabTanpaRincian(p.created_at) }))
+}
