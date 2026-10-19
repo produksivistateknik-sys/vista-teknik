@@ -177,7 +177,7 @@ export function LaporanNameplateView({woData}:{woData:any[]}){
                 <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(120px,1fr))",gap:8}}>
                   {t.foto.map((f:any,fi:number)=>(
                     <div key={fi} onClick={()=>setLightbox({fotos:t.foto,index:fi,label:`${t.label}_${selectedPanel.nama}`})} style={{cursor:"pointer"}} className="np-foto-print">
-                      <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
+                      <div style={{width:"100%",aspectRatio:"1",borderRadius:6,border:"1px solid #e2e8f0",overflow:"hidden"}}><ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/></div>
                       <div style={{fontSize:9,color:"#94a3b8",marginTop:3}}>{fmtTgl(f.uploaded_at)}{f.uploaded_by?" · "+f.uploaded_by:""}</div>
                     </div>
                   ))}
