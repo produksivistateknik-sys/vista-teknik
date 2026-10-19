@@ -1,7 +1,9 @@
 // Thumbnail 1 file dokumentasi di grid (6 Okt 2026, dukungan video) - SALINAN vista-pekerja ui/ThumbMedia.tsx -
 // tampilan video SAMA PERSIS yang sudah dipakai QCChecklistTab (frame <video> muted + ikon ▶ di
 // tengah), foto tetap <img> seperti sebelumnya. Mengisi penuh kotak induknya.
-export function ThumbMedia({url,video,radius,contain}:{url:string,video:boolean,radius?:number,contain?:boolean}){
+// (19 Okt 2026) `thumb` = thumbnail 320 px (~10 KB, dibuat saat unggah - lib/siapkanMedia). Grid memakai thumbnail;
+// tampilan diperbesar (contain) & video tetap file penuh; foto lama tanpa thumbnail / thumbnail gagal dimuat -> file penuh.
+export function ThumbMedia({url,thumb,video,radius,contain}:{url:string,thumb?:string|null,video:boolean,radius?:number,contain?:boolean}){
   const fit=contain?"contain" as const:"cover" as const;
   return(
     <div style={{position:"relative" as const,width:"100%",height:"100%",borderRadius:radius,overflow:radius?"hidden":undefined}}>
@@ -9,7 +11,7 @@ export function ThumbMedia({url,video,radius,contain}:{url:string,video:boolean,
         // #t=0.1 - biar browser HP (iOS) menampilkan frame pertama, bukan kotak hitam.
         <video src={url+"#t=0.1"} muted playsInline preload="metadata" style={{width:"100%",height:"100%",objectFit:fit,display:"block"}}/>
       ):(
-        <img src={url} loading="lazy" style={{width:"100%",height:"100%",objectFit:fit,display:"block"}}/>
+        <img src={!contain&&thumb?thumb:url} loading="lazy" decoding="async" onError={(e:any)=>{if(thumb&&e.currentTarget.src!==url)e.currentTarget.src=url;}} style={{width:"100%",height:"100%",objectFit:fit,display:"block"}}/>
       )}
       {video&&(
         <div style={{position:"absolute" as const,inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none" as const}}>

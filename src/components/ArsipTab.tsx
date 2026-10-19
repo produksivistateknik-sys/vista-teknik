@@ -486,7 +486,7 @@ export function ArsipTab({user,refetchWO}:any){
                       ):fGeneric?(
                         <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b"}}/>
                       ):(
-                        <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                        <img src={f.thumb||f.url} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
                       )}
                     </div>
                   )
@@ -542,7 +542,7 @@ export function ArsipTab({user,refetchWO}:any){
                                   ):fGeneric?(
                                     <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b"}}/>
                                   ):(
-                                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                    <img src={f.thumb||f.url} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
                                   )}
                                 </div>
                               )

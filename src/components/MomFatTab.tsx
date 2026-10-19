@@ -243,7 +243,7 @@ export function MomFatTab({user}:{user?:any}={}){
                                   {p.foto.map((f:any,fi:number)=>(
                                     <div key={fi} onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}
                                       style={{aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
-                                      <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
+                                      <ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/>
                                     </div>
                                   ))}
                                 </div>

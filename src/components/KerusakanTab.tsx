@@ -310,7 +310,7 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
                       {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
                         <div key={fi} style={{position:"relative",width:52,height:52}}>
                           <div title={f.type==="video"?"Buka video":"Buka foto"} onClick={()=>bukaFotoKerusakan(m,fi)}
-                            style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></div>
+                            style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} thumb={f.thumb} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></div>
                           <button onClick={(e:any)=>doRotateThumb(e,f.url)} disabled={rotatingUrl===f.url} title="Putar 90°"
                             style={{position:"absolute",bottom:-4,right:-4,width:18,height:18,borderRadius:"50%",background:"#1e293b",color:"#fff",border:"2px solid #fff",fontSize:9,lineHeight:"14px",cursor:rotatingUrl===f.url?"default":"pointer",padding:0,opacity:rotatingUrl===f.url?0.6:1}}>
                             <i className="ti ti-rotate-clockwise" style={{fontSize:10}}/>

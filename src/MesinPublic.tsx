@@ -494,7 +494,7 @@ export default function MesinPublic(){
                       {foto.length>0&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
                           {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
-                            <a key={fi} href={f.url} target="_blank" rel="noreferrer" style={{display:"block",width:56,height:56,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></a>
+                            <a key={fi} href={f.url} target="_blank" rel="noreferrer" style={{display:"block",width:56,height:56,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} thumb={f.thumb} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></a>
                           );})}
                         </div>
                       )}
