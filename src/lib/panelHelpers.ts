@@ -7,10 +7,10 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
 
 // ================= JENIS PANEL "BUSBAR" (17 Okt 2026, permintaan user) =================
 // Jenis panel yang pekerjaannya HANYA proses BUSBAR: tanpa proses mekanik (tidak ada mapping
-// bom_proses_relevan), tanpa QC TEST/PACKING/NAMEPLATE/YELLOWMARK. Tahap busbar 3 tahap FABRIKASI/PLATING/
-// PASANG TANPA HEATSHRINK utk semua komponen (keputusan user 19 Okt 2026; 17 Okt masih 4 tahap spt jenis lain) -
+// bom_proses_relevan), tanpa QC TEST/PACKING/NAMEPLATE/YELLOWMARK. Tahap busbar HANYA 2 tahap FABRIKASI/PLATING
+// utk semua komponen (keputusan user 20 Okt 2026; 19 Okt 3 tahap tanpa HEATSHRINK, 17 Okt 4 tahap spt jenis lain) -
 // aturannya di vista-pekerja getUrutanTahapBusbar + trigger DB panels_validate_busbar_cap_progress (migration
-// 20261019030000); admin membaca tahap yg ada di data. SATU sumber aturan di aplikasi admin; aplikasi operator punya cermin yang SAMA
+// 20261020010000); admin membaca tahap yg ada di data. SATU sumber aturan di aplikasi admin; aplikasi operator punya cermin yang SAMA
 // (vista-pekerja lib/panelHelpers.tsx TIPE_PANEL_BUSBAR_SAJA) - kalau diubah, ubah keduanya.
 export const TIPE_PANEL_BUSBAR_SAJA=new Set<string>(["BUSBAR"]);
 
