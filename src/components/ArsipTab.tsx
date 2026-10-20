@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
-import { calcPanelProgress, getEffCfgGlobal } from '../lib/panelHelpers'
+import { calcPanelProgress, getEffCfgGlobal, isKomponenTahapPasang } from '../lib/panelHelpers'
 import { DIVISI_CONFIG } from '../constants/panelTypes'
 import { Modal } from './ui/Primitives'
 import { FotoZoomViewer } from './FotoZoomViewer'
@@ -39,7 +39,6 @@ const QC_CENTER_SECTIONS_FLAT=[
 // Baris & warna Gantt "Tracking Durasi Proses Produksi" + aturan mulai/selesai: lib/ganttArsip.ts
 // (7 Okt 2026, dipindah dari sini - satu sumber dgn PDF/Excel).
 
-const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"];
 
 // Daftar kode Box Control/Pintu yang relevan buat 1 panel (nama, bukan kode - kode beda-beda
 // per tipe panel) - persis sama logic komponenWiringPanel di LaporanWiringKomponenView. REVISI
@@ -51,7 +50,7 @@ const komponenWiringPanel=(panel:any)=>{
   if(!cfg)return[];
   const items=cfg.wps.flatMap((w:any)=>w.items);
   return items
-    .filter((it:any)=>WIRING_KOMPONEN_NAMA.includes(it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
+    .filter((it:any)=>isKomponenTahapPasang(panel.tipe,it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
     .map((it:any)=>{
       const cl=panel.checklist?.[it.kode];
       return{kode:it.kode,nama:it.nama,pct:cl?.pasangKomponenTahap?.WIRING?.progress||0,foto:cl?.fotoPemasangan||[]};

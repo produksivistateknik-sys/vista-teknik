@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { cetakElemenBerkop } from '../lib/cetakBerkop'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { getEffCfgGlobal, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { getEffCfgGlobal, getBestProgressMap, getRelevantProsesForKode, isKomponenTahapPasang } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -45,7 +45,6 @@ const panelPipelineStatusWk=(panel:any,komponenList:{kode:string,pct:number}[]):
 // PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA di Vista Pekerja) - dicocokkan lewat nama komponen,
 // bukan kode (kode beda-beda per tipe panel, misal Box Control = FS.5 di tipe FS tapi F3B.7
 // di tipe F3B).
-const WIRING_KOMPONEN_NAMA=["Box Control","Pintu"]
 
 const statusWiringKomponen=(pct:number,jumlahFoto:number)=>{
   if(pct>=100&&jumlahFoto>=1)return"selesai"
@@ -64,7 +63,7 @@ const komponenWiringPanel=(panel:any)=>{
   if(!cfg)return[]
   const items=cfg.wps.flatMap((w:any)=>w.items)
   return items
-    .filter((it:any)=>WIRING_KOMPONEN_NAMA.includes(it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
+    .filter((it:any)=>isKomponenTahapPasang(panel.tipe,it.nama)&&(panel.checklist?.[it.kode]?.qty||0)>0)
     .map((it:any)=>{
       const cl=panel.checklist?.[it.kode]
       return{kode:it.kode,nama:it.nama,pct:cl?.pasangKomponenTahap?.WIRING?.progress||0,foto:cl?.fotoPemasangan||[]}

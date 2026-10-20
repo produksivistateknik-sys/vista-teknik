@@ -1,7 +1,7 @@
 import { useState, useMemo, useRef } from 'react'
 import { cetakElemenBerkop } from '../lib/cetakBerkop'
 import { downloadFotoSebagaiZip, sanitizeNamaFile, type FotoZipItem } from '../lib/downloadHelpers'
-import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal, computeProsesStatus, getBestProgressMap, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { calcPanelProgress, isKomponenRelevant, getEffCfgGlobal, computeProsesStatus, getBestProgressMap, getRelevantProsesForKode, isKomponenTahapPasang } from '../lib/panelHelpers'
 import { PipelineStatusFilterTabs, PIPELINE_STATUS_LIST } from './ui/PipelineStatusFilter'
 import { FotoZoomViewer } from './FotoZoomViewer'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -42,9 +42,9 @@ const kodePipelineStatusPk=(panel:any,kode:string,pct:number,isTahap:boolean):st
 // bisa dikerjakan/jalan, panel dianggap gak "Not Yet" lagi) - DONE per-komponen digambar ulang
 // jadi IN_PROGRESS di level panel, karena "Done" panel tetap dari definisi lama (pct rata2>=100
 // DAN ada foto) yang sudah dicek duluan sebelum fungsi ini dipanggil.
-const panelPipelineStatusPk=(panel:any,komponenList:{kode:string,nama:string,pct:number}[],tahapNama:string[]):string=>{
+const panelPipelineStatusPk=(panel:any,komponenList:{kode:string,nama:string,pct:number}[]):string=>{
   if(komponenList.length===0)return"NOT_YET"
-  const best=komponenList.map(k=>kodePipelineStatusPk(panel,k.kode,k.pct,tahapNama.includes(k.nama)))
+  const best=komponenList.map(k=>kodePipelineStatusPk(panel,k.kode,k.pct,isKomponenTahapPasang(panel.tipe,k.nama)))
     .reduce((acc,s)=>RANK_PIPELINE[s]>RANK_PIPELINE[acc]?s:acc,"NOT YET")
   if(best==="DONE")return"IN_PROGRESS"
   if(best==="IN PROGRESS")return"IN_PROGRESS"
@@ -122,7 +122,6 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
   // progress["PASANG KOMPONEN"] gabungan dari 2 kontribusi terpisah (ASSEMBLING + WIRING) -
   // laporan Assembling ini cuma nampilin kontribusi ASSEMBLING-nya sendiri, bukan angka
   // gabungan, biar konsisten sama laporan Wiring Control yang juga cuma nampilin punya sendiri.
-  const KOMPONEN_TAHAP_NAMA=["Box Control","Pintu"]
   const komponenPanel=(panel:any)=>{
     const cfg=getEffCfgGlobal(panel.tipe)
     if(!cfg)return[]
@@ -131,7 +130,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
       .filter((it:any)=>(panel.checklist?.[it.kode]?.qty||0)>0&&isKomponenRelevant(it.kode,panel.tipe,"PASANG KOMPONEN"))
       .map((it:any)=>{
         const cl=panel.checklist?.[it.kode]
-        const pct=KOMPONEN_TAHAP_NAMA.includes(it.nama)?(cl?.pasangKomponenTahap?.ASSEMBLING?.progress||0):(cl?.progress?.["PASANG KOMPONEN"]||0)
+        const pct=isKomponenTahapPasang(panel.tipe,it.nama)?(cl?.pasangKomponenTahap?.ASSEMBLING?.progress||0):(cl?.progress?.["PASANG KOMPONEN"]||0)
         return{kode:it.kode,nama:it.nama,pct}
       })
   }
@@ -140,7 +139,7 @@ export function LaporanPasangKomponenView({woData}:{woData:any[]}){
     const pct=calcPanelProgress(p)["PASANG KOMPONEN"]||0
     const adaFoto=(p.pasang_komponen_photos||[]).length>0||Object.values(p.checklist||{}).some((cl:any)=>(cl?.fotoPemasangan||[]).length>0)
     const pkStatus=statusPasangKomponen(pct,adaFoto)
-    const pipelineStatus=pkStatus==="selesai"?"DONE":panelPipelineStatusPk(p,komponenPanel(p),KOMPONEN_TAHAP_NAMA)
+    const pipelineStatus=pkStatus==="selesai"?"DONE":panelPipelineStatusPk(p,komponenPanel(p))
     return{...p,_pkPct:pct,_pkStatus:pkStatus,_pipelineStatus:pipelineStatus}
   }),[allPanels])
 

@@ -13,6 +13,17 @@ export const getBusbarKomponen=(tipe:string):string[]=>{
 // 20261019030000); admin membaca tahap yg ada di data. SATU sumber aturan di aplikasi admin; aplikasi operator punya cermin yang SAMA
 // (vista-pekerja lib/panelHelpers.tsx TIPE_PANEL_BUSBAR_SAJA) - kalau diubah, ubah keduanya.
 export const TIPE_PANEL_BUSBAR_SAJA=new Set<string>(["BUSBAR"]);
+
+// ================= PASANG KOMPONEN: komponen milik Wiring Control =================
+// Komponen yang Pasang Komponen-nya dikerjakan Wiring Control (progres di checklist[kode].pasangKomponenTahap.WIRING),
+// dicocokkan lewat NAMA (kode beda per jenis panel). Box Control & Pintu di semua jenis; (20 Okt 2026, permintaan
+// user) OU_FS juga Groundplate Control & Pintu Dalam - nama sama di jenis lain (mis. "Pintu Dalam" di WM) TIDAK ikut.
+// SATU sumber di admin; cermin vista-pekerja lib/panelHelpers.tsx isKomponenTahapPasang - kalau diubah, ubah keduanya.
+export const PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA=["Box Control","Pintu"];
+export const PASANG_KOMPONEN_TAHAP_PER_TIPE:Record<string,string[]>={OU_FS:["Groundplate Control","Pintu Dalam"]};
+export function isKomponenTahapPasang(tipe:string|null|undefined,nama:string):boolean{
+  return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama)||!!(tipe&&PASANG_KOMPONEN_TAHAP_PER_TIPE[tipe]?.includes(nama));
+}
 // Penanda per panel QC TEST/PACKING + NAMEPLATE/YELLOWMARK (17 Okt 2026) TIDAK berlaku utk jenis busbar-saja.
 const PENANDA_TIDAK_BERLAKU_BUSBAR_SAJA=["QC TEST","PACKING","NAMEPLATE","YELLOWMARK"];
 export function prosesBerlakuUntukTipe(tipe:string|undefined|null, proses:string):boolean{
