@@ -10,7 +10,8 @@ import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
-import { isKomponenRelevant, getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
+import { alasanKomponenDilewati } from '../lib/relevansiJadwal'
+import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
 import { jejakMenujuTanggal, aktifkanJejak, buangJejak, tanggalNyataDariJejak, lepasDariAsal, taruhDiTujuan } from '../lib/jadwalPindah'
@@ -136,7 +137,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const wpItems=wpItemsAll.filter(it=>{
     const qty=livePanelForCell?.checklist?.[it.kode]?.qty||0;
     if(qty<=0)return false;
-    return isKomponenRelevant(it.kode,livePanelForCell?.tipe||"",rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
+    // (22 Okt 2026) relevansi lewat fungsi bersama lib/relevansiJadwal (sama dgn tempel/pindah) - relevansi belum termuat = tidak disaring.
+    return !alasanKomponenDilewati(it.kode,livePanelForCell,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
   });
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{

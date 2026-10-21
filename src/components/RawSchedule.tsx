@@ -16,6 +16,8 @@ import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { cariPelanggaranUrutan, petaTandaUrutan, useVersiAturanUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
 import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
+import { teksDilewati } from '../lib/relevansiJadwal'
+import { rencanakanTempel } from '../lib/tempelJadwal'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, jadwalLanjutanWiring, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib, muatDataKapasitas } from '../lib/kapasitasHari'
@@ -897,44 +899,64 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   // `sumber` (8 Okt 2026): opsional - dipakai "Copy" di modal drag banyak sel; default = buffer salin
   // (Ctrl+C) seperti dulu. Logika tempel tidak berubah.
-  const pasteToCell=async(targetRawId:number,targetDate:string,sumber?:any[])=>{
+  // TEMPEL (Ctrl+V / Copy banyak sel) - SATU-SATUNYA jalur yang bisa menaruh isi sel ke BARIS PROSES LAIN (offset baris).
+  // (22 Okt 2026, keputusan user - tahap 2 saringan relevansi):
+  // - komponen yang tidak relevan utk proses baris tujuan / tidak ada / qty 0 di panel tujuan DISARING (lib/relevansiJadwal,
+  //   fungsi yang sama dgn Raw per WP) + diberitahukan, "Tambahkan juga" = ulang tanpa saring (dicatat activity_log);
+  // - isi sel tujuan DIGABUNG (taruhDiTujuan: union per WP + manualPin, jejak kode itu di tujuan dihapus), BUKAN ditimpa
+  //   seperti dulu; jejak (digeserKe) & penanda lanjutan dari sel sumber tidak ikut disalin;
+  // - BUSBAR digabung (union) - tidak disaring (komponen busbar = getBusbarKomponen);
+  // - dicatat activity_log (dulu tidak ada jejak sama sekali) & hasil simpan dicek (gagal -> baris dikembalikan + pesan).
+  const pasteToCell=async(targetRawId:number,targetDate:string,sumber?:any[],opsi:{tanpaSaring?:boolean}={})=>{
     const copiedCells_=sumber||copiedCells;
     if(!copiedCells_.length)return;
-    // Indeks tanggal lewat aritmetika (4 Okt 2026) - dulu days.indexOf: tujuan di luar jendela
-    // 44 hari diam-diam dilewati (paste terpotong). Sekarang berlaku untuk tanggal mana pun.
-    const targetDayIdx=tanggalKeIdx(targetDate);
-    const targetRowIdx=rawData.findIndex(r=>r.id===targetRawId);
-    const srcRowIds=[...new Set(copiedCells_.map((c:any)=>c.rawId))];
-    const minSrcDayIdx=Math.min(...copiedCells_.map((c:any)=>tanggalKeIdx(c.date)));
-    const minSrcRowIdx=Math.min(...srcRowIds.map((id:any)=>rawData.findIndex(r=>r.id===id)));
-    const batchUpdates:Record<number,any>={};
-    for(const cell of copiedCells_){
-      const srcDayIdx=tanggalKeIdx(cell.date);
-      const srcRowIdx=rawData.findIndex(r=>r.id===cell.rawId);
-      const dayOffset=srcDayIdx-minSrcDayIdx;
-      const rowOffset=srcRowIdx-minSrcRowIdx;
-      const destDayIdx=targetDayIdx+dayOffset;
-      const destRowIdx=targetRowIdx+rowOffset;
-      if(destDayIdx<0||destDayIdx>=TOTAL_KOLOM)continue;
-      if(destRowIdx<0||destRowIdx>=rawData.length)continue;
-      const destDate=idxKeTanggal(destDayIdx);
-      const destRow=rawData[destRowIdx];
-      if(!destRow)continue;
-      if(!batchUpdates[destRow.id]){
-        batchUpdates[destRow.id]={schedule:{...destRow.schedule},busbar_schedule:{...(destRow.busbar_schedule||{})}};
-      }
-      if(cell.entries.length>0) batchUpdates[destRow.id].schedule[destDate]=cell.entries;
-      if(cell.busbar.length>0) batchUpdates[destRow.id].busbar_schedule[destDate]=cell.busbar;
+    // Rencana tempel = fungsi murni lib/tempelJadwal.ts (offset baris/tanggal, saringan relevansi, gabung, tanpa jejak).
+    const{batch:batchUpdates,dilewati,ringkas}=rencanakanTempel(copiedCells_,targetRawId,targetDate,
+      {rawData,panelById:(id:number)=>panelById.get(id),tanggalKeIdx,idxKeTanggal,totalKolom:TOTAL_KOLOM},{tanpaSaring:opsi.tanpaSaring});
+    const teksLewat=()=>{
+      const per=new Map<string,typeof dilewati>();
+      dilewati.forEach(d=>per.set(d.proses,[...(per.get(d.proses)||[]),d]));
+      return [...per.entries()].map(([pr,ds])=>teksDilewati(ds,pr,(k:string)=>getNamaKomponenDariKode(ds[0].panelId,k))).join("\n");
+    };
+    const sumberTetap=copiedCells_;
+    const aksiTambah=dilewati.some(d=>d.alasan==="tidak_relevan")?[{label:"Tambahkan juga",fn:()=>{pasteToCell(targetRawId,targetDate,sumberTetap,{tanpaSaring:true});}}]:[];
+    if(Object.keys(batchUpdates).length===0){
+      if(dilewati.length)tampilToastAksi("Tidak ada yang ditempel.\n"+teksLewat(),"err",aksiTambah);
+      return;
     }
     if(!(await bolehUrutan(new Map(Object.entries(batchUpdates).map(([k,v])=>[Number(k),v])))))return; // Batal di peringatan urutan proses
+    const gagal:string[]=[];
     for(const[rowId,data] of Object.entries(batchUpdates)){
       const id=Number(rowId);
+      const sebelum=rawData.find((r:any)=>r.id===id);
       markRawDirty(id);
       setRawData((prev:any[])=>prev.map(r=>r.id===id?{...r,...data}:r));
-      await updateRaw(id,data);
+      try{
+        await withRetry(async()=>{
+          const res=await updateRaw(id,data);
+          if(!res?.success)throw new Error(res?.error||"Gagal menyimpan jadwal ke server");
+          return res;
+        });
+      }catch(err:any){
+        console.error("[Tempel jadwal] gagal simpan baris",id,err);
+        if(sebelum)setRawData((prev:any[])=>prev.map(r=>r.id===id?sebelum:r));
+        gagal.push(`${sebelum?.panel||id} ${sebelum?.proses||""}: ${err?.message||"koneksi bermasalah"}`);
+      }finally{clearRawDirty(id);}
     }
     setSelectedCells([]);
     if(!sumber)setCopiedCells([]);
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
+    const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    try{
+      await activityLogService.insert({
+        user_name:uname,action:opsi.tanpaSaring?"TAMBAH WALAU TIDAK RELEVAN":"TEMPEL JADWAL",
+        description:(opsi.tanpaSaring?"Tempel ulang tanpa saringan relevansi (Tambahkan juga): ":"Tempel jadwal: ")+ringkas.join(" | ")
+          +(dilewati.length?` | dilewati: ${dilewati.map(d=>d.kode+" "+d.proses+" ("+d.alasan+")").join(", ")}`:"")+(gagal.length?` | GAGAL: ${gagal.join("; ")}`:""),
+        module:"raw",halaman:"Raw Schedule",proyek:"",panel:[...new Set(ringkas.map(t=>t.split(" ")[0]))].join(", "),
+      });
+    }catch(err){console.error("[Tempel jadwal] gagal catat activity_log:",err);}
+    if(gagal.length){alert("Gagal menyimpan tempel di "+gagal.length+" baris jadwal (tampilan baris itu dikembalikan):\n\n"+gagal.join("\n"));return;}
+    if(dilewati.length)tampilToastAksi("Jadwal ditempel.\n"+teksLewat(),"ok",aksiTambah);
   };
 
   // Modal edit sel (tambah/edit/hapus WP & komponen, BUSBAR, bobot WIRING) + modal Kapasitas/Kuota Penuh:
@@ -2141,7 +2163,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       {toastAksi&&(
         <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:10000,background:toastAksi.jenis==="err"?"#dc2626":"#14532d",color:"#fff",
           borderRadius:10,padding:"10px 16px",fontSize:12.5,fontWeight:700,boxShadow:"0 6px 20px #0004",display:"flex",gap:14,alignItems:"center",maxWidth:"min(92vw,620px)"}}>
-          <span>{toastAksi.pesan}</span>
+          <span style={{whiteSpace:"pre-line"}}>{toastAksi.pesan}</span>
           {(toastAksi.aksi||[]).map(a=>(
             <button key={a.label} onClick={()=>{setToastAksi(null);a.fn();}}
               style={{background:"rgba(255,255,255,.18)",color:"#fff",border:"1px solid rgba(255,255,255,.4)",borderRadius:7,padding:"4px 10px",fontSize:12,fontWeight:800,cursor:"pointer",flexShrink:0}}>{a.label}</button>
