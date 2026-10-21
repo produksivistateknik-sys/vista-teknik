@@ -11,7 +11,8 @@ import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
 import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
 import { withRetry } from '../lib/withRetry'
-import { rencanakanPindahAccordion, pecahKunci } from '../lib/pindahAccordion'
+import { rencanakanPindahAccordion, pecahKunci, type HasilPindahAcc } from '../lib/pindahAccordion'
+import { teksDilewati } from '../lib/relevansiJadwal'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
 import { useUrutanPanel } from '../hooks/useUrutanPanel'
@@ -386,6 +387,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const pindahMulti = usePindahMulti(() => ({ rawData, user, setRawData: setRawData || (() => {}), refetchRaw, refetchRenhar, tampilToastAksi, io, konfirmasiUrutan: urutan.tanya }))
   const ctxPindah = () => ({
     rawData, blokById, checklistPanel, entriesTanpaSelesai: entriesTanpaSelesaiRow, tanggalKeIdx, idxKeTanggal, totalKolom: TOTAL_KOLOM,
+    panelBaris: (row: any) => panelById.get(Number(row.panel_id || row.panelId)), // saringan relevansi (lib/relevansiJadwal)
     timerBusbar: pindahMulti.timerBusbarRef.current, kapasitasPada: (d: string, pr: string) => kapasitasPada(fcsKapasitas, d, pr),
     hitungTerpakaiHari: (rows: any[], d: string, pr: string) => hitungTerpakaiHari(rows, d, pr, ctxKap),
   })
@@ -406,15 +408,37 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     const cells = kunci.flatMap(k => { const x = pecahKunci(k); const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup && y.jenis === 'busbar'); return g ? g.komponen.flatMap(km => (km.sel[x.tanggal] || []).map(c => ({ rawId: c.rawId, date: x.tanggal }))) : [] })
     return pindahMulti.muatTimerBusbar(cells)
   }
-  const jalankanPindah = async (kunci: string[], offset: number, sudahDikonfirmasi = false) => {
+  // ── SARINGAN RELEVANSI (22 Okt 2026) - pemberitahuan "N komponen dilewati (...)" + "Tambahkan juga" (hanya utk yang
+  // tidak relevan; kode yang tidak ada / qty 0 di panel tidak bisa ditambahkan). Satu fungsi saring: lib/relevansiJadwal.
+  const teksDilewatiRencana = (r: HasilPindahAcc) => {
+    const perProses = new Map<string, HasilPindahAcc['dilewati']>()
+    r.dilewati.forEach(d => perProses.set(d.proses, [...(perProses.get(d.proses) || []), d]))
+    return [...perProses.entries()].map(([pr, ds]) => teksDilewati(ds, pr, (k: string) => namaKomponenUrutan(ds[0].panelId, k))).join('\n')
+  }
+  const aksiDilewati = (r: HasilPindahAcc, offset: number, mode: 'pindah' | 'salin', tambahan: { label: string; fn: () => void }[] = []) => {
+    const tr = r.dilewati.filter(d => d.alasan === 'tidak_relevan')
+    const kunciTambah = [...new Set(tr.map(d => `k:${d.panelId}:${d.grup}:${d.kode}|${d.dari}`))] // grup pivot, bukan wp entri
+    return [...(kunciTambah.length ? [{ label: 'Tambahkan juga', fn: async () => {
+      const ok = mode === 'pindah' ? await jalankanPindahRef.current(kunciTambah, offset, true, true) : await jalankanSalinRef.current(kunciTambah, offset, true, true)
+      if (ok) {
+        try {
+          await io.log.insert({ user_name: namaUser(), action: 'TAMBAH WALAU TIDAK RELEVAN', module: 'raw', halaman: 'Raw Schedule per WP',
+            description: `${mode === 'pindah' ? 'Pindah' : 'Salin'} ${kunciTambah.length} komponen walau tidak relevan (Atur Proses Relevan): ` + tr.map(d => `${d.kode} ${d.proses}`).join(', '),
+            proyek: '', panel: String(panelById.get(tr[0].panelId)?.nama || '').trim() })
+        } catch (err) { console.error('[Raw per WP] gagal catat activity_log tambah tidak relevan:', err) }
+      }
+    } }] : []), ...tambahan]
+  }
+  const jalankanPindah = async (kunci: string[], offset: number, sudahDikonfirmasi = false, tanpaSaring = false) => {
     if (offset === 0) return false
-    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah())
+    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'pindah', { tanpaSaring })
     if (rencana.bentrok.length > 0) {
       tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err')
       return false
     }
+    if (rencana.sel.length === 0 && rencana.dilewati.length > 0) { tampilToastAksi('Tidak ada yang dipindah.\n' + teksDilewatiRencana(rencana), 'err', aksiDilewati(rencana, offset, 'pindah')); return false }
     if (!(await bolehTulis(`Pindah ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari di data produksi asli?`, sudahDikonfirmasi))) return false
-    return pindahMulti.jalankanPindahSel(rencana.sel, rencana.jadwal, {
+    const okPindah = await pindahMulti.jalankanPindahSel(rencana.sel, rencana.jadwal, {
       jumlah: `${rencana.jumlahKomponen} komponen`, offset,
       ulangi: () => { jalankanPindahRef.current(kunci, offset) },
       onSukses: () => {
@@ -423,6 +447,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
         setJangkar(null)
       },
     })
+    if (okPindah && rencana.dilewati.length > 0) {
+      tampilToastAksi(`${rencana.jumlahKomponen} komponen dipindah ${offset > 0 ? '+' : ''}${offset} hari.\n` + teksDilewatiRencana(rencana), 'ok',
+        aksiDilewati(rencana, offset, 'pindah', [{ label: 'Batalkan', fn: () => pindahMulti.batalkanPindahTerakhir() }]))
+    }
+    return okPindah
   }
   const jalankanPindahRef = useRef(jalankanPindah); jalankanPindahRef.current = jalankanPindah
 
@@ -430,16 +459,17 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   // rencana harian tidak ikut. Simpan per baris jadwal (updateRaw + retry + cek hasil); gagal -> baris itu
   // dikembalikan, jadwal dimuat ulang, toast + Ulangi.
   const sedangSalinRef = useRef(false)
-  const jalankanSalin = async (kunci: string[], offset: number, sudahDikonfirmasi = false): Promise<boolean> => {
+  const jalankanSalin = async (kunci: string[], offset: number, sudahDikonfirmasi = false, tanpaSaring = false): Promise<boolean> => {
     if (offset === 0) return false
     if (sedangSalinRef.current || pindahMulti.sedangPindahRef.current) { tampilToastAksi('Masih memproses aksi sebelumnya - tunggu sebentar.', 'err'); return false }
     if (!updateRaw) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
-    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'salin')
+    const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'salin', { tanpaSaring })
     if (rencana.bentrok.length > 0) {
       tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang disalin.`, 'err')
       return false
     }
     const rows = rencana.rowsSalin || []
+    if (rows.length === 0 && rencana.dilewati.length > 0) { tampilToastAksi('Tidak ada yang disalin.\n' + teksDilewatiRencana(rencana), 'err', aksiDilewati(rencana, offset, 'salin')); return false }
     if (rows.length === 0) { tampilToastAksi('Tidak ada pekerjaan yang bisa disalin di pilihan ini.', 'err'); return false }
     if (!(await bolehTulis(`Salin ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan) di data produksi asli?`, sudahDikonfirmasi))) return false
     if (!(await urutan.tanya(new Map(rows.map(r => [r.raw_id, r.sesudah]))))) { tampilToastAksi('Dibatalkan - jadwal tidak diubah.', 'ok'); return false }
@@ -471,7 +501,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
           description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari - ${[...new Set(kunci.map(k => blokById.get(pecahKunci(k).panelId)?.panel))].join(', ')}`,
           proyek: b0?.proyek || '', panel: b0?.panel || '' })
       } catch (err) { console.error('[Raw per WP] gagal catat activity_log salin:', err) }
-      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).`, 'ok')
+      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).` + (rencana.dilewati.length ? '\n' + teksDilewatiRencana(rencana) : ''), 'ok', aksiDilewati(rencana, offset, 'salin'))
       return true
     } finally { sedangSalinRef.current = false }
   }
@@ -1020,7 +1050,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       )}
       {toast && (
         <div role="status" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 10050, maxWidth: 460, background: toast.jenis === 'ok' ? '#065f46' : '#991b1b', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,.25)', display: 'flex', gap: 10, alignItems: 'center' }}>
-          <span style={{ flex: 1 }}>{toast.pesan}</span>
+          <span style={{ flex: 1, whiteSpace: 'pre-line' }}>{toast.pesan}</span>
           {toast.aksi?.map(a => <button key={a.label} onClick={() => { setToast(null); a.fn() }} style={{ border: '1px solid #ffffff80', background: 'transparent', color: '#fff', borderRadius: 6, padding: '3px 9px', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>{a.label}</button>)}
           <button onClick={() => setToast(null)} aria-label="Tutup" style={{ border: 'none', background: 'transparent', color: '#fff', cursor: 'pointer', fontSize: 14 }}>×</button>
         </div>

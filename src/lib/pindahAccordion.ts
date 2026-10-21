@@ -14,6 +14,7 @@ import { kodeBusbarBisaDipindah, ambilJadwal4, rencanakanSalinMultiV2, type SelP
 import { cekMingguKapasitas, type KonteksMinggu } from './pindahMulti'
 import { rentangInfoUntukTanggal } from './isiSelJadwal'
 import type { BlokPanel } from './rawPivot'
+import { alasanKomponenDilewati, type AlasanDilewati } from './relevansiJadwal'
 
 export type KonteksPindahAcc = KonteksMinggu & {
   rawData: any[]
@@ -24,6 +25,8 @@ export type KonteksPindahAcc = KonteksMinggu & {
   idxKeTanggal: (i: number) => string
   totalKolom: number
   timerBusbar: Set<string> // "panelId|kode" timer BUSBAR berjalan
+  // (22 Okt 2026) panel baris jadwal (tipe + checklist) utk saringan relevansi (lib/relevansiJadwal). Tanpa ini = tidak disaring.
+  panelBaris?: (row: any) => any
 }
 
 export const pecahKunci = (kunci: string) => {
@@ -35,7 +38,7 @@ export const pecahKunci = (kunci: string) => {
 
 // Unit yang bisa dipindah dari 1 kunci pilihan (tanpa validasi tujuan): sel biasa [{rawId, wp, kode}],
 // BUSBAR [{rawId, kodeBusbar}], penanda [{rawId}] (seluruh isi sel penanda).
-type Unit = { rawId: number; dari: string; jenis: 'biasa' | 'busbar' | 'penanda'; wp?: string; kode?: string }
+type Unit = { rawId: number; dari: string; jenis: 'biasa' | 'busbar' | 'penanda'; wp?: string; kode?: string; grup?: string } // grup = kunci grup pivot (WP master BOM)
 function unitDari(kunci: string, ctx: KonteksPindahAcc): Unit[] {
   const k = pecahKunci(kunci)
   const blok = ctx.blokById.get(k.panelId); if (!blok) return []
@@ -50,7 +53,7 @@ function unitDari(kunci: string, ctx: KonteksPindahAcc): Unit[] {
   for (const km of komponen) for (const c of km.sel[d] || []) {
     if (c.jejakKe || c.lanjutan) continue
     if (g.jenis === 'busbar') out.push({ rawId: c.rawId, dari: d, jenis: 'busbar', kode: km.kode })
-    else out.push({ rawId: c.rawId, dari: d, jenis: 'biasa', wp: c.wp, kode: km.kode })
+    else out.push({ rawId: c.rawId, dari: d, jenis: 'biasa', wp: c.wp, kode: km.kode, grup: g.key })
   }
   return out
 }
@@ -63,11 +66,14 @@ export type HasilPindahAcc = {
   alasanTujuan: Map<string, string>
   jumlahKomponen: number // kode berbeda yang ikut (teks pesan)
   rowsSalin?: { raw_id: number; sebelum: any; sesudah: any }[] // mode salin: jadwal sebelum/sesudah per baris
+  // (22 Okt 2026) kode yang TIDAK ikut karena saringan relevansi (diberitahukan; "Tambahkan juga" = ulangi dgn tanpaSaring)
+  dilewati: { rawId: number; panelId: number; proses: string; wp: string; kode: string; dari: string; alasan: AlasanDilewati; grup: string }[] // grup = kunci pivot utk "Tambahkan juga"
 }
 
 // mode 'salin' (Tahap 3a): sel asal tidak diubah, tujuan DIGABUNG; tidak ada tolak "sel rentang"/"timer BUSBAR"
 // (asal tidak disentuh); Minggu berkapasitas dihitung dgn sumber tetap ada. Hasil + rowsSalin (sebelum/sesudah).
-export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number, ctx: KonteksPindahAcc, mode: 'pindah' | 'salin' = 'pindah'): HasilPindahAcc {
+export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number, ctx: KonteksPindahAcc, mode: 'pindah' | 'salin' = 'pindah', opsi: { tanpaSaring?: boolean } = {}): HasilPindahAcc {
+  const dilewati: HasilPindahAcc['dilewati'] = []
   const rowById = new Map<number, any>(ctx.rawData.map((r: any) => [r.id, r]))
   // 1) jabarkan pilihan -> unit, catat kunci asal per (rawId|dari)
   const unitPer = new Map<string, Unit[]>() // rawId|dari -> unit
@@ -114,7 +120,16 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
       const entries: any[] = []
       for (const e of bisa) {
         const kodeAsli = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
-        const pilih = kodeAsli.filter((k: string) => dipilih.has(e.wp + '\u0000' + k))
+        const pilihSemua = kodeAsli.filter((k: string) => dipilih.has(e.wp + '\u0000' + k))
+        // Saringan relevansi (22 Okt 2026): kode yang tidak relevan utk proses baris ini / tidak ada di panel TIDAK ikut
+        // (pindah: tertinggal di tanggal asal; salin: tidak disalin) & diberitahukan pemanggil.
+        const panelRow = opsi.tanpaSaring ? undefined : ctx.panelBaris?.(row)
+        const pilih = pilihSemua.filter((k: string) => {
+          const a = panelRow ? alasanKomponenDilewati(k, panelRow, row.proses) : null
+          if (a) dilewati.push({ rawId: row.id, panelId: Number(row.panel_id || row.panelId), proses: row.proses, wp: e.wp, kode: k, dari, alasan: a,
+            grup: units.find(u => u.kode === k && u.wp === e.wp)?.grup || e.wp })
+          return !a
+        })
         if (pilih.length === 0) continue
         // Semua kode entry ikut = entry utuh (termasuk token __wiring_, sama dgn pindah sel utuh); sebagian = kode terpilih saja.
         entries.push(pilih.length === kodeAsli.length ? e : { ...e, komponen: pilih })
@@ -144,5 +159,5 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
     }
   }
   const rowsSalin = mode === 'salin' ? rencanakanSalinMultiV2(jadwal, sel, new Date().toISOString()) : undefined
-  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size, rowsSalin }
+  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size, rowsSalin, dilewati }
 }

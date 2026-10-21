@@ -5,9 +5,14 @@ export let GLOBAL_PROSES_RELEVAN_HAS_MAPPING:Set<string>=new Set();
 export let GLOBAL_LIVE_PANEL_TYPES:any={};
 export let GLOBAL_DIRTY_PANEL_IDS:Set<string>=new Set();
 
+// (22 Okt 2026) true HANYA setelah bom_proses_relevan termuat LENGKAP (muatProsesRelevanGlobal sukses). Sebelum itu
+// isKomponenRelevant jatuh ke konstanta cadangan KOMPONEN_PROSES_MAP -> saringan relevansi jadwal (lib/relevansiJadwal)
+// TIDAK menyaring apa pun selama false (lebih aman tidak menyaring daripada salah membuang komponen).
+export let GLOBAL_PROSES_RELEVAN_TERMUAT=false;
 export function setGlobalProsesRelevan(set:Set<string>, hasMapping:Set<string>){
   GLOBAL_PROSES_RELEVAN_SET=set;
   GLOBAL_PROSES_RELEVAN_HAS_MAPPING=hasMapping;
+  GLOBAL_PROSES_RELEVAN_TERMUAT=true;
 }
 export function setGlobalLivePanelTypes(v:any){
   GLOBAL_LIVE_PANEL_TYPES=v;
