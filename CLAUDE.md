@@ -80,6 +80,16 @@ Bahasa laporan/ringkasan/penjelasan ke user: **Bahasa Indonesia**.
    carry-over): exclude yang cuma lihat angka progress terkini salah nyembunyiin
    item yang justru baru selesai dikerjakan hari itu juga.
 
+3b. **Jalur pemindah/penghitung jadwal wajib lewat helper bersama.** SETIAP jalur yang
+   menghitung beban, menawarkan, atau memindah kode di `raw_schedule` (drag, multi-pindah,
+   rebalance Atur Kapasitas, swap kapasitas/kuota, Outstanding, dsb) **WAJIB** memakai
+   `kodeJadwalAktif` (`src/lib/kodeJadwalAktif.ts`): kode 100%, jejak `digeserKe`, dan token
+   `__wiring_` tidak boleh ikut dihitung/dipindah. Tampilan tugas (Rencana Harian, HP operator)
+   **WAJIB** memakai `selesaiSebelumTanggal` (cermin di vista-pekerja `panelHelpers.tsx` & cek
+   Kesehatan Data K16 - ubah ketiganya bersamaan). Insiden 21 Okt 2026: rebalance cabang proses jam
+   punya cek sendiri tanpa 100% -> komponen selesai terbit ulang di HP operator (SISWOYO 547 FS.13).
+   Edge Function auto-geser-harian tidak bisa import `src/` - aturannya disalin, jaga tetap sama.
+
 4. **Tabel snapshot / archive.** Tabel seperti `panel_seksi_archived.data`,
    `raw_schedule_archived`, dan snapshot lain **WAJIB** disinkronkan strukturnya
    kalau ada perubahan skema di tabel live terkait.

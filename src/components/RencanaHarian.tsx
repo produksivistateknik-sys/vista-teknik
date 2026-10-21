@@ -9,6 +9,7 @@ import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsSe
 import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
+import { selesaiSebelumTanggal } from '../lib/kodeJadwalAktif'
 
 // Warna status pipeline (readiness per-komponen) - beda dari statusStyle di TaskMonitoring.tsx
 // (itu urusan tampilan sendiri, sengaja gak diseragamkan warnanya, cuma computeProsesStatus()
@@ -617,7 +618,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const kodeAktif=(e.komponen||[]).filter((kode:string)=>{
           if(kode.startsWith("__wiring_"))return true; // token, bukan kode BOM - biarin lolos
           if(e.digeserKe?.[kode])return false; // sudah jejak - jangan tampil sebagai tugas aktif
-          if(!e.carriedOverFrom)return true; // entry asli tanggal ini - tampil apapun progressnya
+          // (21 Okt 2026, insiden SISWOYO 547 FS.13 STEL) entry asli juga bisa berisi kode yang SUDAH selesai
+          // SEBELUM selDate (rebalance Atur Kapasitas lama memindah kode 100% tanpa carriedOverFrom; jadwal
+          // multi-hari yang selesai lebih cepat) -> dulu ikut terdistribusi & terbit ulang di HP operator.
+          // Kode yang selesai TEPAT di selDate tetap tampil (Done) - helper bersama selesaiSebelumTanggal (B.3).
+          if(!e.carriedOverFrom)return !selesaiSebelumTanggal(panelDataUtama?.checklist?.[kode],row.proses,selDate);
           const progress=panelDataUtama?.checklist?.[kode]?.progress?.[row.proses]||0;
           if(progress<100)return true;
           const byDate=panelDataUtama?.checklist?.[kode]?.progressByDate?.[row.proses]||{};

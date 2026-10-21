@@ -17,6 +17,8 @@ export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>
   const [overrideSaving,setOverrideSaving]=useState(false);
   const [overrideResult,setOverrideResult]=useState<any>(null);
   const [overrideProgress,setOverrideProgress]=useState("");
+  // (21 Okt 2026) catatan dari setOverrideAndRebalance - mis. tanggal sudah lewat: kapasitas disimpan, jadwal tidak digeser.
+  const [overrideInfo,setOverrideInfo]=useState<string[]>([]);
   const elemen=(
     <>
       {overrideModal&&(
@@ -94,6 +96,7 @@ export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>
                 // modal nutup nunjukin "✅ Kapasitas tersimpan" padahal nol yg beneran tersimpan.
                 // Sekarang kegagalan dikumpulkan & dilaporkan eksplisit ke admin (CLAUDE.md A.2).
                 const gagalList:string[]=[];
+                const infoList:string[]=[];
                 while(cur<=end&&safety<366){
                   const tgl=cur.toISOString().slice(0,10);
                   for(const proses of overrideModal.proses){
@@ -107,7 +110,7 @@ export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>
                       jumlahOrang:isOrangOv?Number(overrideValue):undefined,
                       createdBy:uname,
                     });
-                    if(res.success)allShifted.push(...res.shifted);
+                    if(res.success){allShifted.push(...res.shifted);if(res.info)infoList.push(res.info);}
                     else gagalList.push(`${tgl} — ${proses}: ${res.error||"gagal tanpa keterangan"}`);
                   }
                   cur.setDate(cur.getDate()+1);
@@ -118,6 +121,7 @@ export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>
                   alert(`Gagal simpan kapasitas utk ${gagalList.length} kombinasi tanggal/proses:\n\n`+gagalList.join("\n"));
                 }
                 setOverrideProgress("");
+                setOverrideInfo(infoList);
                 setOverrideResult(allShifted);
                 if(refetchRaw) await refetchRaw();
               }}>
@@ -126,6 +130,12 @@ export function useAturKapasitas({user,refetchRaw,io}:{user:any;refetchRaw?:()=>
             </div>
           ):(
             <div>
+              {overrideInfo.length>0&&(
+                <div style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 12px",fontSize:11,color:"#475569",marginBottom:10}}>
+                  <div style={{fontWeight:700,marginBottom:4}}>ℹ Tanggal sudah lewat — kapasitas disimpan, jadwal tidak digeser:</div>
+                  {overrideInfo.map((t,i)=><div key={i}>{t}</div>)}
+                </div>
+              )}
               {overrideResult.length===0?(
                 <div style={{textAlign:"center",padding:"16px 0",color:"#16a34a",fontWeight:700,fontSize:13}}>✅ Kapasitas tersimpan, gak ada yang perlu digeser</div>
               ):(

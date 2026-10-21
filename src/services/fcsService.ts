@@ -3,6 +3,8 @@ import { ALL_PROSES } from '../constants/panelTypes'
 import { kebutuhanOrangWiring, WIRING_BOBOT_TABLE, getBusbarKomponen, prosesBerlakuUntukTipe } from '../lib/panelHelpers'
 import { activityLogService as activityLogServiceAsli } from './activityLogService'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
+import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
+import { getLocalDateStr } from '../lib/dateHelpers'
 
 // PABRIK LAYANAN FCS (10 Okt 2026, sandbox Raw Schedule per WP): seluruh isi modul ini dibungkus pabrik supaya
 // logika yang SAMA bisa dijalankan terhadap sumber data lain (MemoryDb salinan uji). Parameter `supabase` &
@@ -187,12 +189,13 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
   }> {
     const { tanggal, jenisPekerjaan, menitDibutuhkan } = params
 
-    const { data: overrideRow } = await supabase
+    const { data: overrideRow, error: overrideRowErr } = await supabase
       .from('fcs_kapasitas_override')
       .select('kapasitas_menit')
       .eq('tanggal', tanggal)
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .maybeSingle()
+    if (overrideRowErr) { console.error('[cek kapasitas]', overrideRowErr); return { cukup: false, kapasitasHari: 0, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [], error: 'Gagal membaca kapasitas: ' + overrideRowErr.message } }
 
     if (!overrideRow) {
       return {
@@ -202,10 +205,11 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     }
     const kapasitasHari = Number(overrideRow.kapasitas_menit)
 
-    const { data: rawRows } = await supabase
+    const { data: rawRows, error: rawRowsErr } = await supabase
       .from('raw_schedule')
       .select('id, wo_id, panel_id, panel, proyek, proses, schedule')
       .eq('proses', jenisPekerjaan)
+    if (rawRowsErr) { console.error('[cek kapasitas]', rawRowsErr); return { cukup: false, kapasitasHari: 0, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [], error: 'Gagal membaca raw_schedule: ' + rawRowsErr.message } }
 
     let ptData: any[]
     try { ptData = await bacaProcessTime('tipe_panel, jenis_pekerjaan, kode_komponen, nama_komponen, menit_per_pcs', { jenisPekerjaan }) }
@@ -215,16 +219,18 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     }
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
-    const { data: panelRows } = await supabase
+    const { data: panelRows, error: panelRowsErr } = await supabase
       .from('panels')
       .select('id, nama, tipe, checklist')
       .in('id', panelIds.length > 0 ? panelIds : [-1])
+    if (panelRowsErr) { console.error('[cek kapasitas]', panelRowsErr); return { cukup: false, kapasitasHari: 0, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [], error: 'Gagal membaca data panel: ' + panelRowsErr.message } }
 
     const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
-    const { data: woRows } = await supabase
+    const { data: woRows, error: woRowsErr } = await supabase
       .from('work_orders')
       .select('id, wo, target')
       .in('id', woIds.length > 0 ? woIds : [-1])
+    if (woRowsErr) { console.error('[cek kapasitas]', woRowsErr); return { cukup: false, kapasitasHari: 0, terpakaiSaatIni: 0, sisaKapasitas: 0, opsiSwap: [], error: 'Gagal membaca work order: ' + woRowsErr.message } }
 
     const panelMap: Record<number, any> = {}
     ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
@@ -250,8 +256,9 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           // Kode berstatus jejak (entry.digeserKe[kode] sudah keisi) itu histori read-only - GAK
           // dihitung kapasitas (kode itu udah dipindah aksinya ke tanggal lain, gak lagi "makan
           // slot" di tanggal ini) dan JELAS gak ditawarkan sebagai kandidat swap (gak boleh ikut
-          // proses geser/cascading lagi).
-          if (entry.digeserKe && entry.digeserKe[kode]) continue
+          // proses geser/cascading lagi). Sama untuk kode yang sudah 100% (21 Okt 2026 - dulu ikut
+          // ditawarkan & dihitung beban; sekarang aturan bersama kodeJadwalAktif, sama dgn kuota orang).
+          if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
           const qty = panel.checklist?.[kode]?.qty || 0
           const pt = ptMap[`${panel.tipe}|${kode}`]
           const menitPcs = pt ? Number(pt.menit_per_pcs) : 0
@@ -296,18 +303,20 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
 
   // Helper internal: hitung total menit terpakai di raw_schedule untuk tanggal+proses tertentu
   async function hitungTerpakaiRawSchedule(tanggal: string, jenisPekerjaan: string): Promise<number> {
-    const { data: rawRows } = await supabase
+    const { data: rawRows, error: rawRowsErr } = await supabase
       .from('raw_schedule')
       .select('panel_id, schedule')
       .eq('proses', jenisPekerjaan)
+    if (rawRowsErr) throw new Error('Gagal membaca raw_schedule: ' + (rawRowsErr as any).message)
 
     const ptData = await bacaProcessTime('tipe_panel, kode_komponen, menit_per_pcs', { jenisPekerjaan })
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
-    const { data: panelRows } = await supabase
+    const { data: panelRows, error: panelRowsErr } = await supabase
       .from('panels')
       .select('id, tipe, checklist')
       .in('id', panelIds.length > 0 ? panelIds : [-1])
+    if (panelRowsErr) throw new Error('Gagal membaca data panel: ' + (panelRowsErr as any).message)
 
     const panelMap: Record<number, any> = {}
     ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
@@ -322,8 +331,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const entries = row.schedule?.[tanggal] || []
       for (const entry of entries) {
         for (const kode of (entry.komponen || [])) {
-          // Jejak (digeserKe) itu histori read-only - gak dihitung kapasitas.
-          if (entry.digeserKe && entry.digeserKe[kode]) continue
+          // Jejak (digeserKe) itu histori read-only & kode 100% sudah selesai - gak dihitung kapasitas.
+          if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
           const qty = panel.checklist?.[kode]?.qty || 0
           const menitPcs = ptMap[`${panel.tipe}|${kode}`] || 0
           total += qty * menitPcs
@@ -347,12 +356,13 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       let tanggalTujuan = addDays(tanggalAsal, 1)
       let found = false
       for (let i = 0; i < 60; i++) {
-        const { data: ov } = await supabase
+        const { data: ov, error: ovErr } = await supabase
           .from('fcs_kapasitas_override')
           .select('kapasitas_menit')
           .eq('tanggal', tanggalTujuan)
           .eq('jenis_pekerjaan', jenisPekerjaan)
           .maybeSingle()
+        if (ovErr) throw new Error('Gagal membaca kapasitas tanggal tujuan: ' + (ovErr as any).message)
 
         if (ov) {
           const kap = Number(ov.kapasitas_menit)
@@ -375,22 +385,32 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen, progress: it.progress || 0 })
       })
 
-      for (const [rawIdStr, komponenList] of Object.entries(byRawId)) {
+      for (const [rawIdStr, komponenDipilih] of Object.entries(byRawId)) {
         const rawId = Number(rawIdStr)
-        const { data: row } = await supabase
+        const { data: row, error: rowErr } = await supabase
           .from('raw_schedule')
           .select('id, panel_id, proses, schedule')
           .eq('id', rawId)
           .single()
+        if (rowErr) throw new Error('Gagal membaca baris jadwal: ' + (rowErr as any).message)
 
         if (!row) continue
+
+        // PENGAMAN (21 Okt 2026): pindahkan HANYA kode yang masih aktif di tanggal asal (bukan jejak, belum
+        // 100%) - dibaca ulang dari server, bukan dari daftar opsi yang bisa basi sejak modal dibuka.
+        const { data: panelPengaman, error: panelPengamanErr } = await supabase.from('panels').select('checklist').eq('id', row.panel_id).maybeSingle()
+        if (panelPengamanErr) throw new Error('Gagal membaca checklist panel: ' + panelPengamanErr.message)
+        const komponenList = komponenDipilih.filter((k) => ((row.schedule as any)?.[tanggalAsal] || [])
+          .some((e: any) => e.wp === k.wp && (e.komponen || []).includes(k.kode_komponen) && kodeJadwalAktif(e, k.kode_komponen, panelPengaman?.checklist, row.proses)))
+        if (komponenList.length === 0) continue
 
         // REVISI (10 Agu 2026): jejak (digeserKe) cuma ditinggalkan kalau BENERAN ADA pengerjaan
         // (fcs_timer_kerja) di tanggalAsal - kalau enggak, pindah senyap tanpa jejak. Sama skema
         // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
         const kodeUnik = [...new Set(komponenList.map((k) => k.kode_komponen))]
-        const { data: timerRows } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
-          .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [] }
+        const { data: timerRows, error: timerRowsErr } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
+          .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [], error: null }
+        if (timerRowsErr) throw new Error('Gagal membaca timer kerja: ' + (timerRowsErr as any).message)
         const adaPengerjaanSet = new Set((timerRows || []).map((t: any) => t.kode_komponen))
 
         const schedule: Record<string, any> = { ...(row.schedule as any) }
@@ -417,7 +437,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           }
         }
 
-        await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+        const { error: simpanErr } = await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+        if (simpanErr) throw new Error('Gagal menyimpan raw_schedule: ' + simpanErr.message)
         // FIX bug "row renhar lama nyangkut" - lihat komentar bersihkanRenharSetelahGeser di bawah.
         await bersihkanRenharSetelahGeser(rawId, komponenList.map((k) => ({ wp: k.wp, kode: k.kode_komponen })), tanggalAsal)
       }
@@ -449,13 +470,14 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
   }> {
     const { tanggal, jenisPekerjaan, orangDibutuhkan } = params
 
-    const { data: overrideRow } = await supabase
+    const { data: overrideRow, error: overrideRowErr } = await supabase
       .from('fcs_kapasitas_override')
       .select('jumlah_orang')
       .eq('tanggal', tanggal)
       .eq('jenis_pekerjaan', jenisPekerjaan)
       .eq('tipe_kapasitas', 'orang')
       .maybeSingle()
+    if (overrideRowErr) { console.error('[cek kuota orang]', overrideRowErr); return { cukup: false, kuotaHari: 0, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [], error: 'Gagal membaca kapasitas: ' + overrideRowErr.message } }
 
     if (!overrideRow) {
       return {
@@ -465,25 +487,28 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     }
     const kuotaHari = Number(overrideRow.jumlah_orang)
 
-    const { data: rawRows } = await supabase
+    const { data: rawRows, error: rawRowsErr } = await supabase
       .from('raw_schedule')
       .select('id, wo_id, panel_id, schedule, bobot_komponen')
       .eq('proses', jenisPekerjaan)
+    if (rawRowsErr) { console.error('[cek kuota orang]', rawRowsErr); return { cukup: false, kuotaHari: 0, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [], error: 'Gagal membaca raw_schedule: ' + rawRowsErr.message } }
 
     const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
-    const { data: woRows } = await supabase
+    const { data: woRows, error: woRowsErr } = await supabase
       .from('work_orders')
       .select('id, wo, target')
       .in('id', woIds.length > 0 ? woIds : [-1])
+    if (woRowsErr) { console.error('[cek kuota orang]', woRowsErr); return { cukup: false, kuotaHari: 0, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [], error: 'Gagal membaca work order: ' + woRowsErr.message } }
     const woMap: Record<number, string> = {}
     const woTargetMap: Record<number, string> = {}
     ;(woRows || []).forEach((w: any) => { woMap[w.id] = w.wo; woTargetMap[w.id] = w.target || '' })
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
-    const { data: panelRows } = await supabase
+    const { data: panelRows, error: panelRowsErr } = await supabase
       .from('panels')
       .select('id, nama, tipe, checklist')
       .in('id', panelIds.length > 0 ? panelIds : [-1])
+    if (panelRowsErr) { console.error('[cek kuota orang]', panelRowsErr); return { cukup: false, kuotaHari: 0, terpakaiSaatIni: 0, sisaKuota: 0, opsiSwap: [], error: 'Gagal membaca data panel: ' + panelRowsErr.message } }
     const panelMap: Record<number, any> = {}
     ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
 
@@ -512,14 +537,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       for (const entry of entries) {
         if (params.excludeRawId && row.id === params.excludeRawId && params.excludeWp && entry.wp === params.excludeWp) continue
         for (const kode of (entry.komponen || [])) {
-          // Token lama __wiring_{orang}org_{bobot} (data lama) bukan komponen asli - dilewati.
-          if (kode.startsWith('__wiring_')) continue
-          // Jejak (entry.digeserKe[kode] keisi) itu histori read-only - GAK dihitung kuota (kode
-          // itu udah dipindah aksinya ke tanggal lain) dan gak ditawarkan buat kandidat swap.
-          if (entry.digeserKe && entry.digeserKe[kode]) continue
+          // Token lama __wiring_ (bukan komponen asli), jejak (digeserKe - histori read-only) dan
+          // komponen yang sudah 100% TIDAK memakai kuota orang & tidak ditawarkan buat swap.
+          if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
           const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
-          // Komponen yang sudah 100% selesai TIDAK lagi memakai kuota orang
-          if (progress >= 100) continue
           const bobot = (row as any).bobot_komponen?.[kode]
           const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
           const orang = kebutuhanOrangWiring(bobot, hariKeN)
@@ -558,22 +579,28 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
   }
 
   async function hitungTerpakaiOrangRawSchedule(tanggal: string, jenisPekerjaan: string): Promise<number> {
-    const { data: rawRows } = await supabase
+    const { data: rawRows, error: rawRowsErr } = await supabase
       .from('raw_schedule')
       .select('panel_id, schedule, bobot_komponen')
       .eq('proses', jenisPekerjaan)
+    if (rawRowsErr) throw new Error('Gagal membaca raw_schedule: ' + (rawRowsErr as any).message)
 
     const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
     const hariKerjaMap = await fetchWiringHariKerjaMap(panelIds)
+    // 21 Okt 2026: checklist dibutuhkan supaya kode 100% tidak dihitung kuota - sama dgn
+    // checkKuotaOrangDanKomponenSwap (dulu dua fungsi ini beda hasil utk kode yang sudah selesai).
+    const { data: panelRows, error: panelErr } = await supabase.from('panels').select('id, checklist').in('id', panelIds.length > 0 ? panelIds : [-1])
+    if (panelErr) throw new Error('Gagal membaca checklist panel: ' + panelErr.message)
+    const checklistMap: Record<number, any> = {}
+    ;(panelRows || []).forEach((p: any) => { checklistMap[p.id] = p.checklist })
 
     let total = 0
     for (const row of rawRows || []) {
       const entries = row.schedule?.[tanggal] || []
       for (const entry of entries) {
         for (const kode of (entry.komponen || [])) {
-          if (kode.startsWith('__wiring_')) continue
-          // Jejak (digeserKe) itu histori read-only - gak dihitung kuota.
-          if (entry.digeserKe && entry.digeserKe[kode]) continue
+          // Token __wiring_, jejak (digeserKe) & kode 100% - gak dihitung kuota.
+          if (!kodeJadwalAktif(entry, kode, checklistMap[row.panel_id], jenisPekerjaan)) continue
           const bobot = (row as any).bobot_komponen?.[kode]
           const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
           total += kebutuhanOrangWiring(bobot, hariKeN)
@@ -596,13 +623,14 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       let tanggalTujuan = addDays(tanggalAsal, 1)
       let found = false
       for (let i = 0; i < 60; i++) {
-        const { data: ov } = await supabase
+        const { data: ov, error: ovErr } = await supabase
           .from('fcs_kapasitas_override')
           .select('jumlah_orang')
           .eq('tanggal', tanggalTujuan)
           .eq('jenis_pekerjaan', jenisPekerjaan)
           .eq('tipe_kapasitas', 'orang')
           .maybeSingle()
+        if (ovErr) throw new Error('Gagal membaca kapasitas tanggal tujuan: ' + (ovErr as any).message)
 
         if (ov) {
           const kuota = Number(ov.jumlah_orang)
@@ -625,22 +653,32 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         byRawId[it.raw_id].push({ wp: it.wp, kode_komponen: it.kode_komponen, jumlah_orang: it.jumlah_orang, progress: it.progress || 0 })
       })
 
-      for (const [rawIdStr, komponenList] of Object.entries(byRawId)) {
+      for (const [rawIdStr, komponenDipilih] of Object.entries(byRawId)) {
         const rawId = Number(rawIdStr)
-        const { data: row } = await supabase
+        const { data: row, error: rowErr } = await supabase
           .from('raw_schedule')
           .select('id, panel_id, proses, schedule')
           .eq('id', rawId)
           .single()
+        if (rowErr) throw new Error('Gagal membaca baris jadwal: ' + (rowErr as any).message)
 
         if (!row) continue
+
+        // PENGAMAN (21 Okt 2026): pindahkan HANYA kode yang masih aktif di tanggal asal (bukan jejak, belum
+        // 100%) - dibaca ulang dari server, bukan dari daftar opsi yang bisa basi sejak modal dibuka.
+        const { data: panelPengaman, error: panelPengamanErr } = await supabase.from('panels').select('checklist').eq('id', row.panel_id).maybeSingle()
+        if (panelPengamanErr) throw new Error('Gagal membaca checklist panel: ' + panelPengamanErr.message)
+        const komponenList = komponenDipilih.filter((k) => ((row.schedule as any)?.[tanggalAsal] || [])
+          .some((e: any) => e.wp === k.wp && (e.komponen || []).includes(k.kode_komponen) && kodeJadwalAktif(e, k.kode_komponen, panelPengaman?.checklist, row.proses)))
+        if (komponenList.length === 0) continue
 
         // REVISI (10 Agu 2026): jejak (digeserKe) cuma ditinggalkan kalau BENERAN ADA pengerjaan
         // (fcs_timer_kerja) di tanggalAsal - kalau enggak, pindah senyap tanpa jejak. Sama skema
         // dengan RawSchedule.tsx/auto-geser-harian/Outstanding.
         const kodeUnik = [...new Set(komponenList.map((k) => k.kode_komponen))]
-        const { data: timerRows } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
-          .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [] }
+        const { data: timerRows, error: timerRowsErr } = kodeUnik.length > 0 ? await supabase.from('fcs_timer_kerja').select('kode_komponen')
+          .eq('panel_id', row.panel_id).eq('proses', row.proses).eq('tanggal', tanggalAsal).in('kode_komponen', kodeUnik) : { data: [], error: null }
+        if (timerRowsErr) throw new Error('Gagal membaca timer kerja: ' + (timerRowsErr as any).message)
         const adaPengerjaanSet = new Set((timerRows || []).map((t: any) => t.kode_komponen))
 
         const schedule: Record<string, any> = { ...(row.schedule as any) }
@@ -672,7 +710,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           entryTujuan.orangPerKomponen[kode_komponen] = jumlah_orang
         }
 
-        await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+        const { error: simpanErr } = await supabase.from('raw_schedule').update({ schedule }).eq('id', rawId)
+        if (simpanErr) throw new Error('Gagal menyimpan raw_schedule: ' + simpanErr.message)
         // FIX bug "row renhar lama nyangkut" (sama akar masalah dengan reschedule Outstanding) -
         // fungsi ini SEBELUMNYA cuma nulis raw_schedule, gak pernah bersihin renhar sama sekali buat
         // komponen yang ke-swap-geser - row renhar lama di tanggalAsal tetap nganggep komponen itu
@@ -691,8 +730,9 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
   // executeSwapKomponenOrang - dua-duanya cuma nulis raw_schedule sebelumnya, renhar dibiarkan basi).
   // Reuse prinsip cleanup yang sama dengan tulisReschedule kasus2 di OutstandingView.tsx.
   async function bersihkanRenharSetelahGeser(rawId: number, items: Array<{ wp: string; kode: string }>, tanggalAsal: string) {
-    const { data: rows } = await supabase.from('renhar').select('id,wp,komponen,komponen_released,pekerja_per_komponen')
+    const { data: rows, error: rowsErr } = await supabase.from('renhar').select('id,wp,komponen,komponen_released,pekerja_per_komponen')
       .eq('raw_id', rawId).eq('tanggal', tanggalAsal)
+    if (rowsErr) throw new Error('Gagal membaca renhar tanggal asal: ' + rowsErr.message)
     if (!rows) return
     for (const { wp, kode } of items) {
       const rh = rows.find((r: any) => r.wp === wp)
@@ -701,7 +741,11 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const sisaReleased = ((rh.komponen_released as any) || []).filter((k: string) => k !== kode)
       const sisaPpk: Record<string, any> = { ...((rh.pekerja_per_komponen as any) || {}) }
       delete sisaPpk[kode]
-      await supabase.from('renhar').update({ komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk }).eq('id', rh.id)
+      const { error: rhErr } = await supabase.from('renhar').update({ komponen: sisaKomp, komponen_released: sisaReleased, pekerja_per_komponen: sisaPpk }).eq('id', rh.id)
+      if (rhErr) throw new Error('Gagal membersihkan renhar tanggal asal: ' + rhErr.message)
+      // (21 Okt 2026) perbarui salinan lokal - dulu kode ke-2 dari WP yang sama dihitung dari daftar LAMA
+      // sehingga kode ke-1 "kembali" ke renhar (terbukti di uji rebalance: [FS.30,FS.29] -> [FS.30]).
+      rh.komponen = sisaKomp; rh.komponen_released = sisaReleased; rh.pekerja_per_komponen = sisaPpk
     }
   }
 
@@ -714,7 +758,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     kapasitasMenit?: number
     jumlahOrang?: number
     createdBy: string
-  }): Promise<{ success: boolean; shifted: RebalanceShiftResult[]; error?: string }> {
+  }): Promise<{ success: boolean; shifted: RebalanceShiftResult[]; error?: string; info?: string }> {
     try {
       const { tanggal, jenisPekerjaan, kapasitasMenit, jumlahOrang, createdBy } = params
       const isOrang = PROSES_ORANG_LIST.includes(jenisPekerjaan)
@@ -740,6 +784,13 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       }
       const kapasitasBaru = isOrang ? (Number(jumlahOrang) || 0) : (Number(kapasitasMenit) || 0)
 
+      // (21 Okt 2026, insiden SISWOYO 547 FS.13 STEL) Tanggal yang SUDAH LEWAT: kapasitas tetap disimpan
+      // (catatan/laporan), tapi TIDAK di-rebalance - isinya sudah selesai dikerjakan atau urusan Tarik
+      // auto-geser. Dulu simpan kapasitas 19-20 Okt pada 20 Okt malam ikut memindah komponen ke 21/22 Okt.
+      if (tanggal < getLocalDateStr()) {
+        return { success: true, shifted: [], info: `${tanggal} ${jenisPekerjaan}: tanggal sudah lewat - kapasitas disimpan, jadwal tidak digeser` }
+      }
+
       const tanggalBatas = addDays(tanggal, 60)
       const { data: overrideRows, error: overrideErr } = await supabase.from('fcs_kapasitas_override')
         .select('tanggal, kapasitas_menit, jumlah_orang')
@@ -752,13 +803,15 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       })
       kapasitasMap[tanggal] = kapasitasBaru
 
-      const { data: rawRows } = await supabase.from('raw_schedule')
+      const { data: rawRows, error: rawRowsErr } = await supabase.from('raw_schedule')
         .select('id, wo_id, panel_id, panel, proyek, proses, schedule, bobot_komponen')
         .eq('proses', jenisPekerjaan)
+      if (rawRowsErr) throw new Error('Gagal membaca raw_schedule: ' + (rawRowsErr as any).message)
 
       const panelIds = [...new Set((rawRows || []).map((r: any) => r.panel_id).filter(Boolean))]
-      const { data: panelRows } = await supabase.from('panels')
+      const { data: panelRows, error: panelRowsErr } = await supabase.from('panels')
         .select('id, nama, tipe, checklist').in('id', panelIds.length > 0 ? panelIds : [-1])
+      if (panelRowsErr) throw new Error('Gagal membaca data panel: ' + (panelRowsErr as any).message)
       const panelMap: Record<number, any> = {}
       ;(panelRows || []).forEach((p: any) => { panelMap[p.id] = p })
       // REVISI (12 Agu 2026): kebutuhan orang wiring dinamis per komponen (bobot row-level + hari
@@ -766,7 +819,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const hariKerjaMap = isOrang ? await fetchWiringHariKerjaMap(panelIds) : {}
 
       const woIds = [...new Set((rawRows || []).map((r: any) => r.wo_id).filter(Boolean))]
-      const { data: woRows } = await supabase.from('work_orders').select('id, wo, target').in('id', woIds.length > 0 ? woIds : [-1])
+      const { data: woRows, error: woRowsErr } = await supabase.from('work_orders').select('id, wo, target').in('id', woIds.length > 0 ? woIds : [-1])
+      if (woRowsErr) throw new Error('Gagal membaca work order: ' + (woRowsErr as any).message)
       const woMap: Record<number, { wo: string; target: string }> = {}
       ;(woRows || []).forEach((w: any) => { woMap[w.id] = { wo: w.wo, target: w.target || '' } })
 
@@ -789,12 +843,9 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         for (const entry of entries) {
           if (isOrang) {
             for (const kode of (entry.komponen || [])) {
-              if (kode.startsWith('__wiring_')) continue
-              // Jejak (digeserKe) itu histori read-only - gak dihitung beban dan gak boleh ikut
-              // digeser lagi lewat rebalance ini.
-              if (entry.digeserKe && entry.digeserKe[kode]) continue
-              const progress = panel.checklist?.[kode]?.progress?.[jenisPekerjaan] || 0
-              if (progress >= 100) continue
+              // Token __wiring_, jejak (digeserKe - histori read-only) & kode 100% - gak dihitung beban
+              // dan gak boleh ikut digeser lewat rebalance ini (aturan bersama kodeJadwalAktif).
+              if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
               const bobot = (row as any).bobot_komponen?.[kode]
               const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tanggal)
               const orang = kebutuhanOrangWiring(bobot, hariKeN)
@@ -807,9 +858,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
             }
           } else {
             for (const kode of (entry.komponen || [])) {
-              // Jejak (digeserKe) itu histori read-only - gak dihitung beban dan gak boleh ikut
-              // digeser lagi lewat rebalance ini.
-              if (entry.digeserKe && entry.digeserKe[kode]) continue
+              // Jejak (digeserKe) & kode yang sudah 100% gak dihitung beban dan gak boleh ikut digeser.
+              // INSIDEN 21 Okt 2026: cabang ini dulu TIDAK cek 100% (cuma cabang WIRING) -> komponen
+              // selesai 20 Okt dipindah ke 21/22 Okt & terbit ulang di HP operator (SISWOYO 547 FS.13).
+              if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
               const qty = panel.checklist?.[kode]?.qty || 0
               const pt = ptMap[panel.tipe + '|' + kode]
               const menitPcs = pt ? Number(pt.menit_per_pcs) : 0
@@ -851,17 +903,16 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           for (const entry of entries) {
             if (isOrang) {
               for (const kode of (entry.komponen || [])) {
-                if (kode.startsWith('__wiring_')) continue
-                // Jejak (digeserKe) itu histori read-only - gak dihitung beban.
-                if (entry.digeserKe && entry.digeserKe[kode]) continue
+                // Token __wiring_, jejak (digeserKe) & kode 100% - gak dihitung beban.
+                if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
                 const bobot = (row as any).bobot_komponen?.[kode]
                 const hariKeN = hariKeNFromMap(hariKerjaMap, row.panel_id, kode, jenisPekerjaan, tgl)
                 total += kebutuhanOrangWiring(bobot, hariKeN)
               }
             } else {
               for (const kode of (entry.komponen || [])) {
-                // Jejak (digeserKe) itu histori read-only - gak dihitung beban.
-                if (entry.digeserKe && entry.digeserKe[kode]) continue
+                // Jejak (digeserKe) & kode 100% - gak dihitung beban.
+                if (!kodeJadwalAktif(entry, kode, panel.checklist, jenisPekerjaan)) continue
                 const qty = panel.checklist?.[kode]?.qty || 0
                 const pt = ptMap[panel.tipe + '|' + kode]
                 total += qty * (pt ? Number(pt.menit_per_pcs) : 0)
@@ -881,6 +932,18 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         }
         return mutasi[rawId]
       }
+
+      // (21 Okt 2026) Sama dgn swap/pindah lain: kode yang ADA pengerjaan (fcs_timer_kerja) di tanggal ini
+      // ditinggal sbg jejak (digeserKe), bukan dihapus diam-diam dari tanggal asal.
+      const panelIdShift = [...new Set(toShift.map((it) => (rawRows || []).find((r: any) => r.id === it.rawId)?.panel_id).filter(Boolean))]
+      const adaPengerjaan = new Set<string>()
+      if (panelIdShift.length > 0) {
+        const { data: timerRows, error: timerErr } = await supabase.from('fcs_timer_kerja').select('panel_id, kode_komponen')
+          .eq('proses', jenisPekerjaan).eq('tanggal', tanggal).in('panel_id', panelIdShift)
+        if (timerErr) throw new Error('Gagal membaca timer kerja: ' + timerErr.message)
+        ;(timerRows || []).forEach((t: any) => adaPengerjaan.add(`${t.panel_id}|${t.kode_komponen}`))
+      }
+      const dipindahTanpaJejak: Record<number, Array<{ wp: string; kode: string }>> = {}
 
       for (const item of toShift) {
         let tujuan: string | null = null
@@ -925,17 +988,30 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
 
         const schedSrc = getScheduleMutable(item.rawId)
         const entrySrc = (schedSrc[tanggal] || []).find((e: any) => e.wp === item.wp)
+        const panelIdItem = (rawRows || []).find((r: any) => r.id === item.rawId)?.panel_id
         if (entrySrc) {
-          entrySrc.komponen = (entrySrc.komponen || []).filter((k: string) => k !== item.kode)
-          if (isOrang && entrySrc.orangPerKomponen) delete entrySrc.orangPerKomponen[item.kode]
+          if (adaPengerjaan.has(`${panelIdItem}|${item.kode}`)) {
+            entrySrc.digeserKe = { ...(entrySrc.digeserKe || {}), [item.kode]: tujuan }
+          } else {
+            entrySrc.komponen = (entrySrc.komponen || []).filter((k: string) => k !== item.kode)
+            if (isOrang && entrySrc.orangPerKomponen) delete entrySrc.orangPerKomponen[item.kode]
+            ;(dipindahTanpaJejak[item.rawId] ||= []).push({ wp: item.wp, kode: item.kode })
+          }
         }
         schedSrc[tanggal] = (schedSrc[tanggal] || []).filter((e: any) => (e.komponen || []).length > 0)
 
         if (!schedSrc[tujuan]) schedSrc[tujuan] = []
         let entryTuj = schedSrc[tujuan].find((e: any) => e.wp === item.wp)
         if (!entryTuj) {
-          entryTuj = { wp: item.wp, komponen: [], orangPerKomponen: {} }
+          entryTuj = isOrang ? { wp: item.wp, komponen: [], orangPerKomponen: {} } : { wp: item.wp, komponen: [] }
           schedSrc[tujuan].push(entryTuj)
+        }
+        // Tujuan masih berisi JEJAK kode ini (WP sama) -> jejak dihapus supaya kode aktif lagi di sini
+        // (sama dgn taruhDiTujuan, insiden 14 Okt) - tanpa ini kode jadi abu-abu = hilang dari jadwal aktif.
+        if (entryTuj.digeserKe?.[item.kode]) {
+          const sisaJejak = { ...entryTuj.digeserKe }
+          delete sisaJejak[item.kode]
+          if (Object.keys(sisaJejak).length > 0) entryTuj.digeserKe = sisaJejak; else delete entryTuj.digeserKe
         }
         if (!entryTuj.komponen.includes(item.kode)) entryTuj.komponen.push(item.kode)
         if (isOrang) {
@@ -957,7 +1033,25 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
 
       for (const rawIdStr of Object.keys(mutasi)) {
         const rawId = Number(rawIdStr)
-        await supabase.from('raw_schedule').update({ schedule: mutasi[rawId] }).eq('id', rawId)
+        const { error: simpanErr } = await supabase.from('raw_schedule').update({ schedule: mutasi[rawId] }).eq('id', rawId)
+        if (simpanErr) throw new Error('Gagal menyimpan raw_schedule: ' + simpanErr.message)
+      }
+      // Renhar tanggal asal ikut dibersihkan utk kode yang pindah tanpa jejak (sama dgn swap) - kalau
+      // tidak, baris renhar lama tetap menganggap kode itu tugas aktif di tanggal asal.
+      for (const [rawIdStr, items] of Object.entries(dipindahTanpaJejak)) {
+        await bersihkanRenharSetelahGeser(Number(rawIdStr), items, tanggal)
+      }
+
+      // (21 Okt 2026) Pemindahan rebalance dulu TIDAK tercatat sama sekali -> sulit dilacak saat insiden.
+      const dipindah = shifted.filter((s) => !s.overflow)
+      if (dipindah.length > 0) {
+        await activityLogService.insert({
+          user_name: createdBy || 'System',
+          action: 'REBALANCE KAPASITAS',
+          description: `Set kapasitas ${jenisPekerjaan} (${tanggal}) - ${dipindah.length} komponen digeser: ` +
+            dipindah.map((s) => `${s.kodeKomponen} ${s.namaKomponen} (${s.panelNama}/${s.proyek}) ${s.dariTanggal} -> ${s.keTanggal}`).join(', '),
+          module: 'raw', halaman: 'Raw Schedule',
+        })
       }
 
       // FIX (12-13 Agu 2026): overflow (gak ketemu slot kapasitas dalam 60 hari) SEBELUMNYA

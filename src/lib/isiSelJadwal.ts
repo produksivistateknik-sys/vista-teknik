@@ -3,6 +3,7 @@
 // sudah selesai/jejak, rentang & sub-baris WIRING, dan aturan "boleh ikut dipilih" (multi-pilih/pindah).
 // Fungsi murni - data panel dicari oleh pemanggil (lookup-nya beda-beda & dipertahankan apa adanya).
 import { kodeBusbarBisaDipindah } from './jadwalPindah'
+import { kodeJadwalAktif } from './kodeJadwalAktif'
 import { hitungProyeksiWiring } from '../services/fcsService'
 
 export const PROSES_ORANG_RAW = ['WIRING POWER', 'WIRING CONTROL']
@@ -15,11 +16,7 @@ export function entriesTanpaSelesai(proses: string, entries: any[], panelData: a
   if (!panelData) return entries
   return entries.map((e: any) => {
     const kodeAsli = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
-    const kodeBelumSelesai = kodeAsli.filter((kode: string) => {
-      const cl = panelData.checklist?.[kode]
-      const sudahDigeser = e.digeserKe?.[kode]
-      return (cl?.progress?.[proses] || 0) < 100 && !sudahDigeser
-    })
+    const kodeBelumSelesai = kodeAsli.filter((kode: string) => kodeJadwalAktif(e, kode, panelData.checklist, proses))
     if (kodeBelumSelesai.length === 0) return null
     const markerTokens = (e.komponen || []).filter((k: string) => k.startsWith('__wiring_'))
     return { ...e, komponen: [...markerTokens, ...kodeBelumSelesai] }
