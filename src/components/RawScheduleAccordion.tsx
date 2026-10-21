@@ -2,8 +2,8 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant, getRelevantProsesForKode } from '../lib/panelHelpers'
-import { cariPelanggaranUrutan, teksPelanggaran, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
-import { useKonfirmasiUrutan } from './KonfirmasiUrutanProses'
+import { cariPelanggaranUrutan, petaTandaUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
+import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
 import { teksOperatorPerTanggal, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
@@ -369,18 +369,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     try { return cariPelanggaranUrutan(rawData, konteksUrutan) } catch (e) { console.error('[urutan proses] gagal menghitung tanda merah:', e); return [] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rawData, panelById])
-  // "panelId|kode|proses|tanggal mulai" -> teks pelanggaran (chip proses sesudah & proses sebelum sama-sama ditandai)
-  const tandaUrutan = useMemo(() => {
-    const m = new Map<string, string[]>()
-    const tambah = (k: string, t: string) => m.set(k, [...(m.get(k) || []), t])
-    for (const p of pelanggaranSemua) {
-      const t = teksPelanggaran(p)
-      tambah(`${p.panelId}|${p.kode}|${p.prosesSesudah}|${p.tglSesudah}`, t)
-      tambah(`${p.panelId}|${p.kode}|${p.prosesAwal}|${p.tglAwal}`, t)
-    }
-    return m
-  }, [pelanggaranSemua])
-  const [bukaDaftarUrutan, setBukaDaftarUrutan] = useState(false)
+  const tandaUrutan = useMemo(() => petaTandaUrutan(pelanggaranSemua), [pelanggaranSemua])
   // Modal edit sel menyimpan lewat updateRaw - jadwal baru dicek dulu. Batal -> tampilan optimistis modal dikembalikan.
   const updateRawCekUrutan = updateRaw ? async (id: number, data: any) => {
     if (data?.schedule !== undefined) {
@@ -971,31 +960,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <MultiPilih label="Proyek" opsi={opsiProyek} nilai={filterProyek} setNilai={v => { setFilterProyek(v); setFilterPanel([]) }} />
         <MultiPilih label="Panel" opsi={opsiPanel} nilai={filterPanel} setNilai={setFilterPanel} />
-        {pelanggaranSemua.length > 0 && (
-          <div style={{ position: 'relative' }}>
-            <button onClick={() => setBukaDaftarUrutan(!bukaDaftarUrutan)} title="Komponen yang proses sesudahnya dijadwalkan lebih awal dari proses sebelumnya" style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-              ⚠ Urutan terbalik ({pelanggaranSemua.length}) ▾
-            </button>
-            {bukaDaftarUrutan && (
-              <>
-                <div onClick={() => setBukaDaftarUrutan(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
-                <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 41, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8, width: 420, maxHeight: 380, overflow: 'auto' }}>
-                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Klik untuk menyaring ke panel itu. Proses sebelumnya yang sudah 100% tidak dihitung; hari yang sama boleh.</div>
-                  {[...pelanggaranSemua].sort((a, b) => a.tglSesudah.localeCompare(b.tglSesudah) || a.panelId - b.panelId).map((p, i) => {
-                    const nmPanel = String(panelById.get(p.panelId)?.nama || p.panelId).trim()
-                    return (
-                      <div key={i} onClick={() => { const rp = rawData.find((r: any) => Number(r.panel_id || r.panelId) === p.panelId); if (rp) { setFilterProyek([]); setFilterPanel([rp.panel]) } setBukaDaftarUrutan(false) }}
-                        style={{ padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
-                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{namaKomponenUrutan(p.panelId, p.kode)} ({p.kode}) · {nmPanel}</div>
-                        <div style={{ color: '#b91c1c' }}>{teksPelanggaran(p)}</div>
-                      </div>
-                    )
-                  })}
-                </div>
-              </>
-            )}
-          </div>
-        )}
+        <TombolDaftarUrutan daftar={pelanggaranSemua} namaPanel={(id: number) => String(panelById.get(id)?.nama || id).trim()} namaKomponen={namaKomponenUrutan}
+          onPilih={p => { const rp = rawData.find((r: any) => Number(r.panel_id || r.panelId) === p.panelId); if (rp) { setFilterProyek([]); setFilterPanel([rp.panel]) } }} />
         <span style={{ width: 1, height: 20, background: '#e2e8f0', margin: '0 2px' }} />
         <button onClick={() => setFilterProses([])} style={{ padding: '3px 10px', borderRadius: 20, border: `1.5px solid ${filterProses.length === 0 ? '#1d4ed8' : '#e2e8f0'}`, background: filterProses.length === 0 ? '#1d4ed8' : '#fff', color: filterProses.length === 0 ? '#fff' : '#64748b', cursor: 'pointer', fontSize: 10.5, fontWeight: 700 }}>Semua proses</button>
         {ALL_PROSES.map((pr: string) => { const pc = (PROSES_COLOR as any)[pr] || '#64748b'; const on = filterProses.includes(pr); return (

@@ -14,6 +14,8 @@ import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, toggl
 import { renharService } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
+import { cariPelanggaranUrutan, petaTandaUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
+import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, jadwalLanjutanWiring, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
 import { menitPerPcs, kapasitasPada as kapasitasPadaLib, hitungTerpakaiHari as hitungTerpakaiHariLib, muatDataKapasitas } from '../lib/kapasitasHari'
@@ -141,6 +143,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     let newSch=lepasDariAsal(row.schedule||{},fromDate,toDate,entries,adaPengerjaanSet);
     newSch=taruhDiTujuan(newSch,toDate,entries,new Date().toISOString());
+    if(!(await bolehUrutan(new Map([[rawId,{schedule:newSch}]]))))return; // Batal di peringatan urutan proses
     markRawDirty(rawId);
     setRawData((prev:any[])=>prev.map(r=>r.id===rawId?{...r,schedule:newSch}:r));
     setMoveKomponenState(null);
@@ -344,7 +347,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // timer berjalan = bentrok (status timer dimuat 1x saat drag/potong dimulai - muatTimerBusbar).
   // Orkestrasi pindah banyak sel + Undo + status timer BUSBAR = hooks/usePindahMulti.ts (Tahap 0 - satu
   // jalur utk tampilan lama & baru). Data/fungsi diambil SAAT AKSI (getter), bukan saat render.
-  const pindahMulti=usePindahMulti(()=>({rawData,user,setRawData,refetchRaw,refetchRenhar,tampilToastAksi,cekPindahMulti,buatSelV2,
+  const pindahMulti=usePindahMulti(()=>({rawData,user,setRawData,refetchRaw,refetchRenhar,tampilToastAksi,cekPindahMulti,buatSelV2,konfirmasiUrutan:(m:Map<number,any>)=>bolehUrutan(m),
     onSesudahPindah:(pindahan:Map<string,string>)=>{
       setSelectedCells((prev:any[])=>prev.map((c:any)=>{const ke=pindahan.get(c.rawId+"|"+c.date);return ke?{...c,date:ke}:c;}));
       setLastSelected(null);
@@ -867,6 +870,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       delete batchUpdates[row.id].schedule[cell.date];
       delete batchUpdates[row.id].busbar_schedule[cell.date];
     }
+    if(!(await bolehUrutan(new Map(Object.entries(batchUpdates).map(([k,v])=>[Number(k),v])))))return; // Batal di peringatan urutan proses
     for(const[rowId,data] of Object.entries(batchUpdates)){
       const id=Number(rowId);
       markRawDirty(id);
@@ -922,6 +926,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       if(cell.entries.length>0) batchUpdates[destRow.id].schedule[destDate]=cell.entries;
       if(cell.busbar.length>0) batchUpdates[destRow.id].busbar_schedule[destDate]=cell.busbar;
     }
+    if(!(await bolehUrutan(new Map(Object.entries(batchUpdates).map(([k,v])=>[Number(k),v])))))return; // Batal di peringatan urutan proses
     for(const[rowId,data] of Object.entries(batchUpdates)){
       const id=Number(rowId);
       markRawDirty(id);
@@ -934,7 +939,27 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   // Modal edit sel (tambah/edit/hapus WP & komponen, BUSBAR, bobot WIRING) + modal Kapasitas/Kuota Penuh:
   // components/ModalJadwalSel.tsx (Tahap 3b - dipakai juga oleh tampilan "Raw Schedule per WP").
-  const modalJadwal=useModalJadwalSel({woData,rawData,setRawData,updateRaw,user,getEffCfg,getMenitPerPcs,wiringHariKerjaMap,
+  // ── URUTAN PROSES (21 Okt 2026, tahap 2 - keputusan user): peringatan "Tetap pindahkan" + tanda merah + daftar,
+  // SATU sumber lib/urutanProses.ts & components/KonfirmasiUrutanProses.tsx (sama dgn tampilan per WP).
+  const rawDataRefUrutan=useRef(rawData);rawDataRefUrutan.current=rawData;
+  const konteksUrutan:KonteksUrutan={panelById:(id:number)=>panelById.get(id),prosesRelevan:getRelevantProsesForKode}; // panelById: useMemo di bawah (dibaca saat aksi)
+  const urutan=useKonfirmasiUrutan(()=>({...konteksUrutan,rawData:rawDataRefUrutan.current,
+    namaPanel:(id:number)=>String(konteksUrutan.panelById(id)?.nama||id).trim(),namaKomponen:getNamaKomponenDariKode}));
+  // Jadwal baru dari jalur 1 baris (modal, geser 1 sel, Pindahin, tempel, hapus) dicek dulu. true = lanjut.
+  const bolehUrutan=(perubahan:Map<number,any>)=>urutan.tanya(perubahan);
+  // Modal edit sel menyimpan lewat updateRaw setelah tampilan optimistis -> Batal mengembalikan baris itu.
+  const updateRawCekUrutan=async(id:number,data:any)=>{
+    if(data?.schedule!==undefined){
+      const sebelum=rawDataRefUrutan.current.find((r:any)=>r.id===id);
+      if(!(await bolehUrutan(new Map([[id,data]])))){
+        if(sebelum)setRawData((prev:any[])=>prev.map((r:any)=>r.id===id?sebelum:r));
+        clearRawDirty(id);
+        return{success:false,dibatalkan:true,error:"Dibatalkan (urutan proses)"};
+      }
+    }
+    return updateRaw(id,data);
+  };
+  const modalJadwal=useModalJadwalSel({woData,rawData,setRawData,updateRaw:updateRawCekUrutan,user,getEffCfg,getMenitPerPcs,wiringHariKerjaMap,
     withRenharQueue,createRenhar,updateRenhar,removeRenhar,setRenhar,selectedForMove,setSelectedForMove,toggleSelectForMove,setMoveKomponenState});
   const cellModal=modalJadwal.cellModal;
   const openCellModal=modalJadwal.buka;
@@ -1085,6 +1110,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // (jejak digeserKe bila ada pengerjaan di fromDate), lalu move MAUPUN copy = gabung ke tujuan
     // + stamp manualPin (BUG FIX 23 Sep 2026 "pengaturan manual ketimpa auto-geser").
     const nowIsoPin=new Date().toISOString();
+    if(rowForDrag){ // peringatan urutan proses - jadwal baru dihitung dgn helper yang sama persis dgn di bawah
+      let cekSch=rowForDrag.schedule||{};
+      if(mode==="move")cekSch=lepasDariAsal(cekSch,fromDate,toDate,entries,adaPengerjaanSetDrag);
+      cekSch=taruhDiTujuan(cekSch,toDate,entries,nowIsoPin);
+      if(!(await bolehUrutan(new Map([[rawId,{schedule:cekSch}]])))){clearRawDirty(rawId);setDragMode(null);setDragInfo(null);return;}
+    }
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       let newSch=r.schedule||{};
@@ -1382,6 +1413,18 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     woData.forEach((w:any)=>(w.panels||[]).forEach((p:any)=>{const k=Number(p.id);if(!m.has(k))m.set(k,p);}));
     return m;
   },[woData]);
+  // Tanda merah urutan proses (21 Okt 2026) - lihat konteksUrutan di atas.
+  const pelanggaranUrutan=useMemo<PelanggaranUrutan[]>(()=>{
+    try{return cariPelanggaranUrutan(rawData,{panelById:(id:number)=>panelById.get(id),prosesRelevan:getRelevantProsesForKode});}
+    catch(e){console.error("[urutan proses] gagal menghitung tanda merah:",e);return[];}
+  },[rawData,panelById]);
+  const tandaUrutan=useMemo(()=>petaTandaUrutan(pelanggaranUrutan),[pelanggaranUrutan]);
+  // Sidik per baris (panel|proses) supaya baris memo (BarisRawMemo) dirender ulang saat tandanya berubah.
+  const sidikUrutanBaris=useMemo(()=>{
+    const m=new Map<string,string>();
+    for(const k of [...tandaUrutan.keys()].sort()){const[pid,kode,pr,t]=k.split("|");const kb=pid+"|"+pr;m.set(kb,(m.get(kb)||"")+kode+"@"+t+";");}
+    return m;
+  },[tandaUrutan]);
 
   // DEADLINE panel (8 Okt 2026) = target baris WO-nya (work_orders.target) - TIDAK berdiri sendiri:
   // deadline per panel di Manajemen WO sudah diwujudkan dgn memecah panel ke baris WO sibling per
@@ -1535,6 +1578,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             </>
           )}
         </div>
+        <TombolDaftarUrutan daftar={pelanggaranUrutan} namaPanel={(id:number)=>String(panelById.get(id)?.nama||id).trim()} namaKomponen={getNamaKomponenDariKode}
+          onPilih={(p:PelanggaranUrutan)=>{const rp=rawData.find((r:any)=>Number(r.panel_id||r.panelId)===p.panelId);if(rp){setFilterProyek([]);setFilterPanel([rp.panel]);}}}/>
         {(filterProyek.length>0||filterPanel.length>0)&&(
           <button onClick={()=>{setFilterProyek([]);setFilterPanel([]);}} style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>✕ Reset</button>
         )}
@@ -1891,10 +1936,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   // Fallback ke heuristik lama (peek jadwal besok) buat entry lama yang
                                   // dibuat sebelum marker ini ada.
                                   const digeserKeTgl=entry.digeserKe?.[kode]||(kodeDigeserKeBesok.has(kode)?addDays(d,1):null);
-                                  const titleInfo=(entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":"")
+                                  const tandaU=tandaUrutan.get(`${panelIdKomp}|${kode}|${row.proses}|${d}`);
+                                  const titleInfo=(tandaU?tandaU.map(t=>"⚠ Urutan terbalik: "+t).join("\n")+"\n":"")+(entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":"")
                                     +` · Bobot ${WIRING_BOBOT_LABEL[bobotKode||"MEDIUM"]}, hari kerja ke-${hariKeNKode}, butuh ${jmlOrang} orang`;
                                   return(
-                                    <div key={entry.wp+kode} title={titleInfo} style={{display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
+                                    <div key={entry.wp+kode} title={titleInfo} style={{...(tandaU?{outline:"2px solid #dc2626",outlineOffset:1}:{}),display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
                                       {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
                                       {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {digeserKeTgl&&<span style={{fontSize:9}}>➡️</span>}
@@ -1923,7 +1969,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 // Warna badge SELALU ikut warna proses (gak berubah karena status) - status
                                 // ditandai ikon terpisah aja (✓ selesai, ● berprogres, kosong kalau belum).
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
-                                return(<div key={e.wp} style={{background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                const pidU=row.panel_id||row.panelId;
+                                const tandaWp=(e.komponen||[]).flatMap((k:string)=>(tandaUrutan.get(`${pidU}|${k}|${row.proses}|${d}`)||[]).map(t=>`${getNamaKomponenDariKode(pidU,k)}: ${t}`));
+                                return(<div key={e.wp} title={tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):undefined} style={{...(tandaWp.length?{outline:"2px solid #dc2626",outlineOffset:1}:{}),background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
                             </div>
                             )
@@ -1960,7 +2008,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   days,selDate,livePanelTypes,wiringHariKerjaMap,savingUrutan,
                   menuTerbuka?{}:false, // menu terbuka membaca blokUrutRef -> selalu render ulang
                   dragOverCell?.rawId===row.id?dragOverCell.date:null,
-                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id),kunciSel(cutCells,row.id)];
+                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id),kunciSel(cutCells,row.id),
+                  sidikUrutanBaris.get(pid+"|"+row.proses)||""];
               };
 
               // Kelompokkan jadi blok panel (baris 1 panel selalu berurutan krn sort di atas), lalu
@@ -2116,6 +2165,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       )}
       {riwayatQty.elemen}
       {modalJadwal.elemen}
+      {urutan.elemen}
 
       {aturKapasitas.elemen}
 

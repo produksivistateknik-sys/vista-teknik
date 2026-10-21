@@ -51,3 +51,32 @@ export function useKonfirmasiUrutan(ambil: () => DepsKonfirmasiUrutan) {
 
   return { tanya, elemen }
 }
+
+// Tombol toolbar "⚠ Urutan terbalik (N)" + daftar (dipakai tampilan lama & per WP). onPilih = saring ke panel itu.
+export function TombolDaftarUrutan({ daftar, namaPanel, namaKomponen, onPilih }: {
+  daftar: PelanggaranUrutan[]; namaPanel: (panelId: number) => string; namaKomponen: (panelId: number, kode: string) => string; onPilih: (p: PelanggaranUrutan) => void
+}) {
+  const [buka, setBuka] = useState(false)
+  if (daftar.length === 0) return null
+  return (
+    <div style={{ position: 'relative' }}>
+      <button onClick={() => setBuka(!buka)} title="Komponen yang proses sesudahnya dijadwalkan lebih awal dari proses sebelumnya" style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+        ⚠ Urutan terbalik ({daftar.length}) ▾
+      </button>
+      {buka && (
+        <>
+          <div onClick={() => setBuka(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+          <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 41, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8, width: 420, maxHeight: 380, overflow: 'auto' }}>
+            <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Klik untuk menyaring ke panel itu. Proses sebelumnya yang sudah 100% tidak dihitung; hari yang sama boleh.</div>
+            {[...daftar].sort((a, b) => a.tglSesudah.localeCompare(b.tglSesudah) || a.panelId - b.panelId).map((p, i) => (
+              <div key={i} onClick={() => { onPilih(p); setBuka(false) }} style={{ padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
+                <div style={{ fontWeight: 700, color: '#1e293b' }}>{namaKomponen(p.panelId, p.kode)} ({p.kode}) · {namaPanel(p.panelId)}</div>
+                <div style={{ color: '#b91c1c' }}>{teksPelanggaran(p)}</div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+}

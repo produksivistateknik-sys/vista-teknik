@@ -35,7 +35,7 @@ export type PelanggaranUrutan = {
 export const kunciPelanggaran = (p: PelanggaranUrutan) => `${p.panelId}|${p.kode}|${p.prosesAwal}|${p.prosesSesudah}`
 
 export type KonteksUrutan = {
-  panelById: (id: number) => { tipe?: string; checklist?: any } | undefined
+  panelById: (id: number) => { tipe?: string; checklist?: any; nama?: string } | undefined
   prosesRelevan: (kode: string, tipe: string) => string[] // getRelevantProsesForKode
 }
 
@@ -112,4 +112,17 @@ const fmtTgl = (d: string) => { const [, m, h] = d.split('-'); return `${Number(
 // Satu baris teks pelanggaran, mis. "BENDING (21 Okt) sebelum POTONG (23 Okt, 0%)".
 export function teksPelanggaran(p: PelanggaranUrutan): string {
   return `${p.prosesSesudah} (${fmtTgl(p.tglSesudah)}) dijadwalkan sebelum ${p.prosesAwal} (${fmtTgl(p.tglAwal)}, ${Math.round(p.pctAwal)}%)`
+}
+
+// Peta tanda merah: "panelId|kode|proses|tanggal mulai" -> teks pelanggaran. Chip proses sesudah & proses sebelum
+// sama-sama ditandai di tanggal mulainya. Dipakai tampilan lama & per WP (satu sumber).
+export function petaTandaUrutan(daftar: PelanggaranUrutan[]): Map<string, string[]> {
+  const m = new Map<string, string[]>()
+  const tambah = (k: string, t: string) => m.set(k, [...(m.get(k) || []), t])
+  for (const p of daftar) {
+    const t = teksPelanggaran(p)
+    tambah(`${p.panelId}|${p.kode}|${p.prosesSesudah}|${p.tglSesudah}`, t)
+    tambah(`${p.panelId}|${p.kode}|${p.prosesAwal}|${p.tglAwal}`, t)
+  }
+  return m
 }
