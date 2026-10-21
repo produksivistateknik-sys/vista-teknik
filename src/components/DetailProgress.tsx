@@ -6,6 +6,7 @@ import { ringkasPerTanggal, formatOperator, fmtTanggalPendek } from '../lib/oper
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { mintaMuatOperator, useOperatorPanel, timerOperator, namaOperatorRiwayat } from '../lib/operatorPanelLoader'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
+import { useKoreksiProgres, PROSES_BISA_DIKOREKSI } from './ModalKoreksiProgres'
 
 // PERFORMA (4 Okt 2026): style & ProsesPctCell dipindah ke luar komponen - dulu didefinisikan
 // DI DALAM render, React menganggap ProsesPctCell tipe komponen BARU tiap render sehingga semua
@@ -54,7 +55,8 @@ const OperatorBusbar=({panelId,kode}:{panelId:any,kode:string})=>{
     </div>
   );
 };
-const ProsesPctCell=({pct,proses,cl,nama,panelId,kode}:{pct:number|undefined,proses:string,cl?:any,nama?:string,panelId?:any,kode?:string})=>{
+// onKoreksi (22 Okt 2026): ikon ✎ koreksi progres - hanya dikirim utk Admin Produksi & proses yang bisa dikoreksi.
+const ProsesPctCell=({pct,proses,cl,nama,panelId,kode,onKoreksi}:{pct:number|undefined,proses:string,cl?:any,nama?:string,panelId?:any,kode?:string,onKoreksi?:()=>void})=>{
   const[hover,setHover]=useState(false);
   if(pct===undefined||pct===null) return <td style={{...tdS,color:"#e2e8f0",fontSize:9}}>—</td>;
   const color=(PROSES_COLOR as any)[proses]||"#94a3b8";
@@ -67,7 +69,7 @@ const ProsesPctCell=({pct,proses,cl,nama,panelId,kode}:{pct:number|undefined,pro
         <div style={{width:44,height:3,background:"#e2e8f0",borderRadius:99,overflow:"hidden"}}>
           <div style={{width:pct+"%",height:"100%",background:isDone?"#16a34a":color,borderRadius:99}}/>
         </div>
-        <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%</span>
+        <span style={{fontSize:9,fontWeight:700,color:isDone?"#16a34a":pct>0?color:"#94a3b8"}}>{pct}%{onKoreksi&&<button onClick={(e)=>{e.stopPropagation();onKoreksi();}} title="Koreksi progres (Admin Produksi)" style={{marginLeft:3,border:"none",background:"none",cursor:"pointer",fontSize:9,color:"#b45309",padding:0}}>✎</button>}</span>
         {hover&&history.length>0&&(
           <div className="hist-tooltip" style={{
             opacity:0,visibility:"hidden" as const,
@@ -116,7 +118,8 @@ const KartuMalas=({langsung,tinggiPerkiraan,children}:{langsung:boolean,tinggiPe
   return <div ref={ref} style={{height:tinggiPerkiraan,borderRadius:8,border:"1px solid var(--border-color,#eaecf0)",background:"var(--card-bg,#fff)"}}/>;
 };
 
-export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],rawData:any[],livePanelTypes?:any}){
+export function DetailProgress({woData,rawData,livePanelTypes,user}:{woData:any[],rawData:any[],livePanelTypes?:any,user?:any}){
+  const koreksi=useKoreksiProgres(user);
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [search,setSearch]=useState("");
   const [woFilter,setWoFilter]=useState("semua");
@@ -380,7 +383,10 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
                             if(pr==="BUSBAR") return <ProsesPctCell key={pr} pct={undefined} proses={pr}/>;
                             const relevant=isKomponenRelevant(it.kode,p.tipe,pr);
                             const pct=relevant?ccpAwarePct(p.id,it.kode,pr,cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0):undefined;
-                            return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name} panelId={p.id} kode={it.kode}/>;
+                            const bisaKoreksi=koreksi.bolehKoreksi&&PROSES_BISA_DIKOREKSI.includes(pr)&&Number(qty)>0;
+                            return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name} panelId={p.id} kode={it.kode}
+                              onKoreksi={bisaKoreksi?()=>koreksi.buka({panelId:p.id,panelNama:String(p.nama||"").trim(),kode:it.kode,nama:it.nama||it.komponen||it.name||it.kode,proses:pr,
+                                qtyKomponen:Number(qty)||0,qtySekarang:Number(cl?.qtyProses?.[pr])||0,pctSekarang:Number(cl?.progress?.[pr])||0}):undefined}/>;
                           })}
                           {wp===firstRenderedWp&&ii===0&&(
                             <>
@@ -473,6 +479,7 @@ export function DetailProgress({woData,rawData,livePanelTypes}:{woData:any[],raw
           )}</KartuMalas>
         );
       })}
+      {koreksi.elemen}
     </div>
   );
 }

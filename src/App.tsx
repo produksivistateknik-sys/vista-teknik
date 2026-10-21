@@ -37,6 +37,7 @@ import {
   markRenharDirty, markRawDirty,
 } from './lib/globalState'
 import { muatProsesRelevanGlobal } from './lib/prosesRelevan'
+import { muatAturanUrutan } from './lib/urutanProses'
 import { fetchAllPaged } from './lib/fetchAllPaged'
 import { GCss } from './styles/globalCss'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
@@ -399,6 +400,7 @@ useEffect(()=>{
     }
   };
   fetchProsesRelevan();
+  muatAturanUrutan(); // (22 Okt 2026) aturan urutan proses (tabel urutan_proses) - gagal = peringatan urutan mati sementara + log
   const ch=supabase.channel("realtime-bom-proses-relevan-app")
     .on("postgres_changes",{event:"*",schema:"public",table:"bom_proses_relevan"},fetchProsesRelevan)
     .subscribe();
@@ -1149,7 +1151,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("permintaan_admin")&&<div style={{display:tab==="permintaan_admin"?"block":"none"}}><Suspense fallback={TabFallback}><PermintaanAdminTab user={user} woData={woData}/></Suspense></div>}
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><TabKeepAlive aktif={tab==="summary"}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><TabKeepAlive aktif={tab==="detail"}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
+              {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><TabKeepAlive aktif={tab==="detail"}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes} user={user}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><TabKeepAlive aktif={tab==="raw"}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("raw_sandbox")&&<div style={{display:tab==="raw_sandbox"?"block":"none"}}><Suspense fallback={TabFallback}><RawScheduleAccordion woData={woData} livePanelTypes={livePanelTypes} user={user}/></Suspense></div>}
               {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}

@@ -3,28 +3,50 @@
 // di sel, daftar pelanggaran, dan cek Kesehatan Data K17 (cermin SQL - ubah keduanya bersamaan).
 // Fungsi murni: data panel & daftar proses relevan diberikan pemanggil.
 //
-// Aturan (user 21 Okt 2026):
+// ATURAN = tabel database public.urutan_proses (22 Okt 2026, keputusan user: SATU sumber utk trigger kunci progres
+// panels_validate_urutan_progres, peringatan ini, K17/K18 & cap qty vista-pekerja). Tidak ada salinan konstanta di
+// aplikasi: gagal baca -> aturan kosong (peringatan & tanda merah mati sementara) + log_error_app; pengaman keras
+// tetap trigger DB. Isi 22 Okt 2026:
 //   POTONG -> BENDING -> STEL -> FINISHING -> RENDAM -> PAINTING -+-> RAKIT -> PASANG KOMPONEN
 //                                                                 +-> WIRING CONTROL, WIRING POWER (sejajar RAKIT & satu sama lain)
-//   BUSBAR, QC TEST, PACKING (dan NAMEPLATE/YELLOWMARK) dikecualikan.
+//   BUSBAR, QC TEST, PACKING (dan NAMEPLATE/YELLOWMARK) tidak ada di tabel = dikecualikan.
+//   pendahulu = kandidat berurutan; mode 'kunci' (ditolak DB utk progres) / 'peringatan' (hanya peringatan & cek).
 // - Per KOMPONEN (panel x kode): hanya proses yang relevan utk kode itu (bom_proses_relevan lewat
 //   getRelevantProsesForKode) yang dibandingkan; proses tak relevan dilompati.
 // - Tanggal = tanggal RENCANA mulai: tanggal live (bukan jejak digeserKe) paling awal kode itu di proses itu.
 // - Pelanggaran = proses sesudah MULAI LEBIH AWAL dari proses sebelumnya. Hari yang sama BOLEH.
 // - Proses sebelumnya yang sudah 100% -> bukan pelanggaran. Proses sebelumnya sebagian -> tetap pelanggaran.
-// - Proses sebelumnya belum terjadwal -> dibandingkan ke proses relevan terjadwal sebelum itu (bukan pelanggaran sendiri).
+// - Pendahulu = kandidat pertama yang relevan DAN terjadwal (proses sebelumnya belum terjadwal -> dibandingkan ke
+//   proses relevan terjadwal sebelum itu; bukan pelanggaran sendiri). Sama persis dgn K17.
 // Sifatnya PERINGATAN (ada "Tetap pindahkan"), bukan blokir. Menggantikan "lock estafet" lama ModalJadwalSel
 // (memblokir, cuma cek "sudah terjadwal", mati sejak 17 Jul 2026 dc89d12) - dihapus 21 Okt 2026.
+import { useSyncExternalStore } from 'react'
+import { supabase as supabaseAsli } from './supabase'
+import { laporError } from './laporError'
 
-export const URUTAN_DASAR = ['POTONG', 'BENDING', 'STEL', 'FINISHING', 'RENDAM', 'PAINTING']
-// Cabang sesudah PAINTING: proses -> pendahulu di cabangnya sendiri (kosong = langsung ke URUTAN_DASAR).
-export const CABANG_SESUDAH_DASAR: Record<string, string[]> = {
-  'RAKIT': [],
-  'PASANG KOMPONEN': ['RAKIT'],
-  'WIRING CONTROL': [],
-  'WIRING POWER': [],
+export type AturanUrutan = { proses: string; pendahulu: string[]; mode: 'kunci' | 'peringatan' }
+let ATURAN: AturanUrutan[] = []
+let versiAturan = 0
+const pendengarAturan = new Set<() => void>()
+export function setAturanUrutan(a: AturanUrutan[]) { ATURAN = a; versiAturan++; pendengarAturan.forEach(f => f()) }
+export const ambilAturanUrutan = () => ATURAN
+// Versi aturan utk dependency useMemo (tanda merah dihitung ulang begitu aturan selesai dimuat).
+export function useVersiAturanUrutan() {
+  return useSyncExternalStore(f => { pendengarAturan.add(f); return () => { pendengarAturan.delete(f) } }, () => versiAturan)
 }
-export const PROSES_DIURUTKAN = [...URUTAN_DASAR, ...Object.keys(CABANG_SESUDAH_DASAR)]
+// Dipanggil sekali saat aplikasi dibuka (App.tsx). false = gagal (aturan kosong, sudah dicatat).
+export async function muatAturanUrutan(db: any = supabaseAsli): Promise<boolean> {
+  const { data, error } = await (db as any).from('urutan_proses').select('proses,pendahulu,mode').order('proses').range(0, 999)
+  if (error) {
+    console.error('[urutan proses] gagal memuat tabel urutan_proses - peringatan urutan dimatikan sementara:', error)
+    laporError('supabase_error', error, { aksi: 'muat urutan_proses' })
+    setAturanUrutan([])
+    return false
+  }
+  setAturanUrutan((data || []).map((r: any) => ({ proses: r.proses, pendahulu: r.pendahulu || [], mode: r.mode })))
+  return true
+}
+const prosesDiurutkan = () => ATURAN.map(r => r.proses)
 
 export type PelanggaranUrutan = {
   panelId: number
@@ -39,22 +61,18 @@ export type KonteksUrutan = {
   prosesRelevan: (kode: string, tipe: string) => string[] // getRelevantProsesForKode
 }
 
-// Pendahulu langsung `proses` di antara proses relevan kode ini (null = tidak ada / proses pertama).
-export function pendahuluProses(proses: string, relevan: string[]): string | null {
-  const dasar = (sampai: number) => { for (let j = sampai; j >= 0; j--) if (relevan.includes(URUTAN_DASAR[j])) return URUTAN_DASAR[j]; return null }
-  const i = URUTAN_DASAR.indexOf(proses)
-  if (i >= 0) return dasar(i - 1)
-  const cabang = CABANG_SESUDAH_DASAR[proses]
-  if (!cabang) return null // proses dikecualikan
-  for (const c of cabang) if (relevan.includes(c)) return c
-  return dasar(URUTAN_DASAR.length - 1)
+// Pendahulu `proses`: kandidat pertama di aturan yang relevan utk kode ini & lolos `syarat` (mis. terjadwal).
+export function pendahuluProses(proses: string, relevan: string[], syarat: (p: string) => boolean = () => true): string | null {
+  const r = ATURAN.find(x => x.proses === proses)
+  if (!r) return null // proses dikecualikan
+  return r.pendahulu.find(p => relevan.includes(p) && syarat(p)) || null
 }
 
 // Tanggal mulai rencana per "panelId|kode|proses" (live saja, jejak digeserKe tidak dihitung).
 export function petaTanggalMulai(rows: any[]): Map<string, string> {
   const m = new Map<string, string>()
   for (const r of rows) {
-    if (!PROSES_DIURUTKAN.includes(r.proses) || r.deleted_at) continue
+    if (!prosesDiurutkan().includes(r.proses) || r.deleted_at) continue
     const pid = Number(r.panel_id ?? r.panelId)
     for (const [tgl, entri] of Object.entries<any>(r.schedule || {})) {
       for (const e of entri || []) for (const k of e.komponen || []) {
@@ -80,12 +98,11 @@ export function cariPelanggaranUrutan(rows: any[], ctx: KonteksUrutan, hanyaPane
     const panel = ctx.panelById(panelId)
     const cl = panel?.checklist?.[kode]
     if (!panel || !cl || !(Number(cl.qty) > 0)) continue
-    const relevan = ctx.prosesRelevan(kode, panel.tipe || '').filter(p => PROSES_DIURUTKAN.includes(p))
+    const relevan = ctx.prosesRelevan(kode, panel.tipe || '').filter(p => prosesDiurutkan().includes(p))
     for (const x of relevan) {
       const tglX = mulai.get(`${panelId}|${kode}|${x}`)
       if (!tglX) continue
-      let a = pendahuluProses(x, relevan)
-      while (a && !mulai.has(`${panelId}|${kode}|${a}`)) a = pendahuluProses(a, relevan)
+      const a = pendahuluProses(x, relevan, p => mulai.has(`${panelId}|${kode}|${p}`))
       if (!a) continue
       const tglA = mulai.get(`${panelId}|${kode}|${a}`)!
       if (!(tglX < tglA)) continue // hari sama / sesudah = boleh

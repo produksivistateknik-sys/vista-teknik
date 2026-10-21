@@ -14,7 +14,7 @@ import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, toggl
 import { renharService } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
-import { cariPelanggaranUrutan, petaTandaUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
+import { cariPelanggaranUrutan, petaTandaUrutan, useVersiAturanUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
 import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, jadwalLanjutanWiring, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
@@ -1414,10 +1414,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return m;
   },[woData]);
   // Tanda merah urutan proses (21 Okt 2026) - lihat konteksUrutan di atas.
+  const versiAturanUrutan=useVersiAturanUrutan();
   const pelanggaranUrutan=useMemo<PelanggaranUrutan[]>(()=>{
     try{return cariPelanggaranUrutan(rawData,{panelById:(id:number)=>panelById.get(id),prosesRelevan:getRelevantProsesForKode});}
     catch(e){console.error("[urutan proses] gagal menghitung tanda merah:",e);return[];}
-  },[rawData,panelById]);
+  },[rawData,panelById,versiAturanUrutan]);
   const tandaUrutan=useMemo(()=>petaTandaUrutan(pelanggaranUrutan),[pelanggaranUrutan]);
   // Sidik per baris (panel|proses) supaya baris memo (BarisRawMemo) dirender ulang saat tandanya berubah.
   const sidikUrutanBaris=useMemo(()=>{

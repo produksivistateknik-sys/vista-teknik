@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
 import { formatBusbarTahapTooltip, isKomponenRelevant, getRelevantProsesForKode } from '../lib/panelHelpers'
-import { cariPelanggaranUrutan, petaTandaUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
+import { cariPelanggaranUrutan, petaTandaUrutan, useVersiAturanUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
 import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
 import { teksOperatorPerTanggal, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
@@ -365,10 +365,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     return cfgTipe(p?.tipe)?.wps?.flatMap((w: any) => w.items || []).find((it: any) => it.kode === kode)?.nama || kode
   }
   const urutan = useKonfirmasiUrutan(() => ({ ...konteksUrutan, rawData: rawDataRef.current, namaPanel: (id: number) => String(panelById.get(id)?.nama || id).trim(), namaKomponen: namaKomponenUrutan }))
+  const versiAturanUrutan = useVersiAturanUrutan()
   const pelanggaranSemua = useMemo<PelanggaranUrutan[]>(() => {
     try { return cariPelanggaranUrutan(rawData, konteksUrutan) } catch (e) { console.error('[urutan proses] gagal menghitung tanda merah:', e); return [] }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rawData, panelById])
+  }, [rawData, panelById, versiAturanUrutan])
   const tandaUrutan = useMemo(() => petaTandaUrutan(pelanggaranSemua), [pelanggaranSemua])
   // Modal edit sel menyimpan lewat updateRaw - jadwal baru dicek dulu. Batal -> tampilan optimistis modal dikembalikan.
   const updateRawCekUrutan = updateRaw ? async (id: number, data: any) => {

@@ -89,6 +89,13 @@ Bahasa laporan/ringkasan/penjelasan ke user: **Bahasa Indonesia**.
    Kesehatan Data K16 - ubah ketiganya bersamaan). Insiden 21 Okt 2026: rebalance cabang proses jam
    punya cek sendiri tanpa 100% -> komponen selesai terbit ulang di HP operator (SISWOYO 547 FS.13).
    Edge Function auto-geser-harian tidak bisa import `src/` - aturannya disalin, jaga tetap sama.
+3c. **Urutan proses = tabel `urutan_proses` (satu sumber).** Trigger kunci progres
+   `panels_validate_urutan_progres` (mode `kunci`: POTONG>BENDING>STEL>FINISHING>RENDAM>PAINTING>RAKIT),
+   peringatan urutan Raw Schedule (`lib/urutanProses.ts`), cek K17/K18, dan cap qty vista-pekerja
+   (`getUrutanCap`/`getUrutanFloor`) **WAJIB** membaca tabel itu - **dilarang** menulis ulang daftar urutan
+   di kode. Koreksi progres yang melewati kunci **hanya** lewat RPC `koreksi_progres_admin` (alasan wajib,
+   jejak di `koreksi_progres_log`). Trigger hanya memeriksa komponen yang berubah (data lama terbalik tidak
+   memblokir simpanan lain).
 
 4. **Tabel snapshot / archive.** Tabel seperti `panel_seksi_archived.data`,
    `raw_schedule_archived`, dan snapshot lain **WAJIB** disinkronkan strukturnya
