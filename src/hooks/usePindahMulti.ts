@@ -30,6 +30,10 @@ export type DepsPindahMulti = {
   onSesudahBatal?: () => void
   // opsional - sumber data lain (sandbox Raw Schedule per WP); tanpa io = RPC/Supabase asli
   io?: IoJadwalRaw
+  // (21 Okt 2026) opsional - peringatan urutan proses (lib/urutanProses): dipanggil dgn jadwal SESUDAH
+  // (rawId -> kolom baru) sebelum menyimpan pindah & Undo; false = pengguna memilih Batal.
+  // Tanpa ini = perilaku lama (dipakai tampilan lama sampai disetujui user).
+  konfirmasiUrutan?: (perubahan: Map<number, any>) => Promise<boolean>
 }
 
 export function usePindahMulti(ambil: () => DepsPindahMulti) {
@@ -104,6 +108,10 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
       return false
     }
     const rencana = rencanakanPindahMultiV2(jadwal, sel, new Date().toISOString())
+    if (d.konfirmasiUrutan && !(await d.konfirmasiUrutan(new Map(rencana.rows.map(r => [r.raw_id, r.sesudah]))))) {
+      d.tampilToastAksi('Dibatalkan - jadwal tidak diubah.', 'ok')
+      return false
+    }
     const sesudahById = new Map(rencana.rows.map(r => [r.raw_id, r]))
     rencana.rows.forEach(r => markRawDirty(r.raw_id))
     // 4 kolom (schedule + busbar_schedule/jejak/manual_pin) - RPC v2 (migration 20261009010000).
@@ -146,6 +154,13 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     const entri = st[st.length - 1]
     const d = ambil()
     sedangBatalkanRef.current = true
+    // Undo juga bisa membalik urutan proses (mis. pemindahan tadi merapikan urutan) - tanya dulu.
+    if (d.konfirmasiUrutan) {
+      let lanjut = false
+      try { lanjut = await d.konfirmasiUrutan(new Map<number, any>((entri.snap?.raw || []).map((r: any) => [Number(r.raw_id), r.sebelum]))) }
+      catch (e) { sedangBatalkanRef.current = false; throw e }
+      if (!lanjut) { sedangBatalkanRef.current = false; d.tampilToastAksi('Batalkan pemindahan tidak jadi - jadwal tidak diubah.', 'ok'); return }
+    }
     let error: any = null
     try { ({ error } = await rpcPulihkanMultiV2(entri.snap, d.user?.name || d.user?.nama || 'Admin')) }
     finally { sedangBatalkanRef.current = false }

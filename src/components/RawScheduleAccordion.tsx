@@ -1,7 +1,9 @@
 import { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { ALL_PROSES, PANEL_TYPES, PROSES_COLOR, PRIORITAS_COLOR, PROSES_ORANG_RAW_GLOBAL, PRIORITAS } from '../constants/panelTypes'
 import { TODAY, addDays, getDayLabel } from '../lib/dateHelpers'
-import { formatBusbarTahapTooltip, isKomponenRelevant } from '../lib/panelHelpers'
+import { formatBusbarTahapTooltip, isKomponenRelevant, getRelevantProsesForKode } from '../lib/panelHelpers'
+import { cariPelanggaranUrutan, teksPelanggaran, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
+import { useKonfirmasiUrutan } from './KonfirmasiUrutanProses'
 import { teksOperatorPerTanggal, formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetDrop } from '../lib/rawPanelOrder'
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
@@ -127,7 +129,8 @@ function simpanBuka(user: any, s: Set<string>) {
 
 // Operator per chip (12 Okt 2026): timer komponen+proses ini & peta nama pekerja (dari snapshot memori).
 type OpChip = { timers: any[]; nama: (id: any) => string | undefined } | null
-function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checklist: any; op?: OpChip }) {
+// peringatan (21 Okt 2026): teks pelanggaran urutan proses utk chip ini (lib/urutanProses) -> bingkai merah + tooltip.
+function Chip({ c, kode, checklist, op, peringatan }: { c: ChipProses; kode: string; checklist: any; op?: OpChip; peringatan?: string[] }) {
   const warna = (PROSES_COLOR as any)[c.proses] || '#64748b'
   const opBusbar = c.proses === 'BUSBAR' && op ? formatBusbarTahapOperator(checklist?.[kode], op.timers, op.nama) : undefined
   const judul = [
@@ -140,6 +143,7 @@ function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checkli
     c.orang != null ? `Kebutuhan ${Number(c.orang.toFixed(1))} orang` : null,
     c.proses === 'BUSBAR' ? (opBusbar ?? formatBusbarTahapTooltip(checklist?.[kode])) : null,
     op && !opBusbar ? teksOperatorPerTanggal(op.timers, op.nama) : null,
+    ...(peringatan || []).map(t => `⚠ Urutan terbalik: ${t}`),
   ].filter(Boolean).join('\n')
   const jejak = !!c.jejakKe
   return (
@@ -148,7 +152,9 @@ function Chip({ c, kode, checklist, op }: { c: ChipProses; kode: string; checkli
       fontSize: CHIP.font, fontWeight: 800, letterSpacing: .2, lineHeight: 1.15, padding: `2px ${CHIP.padX}px`, borderRadius: 4,
       background: jejak ? 'transparent' : warna, color: jejak ? warna : '#fff',
       border: jejak ? `1px dashed ${warna}` : `1px solid ${warna}`, opacity: c.selesai && !jejak ? .55 : 1,
+      ...(peringatan?.length ? { outline: '2px solid #dc2626', outlineOffset: 1 } : {}),
     }}>
+      {!!peringatan?.length && <span>⚠</span>}
       <span>{c.proses}</span>
       {c.orang != null && !jejak && <span style={{ fontWeight: 700, opacity: .9 }}>👥{Number(c.orang.toFixed(1))}</span>}
       {c.selesai && !jejak && <span>✓</span>}
@@ -351,7 +357,43 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const panelSemua = useMemo(() => woData.flatMap((w: any) => w.panels || []), [woData])
   const entriesTanpaSelesaiRow = (row: any, entries: any[]) => { const pid = row.panel_id || row.panelId; return entriesTanpaSelesai(row.proses, entries, panelSemua.find((p: any) => p.id === pid)) }
   const checklistPanel = (row: any) => panelById.get(Number(row.panel_id || row.panelId))?.checklist
-  const pindahMulti = usePindahMulti(() => ({ rawData, user, setRawData: setRawData || (() => {}), refetchRaw, refetchRenhar, tampilToastAksi, io }))
+  // ── URUTAN PROSES (21 Okt 2026): peringatan + tanda merah + daftar, satu sumber lib/urutanProses ──
+  const rawDataRef = useRef(rawData); rawDataRef.current = rawData
+  const konteksUrutan: KonteksUrutan = { panelById: (id: number) => panelById.get(id), prosesRelevan: getRelevantProsesForKode }
+  const namaKomponenUrutan = (panelId: number, kode: string) => {
+    const p = panelById.get(panelId)
+    return cfgTipe(p?.tipe)?.wps?.flatMap((w: any) => w.items || []).find((it: any) => it.kode === kode)?.nama || kode
+  }
+  const urutan = useKonfirmasiUrutan(() => ({ ...konteksUrutan, rawData: rawDataRef.current, namaPanel: (id: number) => String(panelById.get(id)?.nama || id).trim(), namaKomponen: namaKomponenUrutan }))
+  const pelanggaranSemua = useMemo<PelanggaranUrutan[]>(() => {
+    try { return cariPelanggaranUrutan(rawData, konteksUrutan) } catch (e) { console.error('[urutan proses] gagal menghitung tanda merah:', e); return [] }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rawData, panelById])
+  // "panelId|kode|proses|tanggal mulai" -> teks pelanggaran (chip proses sesudah & proses sebelum sama-sama ditandai)
+  const tandaUrutan = useMemo(() => {
+    const m = new Map<string, string[]>()
+    const tambah = (k: string, t: string) => m.set(k, [...(m.get(k) || []), t])
+    for (const p of pelanggaranSemua) {
+      const t = teksPelanggaran(p)
+      tambah(`${p.panelId}|${p.kode}|${p.prosesSesudah}|${p.tglSesudah}`, t)
+      tambah(`${p.panelId}|${p.kode}|${p.prosesAwal}|${p.tglAwal}`, t)
+    }
+    return m
+  }, [pelanggaranSemua])
+  const [bukaDaftarUrutan, setBukaDaftarUrutan] = useState(false)
+  // Modal edit sel menyimpan lewat updateRaw - jadwal baru dicek dulu. Batal -> tampilan optimistis modal dikembalikan.
+  const updateRawCekUrutan = updateRaw ? async (id: number, data: any) => {
+    if (data?.schedule !== undefined) {
+      const sebelum = rawDataRef.current.find((r: any) => r.id === id)
+      if (!(await urutan.tanya(new Map([[id, data]])))) {
+        if (sebelum) setRawData?.((prev: any[]) => prev.map((r: any) => r.id === id ? sebelum : r))
+        io.kotor.clearRaw(id)
+        return { success: false, dibatalkan: true, error: 'Dibatalkan (urutan proses)' }
+      }
+    }
+    return updateRaw(id, data)
+  } : undefined
+  const pindahMulti = usePindahMulti(() => ({ rawData, user, setRawData: setRawData || (() => {}), refetchRaw, refetchRenhar, tampilToastAksi, io, konfirmasiUrutan: urutan.tanya }))
   const ctxPindah = () => ({
     rawData, blokById, checklistPanel, entriesTanpaSelesai: entriesTanpaSelesaiRow, tanggalKeIdx, idxKeTanggal, totalKolom: TOTAL_KOLOM,
     timerBusbar: pindahMulti.timerBusbarRef.current, kapasitasPada: (d: string, pr: string) => kapasitasPada(fcsKapasitas, d, pr),
@@ -410,6 +452,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     const rows = rencana.rowsSalin || []
     if (rows.length === 0) { tampilToastAksi('Tidak ada pekerjaan yang bisa disalin di pilihan ini.', 'err'); return false }
     if (!(await bolehTulis(`Salin ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan) di data produksi asli?`, sudahDikonfirmasi))) return false
+    if (!(await urutan.tanya(new Map(rows.map(r => [r.raw_id, r.sesudah]))))) { tampilToastAksi('Dibatalkan - jadwal tidak diubah.', 'ok'); return false }
     sedangSalinRef.current = true
     try {
       const perId = new Map(rows.map(r => [r.raw_id, r]))
@@ -471,7 +514,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const modalJadwal = useModalJadwalSel({
     woData, rawData, user, wiringHariKerjaMap,
     setRawData: setRawData || (() => {}),
-    updateRaw: updateRaw || (async () => ({ success: false, error: 'Tampilan ini belum tersambung ke penyimpanan.' })),
+    updateRaw: updateRawCekUrutan || (async () => ({ success: false, error: 'Tampilan ini belum tersambung ke penyimpanan.' })),
     getEffCfg: cfgTipe, getMenitPerPcs: (t: string, p: string, k: string) => menitPerPcs(processTimeList, t, p, k),
     withRenharQueue: withRenharQueue || (async () => { throw new Error('Rencana harian belum tersambung ke tampilan ini.') }),
     createRenhar: createRenhar || (async () => ({ success: false, error: 'Rencana harian belum tersambung.' })),
@@ -885,7 +928,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
     if (r.t === 'komp') {
       const cs = r.k.sel[d] || []
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} />))}</td>
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} peringatan={c.jejakKe ? undefined : tandaUrutan.get(`${r.blok.panelId}|${r.k.kode}|${c.proses}|${d}`)} />))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'
     return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1 }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
@@ -928,6 +971,31 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       <div style={{ display: 'flex', gap: 6, marginBottom: 10, flexWrap: 'wrap', alignItems: 'center' }}>
         <MultiPilih label="Proyek" opsi={opsiProyek} nilai={filterProyek} setNilai={v => { setFilterProyek(v); setFilterPanel([]) }} />
         <MultiPilih label="Panel" opsi={opsiPanel} nilai={filterPanel} setNilai={setFilterPanel} />
+        {pelanggaranSemua.length > 0 && (
+          <div style={{ position: 'relative' }}>
+            <button onClick={() => setBukaDaftarUrutan(!bukaDaftarUrutan)} title="Komponen yang proses sesudahnya dijadwalkan lebih awal dari proses sebelumnya" style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #fca5a5', background: '#fef2f2', color: '#b91c1c', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+              ⚠ Urutan terbalik ({pelanggaranSemua.length}) ▾
+            </button>
+            {bukaDaftarUrutan && (
+              <>
+                <div onClick={() => setBukaDaftarUrutan(false)} style={{ position: 'fixed', inset: 0, zIndex: 40 }} />
+                <div style={{ position: 'absolute', top: 32, left: 0, zIndex: 41, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.12)', padding: 8, width: 420, maxHeight: 380, overflow: 'auto' }}>
+                  <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>Klik untuk menyaring ke panel itu. Proses sebelumnya yang sudah 100% tidak dihitung; hari yang sama boleh.</div>
+                  {[...pelanggaranSemua].sort((a, b) => a.tglSesudah.localeCompare(b.tglSesudah) || a.panelId - b.panelId).map((p, i) => {
+                    const nmPanel = String(panelById.get(p.panelId)?.nama || p.panelId).trim()
+                    return (
+                      <div key={i} onClick={() => { const rp = rawData.find((r: any) => Number(r.panel_id || r.panelId) === p.panelId); if (rp) { setFilterProyek([]); setFilterPanel([rp.panel]) } setBukaDaftarUrutan(false) }}
+                        style={{ padding: '6px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11, borderBottom: '1px solid #f1f5f9' }}>
+                        <div style={{ fontWeight: 700, color: '#1e293b' }}>{namaKomponenUrutan(p.panelId, p.kode)} ({p.kode}) · {nmPanel}</div>
+                        <div style={{ color: '#b91c1c' }}>{teksPelanggaran(p)}</div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </>
+            )}
+          </div>
+        )}
         <span style={{ width: 1, height: 20, background: '#e2e8f0', margin: '0 2px' }} />
         <button onClick={() => setFilterProses([])} style={{ padding: '3px 10px', borderRadius: 20, border: `1.5px solid ${filterProses.length === 0 ? '#1d4ed8' : '#e2e8f0'}`, background: filterProses.length === 0 ? '#1d4ed8' : '#fff', color: filterProses.length === 0 ? '#fff' : '#64748b', cursor: 'pointer', fontSize: 10.5, fontWeight: 700 }}>Semua proses</button>
         {ALL_PROSES.map((pr: string) => { const pc = (PROSES_COLOR as any)[pr] || '#64748b'; const on = filterProses.includes(pr); return (
@@ -1140,8 +1208,9 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
         </>
       })()}
       {kartuHari.elemen}
+      {urutan.elemen}
       <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6 }}>
-        Chip putus-putus ➡️ = histori (sudah digeser) · ✓ = selesai · 👥 = kebutuhan orang WIRING · arahkan kursor ke chip untuk detail.
+        Chip putus-putus ➡️ = histori (sudah digeser) · ✓ = selesai · ⚠ bingkai merah = urutan proses terbalik · 👥 = kebutuhan orang WIRING · arahkan kursor ke chip untuk detail.
       </div>
     </div>
   )

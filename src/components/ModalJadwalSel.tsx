@@ -9,7 +9,7 @@ import { activityLogService as activityLogServiceAsli } from '../services/activi
 import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
-import { ALL_PROSES, WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
+import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
 import { isKomponenRelevant, getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
@@ -164,19 +164,9 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     });
   };
 
-  const ESTAFET_LOCK_AKTIF=false; // ganti ke true buat nyalain lock estafet lagi
-  const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
-    if(!ESTAFET_LOCK_AKTIF)return{ok:true};
-    const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
-    const idx=relevantProses.indexOf(targetProses);
-    if(idx<=0)return{ok:true};
-    const prosesSebelum=relevantProses[idx-1];
-    const rowSebelum=rawData.find((r:any)=>(r.panel_id||r.panelId)===panelId&&r.proses===prosesSebelum);
-    if(!rowSebelum)return{ok:false,prosesSebelum};
-    const schedule=rowSebelum.schedule||{};
-    const adaTerjadwal=Object.values(schedule).some((entries:any)=>(entries||[]).some((e:any)=>(e.komponen||[]).includes(kode)));
-    return{ok:adaTerjadwal,prosesSebelum};
-  };
+  // "Lock estafet" lama (blokir kalau proses sebelumnya belum terjadwal; mati sejak 17 Jul 2026 dc89d12) DIHAPUS
+  // 21 Okt 2026 atas keputusan user - diganti peringatan urutan proses lib/urutanProses.ts (lewat updateRaw yang
+  // diperiksa di Raw Schedule per WP; tampilan lama menyusul setelah disetujui).
 
   const addEntry=async()=>{
     if(!modalWp||!modalKomponen.length)return;
@@ -184,17 +174,6 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const tipePanelCek=livePanelForCell?.tipe;
     const prosesCek=rawRow?.proses;
 
-    if(tipePanelCek&&prosesCek){
-      const panelIdCek=livePanelForCell?.id;
-      for(const kode of modalKomponen){
-        const cekEstafet=checkEstafet(kode,tipePanelCek,prosesCek,panelIdCek);
-        if(!cekEstafet.ok){
-          const namaKomp=getNamaKomponenDariKode(panelIdCek,kode);
-          alert(`⛔ Gak bisa dijadwalkan!\n\n"${namaKomp}" belum terjadwal di proses "${cekEstafet.prosesSebelum}".\n\nJadwalkan dulu di proses "${cekEstafet.prosesSebelum}" sebelum lanjut ke "${prosesCek}".`);
-          return;
-        }
-      }
-    }
 
     // Validasi kuota ORANG (khusus WIRING POWER/CONTROL) - kebutuhan orang dinamis per komponen
     // dari bobot (dipilih di modal ini/sudah tersimpan di row) + hari kerja aktual komponen itu.
@@ -325,6 +304,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       const resRaw=await updateRaw(cellModal.rawId,updatePayload);
       // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron (raw belum berubah).
       if(!resRaw?.success){
+        if(resRaw?.dibatalkan)return; // pengguna memilih Batal di peringatan urutan proses (tampilan sudah dikembalikan)
         console.error("[Raw Schedule] simpan WP gagal:",resRaw?.error);
         alert("Gagal menyimpan WP ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
         return;
@@ -383,6 +363,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const resRaw=await updateRaw(rawId,{schedule:newSch});
     // (8 Okt 2026) Dulu hasil simpan tidak dicek & syncRenharDel tanpa await.
     if(!resRaw?.success){
+      if(resRaw?.dibatalkan)return false; // Batal di peringatan urutan proses
       console.error("[Raw Schedule] hapus WP gagal:",resRaw?.error);
       alert("Gagal menghapus WP di server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
       return false;
@@ -424,7 +405,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     markRawDirty(rawId);
     setRawData(prev=>prev.map(r=>r.id===rawId?{...r,schedule:sch}:r));
     const res=await updateRaw(rawId,{schedule:sch});
-    if(!res?.success){console.error("[Aktifkan jejak] simpan gagal:",res?.error);alert("Gagal menyimpan: "+(res?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");return;}
+    if(!res?.success){if(res?.dibatalkan)return;console.error("[Aktifkan jejak] simpan gagal:",res?.error);alert("Gagal menyimpan: "+(res?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");return;}
     if(nyata){
       const sinkron=async()=>{await pindahKomponenRenhar(depsRenharPindah,{rawId,wp,fromDate:nyata,toDate:date,kode:[kode]});};
       try{await sinkron();}catch(err:any){await tanganiGagalSinkronRenhar(err,`${row.panel||""} ${wp} ${kode} (${nyata} → ${date}) - aktifkan jejak`,sinkron);}
