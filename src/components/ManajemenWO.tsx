@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
 import { konfirmasiHapusPanel } from '../lib/konfirmasiHapusPanel'
-import { rawScheduleService } from '../services/rawScheduleService'
+import { rawScheduleService, pesanPanelBaruTerjadwal } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
@@ -21,6 +21,8 @@ import { QtyKomponenInput } from './ui/QtyKomponenInput'
 import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
+import { teksHasilTemplate } from '../lib/templateJadwalWp'
+import { cariPelanggaranUrutan, teksPelanggaran } from '../lib/urutanProses'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
@@ -77,6 +79,19 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const [quickGenLoading,setQuickGenLoading]=useState(false);
   const [quickGenResult,setQuickGenResult]=useState<any>(null);
   const [quickGenSelectedPanelIds,setQuickGenSelectedPanelIds]=useState<number[]>([]);
+  // TEMPLATE WP (22 Okt 2026, tahap 2): FCS menata proses/WP per Day ke-n template jenis panel (lib/templateJadwalWp).
+  // Template otomatis dari jenis panel, bisa diganti per panel; "tanpa template" = cara lama (ikut kapasitas).
+  const [quickGenPakaiTemplate,setQuickGenPakaiTemplate]=useState(true);
+  const [quickGenPola,setQuickGenPola]=useState<Record<number,string>>({});
+  const [tipeBerTemplate,setTipeBerTemplate]=useState<string[]|null>(null);
+  useEffect(()=>{
+    if(!quickGenModal)return;
+    let batal=false;
+    fetchAllPaged((dari,sampai)=>(supabase.from('template_jadwal_wp' as any).select('tipe_panel,proses,wp') as any).order('tipe_panel').order('proses').order('wp').range(dari,sampai))
+      .then(rows=>{if(!batal)setTipeBerTemplate([...new Set<string>(rows.map((r:any)=>r.tipe_panel))].sort());})
+      .catch(err=>{console.error('[FCS] baca template_jadwal_wp gagal:',err);if(!batal){setTipeBerTemplate([]);alert('Gagal membaca template WP: '+(err?.message||err)+'\nFCS tetap bisa dijalankan tanpa template.');}});
+    return()=>{batal=true};
+  },[quickGenModal]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -369,7 +384,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
         try{
           const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
-          if(panelBaruTerjadwal.length>0)alert('Panel baru otomatis dijadwalkan mulai hari ini di Raw Schedule: '+panelBaruTerjadwal.join(', ')+'\n\nJangan lupa Distribusi ke Rencana Harian.');
+          if(panelBaruTerjadwal.nama.length>0)alert(pesanPanelBaruTerjadwal(panelBaruTerjadwal));
         }catch(err:any){
           console.error('[Edit WO] WO tersimpan, penjadwalan panel baru gagal:',err);
           alert('WO BERHASIL disimpan, tapi penjadwalan otomatis panel baru GAGAL: '+(err?.message||err)+'\n\nJalankan FCS untuk panel baru tersebut.');
@@ -475,7 +490,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:(p as any).jumlahCell??(p as any).jumlah_cell??0,tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(new Date().toISOString().slice(0,10));setQuickGenResult(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
+                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(getLocalDateStr());setQuickGenResult(null);setQuickGenPola({});setQuickGenPakaiTemplate(true);setTipeBerTemplate(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
                 <button onClick={()=>{setArsipPanelModal(wo);setSelArsipPanelIds(new Set());}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>📦 Arsip</button>
@@ -817,10 +832,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         </Card>
       )}
       {quickGenModal&&(
-        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={420}>
+        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={quickGenPakaiTemplate?520:420}>
           {!quickGenResult?(
             <div>
-              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Sistem bakal otomatis jadwalin semua komponen aktif dari panel yang dipilih di bawah, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule.</div>
+              <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>{quickGenPakaiTemplate
+                ?"Komponen aktif panel terpilih ditata per Day ke-n template jenis panel (Day 1 = Tanggal Mulai; Minggu & tanggal berkapasitas 0 dilewati; kapasitas boleh bentrok). WIRING & BUSBAR = hari PASANG KOMPONEN paling awal, QC TEST & PACKING = H-1 target WO."
+                :"Sistem bakal otomatis jadwalin semua komponen aktif dari panel yang dipilih di bawah, distribusi ngikutin kapasitas harian, langsung masuk ke Raw Schedule."}</div>
               <div style={{marginBottom:14}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({quickGenSelectedPanelIds.length}/{(quickGenModal.panels||[]).length})</div>
@@ -835,19 +852,32 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   {(quickGenModal.panels||[]).map((p:any)=>{
                     const checked=quickGenSelectedPanelIds.includes(p.id);
                     return(
-                      <label key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",cursor:"pointer",borderRadius:6,background:checked?"#eff6ff":"transparent"}}>
-                        <input type="checkbox" checked={checked}
-                          onChange={()=>setQuickGenSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
-                        <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
-                        <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
-                      </label>
+                      <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",borderRadius:6,background:checked?"#eff6ff":"transparent",flexWrap:"wrap" as const}}>
+                        <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:"1 1 150px"}}>
+                          <input type="checkbox" checked={checked}
+                            onChange={()=>setQuickGenSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
+                          <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
+                          <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
+                        </label>
+                        {quickGenPakaiTemplate&&(
+                          <select aria-label={"Template "+p.nama} value={quickGenPola[p.id]||''} onChange={e=>setQuickGenPola(prev=>({...prev,[p.id]:e.target.value}))}
+                            style={{height:24,borderRadius:6,border:"1px solid #cbd5e1",fontSize:10.5,fontFamily:"inherit",maxWidth:170}}>
+                            <option value="">{tipeBerTemplate===null?"Memuat template…":(tipeBerTemplate.includes(p.tipe)?"Template otomatis ("+p.tipe+")":"Tidak ada template (cara lama)")}</option>
+                            {(tipeBerTemplate||[]).map(t=><option key={t} value={t}>Template {t}</option>)}
+                          </select>
+                        )}
+                      </div>
                     );
                   })}
                 </div>
               </div>
               <div style={{marginBottom:16}}>
-                <Lbl>Tanggal Mulai</Lbl>
+                <Lbl>Tanggal Mulai{quickGenPakaiTemplate?" (Day 1)":""}</Lbl>
                 <Inp type="date" value={quickGenTanggal} onChange={(e:any)=>setQuickGenTanggal(e.target.value)}/>
+                <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:"#334155",cursor:"pointer"}}>
+                  <input type="checkbox" checked={quickGenPakaiTemplate} onChange={e=>setQuickGenPakaiTemplate(e.target.checked)}/>
+                  Tata dengan template WP
+                </label>
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
                 <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
@@ -855,17 +885,29 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   setQuickGenLoading(true);
                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
                   const uname=user?.name||user?.nama||sess?.nama||"Admin";
-                  let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname,quickGenSelectedPanelIds);
+                  const tipePer:Record<number,string>={};
+                  quickGenSelectedPanelIds.forEach(id=>{if(quickGenPola[id])tipePer[id]=quickGenPola[id];});
+                  const opsiGen=quickGenPakaiTemplate?{template:{tipeTemplatePerPanel:tipePer}}:undefined;
+                  let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname,quickGenSelectedPanelIds,undefined,opsiGen);
                   if(!res.success&&res.error==="__ALREADY_EXISTS__"){
-                    const lanjut=confirm("Panel yang dipilih UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP TOTAL komponen yang udah pernah dijadwalkan (gak diapa-apain lagi, gak ditambah gak diubah) - cuma komponen yang BENAR-BENAR belum pernah ada di jadwal yang bakal diisi.\n\nYakin mau lanjut?");
+                    const lanjut=confirm("Panel yang dipilih UDAH punya jadwal di Raw Schedule.\n\nGenerate ulang bakal SKIP TOTAL komponen yang udah pernah dijadwalkan (gak diapa-apain lagi, gak ditambah gak diubah) - cuma komponen yang BENAR-BENAR belum pernah ada di jadwal yang bakal diisi."+(quickGenPakaiTemplate?"\n\nTemplate WP hanya menata yang belum terjadwal itu; jadwal yang sudah ada (termasuk yang diatur manual) TIDAK digeser. BUSBAR/QC TEST/PACKING hanya diisi bila barisnya masih kosong.":"")+"\n\nYakin mau lanjut?");
                     if(lanjut){
-                      res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname,quickGenSelectedPanelIds);
+                      res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname,quickGenSelectedPanelIds,undefined,opsiGen);
                     } else {
                       setQuickGenLoading(false);
                       return;
                     }
                   }
-                  setQuickGenResult(res);
+                  // Cek urutan proses hasil (peringatan saja) - baca jadwal panel terpilih, error dicek.
+                  let urutan:string[]=[];
+                  if(res.success){
+                    try{
+                      const rowsU=await fetchAllPaged((dari,sampai)=>(supabase.from('raw_schedule').select('id,panel_id,proses,schedule,deleted_at') as any).in('panel_id',quickGenSelectedPanelIds).order('id').range(dari,sampai));
+                      const byId=new Map((quickGenModal.panels||[]).map((p:any)=>[Number(p.id),p]));
+                      urutan=cariPelanggaranUrutan(rowsU,{panelById:(id:number)=>byId.get(id) as any,prosesRelevan:getRelevantProsesForKode},new Set(quickGenSelectedPanelIds)).map(teksPelanggaran);
+                    }catch(err:any){console.error('[FCS] cek urutan hasil gagal:',err);urutan=['(cek urutan gagal: '+(err?.message||err)+')'];}
+                  }
+                  setQuickGenResult({...res,urutan});
                   setQuickGenLoading(false);
                   if(res.success){
                     // FIX (5 Agu 2026): generateAndSaveToRawSchedule gak pernah nulis activity_log
@@ -876,7 +918,9 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                     const namaPanel=(quickGenModal.panels||[]).filter((p:any)=>quickGenSelectedPanelIds.includes(p.id)).map((p:any)=>p.nama).join(', ');
                     await activityLogService.insert({
                       user_name:uname,action:'GENERATE JADWAL FCS',
-                      description:'Generate jadwal Raw Schedule WO '+quickGenModal.wo+' - '+quickGenModal.proyek+' ('+quickGenSelectedPanelIds.length+' panel: '+namaPanel+'), mulai '+quickGenTanggal+', '+res.count+' baris dibuat',
+                      description:'Generate jadwal Raw Schedule WO '+quickGenModal.wo+' - '+quickGenModal.proyek+' ('+quickGenSelectedPanelIds.length+' panel: '+namaPanel+'), mulai '+quickGenTanggal+', '+res.count+' baris dibuat'
+                        +(res.template?' | template WP: '+res.template.map(teksHasilTemplate).join(' | '):' | tanpa template')
+                        +(urutan.length?' | urutan terbalik: '+urutan.join('; '):''),
                       module:'wo',halaman:'Manajemen WO',proyek:quickGenModal.proyek||'',wo_number:quickGenModal.wo||'',
                     });
                     if(refetchWO)await refetchWO();
@@ -891,6 +935,20 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                   <div style={{fontSize:40,marginBottom:12}}>✅</div>
                   <div style={{fontSize:16,fontWeight:700,color:"#16a34a",marginBottom:8}}>Berhasil!</div>
                   <div style={{fontSize:13,color:"#64748b"}}>{quickGenResult.count} jadwal dibuat di Raw Schedule</div>
+                  {(quickGenResult.template||[]).length>0&&(
+                    <div style={{textAlign:"left" as const,marginTop:12,maxHeight:260,overflowY:"auto" as const}}>
+                      {quickGenResult.template.map((h:any)=>(
+                        <div key={h.panelId} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 9px",marginBottom:6,fontSize:11.5}}>
+                          <div style={{fontWeight:700,color:"#1e293b"}}>{h.panel} <span style={{color:"#94a3b8",fontWeight:500}}>({h.tipe}{h.tipeTemplate?", template "+h.tipeTemplate:""})</span></div>
+                          {h.tanpaTemplate?<div style={{color:"#92400e"}}>Tidak ada template - dijadwalkan dengan cara lama.</div>
+                            :<div style={{color:"#475569",lineHeight:1.6}}>Day 1 = {h.day1} · {Object.entries(h.tanggalProses).map(([pr,t]:any)=>pr+" "+t.map((x:string)=>x.slice(8)+"/"+x.slice(5,7)).join(",")).join(" · ")}</div>}
+                          {h.diLuarTemplate.length>0&&<div style={{color:"#7c3aed",marginTop:3}}>Di luar template (hari proses sebelumnya pada WP yang sama): {h.diLuarTemplate.join("; ")}</div>}
+                          {h.peringatan.map((x:string)=><div key={x} style={{color:"#b91c1c",marginTop:3}}>⚠ {x}</div>)}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(quickGenResult.urutan||[]).length>0&&<div style={{textAlign:"left" as const,color:"#b91c1c",fontSize:11.5,marginTop:6}}>⚠ Urutan proses terbalik: {quickGenResult.urutan.join("; ")}</div>}
                 </div>
               ):(
                 <div>
