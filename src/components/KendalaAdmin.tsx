@@ -7,7 +7,8 @@
 // aplikasi (variabel --card-bg/--text-primary/...). Semua tombol ber-class "kdaBtn": aturan global mode gelap
 // `[data-theme=dark] button:not([class*="Btn"])` (globalCss) tidak menimpa gaya tombol di sini. Data & aturan: lib/kendalaProduksi.ts (sama dgn vista-pekerja).
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
+import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import {
   muatProyekAktif, muatKendala, muatLogKendala, catatKendala, ubahKendala, hapusKendala, tandaiTeratasi, batalTeratasi,
   labelDivisi, fmtTanggalPanjang, fmtTanggalDariWaktu, fmtPendekDariWaktu, jamWib, tanggalHariIniWib, LABEL_AKSI_LOG,
@@ -117,13 +118,8 @@ export function KendalaAdmin({ db, user }: { db: any; user: any }) {
     finally { setMemuat(false) }
   }, [db])
   useEffect(() => { muat() }, [muat])
-  const tunda = useRef<any>(null)
-  useEffect(() => {
-    const ch = db.channel('kendala-admin-' + Math.random().toString(36).slice(2))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'kendala_produksi' }, () => { clearTimeout(tunda.current); tunda.current = setTimeout(muat, 600) })
-      .subscribe()
-    return () => { clearTimeout(tunda.current); db.removeChannel(ch) }
-  }, [db, muat])
+  // (23 Okt 2026) pola pemulih bersama: realtime + ambil ulang saat tersambung ulang / tab aktif / online + polling 30 dtk
+  useEffect(() => pasangPemulihRealtime(db, { nama: 'kendala-admin-' + Math.random().toString(36).slice(2), tabel: 'kendala_produksi', muat, jedaMs: 600, label: 'Kendala admin' }), [db, muat])
 
   const jalankan = async (label: string, fn: () => Promise<any>) => {
     setSibuk(label)

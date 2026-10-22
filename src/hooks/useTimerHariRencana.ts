@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { hariKerjaWib } from '../lib/tanggalWib'
+import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 
 // SATU SUMBER TIMER RENCANA HARIAN (23 Okt 2026, bug A - insiden SANDI 524 POTONG: kolom Operator "SANDI - belum mulai"
 // padahal kolom Status menampilkan timer berjalan 53 menit). Dulu kolom Status (timerAktifData: realtime + polling 30 dtk)
@@ -34,24 +35,8 @@ export function useTimerHariRencana(db: any, selDate: string) {
       setHariIniStr(hariKerjaWib())
     }
     fetchTimerHari()
-    let tunda: ReturnType<typeof setTimeout> | null = null
-    const panggil = () => { if (tunda) clearTimeout(tunda); tunda = setTimeout(() => { tunda = null; fetchTimerHari() }, JEDA_MS) }
-    let pernahTersambung = false
-    const ch = db.channel('realtime-timer-aktif-rencana')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'fcs_timer_kerja' }, panggil)
-      .subscribe((status: string) => {
-        // tersambung ULANG setelah putus -> event selama putus terlewat -> ambil ulang penuh
-        if (status === 'SUBSCRIBED') { if (pernahTersambung) fetchTimerHari(); pernahTersambung = true }
-        else if (status !== 'CLOSED') console.warn('[Rencana Harian] realtime timer:', status)
-      })
-    const segarkan = () => { if (document.visibilityState === 'visible') fetchTimerHari() }
-    const iv = setInterval(segarkan, POLLING_MS)
-    document.addEventListener('visibilitychange', segarkan)
-    window.addEventListener('online', segarkan)
-    return () => {
-      cancelled = true; if (tunda) clearTimeout(tunda); db.removeChannel(ch); clearInterval(iv)
-      document.removeEventListener('visibilitychange', segarkan); window.removeEventListener('online', segarkan)
-    }
+    const lepas = pasangPemulihRealtime(db, { nama: 'realtime-timer-aktif-rencana', tabel: 'fcs_timer_kerja', muat: fetchTimerHari, pollingMs: POLLING_MS, jedaMs: JEDA_MS, label: 'Rencana Harian timer' })
+    return () => { cancelled = true; lepas() }
   }, [db, selDate])
   // Kolom Status: semua timer yang masih berjalan. Kolom Operator: timer tanggal selDate + (bila selDate hari ini WIB)
   // semua yang masih berjalan apa pun tanggal-nya.
