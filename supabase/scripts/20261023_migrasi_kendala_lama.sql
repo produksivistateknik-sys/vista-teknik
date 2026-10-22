@@ -21,8 +21,8 @@ union all
 order by ts, proyek;
 select count(*) as sudah_dimigrasi from public.kendala_produksi where sumber = 'migrasi';
 
--- (1) EKSEKUSI
-begin;
+-- (1) EKSEKUSI - SATU perintah (atomik dgn sendirinya; SQL Editor hanya menampilkan hasil perintah terakhir, jadi versi
+--     begin/commit sebelumnya tidak memperlihatkan hasil insert). Dijalankan user 23 Okt 2026: 4 baris (id 7-10), log 4.
 with calon as (
   select distinct on (k.proyek, k.catatan) k.proyek, null::bigint as panel_id, null::text as panel_nama, k.catatan, k.operator, k.divisi, k.tanggal, k.ts
     from public.kendala_archived k
@@ -44,12 +44,15 @@ baru as (
     left join public.panels_archived pa on pa.id = s.panel_id
     left join public.work_orders w on w.id = pa.wo_id
    where not exists (select 1 from public.kendala_produksi x where x.sumber = 'migrasi')
-  returning *)
-insert into public.kendala_produksi_log (kendala_id, aksi, oleh, alasan, sesudah)
-select b.id, 'migrasi', 'migrasi (catatan lama)', 'dipindah dari kendala_archived (fitur catatan per tugas operator)', to_jsonb(b) from baru b;
--- Harap 4 baris; bila tidak -> ROLLBACK; (bukan commit) lalu kabari Claude.
-select id, proyek, panel_nama, teks, pencatat, tanggal, teratasi_oleh from public.kendala_produksi where sumber = 'migrasi' order by dicatat_pada;
-commit;
+  returning *
+), catat_log as (
+  insert into public.kendala_produksi_log (kendala_id, aksi, oleh, alasan, sesudah)
+  select b.id, 'migrasi', 'migrasi (catatan lama)', 'dipindah dari kendala_archived (fitur catatan per tugas operator)', to_jsonb(b) from baru b
+  returning kendala_id
+)
+select b.id, b.proyek, coalesce(b.panel_nama, 'Umum') as panel, b.teks, b.pencatat, b.tanggal,
+       (select count(*) from catat_log) as baris_log
+  from baru b order by b.dicatat_pada;
 
 -- (2) VERIFIKASI: 4 baris migrasi, 4 baris log, 0 yang belum teratasi.
 select (select count(*) from public.kendala_produksi where sumber = 'migrasi') as migrasi_4,
