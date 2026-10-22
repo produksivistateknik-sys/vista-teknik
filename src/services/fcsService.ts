@@ -1091,13 +1091,16 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     // dari kode yang qty-nya sempat di-0 gak ngeblok penjadwalan ulangnya.
     hitungMulai?: string
   ) {
-    const { data: existing } = await supabase
+    // Cek error (22 Okt 2026) - dulu baca/tulis di sini gagal diam-diam: gagal baca dianggap "belum ada" lalu
+    // insert baris dobel, gagal update/insert bikin entri hilang tanpa jejak. Dilempar -> ditangkap catch generator.
+    const { data: existing, error: errBaca } = await supabase
       .from('raw_schedule')
       .select('id, schedule')
       .eq('wo_id', wo.id)
       .eq('panel_id', panel.id)
       .eq('proses', proses)
       .maybeSingle()
+    if (errBaca) throw new Error(`Gagal baca jadwal ${proses} panel ${panel.nama}: ${errBaca.message}`)
 
     // Anti-duplikat (proses qty-based): kalau qty kode ini utk wp yg sama udah TERCATAT PENUH
     // di tanggal LAIN (bukan tanggal yg lagi ditulis), jangan tulis lagi - cegah kode yg sama
@@ -1147,9 +1150,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       } else {
         schedule[tanggal].push({ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })
       }
-      await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+      const { error: errUpdate } = await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+      if (errUpdate) throw new Error(`Gagal simpan jadwal ${proses} panel ${panel.nama}: ${errUpdate.message}`)
     } else {
-      await supabase.from('raw_schedule').insert({
+      const { error: errInsert } = await supabase.from('raw_schedule').insert({
         wo_id: wo.id,
         panel_id: panel.id,
         proyek: wo.proyek,
@@ -1158,6 +1162,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         prioritas: 'Sedang',
         schedule: { [tanggal]: [{ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) }] },
       })
+      if (errInsert) throw new Error(`Gagal membuat jadwal ${proses} panel ${panel.nama}: ${errInsert.message}`)
     }
   }
 
@@ -1208,9 +1213,11 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     opsi?: { hanyaProsesBaru?: boolean }
   ): Promise<{ success: boolean; count: number; error?: string }> {
     try {
-      const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
+      // Cek error + paginasi (22 Okt 2026) - dulu gagal baca WO/panel terbaca "tidak ditemukan"/"tidak ada panel".
+      const { data: wo, error: errWo } = await supabase.from('work_orders').select('*').eq('id', woId).maybeSingle()
+      if (errWo) throw new Error('baca WO: ' + errWo.message)
       if (!wo) return { success: false, count: 0, error: 'WO tidak ditemukan' }
-      const { data: panelsAll } = await supabase.from('panels').select('*').eq('wo_id', woId)
+      const panelsAll = await fetchAllPaged((dari, sampai) => (supabase.from('panels').select('*') as any).eq('wo_id', woId).order('id').range(dari, sampai))
       if (!panelsAll || panelsAll.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
       // panelIds opsional - kalau diisi, HANYA panel-panel itu yang diproses/ditulis (panel lain
       // di WO yang sama sama sekali gak di-fetch/disentuh dari sini). Hampir semua bagian di bawah
@@ -1223,7 +1230,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       if (panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel yang dipilih' }
 
       const panelIdsForCheck = panels.map((p: any) => p.id)
-      const { data: existingCheck } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
+      const { data: existingCheck, error: errCek } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
+      if (errCek) throw new Error('cek jadwal yang sudah ada: ' + errCek.message)
       if (existingCheck && existingCheck.length > 0 && !generatedBy.startsWith('__force__')) {
         return { success: false, count: 0, error: '__ALREADY_EXISTS__' }
       }
@@ -1241,7 +1249,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const ambilSemuaBaris = async (tabel: string) => {
         let semua: any[] = []
         for (let dari = 0; ; dari += 1000) {
-          const { data, error } = await supabase.from(tabel as any).select('*').range(dari, dari + 999)
+          const { data, error } = await supabase.from(tabel as any).select('*').order('id').range(dari, dari + 999)
           if (error) throw new Error(`baca ${tabel}: ${error.message}`)
           semua = semua.concat(data || [])
           if (!data || data.length < 1000) break
@@ -1277,7 +1285,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         let from = 0
         const step = 1000
         while (true) {
-          const { data } = await supabase.from('raw_schedule').select('*').range(from, from + step - 1)
+          // Cek error + urutan stabil (22 Okt 2026) - dulu gagal baca = data null = berhenti diam-diam (jadwal
+          // global terpotong -> komponen yang sudah terjadwal bisa terjadwal ulang).
+          const { data, error } = await supabase.from('raw_schedule').select('*').order('id').range(from, from + step - 1)
+          if (error) throw new Error('baca raw_schedule: ' + error.message)
           if (!data) break
           existingRaw = existingRaw.concat(data)
           if (data.length < step) break
