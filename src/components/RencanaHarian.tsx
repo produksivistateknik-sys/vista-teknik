@@ -4,6 +4,7 @@ import { formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/opera
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
+import { useTimerHariRencana } from '../hooks/useTimerHariRencana'
 import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, getCcpAwareValue, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -139,7 +140,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // fcs_kapasitas_override (fcsKapasitas) TETAP dibaca, di luar lingkup task ini walau state-nya
   // sendiri juga kelihatan gak terpakai di file ini (tidak disentuh, beda tabel dari fcs_schedule).
   const [fcsKapasitas,setFcsKapasitas]=useState<any[]>([]);
-  const [timerAktifData,setTimerAktifData]=useState<any[]>([]);
+  // Timer kolom Status & kolom Operator: SATU sumber + penyegaran tahan realtime-putus (hooks/useTimerHariRencana, 23 Okt 2026).
+  const { timerAktifData, operatorHistoryData, hariIniStr } = useTimerHariRencana(supabase, selDate);
 
   // FASE 8 (21 Sep 2026) - component_process_progress, SCOPE SEMPIT SENGAJA: cuma dipakai buat
   // kolom "Status Pipeline" (computeProsesStatus - readiness TERKINI, sama konsep Task
@@ -196,21 +198,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // sampai ada yang sadar & reload manual. Polling ringan tiap 30 detik ditambahkan DI SAMPING
   // realtime (bukan gantiin) - independen dari sehat/enggaknya koneksi realtime, jaring pengaman
   // biar paling lama nunggu 30 detik buat otomatis kembali sinkron sendiri.
-  useEffect(()=>{
-    const fetchTimerAktif=async()=>{
-      const hariIni=new Date().toISOString().slice(0,10);
-      const{data,error}=await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,tahap,mulai").is("selesai",null).eq("tanggal",hariIni);
-      if(error){console.error("gagal ambil timer aktif:",error);return;}
-      setTimerAktifData(data??[]);
-    };
-    fetchTimerAktif();
-    const tunda=jedaRealtime(fetchTimerAktif);
-    const ch=supabase.channel("realtime-timer-aktif-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},tunda.panggil)
-      .subscribe();
-    const iv=setInterval(fetchTimerAktif,30000);
-    return()=>{tunda.batal();supabase.removeChannel(ch);clearInterval(iv);};
-  },[]);
 
   // Tick ringan (17 Sep 2026) - KHUSUS pas ada timer aktif, badge durasi ("X menit") dipaksa
   // re-render tiap 5 detik biar keliatan nge-tick/jalan, bukan loncat tiap 30 detik polling
@@ -362,36 +349,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // ganti shift/orang). Sumbernya fcs_timer_kerja (sama kayak fitur Review Potong/Tracking Pekerja),
   // di-scope ke selDate doang (bukan semua tanggal) biar query-nya ringan. Ambil SEMUA record (bukan
   // cuma yang lagi aktif kayak timerAktifData di atas) - histori tanggal lama juga butuh ini.
-  const [operatorHistoryData,setOperatorHistoryData]=useState<any[]>([]);
-  useEffect(()=>{
-    let cancelled=false;
-    // BUG FIX (23 Sep 2026, ditemukan lewat audit "query gak paginasi") - query ini di-scope
-    // selDate doang (TANPA panel/proses filter kayak komentar di atas bilang), jadi bisa nyampe
-    // >1000 baris kalau volume timer sehari-hari pabrik naik - 293 baris/hari sekarang (aman),
-    // tapi query SAUDARANYA persis di atas (fetchBusbarTahapOperator, sama-sama scope harian dari
-    // fcs_timer_kerja) sudah paginasi penuh sejak awal, cuma yang ini kelewat. Difaktorkan ke 1
-    // fungsi (dipanggil awal + tiap event realtime) biar loop paginasi-nya gak dobel ditulis.
-    const fetchOperatorHistory=async()=>{
-      let all:any[]=[],from=0;
-      while(true){
-        // (22 Okt 2026) + mulai/selesai/durasi_menit utk status operator harian (lib/operatorHarian), urutan stabil utk paginasi
-        const{data,error}:any=await supabase.from("fcs_timer_kerja")
-          .select("id,panel_id,kode_komponen,proses,pekerja_id,mulai,selesai,durasi_menit").eq("tanggal",selDate)
-          .order("id").range(from,from+999);
-        if(error){console.error("[Rencana Harian] gagal muat timer operator:",error);break;}
-        all=all.concat(data??[]);
-        if(!data||data.length<1000)break;
-        from+=1000;
-      }
-      if(!cancelled)setOperatorHistoryData(all);
-    };
-    fetchOperatorHistory();
-    const tunda=jedaRealtime(fetchOperatorHistory);
-    const ch=supabase.channel("realtime-operator-history-rencana")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:"tanggal=eq."+selDate},tunda.panggil)
-      .subscribe();
-    return()=>{cancelled=true;tunda.batal();supabase.removeChannel(ch);};
-  },[selDate]);
   // Tooltip BUSBAR per tahap + nama operator & menit (12 Okt 2026) - dari busbarTahapOperatorData yang SUDAH
   // dimuat utk kolom Operator (tanpa query tambahan), lewat helper bersama lib/operatorProgres.
   const idxTimerBusbar=useMemo(()=>indeksTimer(busbarTahapOperatorData.map((t:any)=>({...t,proses:"BUSBAR"}))),[busbarTahapOperatorData]);
@@ -1215,7 +1172,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // tidak ada timer & checkpoint sama sekali.
                         const timerKodeHari=operatorHistoryData.filter((x:any)=>String(x.panel_id)===String(t.panelId)&&x.kode_komponen===kode&&x.proses===t.proses);
                         const cpKodeHari=checkpointOperatorData.filter((x:any)=>String(x.panel_id)===String(t.panelId)&&x.kode_komponen===kode&&x.proses===t.proses&&x.tanggal===selDate);
-                        const daftarOp=daftarOperatorHarian({timer:timerKodeHari,rencanaIds:opIdsKode,checkpointNama:namaDariCheckpoint(cpKodeHari),namaById:namaPekerjaById,tanggal:selDate,hariIni:TODAY});
+                        const daftarOp=daftarOperatorHarian({timer:timerKodeHari,rencanaIds:opIdsKode,checkpointNama:namaDariCheckpoint(cpKodeHari),namaById:namaPekerjaById,tanggal:selDate,hariIni:hariIniStr});
                         const clKode=panelData?.checklist?.[kode];
                         const liveOpNames=t.proses==="PASANG KOMPONEN"&&daftarOp.sumber==="kosong"?getPasangKomponenLiveOperatorNames(clKode):[];
                         const fotoOpName=t.proses==="PASANG KOMPONEN"&&daftarOp.sumber==="kosong"&&liveOpNames.length===0?getPasangKomponenFotoOperatorName(clKode):null;
