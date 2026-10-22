@@ -47,7 +47,7 @@ export type DepsModalJadwalSel={
   withRenharQueue:(task:any,fn:(existing:any)=>Promise<void>)=>Promise<any>;createRenhar:(d:any)=>Promise<any>;updateRenhar:(id:any,d:any)=>Promise<any>;removeRenhar:(id:any)=>Promise<any>;setRenhar:(f:any)=>void;
   // opsional - alur "pilih komponen lalu Pindahin → klik tanggal tujuan" milik tampilan lama
   selectedForMove?:{wp:string;kode:string}[];setSelectedForMove?:(v:any)=>void;toggleSelectForMove?:(wp:string,kode:string)=>void;setMoveKomponenState?:(v:any)=>void;
-  // (22 Okt 2026) sakelar "Pilih per WP (uji)" tampilan lama: tampilkan centang per WP utk Pindahin
+  // (22 Okt 2026) pilih per WP tampilan lama: tampilkan centang per WP utk Pindahin (selalu nyala sejak tahap 2)
   modePilihWp?:boolean;
   // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = Supabase & activity_log asli
   io?:IoJadwalRaw;
@@ -437,7 +437,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                 </div>
               )}
               {/* (22 Okt 2026) PILIH PER WP utk Pindahin - centang WP = semua komponen WP itu yang masih aktif (belum 100%,
-                  bukan jejak; aturan kodeJadwalAktif) ikut dipilih; awalnya kosong. Hanya saat sakelar "Pilih per WP (uji)" nyala. */}
+                  bukan jejak; aturan kodeJadwalAktif) ikut dipilih; awalnya kosong. Hanya tampilan lama (accordion tidak mengirim modePilihWp). */}
               {bisaPilihPindah&&deps.modePilihWp&&(()=>{
                 const aktifWp=(e:any)=>(e.komponen||[]).filter((k:string)=>kodeJadwalAktif(e,k,livePanelForCell?.checklist,rawRow?.proses||""));
                 const terpilihSemua=(e:any)=>{const ks=aktifWp(e);return ks.length>0&&ks.every((k:string)=>selectedForMove.some(x=>x.wp===e.wp&&x.kode===k));};
