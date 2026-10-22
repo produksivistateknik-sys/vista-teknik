@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { hariIniWib } from '../lib/tanggalWib'
 import { supabase } from '../lib/supabase'
 import { unggahMediaKeR2, isFileVideo } from '../lib/siapkanMedia'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -127,7 +128,8 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
   const tambahUpdate=async(id:any)=>{
     if(!updateText.trim())return;
     const item=maintenanceList.find((m:any)=>m.id===id);
-    const entry={tanggal:new Date().toISOString().slice(0,10),catatan:updateText.trim(),oleh:getUname()};
+    // (23 Okt 2026) tanggal kalender WIB (lib/tanggalWib) - dulu toISOString() (UTC): catatan 00.00-06.59 WIB tercatat kemarin.
+    const entry={tanggal:hariIniWib(),catatan:updateText.trim(),oleh:getUname()};
     const newArr=[...(item?.update_harian||[]),entry];
     const{data,error}=await supabase.from("maintenance_log").update({update_harian:newArr}).eq("id",id).select("*,mesin(nama,kode)").single();
     if(!error){
@@ -290,7 +292,7 @@ export function KerusakanTab({mesinList,maintenanceList,setMaintenanceList,user}
               </div>
               {updateFormId===m.id&&(
                 <div style={{display:"flex",gap:8,marginTop:10,alignItems:"center"}}>
-                  <input value={updateText} onChange={(e:any)=>setUpdateText(e.target.value)} placeholder={"Catatan update (otomatis "+fmtShort(new Date().toISOString().slice(0,10))+")..."}
+                  <input value={updateText} onChange={(e:any)=>setUpdateText(e.target.value)} placeholder={"Catatan update (otomatis "+fmtShort(hariIniWib())+")..."}
                     style={{flex:1,padding:"7px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:11.5}}
                     onKeyDown={(e:any)=>{if(e.key==="Enter")tambahUpdate(m.id);}}/>
                   <Btn color="#16a34a" style={{padding:"6px 12px",fontSize:11}} onClick={()=>tambahUpdate(m.id)}>Simpan</Btn>

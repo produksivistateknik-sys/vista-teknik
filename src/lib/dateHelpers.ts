@@ -1,10 +1,16 @@
+import { hariIniWib } from "./tanggalWib";
 export function getLocalDateStr(d=new Date()){
   const y=d.getFullYear();
   const m=String(d.getMonth()+1).padStart(2,"0");
   const day=String(d.getDate()).padStart(2,"0");
   return `${y}-${m}-${day}`;
 }
-export const TODAY=getLocalDateStr();
+// TODAY (23 Okt 2026): dulu konstanta yg dihitung SEKALI saat modul dimuat -> basi bila aplikasi/tab dibiarkan terbuka
+// melewati tengah malam (mis. tanggal timer Komponen Pasang, label "hari ini"). Sekarang BINDING HIDUP (export let):
+// diperbarui tiap menit dari lib/tanggalWib hariIniWib() (tanggal kalender WIB) - semua pembaca TODAY saat render ikut
+// segar tanpa mengubah pemakainya. Yang menyalin TODAY ke state/konstanta saat mount tetap nilai awal (by design).
+export let TODAY=hariIniWib();
+if(typeof window!=="undefined")setInterval(()=>{const t=hariIniWib();if(t!==TODAY)TODAY=t;},60000);
 // getLocalDateStr() fresh (BUG FIX 5 Sep 2026), BUKAN TODAY const yang basi kalau tab dibiarkan
 // terbuka lewat tengah malam - badge deadline (TERLAMBAT/MENDESAK/ON TRACK, lewat isDelayed/
 // isUrgent/getStatus di bawah yang semua pakai fungsi ini) sekarang selalu akurat tanpa perlu
