@@ -17,6 +17,7 @@
 -- Dry-run   : supabase/verifikasi/20261022050000_timer_batal_dryrun.sql
 -- Verifikasi: supabase/verifikasi/20261022050000_timer_batal_verifikasi.sql (harus 'SEMUA LULUS', tanpa sisa)
 -- Rollback  : supabase/rollback/20261022050000_timer_batal_rollback.sql
+-- Perbaikan : 20261022050100_timer_batal_pulihkan_fix.sql (durasi_menit generated - pemulihan tanpa kolom generated)
 -- ============================================================================================
 begin;
 
