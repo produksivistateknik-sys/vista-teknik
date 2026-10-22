@@ -93,7 +93,7 @@ export async function muatProyekAktif(db: any): Promise<ProyekAktif[]> {
   const per = new Map<string, ProyekAktif>()
   for (const w of wos) {
     if (w.is_archived || !w.proyek) continue
-    const p = per.get(w.proyek) || { proyek: w.proyek, wo: [], panels: [] }
+    const p: ProyekAktif = per.get(w.proyek) || { proyek: w.proyek, wo: [], panels: [] }
     if (!p.wo.includes(w.wo)) p.wo.push(w.wo)
     for (const pn of w.panels || []) if (!pn.deleted_at) p.panels.push({ id: pn.id, nama: pn.nama, no_pnl: pn.no_pnl ?? null, wo: w.wo, wo_id: w.id })
     per.set(w.proyek, p)
