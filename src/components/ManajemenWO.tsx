@@ -185,8 +185,12 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       const rawRows=await fetchAllPaged((from,to)=>supabase.from("raw_schedule").select("*").eq("wo_id",wo.id).range(from,to));
       const renharRows=await fetchAllPaged((from,to)=>supabase.from("renhar").select("*").eq("wo_id",wo.id).range(from,to));
       const timerRows=panelIds.length>0?await fetchAllPaged((from,to)=>supabase.from("fcs_timer_kerja").select("*,pekerja(nama)").in("panel_id",panelIds).range(from,to)):[];
-      // Catatan: tabel kendala tidak punya relasi wo_id/panel_id, jadi tidak bisa difilter per WO
-      const kendalaRows:any[]=[];
+      // Kendala produksi (23 Okt 2026): kendala panel WO ini + kendala "Umum" proyeknya (tabel kendala_produksi,
+      // tidak terhapus), termasuk status teratasi. Dulu selalu [] (tabel kendala lama tanpa relasi WO).
+      const kendalaRows:any[]=[
+        ...(panelIds.length>0?await fetchAllPaged((from,to)=>(supabase.from("kendala_produksi" as any).select("*") as any).in("panel_id",panelIds).is("dihapus_pada",null).order("id").range(from,to)):[]),
+        ...await fetchAllPaged((from,to)=>(supabase.from("kendala_produksi" as any).select("*") as any).eq("proyek",wo.proyek).is("panel_id",null).is("dihapus_pada",null).order("id").range(from,to)),
+      ];
 
       const totalJamKerja=(timerRows||[]).reduce((s:number,t:any)=>s+Number(t.durasi_menit||0),0)/60;
 

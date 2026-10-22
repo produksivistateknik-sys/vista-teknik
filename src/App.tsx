@@ -5,7 +5,7 @@ import { realtimeSemuaSehat } from './lib/statusRealtime';
 import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
-import { useKendala } from './hooks/useKendala'
+import { useKendalaTerbuka } from './hooks/useKendalaTerbuka'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
@@ -54,7 +54,7 @@ const TrackingView = lazyP(() => import('./components/TrackingView').then(m => (
 const TrackingPekerja = lazyP(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
 const RencanaHarian = lazyP(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
 const ActivityLogView = lazyP(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
-const KendalaInbox = lazyP(() => import('./components/KendalaInbox').then(m => ({ default: m.KendalaInbox })))
+const TabKendala = lazyP(() => import('./components/TabKendala').then(m => ({ default: m.TabKendala })))
 const Dashboard = lazyP(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
 const AiAssistantChat = lazyP(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
 const TaskMonitoring = lazyP(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
@@ -273,7 +273,8 @@ const [woData, setWoData] = useState<any[]>([]);
 const [rawData, setRawData] = useState<any[]>([]);
 const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
-  const { data: kendalaLog, create: createKendala, remove: removeKendala, refetch: refetchKendala } = useKendala()
+  // Kendala produksi (23 Okt 2026): badge & lonceng = kendala BELUM teratasi (tabel kendala_produksi), admin saja.
+  const { kendalaTerbuka, galatKendala, refetchKendalaTerbuka } = useKendalaTerbuka((user as any)?.divisi==='admin')
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
   // Badge Maintenance (29 Sep 2026, CLAUDE.md A.1/A.2) - dulu select row lalu .length (kepotong
   // di 1000) & error ditelan (badge diam-diam hilang). Sekarang count exact head:true (gak narik
@@ -333,7 +334,7 @@ const [pekerja, setPekerja] = useState<any[]>([]);
         refetchWO?.(),
         refetchRaw?.(),
         refetchRenhar?.(),
-        refetchKendala?.(),
+        refetchKendalaTerbuka?.(),
         refetchPekerja?.(),
         refetchActivityLog?.(),
       ])
@@ -722,6 +723,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
       ...(canRaw?[{id:"outstanding",label:"Outstanding",icon:"ti ti-list-details"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
+      // Kendala produksi (23 Okt 2026) - dipindah dari grup SYSTEM ke dekat Rencana Harian/Outstanding; badge = belum teratasi.
+      ...(canKendala?[{id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:galatKendala?"!":kendalaTerbuka.length>0?kendalaTerbuka.length:null}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
       // "WO Digital" DIHAPUS dari sidebar Admin (REVISI 4 Sep 2026) - digantikan section
@@ -735,7 +738,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"permintaan_admin",label:"Permintaan Barang",icon:"ti ti-clipboard-check",badge:pendingPermintaanError?"!":pendingPermintaanCount>0?pendingPermintaanCount:null},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
-        {id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:kendalaLog.length>0?kendalaLog.length:null},
         {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
@@ -767,7 +769,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     .sort((a,b)=>a.daysLeft-b.daysLeft);
 
   // Kendala belum selesai
-  const kendalaNotif=kendalaLog.filter((k:any)=>k.status!=="selesai").slice(0,5);
+  const kendalaNotif=kendalaTerbuka.slice(0,5); // terbaru dulu (urut id menurun)
   const allNavItemsFlat=SIDEBAR_MENUS.flatMap(g=>g.items).flatMap((i:any)=>i.children?i.children:[i]);
   const activeLabel=allNavItemsFlat.find((i:any)=>i.id===tab)?.label||"Dashboard";
 
@@ -1100,7 +1102,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                                 <div style={{display:"flex",alignItems:"center",gap:8}}>
                                   <span style={{background:"#fef2f2",color:"#dc2626",borderRadius:20,
                                     padding:"1px 7px",fontSize:9,fontWeight:700}}>KENDALA</span>
-                                  <span style={{fontSize:11,color:"#475569",flex:1}}>{k.deskripsi||k.kendala||"Kendala baru"}</span>
+                                  <span style={{fontSize:11,color:"#475569",flex:1}}>{k.proyek} · {k.panel_nama||"Umum"}: {k.teks}</span>
                                 </div>
                               </div>
                             ))}
@@ -1160,7 +1162,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
-              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaInbox kendalaLog={kendalaLog} removeKendala={removeKendala} user={user}/></Suspense></div>}
+              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><TabKendala db={supabase} user={user} mode="admin"/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}

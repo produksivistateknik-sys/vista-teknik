@@ -11,6 +11,8 @@ import autoTable from 'jspdf-autotable'
 import { buildDayColumns, colIndexForDate, gambarTimelineGanttPdf, type BarisGanttPdf } from '../lib/ganttArsipPdf'
 import { hitungGanttArsip, rentangGantt, type BarisGantt, type DataGanttArsip } from '../lib/ganttArsip'
 import { siapkanKop, gambarKopPenuh, gambarKopRingkas, TINGGI_KOP_RINGKAS, type AsetKop } from '../lib/kopSurat'
+import { fetchAllPaged } from '../lib/fetchAllPaged'
+import { labelDivisi, teksTeratasi } from '../lib/kendalaProduksi'
 
 const QC_STATUS_LABEL:Record<string,{label:string,color:string,bg:string}>={
   to_do:{label:"To Do",color:"#64748b",bg:"#f1f5f9"},
@@ -130,14 +132,20 @@ export function ArsipTab({user,refetchWO}:any){
       from+=pageSize;
     }
     // 3. QC & Packing dibaca langsung dari kolom panel (qc_checklist/packing_done_at) di hitungGanttArsip.
-    // 4. Kendala - cek live + archived (panel yang baru diarsipkan, catatan kendalanya mungkin
-    //    belum sempat termigrasi ke kendala_archived tergantung timing proses arsip)
-    const[{data:kLive,error:kLiveErr},{data:kArch,error:kArchErr}]=await Promise.all([
-      supabase.from("kendala").select("tanggal,divisi,divisi_label,proses,catatan,operator").eq("panel_id",p.id),
-      supabase.from("kendala_archived").select("tanggal,divisi,divisi_label,proses,catatan,operator").eq("panel_id",p.id),
-    ]);
-    if(kLiveErr||kArchErr){alert("Gagal memuat catatan kendala: "+(kLiveErr?.message||kArchErr?.message));setGanttLoading(false);return;}
-    const kendalaAll=[...(kLive||[]),...(kArch||[])].sort((a,b)=>(a.tanggal||"").localeCompare(b.tanggal||""));
+    // 4. Kendala (23 Okt 2026): kendala_produksi panel ini (baris TIDAK dipindah saat arsip - panel arsip memakai id
+    //    yang sama) + riwayat lama kendala_archived (catatan per tugas operator sebelum fitur Kendala). Dipaginasi.
+    let kendalaAll:any[]=[];
+    try{
+      const[kBaru,kLama]=await Promise.all([
+        fetchAllPaged((from,to)=>(supabase.from("kendala_produksi" as any).select("id,tanggal,divisi,teks,pencatat,teratasi_pada,teratasi_oleh") as any).eq("panel_id",p.id).is("dihapus_pada",null).order("id").range(from,to)),
+        fetchAllPaged((from,to)=>supabase.from("kendala_archived").select("id,tanggal,divisi,divisi_label,proses,catatan,operator").eq("panel_id",p.id).order("id").range(from,to)),
+      ]);
+      kendalaAll=[
+        ...kBaru.map((k:any)=>({tanggal:k.tanggal,divisi:k.divisi,divisi_label:labelDivisi(k.divisi),proses:null,operator:k.pencatat,
+          catatan:k.teks+(k.teratasi_pada?" ("+teksTeratasi(k)+")":" (belum teratasi)")})),
+        ...kLama,
+      ].sort((a,b)=>(a.tanggal||"").localeCompare(b.tanggal||""));
+    }catch(err:any){console.error("[Arsip Gantt] gagal memuat kendala:",err);alert("Gagal memuat catatan kendala: "+(err?.message||err));setGanttLoading(false);return;}
     setGanttData({timer:allTimer,checkpoint:allCp});
     setGanttKendala(kendalaAll);
     setGanttLoading(false);
