@@ -16,6 +16,7 @@ export type Kendala = {
   dicatat_pada: string; tanggal: string; diubah_pada: string | null
   teratasi_pada: string | null; teratasi_oleh: string | null
   dihapus_pada: string | null; dihapus_oleh: string | null
+  grup_id?: string | null // baris yang dicatat bersamaan di banyak panel (migration 20261023050000)
 }
 export type PanelProyek = { id: number; nama: string; no_pnl: number | null; wo: string; wo_id: number }
 export type ProyekAktif = { proyek: string; wo: string[]; panels: PanelProyek[] }
@@ -138,6 +139,19 @@ async function rpc(db: any, nama: string, arg: Record<string, any>): Promise<Ken
   const { data, error } = await db.rpc(nama, arg)
   if (error) throw new Error(error.message || String(error))
   return data as Kendala
+}
+// Tombol siap pakai "Kendalanya apa?" (operator) - OPSIONAL, ubah daftarnya di sini saja (keputusan user 23 Okt 2026).
+export const JENIS_KENDALA = ['Komponen kurang', 'Menunggu gambar', 'Menunggu material', 'Alat rusak', 'Ada revisi', 'Menunggu proses lain', 'Lainnya']
+// Teks tersimpan: "[Jenis]: [keterangan]" bila jenis dipilih (kecuali "Lainnya"), atau keterangan saja.
+export const susunTeksKendala = (jenis: string | null | undefined, keterangan: string) => {
+  const k = keterangan.trim()
+  return jenis && jenis !== 'Lainnya' ? `${jenis}: ${k}` : k
+}
+// Catat ke BANYAK panel sekaligus (panelIds kosong = "Umum") - satu RPC = satu transaksi: semua tersimpan atau tidak.
+export async function catatKendalaBanyak(db: any, a: { proyek: string; panelIds: number[]; teks: string; oleh: string; divisi: string; admin?: boolean }): Promise<Kendala[]> {
+  const { data, error } = await db.rpc('catat_kendala_banyak', { p_proyek: a.proyek, p_panel_ids: a.panelIds, p_teks: a.teks, p_oleh: a.oleh, p_divisi: a.divisi, p_sumber: a.admin ? 'admin' : 'operator' })
+  if (error) throw new Error(error.message || String(error))
+  return (data || []) as Kendala[]
 }
 export const catatKendala = (db: any, a: { proyek: string; panelId: number | null; teks: string; oleh: string; divisi: string; admin?: boolean }) =>
   rpc(db, 'catat_kendala', { p_proyek: a.proyek, p_panel_id: a.panelId, p_teks: a.teks, p_oleh: a.oleh, p_divisi: a.divisi, p_sumber: a.admin ? 'admin' : 'operator' })
