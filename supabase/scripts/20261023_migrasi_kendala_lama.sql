@@ -8,7 +8,7 @@
 --  4. CIMORY CITEUREUP / SDP-KOMPRESSOR 4 Agu  DWI   - Tutup samping (2 PCS)  (panel arsip #277 disebut di teksnya)
 -- kendala_archived TIDAK diubah/dihapus (tetap dibaca Gantt Arsip sebagai riwayat).
 
--- (0) DRY-RUN (baca saja): harap 4 baris calon, dan 0 baris yang sudah dimigrasi.
+-- (0) DRY-RUN (baca saja): harap 4 baris calon (baris ke-4 panel_id 277), dan 0 baris yang sudah dimigrasi.
 with calon as (
   select distinct on (k.proyek, k.catatan) k.proyek, k.catatan, k.operator, k.divisi, k.tanggal, k.ts
     from public.kendala_archived k
@@ -16,8 +16,8 @@ with calon as (
    order by k.proyek, k.catatan, k.id)
 select proyek, null::bigint as panel_id, catatan, operator, tanggal, ts from calon
 union all
-select k.proyek, k.panel_id, k.catatan, k.operator, k.tanggal, k.ts
-  from public.kendala_archived k where k.panel_id = 277 and k.catatan like 'CIMORY SDP-KOMPRESSOR%'
+(select k.proyek, 277::bigint, k.catatan, k.operator, k.tanggal, k.ts
+   from public.kendala_archived k where k.proyek = 'CIMORY CITEUREUP' and k.catatan like 'CIMORY SDP-KOMPRESSOR%' order by k.id limit 1)
 order by ts, proyek;
 select count(*) as sudah_dimigrasi from public.kendala_produksi where sumber = 'migrasi';
 
@@ -29,8 +29,11 @@ with calon as (
    where k.catatan in ('belum bisa dilanjut karena menunggu busbar terpasang', 'Menunggu  informasi jumlah kabel')
    order by k.proyek, k.catatan, k.id
 ), panel_kompres as (
-  select k.proyek, k.panel_id, k.panel as panel_nama, k.catatan, k.operator, k.divisi, k.tanggal, k.ts
-    from public.kendala_archived k where k.panel_id = 277 and k.catatan like 'CIMORY SDP-KOMPRESSOR%' order by k.id limit 1
+  -- catatan ini dulu tersalin ke panel CIMORY lain (PUTR/CAPACITOR BANK), bukan #277; panel yang disebut di teksnya
+  -- = SDP-KOMPRESSOR (#277 di panels_archived, WO 042 CIMORY CITEUREUP) -> dipasang ke panel itu.
+  select k.proyek, 277::bigint as panel_id, (select pa.nama from public.panels_archived pa where pa.id = 277) as panel_nama,
+         k.catatan, k.operator, k.divisi, k.tanggal, k.ts
+    from public.kendala_archived k where k.proyek = 'CIMORY CITEUREUP' and k.catatan like 'CIMORY SDP-KOMPRESSOR%' order by k.id limit 1
 ), semua as (select * from calon union all select * from panel_kompres),
 baru as (
   insert into public.kendala_produksi (proyek, wo_id, wo_number, panel_id, panel_nama, teks, pencatat, divisi, sumber,
