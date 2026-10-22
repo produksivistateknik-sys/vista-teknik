@@ -154,7 +154,8 @@ export function TabKendala({ db, user, mode, registerBackHandler }: Props) {
   const chev = (o: boolean) => <span style={{ display: 'inline-block', width: 12, color: W.mute, marginRight: 6, transform: o ? 'rotate(90deg)' : 'none', transition: 'transform .15s' }}>›</span>
 
   return (
-    <div style={{ maxWidth: 680, margin: '0 auto', textAlign: 'left', color: W.fg, padding: '4px 2px 40px' }}>
+    // Operator (HP): kolom sempit di tengah. Admin: lebar penuh halaman (permintaan user 23 Okt 2026).
+    <div style={{ maxWidth: admin ? 'none' : 680, margin: admin ? 0 : '0 auto', textAlign: 'left', color: W.fg, padding: '4px 2px 40px' }}>
       <h1 style={{ fontSize: 22, fontWeight: 600, margin: '0 0 4px' }}>{admin ? 'Kendala produksi' : 'Kendala'}</h1>
       <p style={{ color: W.mute, margin: '0 0 14px', fontSize: 14 }}>
         {admin ? 'Catatan kendala dari tim produksi, per proyek dan per panel. Hanya Admin Produksi yang menandai Teratasi.'
