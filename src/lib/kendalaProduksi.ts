@@ -141,7 +141,7 @@ async function rpc(db: any, nama: string, arg: Record<string, any>): Promise<Ken
   return data as Kendala
 }
 // Tombol siap pakai "Kendalanya apa?" (operator) - OPSIONAL, ubah daftarnya di sini saja (keputusan user 23 Okt 2026).
-export const JENIS_KENDALA = ['Komponen kurang', 'Menunggu gambar', 'Menunggu material', 'Alat rusak', 'Ada revisi', 'Menunggu proses lain', 'Lainnya']
+export const JENIS_KENDALA = ['Komponen kurang', 'Menunggu gambar', 'Menunggu material', 'Alat rusak', 'Ada revisi', 'Menunggu proses lain']
 // Teks tersimpan: "[Jenis]: [keterangan]" bila jenis dipilih (kecuali "Lainnya"), atau keterangan saja.
 export const susunTeksKendala = (jenis: string | null | undefined, keterangan: string) => {
   const k = keterangan.trim()
