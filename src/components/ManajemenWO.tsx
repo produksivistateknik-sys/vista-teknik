@@ -22,6 +22,7 @@ import { useWoDigitalDocs } from '../lib/useWoDigitalDocs'
 import { Card, Btn, STitle, Badge, PBar, Modal, Lbl, Inp, Sel } from './ui/Primitives'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { teksHasilTemplate } from '../lib/templateJadwalWp'
+import { ModalTemplateWp } from './ModalTemplateWp'
 import { cariPelanggaranUrutan, teksPelanggaran } from '../lib/urutanProses'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
@@ -84,6 +85,8 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
   const [quickGenPakaiTemplate,setQuickGenPakaiTemplate]=useState(true);
   const [quickGenPola,setQuickGenPola]=useState<Record<number,string>>({});
   const [tipeBerTemplate,setTipeBerTemplate]=useState<string[]|null>(null);
+  const [editTemplateWp,setEditTemplateWp]=useState(false);
+  const [muatTemplateKe,setMuatTemplateKe]=useState(0);
   useEffect(()=>{
     if(!quickGenModal)return;
     let batal=false;
@@ -91,7 +94,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       .then(rows=>{if(!batal)setTipeBerTemplate([...new Set<string>(rows.map((r:any)=>r.tipe_panel))].sort());})
       .catch(err=>{console.error('[FCS] baca template_jadwal_wp gagal:',err);if(!batal){setTipeBerTemplate([]);alert('Gagal membaca template WP: '+(err?.message||err)+'\nFCS tetap bisa dijalankan tanpa template.');}});
     return()=>{batal=true};
-  },[quickGenModal]);
+  },[quickGenModal,muatTemplateKe]);
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -831,6 +834,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           </div>
         </Card>
       )}
+      {editTemplateWp&&<ModalTemplateWp user={user} onTutup={berubah=>{setEditTemplateWp(false);if(berubah){setTipeBerTemplate(null);setMuatTemplateKe(n=>n+1);}}}/>}
       {quickGenModal&&(
         <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={quickGenPakaiTemplate?520:420}>
           {!quickGenResult?(
@@ -877,6 +881,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                 <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,fontSize:12,color:"#334155",cursor:"pointer"}}>
                   <input type="checkbox" checked={quickGenPakaiTemplate} onChange={e=>setQuickGenPakaiTemplate(e.target.checked)}/>
                   Tata dengan template WP
+                  <button type="button" onClick={()=>setEditTemplateWp(true)} style={{marginLeft:"auto",fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:700,fontFamily:"inherit"}}>✎ Atur template</button>
                 </label>
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
