@@ -6,7 +6,7 @@
 -- yang semu (satu-satunya timer mereka di 12 Okt adalah timer 0 menit ini); 13 Okt sudah terhitung (punya timer lain).
 -- RONI tetap (punya 7 timer lain di 12 Okt). Menit kerja semua orang tidak berubah (0 menit).
 -- Jejak tahan lama: tabel baru koreksi_data_log (activity_log hanya ~1 minggu) + activity_log.
--- Jalankan per blok: (0) dry-run -> (1) eksekusi -> (2) verifikasi. Rollback di (3).
+-- Jalankan per blok: (0) dry-run -> (1a) tabel log -> (1b) koreksi (satu perintah) -> (2) verifikasi. Rollback di (3).
 
 -- (0) DRY-RUN (baca saja). Harap 9 baris, tanggal_lama 2026-10-12, tanggal_baru 2026-10-13, status 'siap'.
 select t.id, p.nama as pekerja, t.panel_id, t.kode_komponen, t.proses, t.tahap,
@@ -18,7 +18,7 @@ select t.id, p.nama as pekerja, t.panel_id, t.kode_komponen, t.proses, t.tahap,
  where t.id in (22945, 22946, 22947, 22948, 22949, 22950, 22951, 22952, 22953) order by t.id;
 select to_regclass('public.koreksi_data_log') as tabel_log_sudah_ada;
 
--- (1) EKSEKUSI
+-- (1a) EKSEKUSI - tabel jejak koreksi (tahan lama; activity_log hanya ~1 minggu). Aman dijalankan ulang.
 begin;
 create table if not exists public.koreksi_data_log (
   id          bigint generated always as identity primary key,
@@ -36,7 +36,11 @@ alter table public.koreksi_data_log enable row level security;
 drop policy if exists baca_koreksi_data_log on public.koreksi_data_log;
 create policy baca_koreksi_data_log on public.koreksi_data_log for select to anon, authenticated using (true);
 -- tanpa policy tulis: hanya diisi skrip SQL admin (SQL Editor).
+commit;
 
+-- (1b) EKSEKUSI - koreksi dalam SATU perintah (atomik dgn sendirinya; SQL Editor hanya menampilkan hasil perintah
+--      terakhir, jadi hasilnya tampil langsung). Harap 9 baris, tanggal_baru 2026-10-13, kolom activity_log = 1.
+--      Aman dijalankan ulang: baris yang sudah 13 Okt tidak tersentuh lagi (hasil 0 baris).
 with target as (
   select id, tanggal as lama, ((mulai at time zone 'Asia/Jakarta') - interval '7 hours')::date as baru
     from public.fcs_timer_kerja
@@ -49,15 +53,16 @@ with target as (
   select 'fcs_timer_kerja', id, 'tanggal', lama::text, baru::text,
          'tanggal timer = tanggal kartu yg dibuka (viewDate) bukan hari kerja saat mulai; dikoreksi ke hari kerja WIB mulai (bug B, 23 Okt 2026)',
          'Admin (SQL koreksi timer BUSBAR 521)' from ubah returning ref_id
+), act as (
+  insert into public.activity_log (user_name, action, description, module, halaman)
+  select 'Admin (SQL koreksi timer BUSBAR 521)', 'KOREKSI TANGGAL TIMER',
+         'Timer ' || string_agg(ref_id::text, ', ' order by ref_id) || ': tanggal 2026-10-12 -> 2026-10-13 (dimulai 13 Okt 08.19 WIB dari kartu 12 Okt; durasi 0 menit). Jejak per baris di koreksi_data_log.',
+         'produksi', 'Admin'
+    from log having count(*) > 0
+  returning id
 )
-insert into public.activity_log (user_name, action, description, module, halaman)
-select 'Admin (SQL koreksi timer BUSBAR 521)', 'KOREKSI TANGGAL TIMER',
-       'Timer ' || string_agg(ref_id::text, ', ' order by ref_id) || ': tanggal 2026-10-12 -> 2026-10-13 (dimulai 13 Okt 08.19 WIB dari kartu 12 Okt; durasi 0 menit). Jejak per baris di koreksi_data_log.',
-       'produksi', 'Admin'
-  from log having count(*) > 0;
--- Harap 9 baris bertanggal 2026-10-13. Bila tidak -> ROLLBACK; (bukan commit) lalu kabari Claude.
-select id, tanggal, durasi_menit from public.fcs_timer_kerja where id in (22945, 22946, 22947, 22948, 22949, 22950, 22951, 22952, 22953) order by id;
-commit;
+select u.id, u.lama as tanggal_lama, u.baru as tanggal_baru, (select count(*) from act) as activity_log
+  from ubah u order by u.id;
 
 -- (2) VERIFIKASI
 --  a. 9 timer kini 13 Okt, durasi tetap 0 (harap 9 / 0 / 0)
