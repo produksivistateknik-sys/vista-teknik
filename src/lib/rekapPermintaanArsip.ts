@@ -8,7 +8,7 @@ import { supabase } from './supabase'
 
 export type PanelRekap = { id: number; nama: string; woId: number; arsip: boolean }
 export type WoRekap = { id: number; wo: string; proyek: string; arsip: boolean; panels: PanelRekap[] }
-export type ItemRekap = { komponen_master_id: number | null; nama_komponen: string; satuan_dipilih: string | null; satuan: string | null; qty: number; panel_id: number; divisi: string | null }
+export type ItemRekap = { id: number; komponen_master_id: number | null; nama_komponen: string; satuan_dipilih: string | null; satuan: string | null; qty: number; panel_id: number; divisi: string | null }
 
 const HALAMAN = 1000
 async function semuaHalaman<T = any>(buat: (dari: number, sampai: number) => any): Promise<T[]> {
@@ -53,9 +53,9 @@ export async function muatItemRekap(panels: PanelRekap[]): Promise<ItemRekap[]> 
   for (const p of perms) { panelDari[p.id] = p.panel_id ?? p.panel_id_arsip; divisiDari[p.id] = p.divisi }
   const items: ItemRekap[] = []
   for (const bagian of potong(perms.map(p => p.id))) {
-    const rows = await semuaHalaman<any>((a, b) => (supabase.from('permintaan_item') as any).select('id,permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty')
+    const rows = await semuaHalaman<any>((a, b) => (supabase.from('permintaan_item') as any).select('id,permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty') // id: tanda koreksi (22 Okt 2026)
       .in('permintaan_id', bagian).eq('status', 'submit').order('id', { ascending: true }).range(a, b))
-    for (const it of rows) items.push({ komponen_master_id: it.komponen_master_id, nama_komponen: it.nama_komponen, satuan_dipilih: it.satuan_dipilih, satuan: it.satuan,
+    for (const it of rows) items.push({ id: it.id, komponen_master_id: it.komponen_master_id, nama_komponen: it.nama_komponen, satuan_dipilih: it.satuan_dipilih, satuan: it.satuan,
       qty: it.qty, panel_id: panelDari[it.permintaan_id], divisi: divisiDari[it.permintaan_id] })
   }
   return items

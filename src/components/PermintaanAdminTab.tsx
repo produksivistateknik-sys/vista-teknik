@@ -1,6 +1,8 @@
 import { useState, useEffect, useMemo, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from '../lib/rekapPermintaanArsip'
+import { muatKoreksiDisetujui, teksTandaKoreksi, qtyEfektif, rantaiKoreksi, type KoreksiPermintaan } from '../lib/koreksiPermintaan'
+import { KartuKoreksi } from './KartuKoreksi'
 import { Btn, Modal, Badge, Lbl, Inp, Sel } from './ui/Primitives'
 import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
@@ -347,7 +349,9 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [rekapScopePanelId, setRekapScopePanelId] = useState<number | null>(null) // null = semua panel di WO ini
   const [rekapSearch, setRekapSearch] = useState('') // filter tabel di layar (poin A), TIDAK ikut query ulang
   const [rekapLoading, setRekapLoading] = useState(false)
-  const [rekapRawItems, setRekapRawItems] = useState<{ komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number, divisi: string | null }[]>([])
+  // (22 Okt 2026) koreksi qty disetujui per item (lib/koreksiPermintaan) - tanda "✎ dikoreksi" di Rekap; angka tidak berubah
+  const [rekapKoreksiPeta, setRekapKoreksiPeta] = useState<Record<number, KoreksiPermintaan[]>>({})
+  const [rekapRawItems, setRekapRawItems] = useState<{ id: number, komponen_master_id: number | null, nama_komponen: string, satuan_dipilih: string | null, satuan: string | null, qty: number, panel_id: number, divisi: string | null }[]>([])
   // (17 Okt 2026) rekap ikut sampai ARSIP - WO/panel aktif (woData) digabung panel arsip & WO arsip
   // (lib/rekapPermintaanArsip.ts, salinan identik di vista-pekerja). null = belum dimuat -> pakai WO aktif saja dulu.
   const [rekapWoArsip, setRekapWoArsip] = useState<WoRekap[] | null>(null)
@@ -385,6 +389,8 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
       if (panelsWo.length === 0) { setRekapRawItems([]); setRekapTanpaRincian([]); setRekapLoading(false); return }
       const [items, tanpaRincian] = await Promise.all([muatItemRekap(panelsWo), muatPermintaanTanpaRincian(panelsWo)])
       setRekapRawItems(items)
+      try { setRekapKoreksiPeta(await muatKoreksiDisetujui(items.map(it => it.id))) }
+      catch (e: any) { console.error('[Rekap] gagal memuat koreksi (tanda dikoreksi tidak tampil):', e); setRekapKoreksiPeta({}) }
       setRekapTanpaRincian(tanpaRincian)
     } catch (e: any) {
       alert('Gagal memuat rekap: ' + e.message)
@@ -408,16 +414,17 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   // operator saat submit - dipakai juga di tab Menunggu Persetujuan/Riwayat/Koreksi Qty).
   const rekapRowsFull = useMemo(() => {
     const rows = rekapScopePanelId ? rekapRawItems.filter(it => it.panel_id === rekapScopePanelId) : rekapRawItems
-    const groups: Record<string, { nama: string, satuan: string, totalQty: number, divisi: string }> = {}
+    const groups: Record<string, { nama: string, satuan: string, totalQty: number, divisi: string, ids: number[] }> = {}
     rows.forEach(it => {
       const satuan = it.satuan_dipilih || it.satuan || '-'
       const divisi = it.divisi || '-'
       const key = `${divisi}|${it.komponen_master_id ?? 'x'}|${satuan}`
-      if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0, divisi }
-      groups[key].totalQty += Number(it.qty) || 0
+      if (!groups[key]) groups[key] = { nama: it.nama_komponen, satuan, totalQty: 0, divisi, ids: [] }
+      groups[key].totalQty += qtyEfektif(it) // qty efektif = hasil koreksi terakhir (lib/koreksiPermintaan)
+      groups[key].ids.push(it.id)
     })
-    return Object.entries(groups).map(([key, v]) => ({ key, ...v })).sort((a, b) => a.nama.localeCompare(b.nama))
-  }, [rekapRawItems, rekapScopePanelId])
+    return Object.entries(groups).map(([key, v]) => ({ key, ...v, koreksi: teksTandaKoreksi(v.ids, rekapKoreksiPeta, v.satuan) })).sort((a, b) => a.nama.localeCompare(b.nama))
+  }, [rekapRawItems, rekapScopePanelId, rekapKoreksiPeta])
 
   // Filter search box (poin A) - CLIENT-SIDE doang, gak nyentuh rekapRawItems/query. Dipakai
   // buat render tabel DAN print sekaligus (array yang sama) - biar WYSIWYG, cetak persis yang
@@ -467,7 +474,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     <thead><tr><th>Divisi</th><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
     ${rekapGrup.map(g => `<tbody>
       <tr class="grup"><td colspan="4">${escapeHtml(g.label)} <span>(${g.rows.length} item)</span></td></tr>
-      ${g.rows.map(r => `<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi] || r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
+      ${g.rows.map(r => `<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi] || r.divisi)}</td><td>${escapeHtml(r.nama)}${r.koreksi ? ` <span style="color:#b45309">✎ ${escapeHtml(r.koreksi)}</span>` : ''}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString('id-ID'))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join('')}
     </tbody>`).join('')}
     <tfoot><tr><td colspan="4">Total ${rows.length} jenis item</td></tr></tfoot>
   </table>
@@ -592,13 +599,9 @@ ${kop.body}
       // sedang ditampilkan - status='disetujui' saja (keputusan user, koreksi ditolak gak
       // dirender). Di-map per item, bisa lebih dari 1 koreksi per item (jarang, tapi mungkin).
       const itemIds = merged.map((it: any) => it.id)
-      const koreksiMap: Record<number, any[]> = {}
-      if (itemIds.length > 0) {
-        const koreksiRows = await fetchAllPagedPerPotongan(itemIds, (bagian, from, to) =>
-          supabase.from('permintaan_item_koreksi').select('*').eq('status', 'disetujui')
-            .in('permintaan_item_id', bagian).order('id').range(from, to))
-        koreksiRows.forEach((k: any) => { (koreksiMap[k.permintaan_item_id] ||= []).push(k) })
-      }
+      // (22 Okt 2026) pemuat bersama lib/koreksiPermintaan (paginasi + cek error), urut rantai koreksi
+      const koreksiMap: Record<number, any[]> = await muatKoreksiDisetujui(itemIds)
+      for (const id of Object.keys(koreksiMap)) koreksiMap[Number(id)] = rantaiKoreksi(koreksiMap[Number(id)])
       setRiwayatKoreksiMap(koreksiMap)
     } catch (e: any) {
       alert('Gagal memuat riwayat: ' + e.message)
@@ -835,7 +838,9 @@ ${kop.body}
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                             <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
                             <span style={{ color: '#1e293b', fontWeight: 600 }}>{r.nama}</span>
+                            {r.koreksi && <span title={r.koreksi} style={{ fontSize: 10.5, fontWeight: 700, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 10, padding: '1px 7px', whiteSpace: 'nowrap' as const, cursor: 'help' }}>✎ dikoreksi</span>}
                           </div>
+                          {r.koreksi && <div style={{ fontSize: 10.5, color: '#b45309', marginTop: 2, marginLeft: 23 }}>{r.koreksi}</div>}
                         </td>
                         <td style={{ padding: '11px 14px', textAlign: 'right', fontWeight: 700, color: '#1e293b' }}>{r.totalQty.toLocaleString('id-ID')}</td>
                         <td style={{ padding: '11px 14px', textAlign: 'center', color: '#64748b' }}>{r.satuan}</td>
@@ -975,11 +980,9 @@ ${kop.body}
                               Disiapkan oleh <strong>{it.updated_by}</strong> — {fmtDateTime(it.updated_at)}
                             </div>
                           )}
+                          {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Gudang vista-pekerja) */}
                           {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
-                            <div key={k.id} style={{ fontSize: 11.5, color: '#b45309', marginTop: 4 }}>
-                              Qty dikoreksi <strong>{k.qty_lama}{it.satuan ? ` ${it.satuan}` : ''} → {k.qty_diusulkan}{it.satuan ? ` ${it.satuan}` : ''}</strong> oleh {k.diajukan_oleh || '-'} (Gudang) — {fmtDateTime(k.diajukan_at)}
-                              <div style={{ color: '#64748b' }}>Disetujui oleh {k.disetujui_oleh || '-'} — {fmtDateTime(k.diputuskan_at)}{k.alasan ? ` · Alasan: ${k.alasan}` : ''}</div>
-                            </div>
+                            <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
                           ))}
                           {!ditolak && it.sudah_diambil && (
                             <div style={{ marginTop: 4, fontSize: 11.5, color: '#16a34a', fontWeight: 700 }}>
