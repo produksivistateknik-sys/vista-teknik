@@ -17,6 +17,7 @@ import { usePindahMulti } from '../hooks/usePindahMulti'
 import { cariPelanggaranUrutan, petaTandaUrutan, useVersiAturanUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
 import { useKonfirmasiUrutan, TombolDaftarUrutan } from './KonfirmasiUrutanProses'
 import { teksDilewati } from '../lib/relevansiJadwal'
+import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { rencanakanTempel } from '../lib/tempelJadwal'
 import { entriesTanpaSelesai, semuaKomponenSebagaiSubBaris, rentangInfoUntukTanggal, jadwalLanjutanWiring, alasanTakBisaMultiPilih as alasanTakBisaMultiPilihLib } from '../lib/isiSelJadwal'
 import { buatPetaDeadlinePanel, lolosFilterBaris as lolosFilterBarisLib, petaDeadlinePerTanggal, infoDeadline as infoDeadlineLib } from '../lib/deadlineRaw'
@@ -132,6 +133,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const executeMoveKomponen=async(rawId:number,fromDate:string,toDate:string,items:{wp:string;kode:string}[])=>{
     const row=rawData.find((r:any)=>r.id===rawId);
     if(!row)return;
+    if(!(await konfirmasiTimerBerjalan([{panelId:Number(row.panel_id||row.panelId),proses:row.proses,tanggal:fromDate,kode:items.map(it=>it.kode),label:String(row.panel||"").trim()}],namaPekerjaRaw,"pindah")))return;
     const perWp:Record<string,string[]>={};
     items.forEach(({wp,kode})=>{(perWp[wp]=perWp[wp]||[]);if(!perWp[wp].includes(kode))perWp[wp].push(kode);});
     const entries=Object.entries(perWp).map(([wp,komponen])=>({wp,komponen}));
@@ -349,7 +351,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // timer berjalan = bentrok (status timer dimuat 1x saat drag/potong dimulai - muatTimerBusbar).
   // Orkestrasi pindah banyak sel + Undo + status timer BUSBAR = hooks/usePindahMulti.ts (Tahap 0 - satu
   // jalur utk tampilan lama & baru). Data/fungsi diambil SAAT AKSI (getter), bukan saat render.
-  const pindahMulti=usePindahMulti(()=>({rawData,user,setRawData,refetchRaw,refetchRenhar,tampilToastAksi,cekPindahMulti,buatSelV2,konfirmasiUrutan:(m:Map<number,any>)=>bolehUrutan(m),
+  // (22 Okt 2026) nama pekerja utk peringatan timer berjalan (lib/timerBerjalan)
+  const namaPekerjaRaw=(id:any)=>(pekerja||[]).find((p:any)=>Number(p.id)===Number(id))?.nama;
+  const pindahMulti=usePindahMulti(()=>({rawData,user,setRawData,refetchRaw,refetchRenhar,tampilToastAksi,cekPindahMulti,buatSelV2,
+    cekSebelumPindah:(sel:any[])=>konfirmasiTimerBerjalan(sel.filter((s:any)=>s.entries).map((s:any)=>{const r=rawData.find((x:any)=>x.id===s.rawId);return{panelId:Number(r?.panel_id||r?.panelId),proses:r?.proses,tanggal:s.dari,kode:s.entries.flatMap((e:any)=>e.komponen||[]),label:String(r?.panel||"").trim()};}),namaPekerjaRaw,"pindah"),konfirmasiUrutan:(m:Map<number,any>)=>bolehUrutan(m),
     onSesudahPindah:(pindahan:Map<string,string>)=>{
       setSelectedCells((prev:any[])=>prev.map((c:any)=>{const ke=pindahan.get(c.rawId+"|"+c.date);return ke?{...c,date:ke}:c;}));
       setLastSelected(null);
@@ -1028,7 +1033,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return updateRaw(id,data);
   };
   const modalJadwal=useModalJadwalSel({woData,rawData,setRawData,updateRaw:updateRawCekUrutan,user,getEffCfg,getMenitPerPcs,wiringHariKerjaMap,
-    withRenharQueue,createRenhar,updateRenhar,removeRenhar,setRenhar,selectedForMove,setSelectedForMove,toggleSelectForMove,setMoveKomponenState,modePilihWp});
+    withRenharQueue,createRenhar,updateRenhar,removeRenhar,setRenhar,selectedForMove,setSelectedForMove,toggleSelectForMove,setMoveKomponenState,modePilihWp,namaPekerja:namaPekerjaRaw});
   const cellModal=modalJadwal.cellModal;
   const openCellModal=modalJadwal.buka;
   const{setModalWp,setModalKomponen,setModalBobotPerKomponen}=modalJadwal; // dipakai "Pilih Komponen Lain" (notifikasi available)
@@ -1154,6 +1159,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     const{rawId,fromDate,entries,toDate}=dragMode;
     const rowForDrag=rawData.find((r:any)=>r.id===rawId);
+    if(mode==="move"&&rowForDrag&&rowForDrag.proses!=="BUSBAR"&&!(await konfirmasiTimerBerjalan([{panelId:Number(rowForDrag.panel_id||rowForDrag.panelId),proses:rowForDrag.proses,tanggal:fromDate,kode:(entries||[]).flatMap((e:any)=>e.komponen||[]),label:String(rowForDrag.panel||"").trim()}],namaPekerjaRaw,"pindah"))){setDragMode(null);setDragInfo(null);return;}
     if(rowForDrag?.proses==="BUSBAR"){
       await confirmDragBusbar(mode,rowForDrag,fromDate,toDate,entries[0]?.komponen||[]);
       return;

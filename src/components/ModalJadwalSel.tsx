@@ -12,6 +12,7 @@ import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
 import { alasanKomponenDilewati } from '../lib/relevansiJadwal'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
+import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
@@ -49,6 +50,7 @@ export type DepsModalJadwalSel={
   selectedForMove?:{wp:string;kode:string}[];setSelectedForMove?:(v:any)=>void;toggleSelectForMove?:(wp:string,kode:string)=>void;setMoveKomponenState?:(v:any)=>void;
   // (22 Okt 2026) pilih per WP tampilan lama: tampilkan centang per WP utk Pindahin (selalu nyala sejak tahap 2)
   modePilihWp?:boolean;
+  namaPekerja?:(id:any)=>string|undefined; // (22 Okt 2026) peringatan timer berjalan saat Hapus WP
   // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = Supabase & activity_log asli
   io?:IoJadwalRaw;
 };
@@ -346,6 +348,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     // Hitung new schedule dulu sebelum update state
     const currentRow=rawData.find(r=>r.id===rawId);
     if(!currentRow)return false;
+    {const e0=(currentRow.schedule?.[date]||[]).find((e:any)=>e.wp===wp);
+     if(!(await konfirmasiTimerBerjalan([{panelId:Number(currentRow.panel_id||currentRow.panelId),proses:currentRow.proses,tanggal:date,kode:e0?.komponen||[],label:String(currentRow.panel||"").trim()}],deps.namaPekerja||(()=>undefined),"hapus")))return false;}
     // (14 Okt 2026, insiden SDP CT GALLON & FRESH AIR) Komponen di WP ini yang merupakan TUJUAN jejak dari
     // tanggal lain - dulu dihapus diam-diam, jejak abu-abu tertinggal & komponen hilang dari jadwal aktif.
     const entriHapus=(currentRow.schedule?.[date]||[]).find((e:any)=>e.wp===wp);

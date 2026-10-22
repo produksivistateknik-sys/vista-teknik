@@ -26,6 +26,8 @@ export type DepsPindahMulti = {
   buatSelV2?: (ikut: SelTujuan[]) => { sel: SelPindahV2[]; jadwal: Map<number, any> }
   // Sukses pindah: peta "rawId|tanggalAsal" -> tanggal tujuan (pemanggil menggeser pilihan sel).
   onSesudahPindah?: (pindahan: Map<string, string>) => void
+  // (22 Okt 2026) dipanggil sebelum pindah banyak sel - false = batal (mis. ada timer berjalan, lib/timerBerjalan)
+  cekSebelumPindah?: (sel: SelPindahV2[]) => Promise<boolean>
   // Sukses batalkan (pemanggil membersihkan pilihan sel).
   onSesudahBatal?: () => void
   // opsional - sumber data lain (sandbox Raw Schedule per WP); tanpa io = RPC/Supabase asli
@@ -87,6 +89,7 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     }
     const { sel, jadwal } = d.buatSelV2(ikut)
     if (sel.length === 0) { d.tampilToastAksi('Tidak ada pekerjaan yang bisa dipindah di sel terpilih.', 'err'); return false }
+    if (d.cekSebelumPindah && !(await d.cekSebelumPindah(sel))) return false
     return intiPindah(sel, jadwal, {
       jumlah: `${sel.length} sel`, offset,
       ulangi: () => apiRef.current.jalankanPindahMulti(cells, offset),
