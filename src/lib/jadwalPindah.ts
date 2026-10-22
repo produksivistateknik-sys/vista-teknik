@@ -226,3 +226,10 @@ export function rencanakanSalinMultiV2(jadwalPerBaris: Map<number, Jadwal4>, sel
   })
   return rows
 }
+
+// PILIH PER WP (22 Okt 2026, keputusan user) - sel Raw Schedule tampilan lama bisa dipilih per chip WP. `wps`
+// undefined = seluruh sel (perilaku lama); berisi = hanya entri WP itu yang ikut dipindah/disalin/dihapus.
+// SATU titik saring dipakai buatSelV2 (multi-pindah, seret banyak, potong-tempel), drag 1 sel & salin.
+export function saringEntriWp<T extends { wp?: string }>(entries: T[], wps?: string[] | null): T[] {
+  return wps ? (entries || []).filter(e => wps.includes(String(e.wp))) : (entries || [])
+}

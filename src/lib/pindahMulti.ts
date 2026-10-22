@@ -6,9 +6,9 @@
 // Rumus jadwal ada di lib/jadwalPindah.ts, kapasitas di lib/kapasitasHari.ts, aturan pilih di
 // lib/isiSelJadwal.ts.
 import { supabase as supabaseAsli } from './supabase'
-import { isMinggu, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, rencanakanSalinMultiV2, ambilJadwal4, type SelPindahV2, type RencanaPindahMultiV2 } from './jadwalPindah'
+import { isMinggu, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, rencanakanSalinMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2, type RencanaPindahMultiV2 } from './jadwalPindah'
 
-export type SelAsal = { rawId: number; date: string }
+export type SelAsal = { rawId: number; date: string; wps?: string[] } // wps: pilih per WP (undefined = seluruh sel)
 export type SelTujuan = SelAsal & { ke: string }
 export type SelBentrok = SelTujuan & { alasan: string }
 
@@ -28,7 +28,7 @@ export function buatSelV2(rawData: any[], ikut: SelTujuan[], ctx: KonteksSelV2) 
       if (kode.length === 0) continue
       sel.push({ rawId: row.id, dari: c.date, ke: c.ke, kodeBusbar: kode })
     } else {
-      const entries = ctx.entriesTanpaSelesai(row, row.schedule?.[c.date] || [])
+      const entries = saringEntriWp(ctx.entriesTanpaSelesai(row, row.schedule?.[c.date] || []), c.wps)
       if (entries.length === 0) continue
       sel.push({ rawId: row.id, dari: c.date, ke: c.ke, entries, adaPengerjaan: new Set<string>() })
     }

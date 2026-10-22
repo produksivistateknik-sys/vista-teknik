@@ -11,6 +11,7 @@ import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
 import { alasanKomponenDilewati } from '../lib/relevansiJadwal'
+import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
@@ -46,6 +47,8 @@ export type DepsModalJadwalSel={
   withRenharQueue:(task:any,fn:(existing:any)=>Promise<void>)=>Promise<any>;createRenhar:(d:any)=>Promise<any>;updateRenhar:(id:any,d:any)=>Promise<any>;removeRenhar:(id:any)=>Promise<any>;setRenhar:(f:any)=>void;
   // opsional - alur "pilih komponen lalu Pindahin → klik tanggal tujuan" milik tampilan lama
   selectedForMove?:{wp:string;kode:string}[];setSelectedForMove?:(v:any)=>void;toggleSelectForMove?:(wp:string,kode:string)=>void;setMoveKomponenState?:(v:any)=>void;
+  // (22 Okt 2026) sakelar "Pilih per WP (uji)" tampilan lama: tampilkan centang per WP utk Pindahin
+  modePilihWp?:boolean;
   // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = Supabase & activity_log asli
   io?:IoJadwalRaw;
 };
@@ -433,6 +436,32 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                     style={{padding:"4px 8px",borderRadius:6,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontSize:11,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
                 </div>
               )}
+              {/* (22 Okt 2026) PILIH PER WP utk Pindahin - centang WP = semua komponen WP itu yang masih aktif (belum 100%,
+                  bukan jejak; aturan kodeJadwalAktif) ikut dipilih; awalnya kosong. Hanya saat sakelar "Pilih per WP (uji)" nyala. */}
+              {bisaPilihPindah&&deps.modePilihWp&&(()=>{
+                const aktifWp=(e:any)=>(e.komponen||[]).filter((k:string)=>kodeJadwalAktif(e,k,livePanelForCell?.checklist,rawRow?.proses||""));
+                const terpilihSemua=(e:any)=>{const ks=aktifWp(e);return ks.length>0&&ks.every((k:string)=>selectedForMove.some(x=>x.wp===e.wp&&x.kode===k));};
+                const aturWp=(e:any,on:boolean)=>{
+                  const ks=aktifWp(e);
+                  const sisa=selectedForMove.filter(x=>x.wp!==e.wp);
+                  setSelectedForMove(on?[...sisa,...ks.map((k:string)=>({wp:e.wp,kode:k}))]:sisa);
+                };
+                return(
+                  <div style={{display:"flex",alignItems:"center",flexWrap:"wrap" as const,gap:8,background:"#f8fafc",border:"1px dashed #93c5fd",borderRadius:8,padding:"6px 10px",marginBottom:8,fontSize:11}}>
+                    <span style={{fontWeight:700,color:"#1d4ed8"}}>Pilih WP:</span>
+                    {cellEntries.map((e:any)=>{
+                      const n=aktifWp(e).length;
+                      return(
+                        <label key={e.wp} title={n?`${n} komponen belum selesai ikut dipilih`:"Semua komponen WP ini sudah selesai / jejak"} style={{display:"inline-flex",alignItems:"center",gap:4,color:n?"#1e293b":"#94a3b8",cursor:n?"pointer":"not-allowed"}}>
+                          <input type="checkbox" disabled={!n} checked={terpilihSemua(e)} onChange={ev=>aturWp(e,ev.target.checked)}/>{e.wp} ({n}){!n&&" ✓"}
+                        </label>
+                      );
+                    })}
+                    <button onClick={()=>setSelectedForMove(cellEntries.flatMap((e:any)=>aktifWp(e).map((k:string)=>({wp:e.wp,kode:k}))))}
+                      style={{padding:"2px 8px",borderRadius:6,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Pilih semua</button>
+                  </div>
+                );
+              })()}
               {cellEntries.map(e=>{
                 const wc=WP_COLOR[e.wp]||"#64748b";
                 return(

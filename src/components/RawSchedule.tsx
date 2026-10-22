@@ -10,7 +10,7 @@ import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getPro
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
-import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, type SelPindahV2 } from '../lib/jadwalPindah'
+import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -106,13 +106,13 @@ function InfoLintasZona({store,zonaAsal}:{store:StoreDrop;zonaAsal:Zona}){
 
 export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,withRenharQueue,logActivity,logAct,log,user,livePanelTypes}:any){
   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
-  const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string}[]>([]);
+  const [selectedCells,setSelectedCells]=useState<{rawId:number,date:string,wps?:string[]}[]>([]);
   const [copiedCells,setCopiedCells]=useState<{rawId:number,date:string,entries:any[],busbar:string[]}[]>([]);
   const [lastSelected,setLastSelected]=useState<{rawId:number,date:string}|null>(null);
   // Buffer POTONG (Ctrl+X, 8 Okt 2026) - terpisah dari buffer salin (copiedCells) tapi saling menimpa
   // (cuma satu yang aktif). Ctrl+V: ada potongan -> PINDAH (lewat RPC multi-pindah); tidak ada ->
   // tempel salinan seperti dulu. tujuanTempel = hari tujuan yang diklik setelah memotong.
-  const [cutCells,setCutCells]=useState<{rawId:number,date:string}[]>([]);
+  const [cutCells,setCutCells]=useState<{rawId:number,date:string,wps?:string[]}[]>([]);
   const [tujuanTempel,setTujuanTempel]=useState<string|null>(null);
   const [ctxMenu,setCtxMenu]=useState<{x:number,y:number,rawId:number,date:string}|null>(null);
   const [moveKomponenState,setMoveKomponenState]=useState<any>(null);
@@ -374,13 +374,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     dragMultiRef.current=null;
   };
 
-  const onDragStart=(e,rawId,fromDate,entries)=>{
+  // paksaTunggal (22 Okt 2026, pilih per WP): seret chip WP yang TIDAK terpilih = seret WP itu saja walau sel yang sama
+  // punya WP lain terpilih.
+  const onDragStart=(e,rawId,fromDate,entries,paksaTunggal=false)=>{
     // entries di sini udah difilter (lewat getEntriesTanpaSelesai) buang komponen yang udah
     // 100% - kalau abis difilter kosong berarti SEMUA komponen di cell ini udah selesai,
     // gak ada yang perlu/boleh digeser. Batalkan drag-nya sama sekali.
     if(entries.length===0){e.preventDefault();return;}
     e.dataTransfer.effectAllowed="move";
-    const termasukPilihan=selectedCells.some((c:any)=>c.rawId===rawId&&c.date===fromDate);
+    const termasukPilihan=!paksaTunggal&&selectedCells.some((c:any)=>c.rawId===rawId&&c.date===fromDate);
     if(termasukPilihan&&selectedCells.length>=2){
       const badge=document.createElement("div");
       badge.style.cssText="position:fixed;z-index:10001;pointer-events:none;padding:5px 11px;border-radius:99px;background:#2563eb;color:#fff;font:700 12px system-ui,sans-serif;white-space:nowrap;left:-1000px;top:-1000px";
@@ -642,6 +644,39 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const alasanTakBisaMultiPilih=(row:any,date:string,kosongBoleh:boolean):string|null=>
     alasanTakBisaMultiPilihLib(row,date,kosongBoleh,{checklistPanel:(r:any)=>panelById.get(Number(r.panel_id||r.panelId))?.checklist,entriesTanpaSelesai:getEntriesTanpaSelesai});
 
+  // ── PILIH PER WP (22 Okt 2026, keputusan user - tahap uji di balik sakelar, default MATI) ──
+  // Sakelar per browser. Nyala: klik chip WP = hanya WP itu terpilih (Ctrl/Shift+klik = tambah/lepas), garis biru di chip,
+  // ⊞ di sel = pilih semua WP yang bisa dipindah (disengaja). Pilihan sel jadi {rawId,date,wps}; wps undefined = seluruh sel
+  // (perilaku lama). Isi yang dipindah/disalin/dihapus disaring lewat saringEntriWp (lib/jadwalPindah) - satu titik dipakai
+  // buatSelV2 (multi/potong), seret 1 sel, salin & hapus. WP ✓ (semua komponen selesai) tidak bisa dipilih.
+  const [modePilihWp,setModePilihWp]=useState<boolean>(()=>{try{return localStorage.getItem("vt_raw_pilih_per_wp")==="1";}catch{return false;}});
+  const gantiModePilihWp=(v:boolean)=>{setModePilihWp(v);try{localStorage.setItem("vt_raw_pilih_per_wp",v?"1":"0");}catch{/* penyimpanan browser tidak tersedia */}setSelectedCells([]);setLastSelected(null);};
+  const wpTerpilih=(rawId:number,date:string,wp:string):boolean=>selectedCells.some((c:any)=>c.rawId===rawId&&c.date===date&&Array.isArray(c.wps)&&c.wps.includes(wp));
+  const wpBisaDipindah=(row:any,date:string)=>[...new Set((getEntriesTanpaSelesai(row,row.schedule?.[date]||[])||[]).map((e:any)=>String(e.wp)))];
+  const klikChipWp=(row:any,date:string,wp:string,e:React.MouseEvent)=>{
+    if(!modePilihWp||cutCells.length>0||moveKomponenState)return; // mode potong/Pindahin: klik = pilih tujuan (handler sel)
+    e.stopPropagation();
+    if(!wpBisaDipindah(row,date).includes(wp)){tampilToastUrutan(`${wp} sudah selesai / jejak - tidak dipindah.`);return;}
+    const tambah=e.ctrlKey||e.metaKey||e.shiftKey;
+    if(!tambah){setSelectedCells([{rawId:row.id,date,wps:[wp]}]);setLastSelected({rawId:row.id,date});return;}
+    setSelectedCells(prev=>{
+      const ada=prev.find((c:any)=>c.rawId===row.id&&c.date===date);
+      if(!ada)return[...prev,{rawId:row.id,date,wps:[wp]}];
+      const sekarang:string[]=Array.isArray(ada.wps)?ada.wps:wpBisaDipindah(row,date);
+      const baru=sekarang.includes(wp)?sekarang.filter(x=>x!==wp):[...sekarang,wp];
+      const sisa=prev.filter((c:any)=>c!==ada);
+      return baru.length?[...sisa,{rawId:row.id,date,wps:baru}]:sisa;
+    });
+    setLastSelected({rawId:row.id,date});
+  };
+  const pilihSemuaWpSel=(row:any,date:string,e:React.MouseEvent)=>{
+    e.stopPropagation();
+    const wps=wpBisaDipindah(row,date);
+    if(!wps.length){tampilToastUrutan("Semua WP di sel ini sudah selesai / jejak - tidak ada yang bisa dipindah.");return;}
+    const tambah=e.ctrlKey||e.metaKey||e.shiftKey;
+    setSelectedCells(prev=>[...(tambah?prev.filter((c:any)=>!(c.rawId===row.id&&c.date===date)):[]),{rawId:row.id,date,wps}]);
+    setLastSelected({rawId:row.id,date});
+  };
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
     // Mode POTONG (8 Okt 2026, review): klik biasa di baris MANA PUN = pilih hari tujuan - dicek
@@ -869,6 +904,11 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       if(!batchUpdates[row.id]){
         batchUpdates[row.id]={schedule:{...row.schedule},busbar_schedule:{...(row.busbar_schedule||{})}};
       }
+      if(Array.isArray(cell.wps)){ // pilih per WP: hapus entri WP terpilih saja, WP lain di sel tetap
+        const sisa=(batchUpdates[row.id].schedule[cell.date]||[]).filter((e:any)=>!cell.wps.includes(String(e.wp)));
+        if(sisa.length)batchUpdates[row.id].schedule[cell.date]=sisa;else delete batchUpdates[row.id].schedule[cell.date];
+        continue;
+      }
       delete batchUpdates[row.id].schedule[cell.date];
       delete batchUpdates[row.id].busbar_schedule[cell.date];
     }
@@ -888,8 +928,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       const row=rawData.find(r=>r.id===c.rawId);
       return{
         rawId:c.rawId,date:c.date,
-        entries:row?.schedule?.[c.date]||[],
-        busbar:row?.busbar_schedule?.[c.date]||[],
+        entries:saringEntriWp(row?.schedule?.[c.date]||[],c.wps), // pilih per WP: hanya WP terpilih
+        busbar:c.wps?[]:(row?.busbar_schedule?.[c.date]||[]),
       };
     });
     setCopiedCells(copied);
@@ -982,7 +1022,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     return updateRaw(id,data);
   };
   const modalJadwal=useModalJadwalSel({woData,rawData,setRawData,updateRaw:updateRawCekUrutan,user,getEffCfg,getMenitPerPcs,wiringHariKerjaMap,
-    withRenharQueue,createRenhar,updateRenhar,removeRenhar,setRenhar,selectedForMove,setSelectedForMove,toggleSelectForMove,setMoveKomponenState});
+    withRenharQueue,createRenhar,updateRenhar,removeRenhar,setRenhar,selectedForMove,setSelectedForMove,toggleSelectForMove,setMoveKomponenState,modePilihWp});
   const cellModal=modalJadwal.cellModal;
   const openCellModal=modalJadwal.buka;
   const{setModalWp,setModalKomponen,setModalBobotPerKomponen}=modalJadwal; // dipakai "Pilih Komponen Lain" (notifikasi available)
@@ -1427,7 +1467,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   // PERFORMA (4 Okt 2026, paket 4) - lihat BarisRawMemo. Diisi ulang tiap render = selalu terbaru.
   const aksiRef=useRef<any>({});
-  aksiRef.current={handleCellClick,onDragOver,onDrop,onDragStart,onDragEnd,handleContextMenu,updatePrioritasPanel,pindahViaMenu,getEntriesTanpaSelesai};
+  aksiRef.current={handleCellClick,onDragOver,onDrop,onDragStart,onDragEnd,handleContextMenu,updatePrioritasPanel,pindahViaMenu,getEntriesTanpaSelesai,klikChipWp,pilihSemuaWpSel,wpTerpilih,modePilihWp};
   // Panel per id (cocok Number(id), ambil yang PERTAMA - sama persis woData.flatMap(...).find(...)
   // yang dipakai di baris), dulu dicari ulang per sel/per entry di setiap render grid.
   const panelById=useMemo(()=>{
@@ -1601,6 +1641,10 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             </>
           )}
         </div>
+        <label title="Uji coba: klik chip WP = pilih WP itu saja (Ctrl/Shift+klik = tambah), ⊞ = semua WP di sel. Mati = perilaku lama (seluruh sel)."
+          style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11,fontWeight:700,color:modePilihWp?"#1d4ed8":"#64748b",background:modePilihWp?"#eff6ff":"#fff",border:`1px solid ${modePilihWp?"#93c5fd":"#e2e8f0"}`,borderRadius:8,padding:"4px 10px",cursor:"pointer"}}>
+          <input type="checkbox" checked={modePilihWp} onChange={e=>gantiModePilihWp(e.target.checked)}/> Pilih per WP (uji)
+        </label>
         <TombolDaftarUrutan daftar={pelanggaranUrutan} namaPanel={(id:number)=>String(panelById.get(id)?.nama||id).trim()} namaKomponen={getNamaKomponenDariKode}
           onPilih={(p:PelanggaranUrutan)=>{const rp=rawData.find((r:any)=>Number(r.panel_id||r.panelId)===p.panelId);if(rp){setFilterProyek([]);setFilterPanel([rp.panel]);}}}/>
         {(filterProyek.length>0||filterPanel.length>0)&&(
@@ -1877,7 +1921,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                       const isDraggableEntry=!rentangInfo;
                       const isPast=d<TODAY;
                       return(
-                        <td key={d} data-tgl={d} data-isi={(entries.length>0||busbarEntries.length>0)?"1":"0"} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,opacity:cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?0.45:1,outline:isOver?"2px dashed #2563eb":cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #64748b":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
+                        <td key={d} data-tgl={d} data-isi={(entries.length>0||busbarEntries.length>0)?"1":"0"} colSpan={colSpanCount} onClick={(e:any)=>{e.stopPropagation();aksiRef.current.handleCellClick(row.id,d,e);}} style={{...td,textAlign:"center",padding:"2px",background:isOver?"#eff6ff":d===TODAY?"#eff6ff":isSunday(d)?"#fff1f2":isSelDate&&entries.length?"#f0f9ff":rentangInfo?"#eff6ff":rBg,opacity:cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?0.45:1,outline:isOver?"2px dashed #2563eb":cutCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #64748b":copiedCells.some((c:any)=>c.rawId===row.id&&c.date===d)?"2px dashed #3b82f6":selectedCells.some((c:any)=>c.rawId===row.id&&c.date===d&&!Array.isArray(c.wps))?"2px solid #2563eb":"none",borderLeft:d===TODAY?"2px solid #3b82f6":isSunday(d)?"2px solid #fda4af":"none"}}
                           onDragOver={e=>aksiRef.current.onDragOver(e,row.id,d)}
                           onDrop={e=>aksiRef.current.onDrop(e,row.id,d)}
                           onDragLeave={()=>setDragOverCell(null)}>
@@ -1994,8 +2038,22 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 const statusIcon=status==="finish"?"✓":status==="on_progress"?"●":"";
                                 const pidU=row.panel_id||row.panelId;
                                 const tandaWp=(e.komponen||[]).flatMap((k:string)=>(tandaUrutan.get(`${pidU}|${k}|${row.proses}|${d}`)||[]).map(t=>`${getNamaKomponenDariKode(pidU,k)}: ${t}`));
-                                return(<div key={e.wp} title={tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):undefined} style={{...(tandaWp.length?{outline:"2px solid #dc2626",outlineOffset:1}:{}),background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
+                                const modeWp=aksiRef.current.modePilihWp;
+                                const chipTerpilih=modeWp&&aksiRef.current.wpTerpilih(row.id,d,e.wp);
+                                const nKomp=(e.komponen||[]).filter((k:string)=>!k.startsWith("__")).length;
+                                return(<div key={e.wp} title={(tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):"")+(modeWp?(tandaWp.length?"\n":"")+(status==="finish"?`${e.wp} sudah selesai - tidak dipindah`:`Klik = pilih ${e.wp} saja · Ctrl/Shift+klik = tambah · seret = pindah`):"")||undefined}
+                                  onClick={modeWp?(ev:any)=>aksiRef.current.klikChipWp(row,d,e.wp,ev):undefined}
+                                  draggable={modeWp&&isDraggableEntry&&status!=="finish"}
+                                  onDragStart={modeWp?(ev:any)=>{ev.stopPropagation();if(!isDraggableEntry||status==="finish"){ev.preventDefault();return;}
+                                    const sendiri=chipTerpilih?null:[e.wp];
+                                    const wpsSel=chipTerpilih?(selectedCells.find((c:any)=>c.rawId===row.id&&c.date===d)?.wps||[e.wp]):[e.wp];
+                                    aksiRef.current.onDragStart(ev,row.id,d,aksiRef.current.getEntriesTanpaSelesai(row,saringEntriWp(entries,wpsSel)),!!sendiri);}:undefined}
+                                  style={{...(tandaWp.length?{outline:"2px solid #dc2626",outlineOffset:1}:{}),...(chipTerpilih?{outline:"2px solid #2563eb",outlineOffset:1}:{}),cursor:modeWp?(status==="finish"?"not-allowed":"pointer"):undefined,background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}{aksiRef.current.modePilihWp?` (${nKomp})`:""}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span></div>);
                               })}
+                              {aksiRef.current.modePilihWp&&entries.length>=2&&(
+                                <button onClick={(ev:any)=>aksiRef.current.pilihSemuaWpSel(row,d,ev)} title="Pilih semua WP di sel ini (yang belum selesai)"
+                                  style={{border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",borderRadius:3,fontSize:9,fontWeight:800,padding:"0 4px",lineHeight:"14px",cursor:"pointer"}}>⊞</button>
+                              )}
                             </div>
                             )
                           ):(
@@ -2021,7 +2079,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
               // selang-seling, awal blok panel, rowSpan), panel milik baris ini (checklist/tipe), days,
               // selDate, livePanelTypes (nama komponen), wiringHariKerjaMap, savingUrutan, menu urutan,
               // sel yang di-drag-over/dipilih/disalin DI BARIS INI. Fungsi lain di baris murni dari ini.
-              const kunciSel=(cells:any[],rawId:any)=>cells.filter((c:any)=>c.rawId===rawId).map((c:any)=>c.date).join(",");
+              const kunciSel=(cells:any[],rawId:any)=>cells.filter((c:any)=>c.rawId===rawId).map((c:any)=>c.date+(Array.isArray(c.wps)?":"+c.wps.join("+"):"")).join(",");
               const depsBaris=(row:any,ri:number)=>{
                 const pid=row.panel_id||row.panelId;
                 const prevRow=visibleRows[ri-1];
@@ -2031,7 +2089,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                   days,selDate,livePanelTypes,wiringHariKerjaMap,savingUrutan,
                   menuTerbuka?{}:false, // menu terbuka membaca blokUrutRef -> selalu render ulang
                   dragOverCell?.rawId===row.id?dragOverCell.date:null,
-                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id),kunciSel(cutCells,row.id),
+                  kunciSel(selectedCells,row.id),kunciSel(copiedCells,row.id),kunciSel(cutCells,row.id),modePilihWp,
                   sidikUrutanBaris.get(pid+"|"+row.proses)||""];
               };
 
