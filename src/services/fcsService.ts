@@ -5,6 +5,7 @@ import { activityLogService as activityLogServiceAsli } from './activityLogServi
 import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { getLocalDateStr } from '../lib/dateHelpers'
+import { buatPenataTemplate, buatCekLibur, tanggalQcPacking, type BarisTemplate, type HasilTemplatePanel, type PenataTemplate } from '../lib/templateJadwalWp'
 
 // PABRIK LAYANAN FCS (10 Okt 2026, sandbox Raw Schedule per WP): seluruh isi modul ini dibungkus pabrik supaya
 // logika yang SAMA bisa dijalankan terhadap sumber data lain (MemoryDb salinan uji). Parameter `supabase` &
@@ -1091,13 +1092,16 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     // dari kode yang qty-nya sempat di-0 gak ngeblok penjadwalan ulangnya.
     hitungMulai?: string
   ) {
-    const { data: existing } = await supabase
+    // Cek error (22 Okt 2026) - dulu baca/tulis di sini gagal diam-diam: gagal baca dianggap "belum ada" lalu
+    // insert baris dobel, gagal update/insert bikin entri hilang tanpa jejak. Dilempar -> ditangkap catch generator.
+    const { data: existing, error: errBaca } = await supabase
       .from('raw_schedule')
       .select('id, schedule')
       .eq('wo_id', wo.id)
       .eq('panel_id', panel.id)
       .eq('proses', proses)
       .maybeSingle()
+    if (errBaca) throw new Error(`Gagal baca jadwal ${proses} panel ${panel.nama}: ${errBaca.message}`)
 
     // Anti-duplikat (proses qty-based): kalau qty kode ini utk wp yg sama udah TERCATAT PENUH
     // di tanggal LAIN (bukan tanggal yg lagi ditulis), jangan tulis lagi - cegah kode yg sama
@@ -1147,9 +1151,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       } else {
         schedule[tanggal].push({ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })
       }
-      await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+      const { error: errUpdate } = await supabase.from('raw_schedule').update({ schedule }).eq('id', existing.id)
+      if (errUpdate) throw new Error(`Gagal simpan jadwal ${proses} panel ${panel.nama}: ${errUpdate.message}`)
     } else {
-      await supabase.from('raw_schedule').insert({
+      const { error: errInsert } = await supabase.from('raw_schedule').insert({
         wo_id: wo.id,
         panel_id: panel.id,
         proyek: wo.proyek,
@@ -1158,6 +1163,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         prioritas: 'Sedang',
         schedule: { [tanggal]: [{ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) }] },
       })
+      if (errInsert) throw new Error(`Gagal membuat jadwal ${proses} panel ${panel.nama}: ${errInsert.message}`)
     }
   }
 
@@ -1205,12 +1211,21 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     // belum punya baris sama sekali yang dibuat & dijadwalkan (kasus STEL/FINISHING/QC/PACKING WO 053
     // yang tidak pernah dibuat). Proses yang dilewati tetap ditandai estafet OK supaya proses
     // sesudahnya (mis. STEL setelah BENDING) tetap bisa dijadwalkan. Tanpa opsi -> perilaku sama.
-    opsi?: { hanyaProsesBaru?: boolean }
-  ): Promise<{ success: boolean; count: number; error?: string }> {
+    opsi?: {
+      hanyaProsesBaru?: boolean
+      // template (22 Okt 2026, auto-tata WP - tahap 1 HANYA dipakai sandbox Raw per WP): tiap (proses, WP) ditaruh di
+      // Day ke-n template jenis panel (lib/templateJadwalWp), kapasitas boleh bentrok; WIRING & BUSBAR = Day PASANG
+      // paling awal; QC TEST/PACKING = H-1 target WO. Hanya mengisi yang BELUM terjadwal (aturan skip sama). `baris`
+      // kosong -> dibaca dari tabel template_jadwal_wp. Diabaikan bila kodeFilter diisi. Tanpa opsi -> perilaku sama.
+      template?: { baris?: BarisTemplate[]; tipeTemplatePerPanel?: Record<number, string> }
+    }
+  ): Promise<{ success: boolean; count: number; error?: string; template?: HasilTemplatePanel[] }> {
     try {
-      const { data: wo } = await supabase.from('work_orders').select('*').eq('id', woId).single()
+      // Cek error + paginasi (22 Okt 2026) - dulu gagal baca WO/panel terbaca "tidak ditemukan"/"tidak ada panel".
+      const { data: wo, error: errWo } = await supabase.from('work_orders').select('*').eq('id', woId).maybeSingle()
+      if (errWo) throw new Error('baca WO: ' + errWo.message)
       if (!wo) return { success: false, count: 0, error: 'WO tidak ditemukan' }
-      const { data: panelsAll } = await supabase.from('panels').select('*').eq('wo_id', woId)
+      const panelsAll = await fetchAllPaged((dari, sampai) => (supabase.from('panels').select('*') as any).eq('wo_id', woId).order('id').range(dari, sampai))
       if (!panelsAll || panelsAll.length === 0) return { success: false, count: 0, error: 'Tidak ada panel di WO ini' }
       // panelIds opsional - kalau diisi, HANYA panel-panel itu yang diproses/ditulis (panel lain
       // di WO yang sama sama sekali gak di-fetch/disentuh dari sini). Hampir semua bagian di bawah
@@ -1223,7 +1238,8 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       if (panels.length === 0) return { success: false, count: 0, error: 'Tidak ada panel yang dipilih' }
 
       const panelIdsForCheck = panels.map((p: any) => p.id)
-      const { data: existingCheck } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
+      const { data: existingCheck, error: errCek } = await supabase.from('raw_schedule').select('id').in('panel_id', panelIdsForCheck).limit(1)
+      if (errCek) throw new Error('cek jadwal yang sudah ada: ' + errCek.message)
       if (existingCheck && existingCheck.length > 0 && !generatedBy.startsWith('__force__')) {
         return { success: false, count: 0, error: '__ALREADY_EXISTS__' }
       }
@@ -1241,7 +1257,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const ambilSemuaBaris = async (tabel: string) => {
         let semua: any[] = []
         for (let dari = 0; ; dari += 1000) {
-          const { data, error } = await supabase.from(tabel as any).select('*').range(dari, dari + 999)
+          const { data, error } = await supabase.from(tabel as any).select('*').order('id').range(dari, dari + 999)
           if (error) throw new Error(`baca ${tabel}: ${error.message}`)
           semua = semua.concat(data || [])
           if (!data || data.length < 1000) break
@@ -1266,6 +1282,28 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       const kapMap: Record<string, any> = {}
       ;(kapRows || []).forEach((k: any) => { kapMap[k.tanggal + '|' + k.jenis_pekerjaan] = k })
 
+      // Template WP (opsi.template) - penata + catatan hasil per panel.
+      let penata: PenataTemplate | null = null
+      const hasilTemplate: Record<number, HasilTemplatePanel> = {}
+      if (opsi?.template && !kodeFilter) {
+        const barisT = opsi.template.baris ?? await fetchAllPaged((dari, sampai) =>
+          (supabase.from('template_jadwal_wp' as any).select('tipe_panel,proses,wp,hari') as any).order('tipe_panel').order('proses').order('wp').range(dari, sampai))
+        penata = buatPenataTemplate(barisT, tanggalMulai, buatCekLibur(kapRows))
+      }
+      const tipeTemplate = (panel: any): string | null => {
+        if (!penata) return null
+        const t = opsi?.template?.tipeTemplatePerPanel?.[panel.id] || panel.tipe
+        return penata.punya(t) ? t : null
+      }
+      const catatTemplate = (panel: any): HasilTemplatePanel => hasilTemplate[panel.id] ??= {
+        panelId: panel.id, panel: panel.nama, tipe: panel.tipe, tipeTemplate: tipeTemplate(panel), day1: penata!.day1,
+        tanpaTemplate: !tipeTemplate(panel), diLuarTemplate: [], peringatan: [], tanggalProses: {},
+      }
+      const catatTanggal = (panel: any, proses: string, tgl: string) => {
+        const h = catatTemplate(panel); const a = h.tanggalProses[proses] ||= []
+        if (!a.includes(tgl)) { a.push(tgl); a.sort() }
+      }
+
       // BUG FIX (Sprint 3, 5 Agu 2026): dulu .select('*') tanpa .range() - raw_schedule sengaja
       // dibaca GLOBAL di sini (lihat komentar di atas soal terpakaiTracker), dan tabelnya sudah
       // ~800-900+ baris (dekat cap 1000 default Supabase) - begitu lewat, existingRaw kepotong
@@ -1277,7 +1315,10 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
         let from = 0
         const step = 1000
         while (true) {
-          const { data } = await supabase.from('raw_schedule').select('*').range(from, from + step - 1)
+          // Cek error + urutan stabil (22 Okt 2026) - dulu gagal baca = data null = berhenti diam-diam (jadwal
+          // global terpotong -> komponen yang sudah terjadwal bisa terjadwal ulang).
+          const { data, error } = await supabase.from('raw_schedule').select('*').order('id').range(from, from + step - 1)
+          if (error) throw new Error('baca raw_schedule: ' + error.message)
           if (!data) break
           existingRaw = existingRaw.concat(data)
           if (data.length < step) break
@@ -1529,6 +1570,23 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
               else scheduledOk.add(panel.id + '|' + kode + '|' + proses)
             })
 
+            // Template WP: seluruh sisa qty WP ini ke Day ke-n template (tanpa pecah kapasitas - boleh bentrok).
+            const tt = tipeTemplate(panel)
+            if (tt && Object.keys(sisaQty).length > 0) {
+              const pos = penata!.posisi(tt, proses, wp)!
+              const kodeT = Object.keys(sisaQty)
+              kodeT.forEach((k) => {
+                const key = pos.tanggal + '|' + proses
+                terpakaiTracker[key] = (terpakaiTracker[key] || 0) + (menitMap[panel.tipe + '|' + k + '|' + proses] || 0) * sisaQty[k]
+              })
+              await upsertRawScheduleEntry(wo, panel, proses, pos.tanggal, wp, kodeT, sisaQty, generatedBy)
+              kodeT.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
+              count++
+              catatTanggal(panel, proses, pos.tanggal)
+              if (pos.diLuarTemplate) catatTemplate(panel).diLuarTemplate.push(`${proses} ${wp}: ${kodeT.join(', ')} (Day ${pos.hari}, ${pos.tanggal})`)
+              continue
+            }
+
             let dayAttempts = 0
             while (Object.keys(sisaQty).length > 0 && dayAttempts < 21) {
               const kap = getKapasitas(cur)
@@ -1648,17 +1706,52 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           // Tanpa kodeFilter (tombol FCS biasa) perilaku SENGAJA tidak diubah.
           relevantKodes.forEach((k) => { if (difilter(panel.id, k) && kodeSudahAda.has(k)) scheduledOk.add(panel.id + '|' + k + '|' + proses) })
 
+          // Template WP: WIRING = Day PASANG KOMPONEN paling awal pada template jenis panel ini.
+          const ttW = tipeTemplate(panel)
+          const tglWiring = (ttW && penata!.hariPasangAwal(ttW)?.tanggal) || tanggalMulai
           for (const [wp, kodes] of Object.entries(wpGroups)) {
             const kodeBaru = kodes.filter((k) => !kodeSudahAda.has(k))
             if (kodeBaru.length === 0) continue
-            await upsertRawScheduleEntry(wo, panel, proses, tanggalMulai, wp, kodeBaru, undefined, generatedBy, kodeFilter ? tanggalMulai : undefined)
+            await upsertRawScheduleEntry(wo, panel, proses, tglWiring, wp, kodeBaru, undefined, generatedBy, kodeFilter ? tanggalMulai : undefined)
+            if (ttW) catatTanggal(panel, proses, tglWiring)
             kodeBaru.forEach((kd) => scheduledOk.add(panel.id + '|' + kd + '|' + proses))
             count++
           }
         }
       }
 
-      return { success: true, count }
+      // Template WP: BUSBAR (Day PASANG paling awal) & QC TEST/PACKING (H-1 target WO) - hanya baris yang masih KOSONG.
+      if (penata) {
+        for (const panel of panels as any[]) {
+          const tt = tipeTemplate(panel)
+          const h = catatTemplate(panel)
+          if (!tt) continue
+          const { data: barisP, error: errP } = await supabase.from('raw_schedule').select('id,proses,schedule,busbar_schedule')
+            .eq('wo_id', wo.id).eq('panel_id', panel.id).in('proses', ['BUSBAR', 'QC TEST', 'PACKING']).order('id').range(0, 99)
+          if (errP) throw new Error(`baca baris BUSBAR/QC/PACKING panel ${panel.nama}: ${errP.message}`)
+          const kosong = (obj: any) => Object.values(obj || {}).every((a: any) => !(a || []).length)
+          const pas = penata.hariPasangAwal(tt)
+          const rb = (barisP || []).find((r: any) => r.proses === 'BUSBAR')
+          if (rb && pas && kosong(rb.busbar_schedule) && kosong(rb.schedule)) {
+            const { error } = await supabase.from('raw_schedule').update({ busbar_schedule: { [pas.tanggal]: getBusbarKomponen(panel.tipe) } }).eq('id', rb.id)
+            if (error) throw new Error(`simpan BUSBAR panel ${panel.nama}: ${error.message}`)
+            catatTanggal(panel, 'BUSBAR', pas.tanggal); count++
+          }
+          const semuaTgl = Object.values(h.tanggalProses).flat().sort()
+          const qc = tanggalQcPacking(wo.target, penata.day1, semuaTgl.length ? semuaTgl[semuaTgl.length - 1] : null, penata.libur)
+          if (qc.peringatan) h.peringatan.push(qc.peringatan)
+          if (!qc.tanggal) continue
+          for (const pr of ['QC TEST', 'PACKING']) {
+            const rq = (barisP || []).find((r: any) => r.proses === pr)
+            if (!rq || !kosong(rq.schedule)) continue
+            const { error } = await supabase.from('raw_schedule').update({ schedule: { [qc.tanggal]: [{ wp: pr, komponen: ['MARKED'] }] } }).eq('id', rq.id)
+            if (error) throw new Error(`simpan ${pr} panel ${panel.nama}: ${error.message}`)
+            catatTanggal(panel, pr, qc.tanggal); count++
+          }
+        }
+      }
+
+      return { success: true, count, ...(penata ? { template: Object.values(hasilTemplate) } : {}) }
     } catch (err: any) {
       return { success: false, count: 0, error: err.message }
     }

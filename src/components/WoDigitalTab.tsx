@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { workOrderService } from "../services/workOrderService";
 import { konfirmasiHapusPanel } from "../lib/konfirmasiHapusPanel";
-import { rawScheduleService } from "../services/rawScheduleService";
+import { rawScheduleService, pesanPanelBaruTerjadwal } from "../services/rawScheduleService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
 import { QtyKomponenInput } from "./ui/QtyKomponenInput";
@@ -201,7 +201,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
         try{
           const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
-          if(panelBaruTerjadwal.length>0)alert('Panel baru otomatis dijadwalkan mulai hari ini di Raw Schedule: '+panelBaruTerjadwal.join(', ')+'\n\nJangan lupa Distribusi ke Rencana Harian.');
+          if(panelBaruTerjadwal.nama.length>0)alert(pesanPanelBaruTerjadwal(panelBaruTerjadwal));
         }catch(err:any){
           console.error('[WO Digital Edit WO] WO tersimpan, penjadwalan panel baru gagal:',err);
           alert('WO BERHASIL disimpan, tapi penjadwalan otomatis panel baru GAGAL: '+(err?.message||err)+'\n\nJalankan FCS untuk panel baru tersebut.');

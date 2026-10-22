@@ -2,6 +2,16 @@
 import { getLocalDateStr } from '../lib/dateHelpers'
 import { hapusKodeDariScheduleMulai, hapusKodeDariRenhar } from '../lib/jadwalQtyHelpers'
 import { generateAndSaveToRawSchedule } from './fcsService'
+import { teksHasilTemplate, type HasilTemplatePanel } from '../lib/templateJadwalWp'
+
+// Hasil penjadwalan panel baru (template WP, 22 Okt 2026) + pesan alert bersama Manajemen WO & WO Digital.
+export type HasilPanelBaru = { nama: string[]; template: HasilTemplatePanel[] }
+export function pesanPanelBaruTerjadwal(h: HasilPanelBaru): string {
+  const catatan = h.template.filter(t => t.tanpaTemplate || t.diLuarTemplate.length || t.peringatan.length).map(teksHasilTemplate)
+  return 'Panel baru otomatis dijadwalkan di Raw Schedule (template WP, Day 1 = hari ini): ' + h.nama.join(', ')
+    + (catatan.length ? '\n\nCatatan:\n- ' + catatan.join('\n- ') : '')
+    + '\n\nJangan lupa Distribusi ke Rencana Harian.'
+}
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   await supabase.from('activity_log').insert({
@@ -252,29 +262,34 @@ export const rawScheduleService = {
   // sama (Tambah WO / split tanggal ke WO baru) tetap butuh FCS sekali. Kalau record WO itu sudah
   // punya jadwal (minimal 1 panel ber-baris raw_schedule), panelnya yang belum punya baris langsung
   // dijadwalkan lengkap mulai hari ini (generator FCS biasa). WO yang belum pernah di-FCS tidak disentuh.
-  async jadwalkanPanelBaruSetelahEditWo(woNumber: string, proyek: string, uname: string): Promise<string[]> {
+  // TEMPLATE WP (22 Okt 2026, tahap 2 - keputusan user): panel baru ditata per Day ke-n template jenis panel (Day 1 =
+  // hari ini), bukan ditumpuk di hari ini. Jenis tanpa template = cara lama. Ringkasan template ikut activity_log.
+  async jadwalkanPanelBaruSetelahEditWo(woNumber: string, proyek: string, uname: string): Promise<HasilPanelBaru> {
     const { data: wos, error: wErr } = await supabase.from('work_orders').select('id').eq('wo', woNumber).eq('proyek', proyek)
     if (wErr) throw new Error('baca WO: ' + wErr.message)
     const woIds = (wos || []).map((w: any) => w.id)
-    if (!woIds.length) return []
+    const kosong: HasilPanelBaru = { nama: [], template: [] }
+    if (!woIds.length) return kosong
     const { data: panels, error: pErr } = await supabase.from('panels').select('id,nama,wo_id').in('wo_id', woIds).is('deleted_at', null).range(0, 4999)
     if (pErr) throw new Error('baca panel: ' + pErr.message)
-    if (!(panels || []).length) return []
+    if (!(panels || []).length) return kosong
     const { data: rows, error: rErr } = await supabase.from('raw_schedule').select('panel_id').in('panel_id', panels!.map((p: any) => p.id)).range(0, 9999)
     if (rErr) throw new Error('baca raw_schedule: ' + rErr.message)
     const punyaBaris = new Set((rows || []).map((r: any) => r.panel_id))
     const woSudahFcs = new Set(panels!.filter((p: any) => punyaBaris.has(p.id)).map((p: any) => p.wo_id))
     const baru = panels!.filter((p: any) => !punyaBaris.has(p.id) && woSudahFcs.has(p.wo_id))
-    if (!baru.length) return []
+    if (!baru.length) return kosong
     const hariIni = getLocalDateStr()
     const dijadwalkan: string[] = []
+    const template: HasilTemplatePanel[] = []
     for (const woId of [...new Set(baru.map((p: any) => p.wo_id))]) {
       const ids = baru.filter((p: any) => p.wo_id === woId).map((p: any) => p.id)
-      const hasil = await generateAndSaveToRawSchedule(woId, hariIni, '__force__' + uname, ids)
+      const hasil = await generateAndSaveToRawSchedule(woId, hariIni, '__force__' + uname, ids, undefined, { template: {} })
       if (!hasil.success) throw new Error('jadwalkan panel baru: ' + (hasil.error || 'gagal'))
       dijadwalkan.push(...baru.filter((p: any) => ids.includes(p.id)).map((p: any) => p.nama))
+      template.push(...(hasil.template || []))
     }
-    await logActivity(uname, 'PANEL BARU: TAMBAH KE JADWAL', `WO ${woNumber} - ${proyek}: panel baru dijadwalkan otomatis mulai ${hariIni} - ${dijadwalkan.join(', ')}`, { proyek })
-    return dijadwalkan
+    await logActivity(uname, 'PANEL BARU: TAMBAH KE JADWAL', `WO ${woNumber} - ${proyek}: panel baru dijadwalkan otomatis dgn template WP (Day 1 ${hariIni}) - ${dijadwalkan.join(', ')}${template.length ? ' | ' + template.map(teksHasilTemplate).join(' | ') : ''}`, { proyek })
+    return { nama: dijadwalkan, template }
   },
 }

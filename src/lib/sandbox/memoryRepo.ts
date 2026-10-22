@@ -11,8 +11,20 @@ import { buatAksesUrutanPanel } from '../rawPanelOrder'
 import { buatAksesKapasitas } from '../kapasitasHari'
 import type { RepoJadwalRaw, HasilSimpan } from '../repoJadwalRaw'
 import type { IoJadwalRaw } from '../ioJadwalRaw'
+import { templateCadanganFile } from '../templateJadwalWp'
+
+// Template jadwal WP (22 Okt 2026): tabel template_jadwal_wp dibuat lewat SQL user. Selama tabel belum ada / gagal
+// dibaca / kosong, sandbox memakai salinan isi file TEMPLATE WP.xlsx (templateCadanganFile) dan memberi tahu sumbernya.
+export type SumberTemplate = { sumber: 'tabel' | 'file'; galat?: string }
+export const SUMBER_TEMPLATE_SANDBOX: SumberTemplate = { sumber: 'file' }
 
 export async function muatSnapshotSandbox(): Promise<MemoryDb> {
+  // bom_master & bom_proses_relevan: dibutuhkan generator FCS (Simulasi FCS + template) - urutan id stabil.
+  const urutId = { urut: { kolom: 'id', naik: true } }
+  const bacaTemplate = bacaTabel('template_jadwal_wp', 'tipe_panel,proses,wp,hari', { urut: { kolom: 'tipe_panel', naik: true } })
+    .then(rows => { Object.assign(SUMBER_TEMPLATE_SANDBOX, { sumber: rows.length ? 'tabel' : 'file', galat: rows.length ? undefined : 'tabel kosong' }); return rows.length ? rows : templateCadanganFile() })
+    .catch((e: any) => { Object.assign(SUMBER_TEMPLATE_SANDBOX, { sumber: 'file', galat: String(e?.message || e) }); return templateCadanganFile() })
+  const [bom, relevan, template] = await Promise.all([bacaTabel('bom_master', '*', urutId), bacaTabel('bom_proses_relevan', '*', urutId), bacaTemplate])
   const [raw, panels, wo, pt, ov, timer, urutan, qty, notif, pekerja] = await Promise.all([
     bacaTabel('raw_schedule'), bacaTabel('panels'), bacaTabel('work_orders'), bacaTabel('fcs_process_time'),
     bacaTabel('fcs_kapasitas_override'), bacaTabel('fcs_timer_kerja'), bacaTabel('raw_schedule_panel_order'),
@@ -23,6 +35,7 @@ export async function muatSnapshotSandbox(): Promise<MemoryDb> {
   return new MemoryDb({
     raw_schedule: raw, panels, work_orders: wo, fcs_process_time: pt, fcs_kapasitas_override: ov, fcs_timer_kerja: timer,
     raw_schedule_panel_order: urutan, qty_change_log: qty, fcs_notifikasi: notif, pekerja,
+    bom_master: bom, bom_proses_relevan: relevan, template_jadwal_wp: template,
     renhar: [], activity_log: [], // sandbox: rencana harian & log tidak disalin; tulis ke sini hanya di memori
   })
 }

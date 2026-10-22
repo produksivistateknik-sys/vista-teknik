@@ -21,6 +21,7 @@ import { useTambahPanelRaw } from './ModalTambahPanelRaw'
 import { useRiwayatQty } from './RiwayatQty'
 import { useNotifAvailable } from './NotifAvailable'
 import { useKartuHari } from './KartuHari'
+import { ModalSimulasiTemplate } from './ModalSimulasiTemplate'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import type { RepoJadwalRaw } from '../lib/repoJadwalRaw'
 import { muatSnapshotSandbox, buatMemoryRepo } from '../lib/sandbox/memoryRepo'
@@ -324,6 +325,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const rafRef = useRef(0)
   const ukur = () => { const el = scrollRef.current; if (!el) return; setPos({ top: el.scrollTop, left: el.scrollLeft, h: el.clientHeight, w: el.clientWidth }) }
   const onScroll = () => { if (rafRef.current) return; rafRef.current = requestAnimationFrame(() => { rafRef.current = 0; ukur() }) }
+  const [simulasiTemplate, setSimulasiTemplate] = useState(false) // 22 Okt 2026: auto-tata WP (sandbox saja)
   const lompatKe = (d: string) => { const el = scrollRef.current; if (!el) return; el.scrollLeft = Math.max(0, (tanggalKeIdx(d) - 3) * LEBAR_TGL); ukur() }
   useEffect(() => { lompatKe(TODAY); const ro = new ResizeObserver(ukur); if (scrollRef.current) ro.observe(scrollRef.current); return () => ro.disconnect() }, [])
   const TINGGI_HEADER = 40
@@ -973,6 +975,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => tambahPanelRaw.setAddModal(true)} style={{ height: 28, padding: '0 12px', borderRadius: 6, border: 'none', background: '#3b5bdb', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Panel</button>
+          <button onClick={() => setSimulasiTemplate(true)} title="Simulasi FCS dengan template WP (salinan uji)" style={{ height: 28, padding: '0 12px', borderRadius: 6, border: '1px solid #99f6e4', background: '#f0fdfa', color: '#0f766e', fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>🧩 Simulasi FCS + template</button>
           <button onClick={riwayatQty.openRiwayat} style={{ height: 28, padding: '0 10px', borderRadius: 6, border: '1px solid #bfdbfe', background: '#eff6ff', color: '#1d4ed8', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit', display: 'inline-flex', alignItems: 'center', gap: 5 }}>
             🔔 Riwayat Perubahan
             {riwayatQty.qtyChangeUnread > 0 && <span style={{ background: '#dc2626', color: '#fff', borderRadius: 99, minWidth: 16, height: 16, fontSize: 10, fontWeight: 700, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', padding: '0 4px' }}>{riwayatQty.qtyChangeUnread}</span>}
@@ -1047,6 +1050,10 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
           {pindahMulti.undoMultiRef.current.length > 0 && <button onClick={() => pindahMulti.batalkanPindahTerakhir()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>↶ Batalkan pindah terakhir (Ctrl+Z)</button>}
           {(pilihan.size > 0 || potongan.length > 0 || salinan.length > 0) && <button onClick={batalkan} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Bersihkan (Esc)</button>}
         </div>
+      )}
+      {simulasiTemplate && io && (
+        <ModalSimulasiTemplate woData={woData} rawData={rawData} io={io} log={log} user={user} konteksUrutan={konteksUrutan}
+          onTutup={() => setSimulasiTemplate(false)} onSelesai={d => lompatKe(d)} />
       )}
       {toast && (
         <div role="status" style={{ position: 'fixed', right: 20, bottom: 20, zIndex: 10050, maxWidth: 460, background: toast.jenis === 'ok' ? '#065f46' : '#991b1b', color: '#fff', borderRadius: 10, padding: '10px 14px', fontSize: 12, boxShadow: '0 8px 24px rgba(0,0,0,.25)', display: 'flex', gap: 10, alignItems: 'center' }}>
