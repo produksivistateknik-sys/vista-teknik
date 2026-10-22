@@ -83,7 +83,7 @@ select p.nama, count(t.id) as timer_12_okt from public.pekerja p
 -- begin;
 -- update public.fcs_timer_kerja t set tanggal = l.nilai_lama::date
 --   from public.koreksi_data_log l
---  where l.tabel = 'fcs_timer_kerja' and l.kolom = 'tanggal' and l.ref_id = t.id
+--  where l.tabel = 'fcs_timer_kerja' and l.kolom = 'tanggal' and l.ref_id = t.id and l.oleh = 'Admin (SQL koreksi timer BUSBAR 521)'
 --    and l.ref_id in (22945, 22946, 22947, 22948, 22949, 22950, 22951, 22952, 22953);
 -- insert into public.koreksi_data_log (tabel, ref_id, kolom, nilai_lama, nilai_baru, alasan, oleh)
 -- select 'fcs_timer_kerja', id, 'tanggal', '2026-10-13', '2026-10-12', 'ROLLBACK koreksi tanggal timer BUSBAR 521', 'Admin (SQL rollback)'
