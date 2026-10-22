@@ -142,7 +142,7 @@ export function ArsipTab({user,refetchWO}:any){
       ]);
       kendalaAll=[
         ...kBaru.map((k:any)=>({tanggal:k.tanggal,divisi:k.divisi,divisi_label:labelDivisi(k.divisi),proses:null,operator:k.pencatat,
-          catatan:k.teks+(k.teratasi_pada?" ("+teksTeratasi(k)+")":" (belum teratasi)")})),
+          catatan:k.teks+(k.teratasi_pada?" ("+teksTeratasi(k)+")":" (belum selesai)")})),
         ...kLama,
       ].sort((a,b)=>(a.tanggal||"").localeCompare(b.tanggal||""));
     }catch(err:any){console.error("[Arsip Gantt] gagal memuat kendala:",err);alert("Gagal memuat catatan kendala: "+(err?.message||err));setGanttLoading(false);return;}

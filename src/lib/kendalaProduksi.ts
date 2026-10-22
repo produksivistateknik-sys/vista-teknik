@@ -4,7 +4,8 @@
 // Tabel kendala_produksi hanya bisa DIBACA langsung; tulis lewat RPC (catat/ubah/hapus/teratasi/batal) yang mencatat
 // jejak awet di kendala_produksi_log. Aturan (konvensi aplikasi, dicek ulang server):
 //  - hari/tanggal/jam/pencatat otomatis; pencatat boleh ubah/hapus miliknya di hari yang sama (WIB), lalu terkunci;
-//  - hanya Admin Produksi menandai Teratasi / membatalkan (alasan wajib) / menghapus kapan saja;
+//  - hanya Admin Produksi menandai SELESAI / membuka kembali / mengubah & menghapus kapan saja (kendala belum selesai);
+//    istilah di layar "Selesai" (23 Okt 2026), kolom DB tetap teratasi_pada/teratasi_oleh;
 //  - Project = NAMA proyek (gabungan WO); panel kosong = "Umum".
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
@@ -46,7 +47,21 @@ export function fmtTanggalPanjang(tgl: string): string {
 }
 export const fmtTanggalDariWaktu = (iso: string) => { const b = bagianWib(iso); return `${HARI[b.hr]}, ${b.tg} ${BULAN[b.bl]} ${b.th}` }
 export const jamWib = (iso: string) => { const b = bagianWib(iso); return `${String(b.jam).padStart(2, '0')}.${String(b.mnt).padStart(2, '0')}` }
-export const teksTeratasi = (k: Kendala) => k.teratasi_pada ? `Teratasi, ${fmtTanggalDariWaktu(k.teratasi_pada)} oleh ${k.teratasi_oleh || '-'}` : ''
+const BULAN3 = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+// "Kamis, 23 Okt" (tampilan ringkas, sama dgn artifact admin)
+export function fmtTanggalPendek(tgl: string): string {
+  const [y, m, d] = tgl.split('-').map(Number)
+  return `${HARI[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}, ${d} ${BULAN3[m - 1]}`
+}
+export const fmtPendekDariWaktu = (iso: string) => { const b = bagianWib(iso); return `${HARI[b.hr]}, ${b.tg} ${BULAN3[b.bl]}` }
+// "Selesai Kamis, 23 Okt, 15.10 oleh LUTVAN"
+export const teksSelesai = (k: Kendala) => k.teratasi_pada ? `Selesai ${fmtPendekDariWaktu(k.teratasi_pada)}, ${jamWib(k.teratasi_pada)} oleh ${k.teratasi_oleh || '-'}` : ''
+export const teksTeratasi = teksSelesai // nama lama (Arsip Gantt)
+// Alasan otomatis saat admin mengklik lagi lingkaran centang (keputusan user 23 Okt 2026).
+export const ALASAN_BUKA_KEMBALI = 'dibuka kembali (klik centang)'
+export const LABEL_AKSI_LOG: Record<string, string> = {
+  catat: 'Dicatat', ubah: 'Diubah', hapus: 'Dihapus', teratasi: 'Ditandai selesai', batal_teratasi: 'Dibuka kembali', migrasi: 'Dipindah dari catatan lama',
+}
 
 const LABEL_DIVISI: Record<string, string> = {
   mekanik: 'Mekanik', painting: 'Painting', assembling: 'Assembling', wiring_ctrl: 'Wiring Control', wiring_pwr: 'Wiring Power',
@@ -126,8 +141,10 @@ async function rpc(db: any, nama: string, arg: Record<string, any>): Promise<Ken
 }
 export const catatKendala = (db: any, a: { proyek: string; panelId: number | null; teks: string; oleh: string; divisi: string; admin?: boolean }) =>
   rpc(db, 'catat_kendala', { p_proyek: a.proyek, p_panel_id: a.panelId, p_teks: a.teks, p_oleh: a.oleh, p_divisi: a.divisi, p_sumber: a.admin ? 'admin' : 'operator' })
-export const ubahKendala = (db: any, id: number, teks: string, oleh: string) => rpc(db, 'ubah_kendala', { p_id: id, p_teks: teks, p_oleh: oleh })
+// Admin (p_admin) boleh mengubah kendala siapa pun yang belum selesai - butuh migration 20261023040000. Operator: 3 parameter.
+export const ubahKendala = (db: any, id: number, teks: string, oleh: string, admin = false) =>
+  rpc(db, 'ubah_kendala', admin ? { p_id: id, p_teks: teks, p_oleh: oleh, p_admin: true } : { p_id: id, p_teks: teks, p_oleh: oleh })
 export const hapusKendala = (db: any, id: number, oleh: string, admin = false, alasan: string | null = null) =>
   rpc(db, 'hapus_kendala', { p_id: id, p_oleh: oleh, p_admin: admin, p_alasan: alasan })
 export const tandaiTeratasi = (db: any, id: number, oleh: string) => rpc(db, 'tandai_kendala_teratasi', { p_id: id, p_oleh: oleh })
-export const batalTeratasi = (db: any, id: number, oleh: string, alasan: string) => rpc(db, 'batal_kendala_teratasi', { p_id: id, p_oleh: oleh, p_alasan: alasan })
+export const batalTeratasi = (db: any, id: number, oleh: string, alasan: string = ALASAN_BUKA_KEMBALI) => rpc(db, 'batal_kendala_teratasi', { p_id: id, p_oleh: oleh, p_alasan: alasan })

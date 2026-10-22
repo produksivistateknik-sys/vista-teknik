@@ -54,7 +54,7 @@ const TrackingView = lazyP(() => import('./components/TrackingView').then(m => (
 const TrackingPekerja = lazyP(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
 const RencanaHarian = lazyP(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
 const ActivityLogView = lazyP(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
-const TabKendala = lazyP(() => import('./components/TabKendala').then(m => ({ default: m.TabKendala })))
+const KendalaAdmin = lazyP(() => import('./components/KendalaAdmin').then(m => ({ default: m.KendalaAdmin })))
 const Dashboard = lazyP(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
 const AiAssistantChat = lazyP(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
 const TaskMonitoring = lazyP(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
@@ -1162,7 +1162,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
-              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><TabKendala db={supabase} user={user} mode="admin"/></Suspense></div>}
+              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}
