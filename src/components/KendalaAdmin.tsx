@@ -15,7 +15,9 @@ import {
 const CSS = `
 .kda{--kd-card:var(--card-bg,#fff);--kd-fg:var(--text-primary,#1d1f23);--kd-mute:var(--text-muted,#7a7f87);--kd-line:var(--border-color,#e8e8e4);
   --kd-ok:#2f8f5b;--kd-warn:#c26a0a;--kd-bad:#c0392b;--kd-ink:#1d1f23;--kd-ink-fg:#fff;--kd-focus:#d97706;
-  color:var(--kd-fg);text-align:left;width:100%;max-width:none;padding:4px 0 48px;font-size:15px;line-height:1.5}
+  --kd-line-soft:color-mix(in srgb,var(--kd-line) 60%,transparent);
+  color:var(--kd-fg);text-align:left;width:100%;max-width:1024px;margin:0;padding:24px 32px 48px;font-size:15px;line-height:1.5}
+@media (max-width:600px){.kda{padding:24px 16px 40px}}
 [data-theme="dark"] .kda{--kd-ok:#4cc38a;--kd-warn:#f0a04b;--kd-bad:#f07b6e;--kd-ink:#e2e8f0;--kd-ink-fg:#0f1117;--kd-focus:#f0a04b}
 .kda *{box-sizing:border-box}
 .kda-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:18px}
@@ -37,13 +39,17 @@ const CSS = `
 .kda-form .foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--kd-mute);font-size:13px}
 .kda-form .foot b{color:var(--kd-fg);font-weight:500}
 .kda-fa{display:flex;gap:8px}
-.kda-grp{margin-top:26px}
+.kda-grp{margin-top:40px}
+.kda-grp:first-of-type{margin-top:24px}
 .kda-gh{display:flex;align-items:baseline;gap:8px;padding-bottom:8px;border-bottom:1px solid var(--kd-line);flex-wrap:wrap}
 .kda-gh h2{font-size:15px;font-weight:700;margin:0;color:var(--kd-fg)}
 .kda-gh small,.kda-pn small{color:var(--kd-mute);font-size:13px}
-.kda-pn{display:flex;align-items:baseline;gap:8px;margin-top:18px;padding-bottom:2px;flex-wrap:wrap}
+.kda-pb{margin-top:12px}
+.kda-pb+.kda-pb{margin-top:24px;padding-top:12px;border-top:1px solid var(--kd-line)}
+.kda-pn{display:flex;align-items:baseline;gap:8px;padding-bottom:2px;flex-wrap:wrap}
 .kda-pn h3{font-size:13px;font-weight:700;margin:0;text-transform:uppercase;letter-spacing:.04em;color:var(--kd-warn);overflow-wrap:anywhere}
-.kda-it{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--kd-line)}
+.kda-it{display:flex;gap:12px;padding:12px 0;border-bottom:1px solid var(--kd-line-soft)}
+.kda-pb .kda-it:last-child{border-bottom:0}
 .kda-ck{flex:none;width:22px;height:22px;margin-top:1px;border-radius:50%;border:1.8px solid var(--kd-mute);background:none;cursor:pointer;display:grid;place-items:center;color:transparent;padding:0}
 .kda-ck:hover{border-color:var(--kd-ok);color:var(--kd-ok)}
 .kda-ck:disabled{cursor:wait;opacity:.6}
@@ -247,7 +253,7 @@ export function KendalaAdmin({ db, user }: { db: any; user: any }) {
         <section key={g.proyek} className="kda-grp">
           <div className="kda-gh"><h2>{g.proyek}</h2><small>{g.jumlah} kendala</small></div>
           {g.panels.map(pn => (
-            <div key={String(pn.id)}>
+            <div key={String(pn.id)} className="kda-pb">
               <div className="kda-pn"><h3>{pn.nama}</h3><small>{pn.rows.length} kendala</small></div>
               {pn.rows.map(item)}
             </div>
