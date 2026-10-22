@@ -325,7 +325,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   // CSS di DOM (hijau = bisa mendarat, merah = bentrok) + badge "N sel · +X hari" yang mengikuti
   // kursor. Drag sel di luar pilihan = drag 1 sel lama (pilihan dibatalkan). Drag 1 sel lama tidak
   // berubah sama sekali.
-  const handleCellClickRef=useRef<any>(()=>{});
   const dragMultiRef=useRef<{cells:{rawId:number;date:string}[];anchorDate:string;offset:number|null;ditandai:HTMLElement[];badge:HTMLDivElement|null}|null>(null);
   useEffect(()=>{
     if(!document.getElementById("rs-deadline-css")){
@@ -677,10 +676,12 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     setSelectedCells(prev=>[...(tambah?prev.filter((c:any)=>!(c.rawId===row.id&&c.date===date)):[]),{rawId:row.id,date,wps}]);
     setLastSelected({rawId:row.id,date});
   };
-  // klik-ganda chip = buka modal sel (klik biasa di chip dipakai memilih WP): pilihan dikosongkan dulu lalu jalur klik biasa
-  const bukaModalSel=(rawId:number,date:string,e:React.MouseEvent)=>{
-    setSelectedCells([]);setLastSelected(null);
-    handleCellClickRef.current(rawId,date,{...e,ctrlKey:false,metaKey:false,shiftKey:false,altKey:false,stopPropagation:()=>{}} as any);
+  // klik-ganda chip = buka modal sel HANYA berisi WP itu (klik biasa di chip dipakai memilih WP). Mode potong/salin/Pindahin:
+  // diabaikan (klik di sana = pilih tujuan/anchor).
+  const bukaModalSel=(rawId:number,date:string,wp:string)=>{
+    if(cutCells.length>0||copiedCells.length>0||moveKomponenState)return;
+    setSelectedCells([]);setLastSelected(null);setCtxMenu(null);
+    openCellModal(rawId,date,wp);
   };
   const handleCellClick=(rawId:number,date:string,e:React.MouseEvent)=>{
     const rowClicked=rawData.find((r:any)=>r.id===rawId);
@@ -1472,7 +1473,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
 
   // PERFORMA (4 Okt 2026, paket 4) - lihat BarisRawMemo. Diisi ulang tiap render = selalu terbaru.
   const aksiRef=useRef<any>({});
-  handleCellClickRef.current=handleCellClick;
   aksiRef.current={bukaModalSel,handleCellClick,onDragOver,onDrop,onDragStart,onDragEnd,handleContextMenu,updatePrioritasPanel,pindahViaMenu,getEntriesTanpaSelesai,klikChipWp,pilihSemuaWpSel,wpTerpilih,modePilihWp};
   // Panel per id (cocok Number(id), ambil yang PERTAMA - sama persis woData.flatMap(...).find(...)
   // yang dipakai di baris), dulu dicari ulang per sel/per entry di setiap render grid.
@@ -2043,9 +2043,9 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 const modeWp=aksiRef.current.modePilihWp;
                                 const chipTerpilih=modeWp&&aksiRef.current.wpTerpilih(row.id,d,e.wp);
                                 const nKomp=(e.komponen||[]).filter((k:string)=>!k.startsWith("__")).length;
-                                return(<div key={e.wp} title={(tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):"")+(modeWp?(tandaWp.length?"\n":"")+(status==="finish"?`${e.wp} sudah selesai - tidak dipindah`:`Klik = pilih ${e.wp} saja · Ctrl/Shift+klik = tambah · seret = pindah · klik-ganda = buka detail sel`):"")||undefined}
+                                return(<div key={e.wp} title={(tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):"")+(modeWp?(tandaWp.length?"\n":"")+(status==="finish"?`${e.wp} sudah selesai - tidak dipindah`:`Klik = pilih ${e.wp} saja · Ctrl/Shift+klik = tambah · seret = pindah · klik-ganda = buka detail ${e.wp}`):"")||undefined}
                                   onClick={modeWp?(ev:any)=>aksiRef.current.klikChipWp(row,d,e.wp,ev):undefined}
-                                  onDoubleClick={modeWp?(ev:any)=>{ev.stopPropagation();aksiRef.current.bukaModalSel(row.id,d,ev);}:undefined}
+                                  onDoubleClick={modeWp?(ev:any)=>{ev.stopPropagation();aksiRef.current.bukaModalSel(row.id,d,e.wp);}:undefined}
                                   draggable={modeWp&&isDraggableEntry&&status!=="finish"}
                                   onDragStart={modeWp?(ev:any)=>{ev.stopPropagation();if(!isDraggableEntry||status==="finish"){ev.preventDefault();return;}
                                     const sendiri=chipTerpilih?null:[e.wp];

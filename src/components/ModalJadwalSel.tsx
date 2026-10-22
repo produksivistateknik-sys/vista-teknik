@@ -89,8 +89,10 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const [swapOrangLoading,setSwapOrangLoading]=useState(false);
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
 
-  const openCellModal=(rawId,date)=>{
-    setCellModal({rawId,date});
+  // fokusWp (22 Okt 2026, permintaan user): klik-ganda chip WP di Raw = modal hanya menampilkan WP itu (tombol "Tampilkan
+  // semua WP" utk melepas). Hanya TAMPILAN - cek data (WP sudah ada, Tambah WP) tetap pakai seluruh isi sel.
+  const openCellModal=(rawId,date,fokusWp?:string)=>{
+    setCellModal(fokusWp?{rawId,date,fokusWp}:{rawId,date});
     setModalWp("");
     setModalKomponen([]);
     // Load existing busbar selections
@@ -99,6 +101,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   };
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
+  const fokusWp:string|undefined=cellModal?.fokusWp;
+  const entriTampil=fokusWp?cellEntries.filter((e:any)=>e.wp===fokusWp):cellEntries;
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
   // Sisa qty yang beneran perlu dijadwalkan: total dikurangi yang lebih besar antara "sudah
   // dijadwalkan" (cegah dobel-jadwal, dari raw_schedule) dan "sudah dikerjakan beneran"
@@ -427,6 +431,13 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
           {rawRow.proses!=="BUSBAR"&&cellEntries.length>0&&(
             <div style={{marginBottom:16}}>
               <Lbl>WP & Komponen Terjadwal</Lbl>
+              {fokusWp&&(
+                <div style={{display:"flex",alignItems:"center",gap:8,background:"#fefce8",border:"1px solid #fde68a",borderRadius:8,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#854d0e"}}>
+                  <span style={{flex:1}}>Menampilkan <strong>{fokusWp}</strong> saja{cellEntries.length>1?` - ${cellEntries.length-1} WP lain di sel ini disembunyikan`:""}.</span>
+                  {cellEntries.length>1&&<button onClick={()=>setCellModal({rawId:cellModal.rawId,date:cellModal.date})}
+                    style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fde68a",background:"#fff",color:"#854d0e",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Tampilkan semua WP ({cellEntries.length})</button>}
+                </div>
+              )}
               {selectedForMove.length>0&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,background:"#eff6ff",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 10px",marginBottom:8}}>
                   <span style={{fontSize:11,color:"#1d4ed8",flex:1}}>{selectedForMove.length} komponen dipilih</span>
@@ -449,7 +460,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                 return(
                   <div style={{display:"flex",alignItems:"center",flexWrap:"wrap" as const,gap:8,background:"#f8fafc",border:"1px dashed #93c5fd",borderRadius:8,padding:"6px 10px",marginBottom:8,fontSize:11}}>
                     <span style={{fontWeight:700,color:"#1d4ed8"}}>Pilih WP:</span>
-                    {cellEntries.map((e:any)=>{
+                    {entriTampil.map((e:any)=>{
                       const n=aktifWp(e).length;
                       return(
                         <label key={e.wp} title={n?`${n} komponen belum selesai ikut dipilih`:"Semua komponen WP ini sudah selesai / jejak"} style={{display:"inline-flex",alignItems:"center",gap:4,color:n?"#1e293b":"#94a3b8",cursor:n?"pointer":"not-allowed"}}>
@@ -457,12 +468,12 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                         </label>
                       );
                     })}
-                    <button onClick={()=>setSelectedForMove(cellEntries.flatMap((e:any)=>aktifWp(e).map((k:string)=>({wp:e.wp,kode:k}))))}
+                    <button onClick={()=>setSelectedForMove(entriTampil.flatMap((e:any)=>aktifWp(e).map((k:string)=>({wp:e.wp,kode:k}))))}
                       style={{padding:"2px 8px",borderRadius:6,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Pilih semua</button>
                   </div>
                 );
               })()}
-              {cellEntries.map(e=>{
+              {entriTampil.map(e=>{
                 const wc=WP_COLOR[e.wp]||"#64748b";
                 return(
                   <div key={e.wp} style={{background:"#f8fafc",borderRadius:8,padding:"10px 12px",marginBottom:8,border:"1px solid #e2e8f0"}}>
