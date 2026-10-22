@@ -3,6 +3,7 @@ import { supabase, supabaseUrl, supabaseAnonKey } from '../lib/supabase'
 import { formatBusbarTahapOperator, indeksTimer, kunciTimer } from '../lib/operatorProgres'
 import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR, PRIORITAS, PROSES_ORANG_RAW_GLOBAL } from '../constants/panelTypes'
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
+import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
 import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, getCcpAwareValue, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -373,10 +374,11 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     const fetchOperatorHistory=async()=>{
       let all:any[]=[],from=0;
       while(true){
+        // (22 Okt 2026) + mulai/selesai/durasi_menit utk status operator harian (lib/operatorHarian), urutan stabil utk paginasi
         const{data,error}:any=await supabase.from("fcs_timer_kerja")
-          .select("panel_id,kode_komponen,proses,pekerja_id").eq("tanggal",selDate)
-          .range(from,from+999);
-        if(error)break;
+          .select("id,panel_id,kode_komponen,proses,pekerja_id,mulai,selesai,durasi_menit").eq("tanggal",selDate)
+          .order("id").range(from,from+999);
+        if(error){console.error("[Rencana Harian] gagal muat timer operator:",error);break;}
         all=all.concat(data??[]);
         if(!data||data.length<1000)break;
         from+=1000;
@@ -1205,18 +1207,22 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         // (5) fallback ke assignment planner (pekerja_per_komponen) -
                         // (6) TERAKHIR, approksimasi: uploader foto pemasangan terakhir (data lama
                         // sebelum poin 4 ada) - lihat getPasangKomponenFotoOperatorName.
-                        const operatorTimerKode=getOperatorNamesForKode(t.panelId,kode,t.proses);
-                        const fallbackOp=operatorTimerKode.length===0?getFallbackOperatorForKode(t.panelId,kode,t.proses):null;
-                        const checkpointOp=(operatorTimerKode.length===0&&(!fallbackOp||fallbackOp.names.length===0))?getCheckpointOperatorForKode(t.panelId,kode,t.proses):null;
-                        const lanjutanOp=(fallbackOp&&fallbackOp.names.length>0)?fallbackOp:checkpointOp;
-                        const isLanjutan=operatorTimerKode.length===0&&!!lanjutanOp&&lanjutanOp.names.length>0;
-                        const namesFromTimerChain=operatorTimerKode.length>0?operatorTimerKode:(isLanjutan?lanjutanOp!.names:[]);
+                        // OPERATOR HARIAN (22 Okt 2026, aturan final user - lib/operatorHarian, SAMA dgn kartu vista-pekerja):
+                        // pengerja = timer komponen+proses HARI INI (sesi berjalan & selesai); tanpa timer -> nama checkpoint
+                        // hari itu; daftar renhar = rencana (redup "belum mulai" / abu-abu "tidak mulai"). Nama dari hari LAIN
+                        // tidak lagi ditampilkan di kolom (dulu fallback "lanjutan") - cukup di tooltip "terakhir dikerjakan".
+                        // Fallback lama PASANG KOMPONEN (klik langkah live / uploader foto) tetap dipakai HANYA bila hari itu
+                        // tidak ada timer & checkpoint sama sekali.
+                        const timerKodeHari=operatorHistoryData.filter((x:any)=>String(x.panel_id)===String(t.panelId)&&x.kode_komponen===kode&&x.proses===t.proses);
+                        const cpKodeHari=checkpointOperatorData.filter((x:any)=>String(x.panel_id)===String(t.panelId)&&x.kode_komponen===kode&&x.proses===t.proses&&x.tanggal===selDate);
+                        const daftarOp=daftarOperatorHarian({timer:timerKodeHari,rencanaIds:opIdsKode,checkpointNama:namaDariCheckpoint(cpKodeHari),namaById:namaPekerjaById,tanggal:selDate,hariIni:TODAY});
                         const clKode=panelData?.checklist?.[kode];
-                        const liveOpNames=t.proses==="PASANG KOMPONEN"&&namesFromTimerChain.length===0?getPasangKomponenLiveOperatorNames(clKode):[];
-                        const namesFromPlanner=namesFromTimerChain.length===0&&liveOpNames.length===0?opIdsKode.map((id:number)=>pekerja.find(p=>p.id===id)?.nama).filter(Boolean):[];
-                        const fotoOpName=t.proses==="PASANG KOMPONEN"&&namesFromTimerChain.length===0&&liveOpNames.length===0&&namesFromPlanner.length===0?getPasangKomponenFotoOperatorName(clKode):null;
-                        const isFotoApprox=namesFromTimerChain.length===0&&liveOpNames.length===0&&namesFromPlanner.length===0&&!!fotoOpName;
-                        const workersKode=namesFromTimerChain.length>0?namesFromTimerChain:liveOpNames.length>0?liveOpNames:namesFromPlanner.length>0?namesFromPlanner:isFotoApprox?[fotoOpName as string]:[];
+                        const liveOpNames=t.proses==="PASANG KOMPONEN"&&daftarOp.sumber==="kosong"?getPasangKomponenLiveOperatorNames(clKode):[];
+                        const fotoOpName=t.proses==="PASANG KOMPONEN"&&daftarOp.sumber==="kosong"&&liveOpNames.length===0?getPasangKomponenFotoOperatorName(clKode):null;
+                        const isFotoApprox=daftarOp.sumber==="kosong"&&liveOpNames.length===0&&!!fotoOpName;
+                        const terakhirOp=daftarOp.pengerja.length===0?(()=>{const f=getFallbackOperatorForKode(t.panelId,kode,t.proses);return f.names.length?f:getCheckpointOperatorForKode(t.panelId,kode,t.proses);})():null;
+                        const tooltipTerakhir=terakhirOp&&terakhirOp.names.length&&terakhirOp.tanggal&&terakhirOp.tanggal!==selDate?`Belum ada yang mengerjakan ${fmtShort(selDate)} - terakhir dikerjakan ${fmtShort(terakhirOp.tanggal)} oleh ${terakhirOp.names.join(", ")}`:undefined;
+                        const entriOp=[...liveOpNames.map((n:string)=>({id:null,nama:n,status:"checkpoint" as const,menit:0})),...(isFotoApprox?[{id:null,nama:fotoOpName as string,status:"checkpoint" as const,menit:0,foto:true}]:[]),...daftarOp.entri];
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return[(
                           <tr key={ti+"-"+kode}>
@@ -1260,18 +1266,27 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                             <td style={{...td}}>
                               {!sudahRelease&&!digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Belum dirilis</span>
-                              ):workersKode.length>0?(
-                                <div style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
-                                  {workersKode.map((n:string)=>(<span key={n}
-                                    title={isFotoApprox?"Perkiraan dari uploader foto pemasangan terakhir - bukan data operator yang pasti":undefined}
-                                    style={{background:isFotoApprox?"#f8fafc":isLanjutan?"#f8fafc":"#eff6ff",border:isFotoApprox?"1px dashed #cbd5e1":isLanjutan?"1px solid #e2e8f0":"1px solid #bfdbfe",color:isFotoApprox?"#94a3b8":isLanjutan?"#64748b":"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>
-                                    {isFotoApprox?"📷":"👤"} {n}
-                                  </span>))}
-                                  {isLanjutan&&<span title={"Terakhir ngerjain "+fmtShort(lanjutanOp!.tanggal!)+", belum ada yang mulai lagi hari ini"} style={{fontSize:9,color:"#94a3b8",fontStyle:"italic"}}>lanjutan {fmtShort(lanjutanOp!.tanggal!)}</span>}
+                              ):entriOp.length>0?(
+                                <div title={tooltipTerakhir} style={{display:"flex",gap:4,flexWrap:"wrap",alignItems:"center"}}>
+                                  {entriOp.map((e:any)=>{
+                                    const gaya=e.foto?{background:"#f8fafc",border:"1px dashed #cbd5e1",color:"#94a3b8"}
+                                      :e.status==="berjalan"?{background:"#eff6ff",border:"1px solid #93c5fd",color:"#1d4ed8",fontWeight:800}
+                                      :e.status==="selesai"?{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#15803d"}
+                                      :e.status==="checkpoint"?{background:"#f8fafc",border:"1px dashed #93c5fd",color:"#1d4ed8"}
+                                      :e.status==="belum_mulai"?{background:"#fff",border:"1px dashed #cbd5e1",color:"#94a3b8"}
+                                      :{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",textDecoration:"line-through"};
+                                    const ikon=e.foto?"📷":e.status==="berjalan"?"●":e.status==="selesai"?"✓":e.status==="checkpoint"?"📝":"○";
+                                    const ket=e.foto?"Perkiraan dari uploader foto pemasangan terakhir - bukan data operator yang pasti"
+                                      :LABEL_STATUS_OPERATOR[e.status as keyof typeof LABEL_STATUS_OPERATOR]+(e.menit>0?` · ${labelMenit(e.menit)}`:"");
+                                    return(<span key={e.nama+e.status} title={ket}
+                                      style={{...gaya,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:(gaya as any).fontWeight||700,whiteSpace:"nowrap" as const}}>
+                                      {ikon} {e.nama}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
+                                    </span>);
+                                  })}
                                 </div>
                               ):digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>-</span>
-                              ):(<span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>Pilih sendiri di tablet</span>)}
+                              ):(<span title={tooltipTerakhir} style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>{tooltipTerakhir?"Belum mulai hari ini":"Pilih sendiri di tablet"}</span>)}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
                               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>

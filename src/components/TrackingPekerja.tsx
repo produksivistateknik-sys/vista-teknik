@@ -2,7 +2,8 @@ import { useState, useEffect, useMemo } from 'react'
 import { supabase } from '../lib/supabase'
 import { renharService } from '../services/renharService'
 import { PANEL_TYPES, DIVISI_CONFIG, OPERATOR_ROLES, PROSES_COLOR, WP_COLOR } from '../constants/panelTypes'
-import { fmtDate, getRenharWindowRange } from '../lib/dateHelpers'
+import { fmtDate, getRenharWindowRange, TODAY } from '../lib/dateHelpers'
+import { daftarOperatorHarian, namaDariCheckpoint } from '../lib/operatorHarian'
 import { Modal, Btn } from './ui/Primitives'
 
 export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
@@ -135,30 +136,59 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     });
   };
 
-  // Komponen individual per pekerja - gabung dari field lama (pekerja) dan baru (pekerja_per_komponen)
-  // Khusus untuk task yang punya pekerja_per_komponen (WIRING CONTROL/POWER), pecah jadi komponen tersendiri
-  // Untuk task lama (cuma pakai field pekerja), tetap 1 entry per komponen di task itu
-  const getKomponenIndividualPerPekerja=(pkrId:number)=>{
-    const hasil:any[]=[];
-    effectiveRenhar.forEach((t:any)=>{
-      const ppk=t.pekerja_per_komponen||{};
-      const punyaPpk=Object.keys(ppk).length>0;
-      if(punyaPpk){
-        (t.komponen||[]).forEach((kode:string)=>{
-          const raw=ppk[kode];
-          // BUSBAR nested per-tahap ({tahap:[ids]}) vs proses lain (array [ids] langsung).
-          const idsKomp:number[]=Array.isArray(raw)?raw:(raw&&typeof raw==="object"?Object.values(raw).flat() as number[]:[]);
-          if(idsKomp.includes(pkrId)){
-            hasil.push({...t,_komponenSpesifik:kode});
-          }
-        });
-      } else if((t.pekerja||[]).includes(pkrId)){
-        (t.komponen||[]).forEach((kode:string)=>{
-          hasil.push({...t,_komponenSpesifik:kode});
-        });
+  // TUGAS PER PEKERJA = pengerja HARIAN (22 Okt 2026, aturan final user - lib/operatorHarian, SAMA dgn Rencana Harian &
+  // kartu vista-pekerja): seseorang dihitung mengerjakan komponen X proses P tanggal D bila punya timer di situ (sesi
+  // berjalan/selesai); tanpa timer sama sekali -> nama di progress_checkpoint_log tanggal itu. Daftar renhar
+  // (pekerja_per_komponen / pekerja lama) = RENCANA, tidak dihitung ("tidak mulai" tidak masuk tugas/hari kerja).
+  // Dulu dari pekerja_per_komponen -> nama basi ikut terhitung & pengerja yang kodenya digeser auto-geser hilang.
+  // Komponen yang dikerjakan tapi kodenya sudah tidak ada di baris renhar tanggal itu (digeser) tetap dihitung:
+  // baris tugas dibentuk dari timer/checkpoint dgn info proyek/panel/WP dari baris renhar panel yang sama.
+  const indeksHarian=useMemo(()=>{
+    const timer=new Map<string,any[]>();
+    for(const t of timerData){const k=`${t.panel_id}|${t.kode_komponen}|${t.proses}|${t.tanggal}`;if(!timer.has(k))timer.set(k,[]);timer.get(k)!.push(t);}
+    const cp=new Map<string,any[]>();
+    for(const c of checkpointLogData){const k=`${c.panel_id}|${c.kode_komponen}|${c.proses}|${c.tanggal}`;if(!cp.has(k))cp.set(k,[]);cp.get(k)!.push(c);}
+    return{timer,cp};
+  },[timerData,checkpointLogData]);
+  const namaPekerjaById=useMemo(()=>{const m=new Map((pekerja||[]).map((p:any)=>[String(p.id),p.nama]));return(id:any)=>m.get(String(id)) as string|undefined;},[pekerja]);
+  const rencanaIdsDari=(t:any,kode:string):number[]=>{
+    const ppk=t.pekerja_per_komponen||{};
+    if(Object.keys(ppk).length>0){const raw=ppk[kode];return Array.isArray(raw)?raw:(raw&&typeof raw==="object"?Object.values(raw).flat() as number[]:[]);}
+    return t.pekerja||[];
+  };
+  const pengerjaHarian=(panelId:any,kode:string,proses:string,tanggal:string,rencanaIds:number[])=>{
+    const k=`${panelId}|${kode}|${proses}|${tanggal}`;
+    return daftarOperatorHarian({timer:indeksHarian.timer.get(k)||[],rencanaIds,checkpointNama:namaDariCheckpoint(indeksHarian.cp.get(k)||[]),namaById:namaPekerjaById,tanggal,hariIni:TODAY});
+  };
+  const semuaTugasHarian=useMemo(()=>{
+    // key panel|kode|proses|tanggal -> {tugas, daftar}
+    const hasil=new Map<string,{tugas:any;daftar:any}>();
+    const metaPanel=new Map<string,any>(); // panel|proses -> baris renhar contoh (proyek/panel/wp)
+    const metaKode=new Map<string,any>(); // panel|proses|kode -> baris renhar yang memuat kode
+    for(const t of effectiveRenhar){
+      const pid=t.panel_id||t.panelId;
+      if(!metaPanel.has(`${pid}|${t.proses}`))metaPanel.set(`${pid}|${t.proses}`,t);
+      for(const kode of (t.komponen||[])){
+        metaKode.set(`${pid}|${t.proses}|${kode}`,t);
+        const key=`${pid}|${kode}|${t.proses}|${t.tanggal}`;
+        if(hasil.has(key))continue;
+        hasil.set(key,{tugas:{...t,_komponenSpesifik:kode},daftar:pengerjaHarian(pid,kode,t.proses,t.tanggal,rencanaIdsDari(t,kode))});
       }
-    });
-    return hasil;
+    }
+    const tambah=(pid:any,kode:string,proses:string,tanggal:string)=>{
+      const key=`${pid}|${kode}|${proses}|${tanggal}`;
+      if(hasil.has(key))return;
+      const meta=metaKode.get(`${pid}|${proses}|${kode}`)||metaPanel.get(`${pid}|${proses}`);
+      if(!meta)return; // panel di luar rentang renhar yang dimuat - tidak bisa diberi nama proyek/panel
+      hasil.set(key,{tugas:{...meta,id:null,_dariTimer:true,tanggal,proses,komponen:[kode],_komponenSpesifik:kode},daftar:pengerjaHarian(pid,kode,proses,tanggal,[])});
+    };
+    for(const t of timerData)tambah(t.panel_id,t.kode_komponen,t.proses,t.tanggal);
+    for(const c of checkpointLogData)tambah(c.panel_id,c.kode_komponen,c.proses,c.tanggal);
+    return[...hasil.values()];
+  },[effectiveRenhar,indeksHarian,namaPekerjaById]);
+  const getKomponenIndividualPerPekerja=(pkrId:number)=>{
+    const nama=String(namaPekerjaById(pkrId)||"").toUpperCase();
+    return semuaTugasHarian.filter(({daftar})=>daftar.pengerja.some((e:any)=>e.id!=null?Number(e.id)===Number(pkrId):(nama!==""&&e.nama.toUpperCase()===nama))).map(({tugas})=>tugas);
   };
 
   // Progress khusus untuk 1 komponen spesifik (bukan rata-rata semua komponen di task)
@@ -627,10 +657,10 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
                                 </span>
                               </td>
                               <td style={{...td2,textAlign:"center" as const}}>
-                                <button onClick={()=>setDelId(t)}
+                                {t.id!=null?<button onClick={()=>setDelId(t)}
                                   style={{background:"#fef2f2",border:"1px solid #fecaca",borderRadius:5,padding:"3px 7px",cursor:"pointer",fontSize:10,color:"#dc2626"}}>
                                   🗑
-                                </button>
+                                </button>:<span title="Dikerjakan (ada timer/simpan progres) tapi komponen ini sudah tidak ada di rencana harian tanggal itu - tidak ada baris rencana untuk dihapus" style={{fontSize:9,color:"#94a3b8"}}>dari timer</span>}
                               </td>
                             </tr>
                           );
