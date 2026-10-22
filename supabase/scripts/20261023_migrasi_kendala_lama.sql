@@ -36,7 +36,7 @@ baru as (
   insert into public.kendala_produksi (proyek, wo_id, wo_number, panel_id, panel_nama, teks, pencatat, divisi, sumber,
                                        dicatat_pada, tanggal, teratasi_pada, teratasi_oleh)
   select s.proyek, pa.wo_id, w.wo, s.panel_id, s.panel_nama, regexp_replace(btrim(s.catatan), '\s+', ' ', 'g'), s.operator, s.divisi, 'migrasi',
-         s.ts, s.tanggal, s.ts, 'migrasi (catatan lama)'
+         s.ts::timestamptz, s.tanggal::date, s.ts::timestamptz, 'migrasi (catatan lama)'
     from semua s
     left join public.panels_archived pa on pa.id = s.panel_id
     left join public.work_orders w on w.id = pa.wo_id
