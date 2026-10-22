@@ -63,8 +63,10 @@ export async function pindahKomponenRenhar(deps: DepsSinkronRenhar, o: OpsiPinda
   if (!asal || pindah.length === 0) return { dipindah: [] } // tidak ada renhar / sudah pindah (idempoten)
   const sisa: string[] = (asal.komponen || []).filter((k: string) => !kodeSet.has(k))
   const releasedPindah: string[] = pindah.filter((k) => (asal.komponen_released || []).includes(k))
+  // (22 Okt 2026, aturan operator harian) daftar operator (pekerja_per_komponen) TIDAK ikut dibawa ke tanggal tujuan:
+  // tujuan memakai penugasan planner di tanggal itu atau kosong; di tanggal asal daftar tetap ada sbg rencana hari itu
+  // (siapa yang benar-benar mengerjakan = timer). Insiden 22 Okt 544 FS.4: RIFKI+FAHRI terbawa ke 24 Okt.
   const ppkAsal = asal.pekerja_per_komponen || {}
-  const ppkPindah = Object.fromEntries(pindah.filter((k) => ppkAsal[k]).map((k) => [k, ppkAsal[k]]))
 
   // 2) Tujuan dulu.
   let asalSudahDigeser = false
@@ -72,15 +74,17 @@ export async function pindahKomponenRenhar(deps: DepsSinkronRenhar, o: OpsiPinda
     if (tujuan) {
       const komponen = [...new Set([...(tujuan.komponen || []), ...pindah])]
       const komponen_released = [...new Set([...(tujuan.komponen_released || []), ...releasedPindah])]
-      const pekerja_per_komponen = { ...(tujuan.pekerja_per_komponen || {}), ...ppkPindah }
       tandai(tujuan.id)
-      cekTulis(await updateRenhar(tujuan.id, { komponen, komponen_released, pekerja_per_komponen }), 'menambah komponen ke rencana harian tujuan')
-      setRenhar((prev) => prev.map((x: any) => x.id === tujuan.id ? { ...x, komponen, komponen_released, pekerja_per_komponen } : x))
+      cekTulis(await updateRenhar(tujuan.id, { komponen, komponen_released }), 'menambah komponen ke rencana harian tujuan')
+      setRenhar((prev) => prev.map((x: any) => x.id === tujuan.id ? { ...x, komponen, komponen_released } : x))
     } else if (sisa.length === 0 && !o.simpanBarisAsal) {
-      // Pindah semua & tujuan kosong -> geser baris asal (perilaku lama; id & riwayat ikut).
+      // Pindah semua & tujuan kosong -> geser baris asal (perilaku lama; id & riwayat ikut). Daftar operator kode yang
+      // dipindah DIKOSONGKAN (22 Okt 2026) - baris ini kini milik tanggal tujuan; nama dari tanggal asal tidak boleh
+      // terbawa. Siapa yang mengerjakan di tanggal asal tetap terbaca dari timer.
+      const pekerja_per_komponen = Object.fromEntries(Object.entries(ppkAsal).filter(([k]) => !kodeSet.has(k)))
       tandai(asal.id)
-      cekTulis(await updateRenhar(asal.id, { tanggal: o.toDate, komponen: pindah }), 'memindah rencana harian')
-      setRenhar((prev) => prev.map((x: any) => x.id === asal.id ? { ...x, tanggal: o.toDate, komponen: pindah } : x))
+      cekTulis(await updateRenhar(asal.id, { tanggal: o.toDate, komponen: pindah, pekerja_per_komponen }), 'memindah rencana harian')
+      setRenhar((prev) => prev.map((x: any) => x.id === asal.id ? { ...x, tanggal: o.toDate, komponen: pindah, pekerja_per_komponen } : x))
       asalSudahDigeser = true
     } else {
       const res = cekTulis(await createRenhar({
@@ -89,7 +93,7 @@ export async function pindahKomponenRenhar(deps: DepsSinkronRenhar, o: OpsiPinda
         prioritas: asal.prioritas || 'Sedang', wp: o.wp, komponen: pindah,
         tanggal: o.toDate, ...(asal.divisi ? { divisi: asal.divisi } : {}),
         pekerja: o.pekerjaBarisBaru ?? (asal.pekerja || []),
-        komponen_released: releasedPindah, pekerja_per_komponen: ppkPindah,
+        komponen_released: releasedPindah, pekerja_per_komponen: {},
       }), 'membuat rencana harian di tanggal tujuan')
       if (!res?.data) throw new Error('Gagal membuat rencana harian di tanggal tujuan (tanpa data balikan)')
       tandai(res.data.id)
@@ -103,8 +107,9 @@ export async function pindahKomponenRenhar(deps: DepsSinkronRenhar, o: OpsiPinda
     if (!ex) return
     const komponen = (ex.komponen || []).filter((k: string) => !kodeSet.has(k))
     const komponen_released = (ex.komponen_released || []).filter((k: string) => !kodeSet.has(k))
+    // (22 Okt 2026) daftar operator di tanggal asal DIBIARKAN (rencana hari itu tidak hilang); pembaca berangkat dari
+    // `komponen`, jadi sisa entri kode yang sudah pindah tidak tampil.
     const pekerja_per_komponen = { ...(ex.pekerja_per_komponen || {}) }
-    pindah.forEach((k) => { delete pekerja_per_komponen[k] })
     const berubah = komponen.length !== (ex.komponen || []).length || komponen_released.length !== (ex.komponen_released || []).length || Object.keys(pekerja_per_komponen).length !== Object.keys(ex.pekerja_per_komponen || {}).length
     if (!berubah) return
     tandai(ex.id)

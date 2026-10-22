@@ -1049,9 +1049,11 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         if (!komponenLama.some((k: string) => kodeSet.has(k))) continue
         const komponenBaru = komponenLama.filter((k: string) => !kodeSet.has(k))
         const releasedBaru = (rh.komponen_released || []).filter((k: string) => !kodeSet.has(k))
-        const ppkBaru = { ...(rh.pekerja_per_komponen || {}) }
-        kodeSet.forEach((k) => delete ppkBaru[k])
-        await supabase.from('renhar').update({ komponen: komponenBaru, komponen_released: releasedBaru, pekerja_per_komponen: ppkBaru }).eq('id', rh.id)
+        // (22 Okt 2026, aturan operator harian) pekerja_per_komponen TIDAK lagi dihapus: itu rencana planner hari itu
+        // (riwayat); pembaca berangkat dari `komponen`, jadi entri kode yang digeser tidak tampil. Siapa yang mengerjakan
+        // = timer (kode berjejak selalu punya timer di tanggal ini).
+        const { error: rhErr } = await supabase.from('renhar').update({ komponen: komponenBaru, komponen_released: releasedBaru }).eq('id', rh.id)
+        if (rhErr) console.error(`[auto-geser] gagal melepas kode dari renhar ${rh.id}:`, rhErr)
       }
     }
   }
