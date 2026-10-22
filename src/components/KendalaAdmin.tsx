@@ -16,7 +16,7 @@ const CSS = `
 .kda{--kd-card:var(--card-bg,#fff);--kd-fg:var(--text-primary,#1d1f23);--kd-mute:var(--text-muted,#7a7f87);--kd-line:var(--border-color,#e8e8e4);
   --kd-ok:#2f8f5b;--kd-warn:#c26a0a;--kd-bad:#c0392b;--kd-ink:#1d1f23;--kd-ink-fg:#fff;--kd-focus:#d97706;
   --kd-line-soft:color-mix(in srgb,var(--kd-line) 60%,transparent);
-  color:var(--kd-fg);text-align:left;width:100%;max-width:1024px;margin:0;padding:24px 32px 48px;font-size:15px;line-height:1.5}
+  color:var(--kd-fg);text-align:left;width:100%;max-width:none;margin:0;padding:24px 32px 48px;font-size:15px;line-height:1.5}
 @media (max-width:600px){.kda{padding:24px 16px 40px}}
 [data-theme="dark"] .kda{--kd-ok:#4cc38a;--kd-warn:#f0a04b;--kd-bad:#f07b6e;--kd-ink:#e2e8f0;--kd-ink-fg:#0f1117;--kd-focus:#f0a04b}
 .kda *{box-sizing:border-box}
@@ -32,6 +32,7 @@ const CSS = `
 .kda-tabs span{color:var(--kd-mute);font-weight:400;margin-left:4px}
 .kda select,.kda textarea,.kda input{font:inherit;font-size:14px;color:var(--kd-fg);background:var(--kd-card);border:1px solid var(--kd-line);border-radius:8px}
 .kda select{height:34px;padding:0 8px;max-width:100%}
+.kda-bar select{margin-left:auto}
 .kda select:focus,.kda textarea:focus,.kda input:focus{outline:2px solid var(--kd-focus);outline-offset:-1px}
 .kda-form{background:var(--kd-card);border:1px solid var(--kd-line);border-radius:10px;padding:14px;margin:10px 0 6px;display:flex;flex-direction:column;gap:10px}
 .kda-form .two{display:flex;gap:8px;flex-wrap:wrap}.kda-form .two select{flex:1 1 180px;min-width:0}
