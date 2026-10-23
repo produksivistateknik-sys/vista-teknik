@@ -17,7 +17,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged, UKURAN_POTONGAN_ID } from './fetchAllPaged'
 import { selesaiTepatTanggal } from './kodeJadwalAktif'
-import { getBusbarProgress, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
+import { getBusbarProgress, getEffCfgGlobal, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
 import { muatProsesRelevanGlobal } from './prosesRelevan'
 import { GLOBAL_PROSES_RELEVAN_TERMUAT } from './globalState'
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
@@ -138,6 +138,11 @@ const hariIniDari = (waktu: any, hariIni: string) => !!waktu && hariKerjaDari(wa
 export type Varian = 'V1' | 'V2' | 'V3'
 export type OpsiPekerjaan = { varian?: Varian; timerBerjalan?: Set<string> } // timer: `${panelId}|${kode}|${proses}`
 const PENANDA = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
+// nama komponen dari BOM live (getEffCfgGlobal; fallback konstanta PANEL_TYPES) - huruf kapital; tak ketemu -> kode
+export function namaKomponen(tipe: string, kode: string): string {
+  const it = (getEffCfgGlobal(tipe)?.wps || []).flatMap((w: any) => w.items || []).find((x: any) => x.kode === kode)
+  return String(it?.nama || kode).trim().toUpperCase()
+}
 const rantaiKode = (kode: string, tipe: string) => getRelevantProsesForKode(kode, tipe).filter((p) => ALL_PROSES.includes(p) && p !== 'BUSBAR' && !PENANDA.includes(p))
 
 export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: string, opsi: OpsiPekerjaan = {}): Pekerjaan[] {
@@ -205,6 +210,28 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
       if (!perWp.has(wp)) perWp.set(wp, new Set())
       kodes.forEach((k: string) => { perWp.get(wp)!.add(k); if (!tglAwal.has(k) || t < tglAwal.get(k)!) tglAwal.set(k, t) })
     })))
+    // WIRING CONTROL/POWER (permintaan user 23 Okt): tulis NAMA KOMPONEN + persen, bukan WP -
+    // "WIRING CONTROL PINTU 75%, BOX CONTROL 40%". Persen hanya bila sudah mulai; nama sama dirata-rata.
+    if (proses === 'WIRING CONTROL' || proses === 'WIRING POWER') {
+      const due = [...new Set([...perWp.values()].flatMap((s) => [...s]))]
+      const telatW = (k: string) => (tglAwal.get(k) || hariIni) < hariIni && pctK(k, proses) === 0 && !timer(k, proses)
+      const label = (ks: string[], persen: boolean) => {
+        const g = new Map<string, number[]>()
+        ks.forEach((k) => { const n = namaKomponen(panel?.tipe, k); g.set(n, [...(g.get(n) || []), pctK(k, proses)]) })
+        return [...g.entries()].map(([n, ps]) => { const p = Math.round(ps.reduce((a, b) => a + b, 0) / ps.length); return persen && p > 0 ? `${n} ${p}%` : n }).join(', ')
+      }
+      const nama = LABEL_PROSES[proses] || proses
+      const selesaiIni = due.filter((k) => pctK(k, proses) >= 100 && selesaiTepatTanggal(cl[k], proses, hariIni))
+      if (selesaiIni.length) hasil.push({ id: idBaru(), teks: `${nama} ${label(selesaiIni, false)}`, selesai: true })
+      let belum = due.filter((k) => pctK(k, proses) < 100)
+      if (varian !== 'V1' && belum.length) {
+        const akt = belum.filter((k) => aktifK(k, proses))
+        if (!akt.length) { catatMenunggu(proses, belum.some(telatW)); continue }
+        belum = akt
+      }
+      if (belum.length) hasil.push({ id: idBaru(), teks: `${nama} ${label(belum, true)}${varian !== 'V1' && belum.some(telatW) ? ' (TERLAMBAT)' : ''}`, selesai: false })
+      continue
+    }
     const unitDari = (wp: string, ks: Set<string>): Unit => {
       const pcts = [...ks].map((k) => pctK(k, proses))
       if (pcts.every((p) => p >= 100)) return { label: wp, status: [...ks].some((k) => selesaiTepatTanggal(cl[k], proses, hariIni)) ? 'selesaiHariIni' : 'basi' }
