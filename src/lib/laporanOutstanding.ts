@@ -244,9 +244,15 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
     // BELUM selesai (nama dari BOM live, huruf besar). WP yang semua komponen main-nya selesai: tidak ditulis, kecuali selesai
     // HARI INI -> "PROSES WP-n (NAMA yang selesai hari ini)" ✅. V2: hanya komponen yang aktif (estafet) yang ditulis.
     const namaProses = LABEL_PROSES[proses] || proses
-    const daftarNama = (ks: Iterable<string>) => [...new Set([...ks].map((k) => namaKomponen(panel?.tipe, k)))].join(', ')
+    // penanda "(PROSES)" PER KOMPONEN (koreksi user 23 Okt): komponen yang sudah mulai (progres > 0 / timer berjalan) - hanya
+    // pada baris belum selesai. Nama sama dari beberapa kode digabung (mulai bila salah satunya mulai).
+    const daftarNama = (ks: Iterable<string>, tandaMulai: boolean) => {
+      const m = new Map<string, boolean>()
+      ;[...ks].forEach((k) => { const n = namaKomponen(panel?.tipe, k); m.set(n, !!m.get(n) || (tandaMulai && (pctK(k, proses) > 0 || timer(k, proses)))) })
+      return [...m.entries()].map(([n, mulai]) => (mulai ? `${n} (PROSES)` : n)).join(", ")
+    }
     const baris = (wp: string, ks: Iterable<string>, selesai: boolean, telat = false): Pekerjaan =>
-      ({ id: idBaru(), teks: `${namaProses} ${wp} (${daftarNama(ks)})${telat ? ' (TERLAMBAT)' : ''}`, selesai })
+      ({ id: idBaru(), teks: `${namaProses} ${wp} (${daftarNama(ks, !selesai)})${telat ? ' (TERLAMBAT)' : ''}`, selesai })
     const urut = [...perWp.entries()].sort(([a], [b]) => urutWp(a, b))
     const selesaiHariIni: Pekerjaan[] = []
     urut.forEach(([wp, ks]) => {
