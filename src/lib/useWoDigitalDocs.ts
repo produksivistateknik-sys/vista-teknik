@@ -4,6 +4,7 @@ import { activityLogService } from '../services/activityLogService'
 import { uploadToR2, deleteFromR2, extractR2Key } from './r2Client'
 import { watermarkPdf, stampTidakBerlaku } from './pdfWatermark'
 import { broadcastWoEngineeringEvent } from './useWoEngineeringBroadcast'
+import { amankan, catatRevisiWo, woAktifSeNomor } from './woDilihat'
 
 // Dokumen gambar teknik WO Digital, EKSTRAK (4 Sep 2026) dari WoDigitalTab.tsx supaya bisa
 // dipakai ulang di ManajemenWO.tsx (Admin, viewer-only - lihat prop canUpload di caller,
@@ -141,6 +142,9 @@ export function useWoDigitalDocs() {
     try{
       await supabase.functions.invoke("notify-wo-baru",{body:{trigger:isFirstDoc?"gambar_ditambahkan":"gambar_direvisi",wo_id:woId,wo_number:woLabel,proyek,panel_nama:panelLabel,uploader_nama:uname}})
     }catch{/* notifikasi gagal - diabaikan */}
+    // Penanda REVISI Manajemen WO (23 Okt 2026, keputusan user: "tambah WO revisi" = Engineering mengunggah revisi gambar WO,
+    // revisi ke-2 dst). Ditandai pada WO ini + record AKTIF bernomor & berproyek sama. Gagal = hanya log (upload tetap sukses).
+    if(!isFirstDoc)await amankan(async()=>catatRevisiWo(supabase,await woAktifSeNomor(supabase,woId),uname,`revisi gambar ${panelLabel} rev ${maxRev+1}${revMark.trim()?": "+revMark.trim():""}`))
 
     // Banner broadcast "WO diubah Engineering" (17 Sep 2026, BUG FIX sore) - upload/revisi gambar
     // teknik dulu TIDAK memicu banner in-app sama sekali (cuma push notif OS di atas), jalur kode

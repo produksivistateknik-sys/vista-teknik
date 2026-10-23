@@ -6,6 +6,8 @@ import QRCode from 'qrcode';
 import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendalaTerbuka } from './hooks/useKendalaTerbuka'
+import { useWoDilihat } from './hooks/useWoDilihat'
+import { statusWo } from './lib/woDilihat'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
@@ -276,6 +278,9 @@ const [renhar, setRenhar] = useState<any[]>([]);
 const [pekerja, setPekerja] = useState<any[]>([]);
   // Kendala produksi (23 Okt 2026): badge & lonceng = kendala BELUM teratasi (tabel kendala_produksi), admin saja.
   const { kendalaTerbuka, galatKendala, refetchKendalaTerbuka } = useKendalaTerbuka((user as any)?.divisi==='admin')
+  // Penanda BARU/REVISI Manajemen WO (23 Okt 2026) - per admin login, hanya akun divisi admin (lib/woDilihat).
+  const namaAdminWo=String((user as any)?.nama||(user as any)?.name||'').trim();
+  const { dilihat:woDilihat, bukaWo } = useWoDilihat(namaAdminWo,(user as any)?.divisi==='admin')
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
   // Badge Maintenance (29 Sep 2026, CLAUDE.md A.1/A.2) - dulu select row lalu .length (kepotong
   // di 1000) & error ditelan (badge diam-diam hilang). Sekarang count exact head:true (gak narik
@@ -728,7 +733,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canKendala?[{id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:galatKendala?"!":kendalaTerbuka.length>0?kendalaTerbuka.length:null}]:[]),
       // Laporan Outstanding (23 Okt 2026) - teks WhatsApp harian planner; beda dari menu "Outstanding" (alat atur jadwal).
       ...(canKendala?[{id:"laporan_outstanding",label:"Laporan Outstanding",icon:"ti ti-report-analytics"}]:[]),
-      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
+      // badge = WO aktif berstatus BARU/REVISI utk admin ini (23 Okt 2026, lib/woDilihat)
+      ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description",badge:(()=>{const n=woData.filter((w:any)=>statusWo(w,woDilihat.get(Number(w.id)))).length;return n>0?n:null;})()}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
       // "WO Digital" DIHAPUS dari sidebar Admin (REVISI 4 Sep 2026) - digantikan section
       // "Gambar WO" langsung di form Edit WO Manajemen WO (viewer-only, reuse
@@ -1161,7 +1167,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("raw_sandbox")&&<div style={{display:tab==="raw_sandbox"?"block":"none"}}><Suspense fallback={TabFallback}><RawScheduleAccordion woData={woData} livePanelTypes={livePanelTypes} user={user}/></Suspense></div>}
               {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawDataWoAktif} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRaw={refetchRaw} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
-              {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
+              {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woDilihat={woDilihat} bukaWo={bukaWo} woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}

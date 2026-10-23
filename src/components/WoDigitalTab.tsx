@@ -14,6 +14,7 @@ import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 import { fetchAllPaged } from "../lib/fetchAllPaged";
+import { catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, amankan } from "../lib/woDilihat";
 
 const PdfViewer=lazyP(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
@@ -197,7 +198,16 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         const byTanggal:Record<string,any[]>={};
         panelsToSave.forEach((p:any)=>{const t=p.tanggal||form.target;(byTanggal[t]=byTanggal[t]||[]).push(p);});
         const groupedReal=Object.entries(byTanggal).map(([tanggal,panels])=>({tanggal,panels}));
+        // Penanda REVISI (23 Okt 2026, lib/woDilihat): panel SEBELUM simpan (woList tidak memuat panel).
+        const{data:panelLama,error:panelLamaErr}=await supabase.from("panels").select("id,nama,qty").eq("wo_id",formEditId).order("id").range(0,999);
+        if(panelLamaErr)console.error("[WO Digital Edit WO] gagal membaca panel lama (penanda revisi dilewati):",panelLamaErr);
         await workOrderService.saveWOWithSplit(formEditId,form.wo,form.proyek,form.target,groupedReal,uname);
+        // Form ini TIDAK menyimpan header WO (saveWOWithSplit tidak update work_orders; target beda = split) - perilaku lama,
+        // jadi hanya perubahan PANEL (qty/tambah/hapus) yang dihitung revisi di sini.
+        if(origWo&&!panelLamaErr){
+          const ringkas=ringkasRevisiEdit({lama:{proyek:form.proyek,target:form.target,panels:panelLama||[]},baru:{proyek:form.proyek,target:form.target,panels:formPanels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}});
+          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[formEditId],uname,ringkas));
+        }
         // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
         try{
           const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
@@ -226,6 +236,7 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         if(error||!newWo)throw new Error(error?.message||"Gagal buat WO");
         await activityLogService.insert({user_name:uname,action:"TAMBAH WO",description:"Tambah WO "+form.wo+" - "+form.proyek,module:"wo",halaman:"WO Digital",proyek:form.proyek,wo_number:form.wo});
         await workOrderService.savePanels(newWo.id,panelsToSave);
+        await amankan(()=>catatWoDibuat(supabase,newWo.id,uname,false)); // penanda BARU (pembuat dianggap sudah melihat)
         try{
           await supabase.functions.invoke("notify-wo-baru",{body:{trigger:"baru",wo_id:newWo.id,wo_number:form.wo,proyek:form.proyek,target:form.target,admin_nama:uname}});
         }catch{/* notifikasi gagal - diabaikan, WO tetap tersimpan */}

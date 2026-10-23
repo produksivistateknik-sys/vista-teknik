@@ -3,6 +3,7 @@ import { sesuaikanChecklistKeTipe } from '../lib/panelHelpers'
 import { rawScheduleService } from './rawScheduleService'
 import { fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
 import { simpanChecklistSelisih } from '../lib/checklistMerge'
+import { amankan, catatWoDibuat } from '../lib/woDilihat'
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
   // AUDIT FIX (21 Sep 2026, investigasi "panel hilang dari Raw Schedule") - dulu insert ini gak
@@ -278,6 +279,8 @@ export const workOrderService = {
       .insert({ wo, proyek, target }).select().single()
     if (error) throw new Error(error.message)
     await logActivity(uname, 'TAMBAH WO', `Tambah WO ${wo} - ${proyek} (split tanggal ${target})`, { wo_number: wo, proyek })
+    // Penanda Manajemen WO (23 Okt 2026): record pecahan split TIDAK ditandai BARU/REVISI (lib/woDilihat)
+    await amankan(() => catatWoDibuat(supabase, data.id, uname, true))
     return data.id
   },
 

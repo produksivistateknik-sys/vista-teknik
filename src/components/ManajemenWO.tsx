@@ -24,6 +24,7 @@ import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { teksHasilTemplate } from '../lib/templateJadwalWp'
 import { ModalTemplateWp } from './ModalTemplateWp'
 import { cariPelanggaranUrutan, teksPelanggaran } from '../lib/urutanProses'
+import { statusWo, catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, amankan } from '../lib/woDilihat'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
@@ -35,7 +36,11 @@ const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer}))
 // ringkasan operator/snapshot jadwal yang ke-arsip PERMANEN jadi salah tanpa peringatan sama
 // sekali (WO langsung is_archived:true setelahnya, gak ada cara benerin lagi).
 
-export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
+export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO,logActivity,logAct,log,user,refetchWO,highlightWoId,livePanelTypes}:any){
+  // Penanda BARU/REVISI (23 Okt 2026, lib/woDilihat) - hanya akun divisi admin.
+  const penandaAktif=user?.divisi==="admin"&&!!woDilihat;
+  const statusKartu=(wo:any)=>penandaAktif?statusWo(wo,woDilihat.get(Number(wo.id))):null;
+  const bukaKartu=(wo:any)=>{if(penandaAktif&&statusKartu(wo))bukaWo?.(Number(wo.id));};
   // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
   // panel_type_meta/panel_wp_meta sendiri (duplikat App.tsx yang udah nge-compute livePanelTypes
   // persis sama dan nge-pass ke TaskMonitoring/DetailProgress/RawSchedule/dll), sekarang reuse
@@ -398,6 +403,13 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
         }
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+        // Penanda REVISI (23 Okt 2026): deadline/proyek/qty panel/tambah-hapus panel - pelaku otomatis dianggap sudah melihat.
+        // Gagal mencatat penanda TIDAK menggagalkan simpan (lib/woDilihat amankan).
+        if(origWo){
+          const ringkas=ringkasRevisiEdit({lama:{proyek:origWo.proyek,target:origWo.target,panels:(origWo.panels||[]).map((p:any)=>({id:p.id,nama:p.nama,qty:p.qty}))},
+            baru:{proyek:form.proyek,target:form.target,panels:panels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}});
+          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[editId],uname,ringkas));
+        }
         // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI
         // SINI TIDAK BOLEH gagalin proses simpan yang udah beres di atas, try/catch sendiri.
         if(woFieldsChanged){
@@ -425,6 +437,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
           return [...prev,newWo];
         });
         if(log) await log("TAMBAH WO","Tambah WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"create",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
+        await amankan(()=>catatWoDibuat(supabase,result.data.id,uname,false)); // penanda BARU (pembuat dianggap sudah melihat)
         // Push notif ke admin + SEMUA divisi operator (REVISI 5 Sep 2026, dulu admin doang) -
         // fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin proses simpan yang udah beres di
         // atas, makanya dibungkus try/catch sendiri dan gak di-await sebagai bagian kondisi apapun.
@@ -469,19 +482,23 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
       )}
       {[...woData].sort((a:any,b:any)=>(a.target||"9999-99-99").localeCompare(b.target||"9999-99-99")).map(wo=>{
         const pct=woOverallCcpAware(wo,ccpMap);const st=getStatus(wo.target,pct);const isExp=expandedWo[wo.id];const d=daysUntil(wo.target);
+        const sKartu=statusKartu(wo);const latarKartu=sKartu==="baru"?"#ecfdf5":sKartu==="revisi"?"#fefce8":isExp?"#f8faff":"#fff";
         return(
           <div key={wo.id} ref={(el)=>{woCardRefs.current[wo.id]=el;}}>
           <Card style={{marginBottom:12,borderLeft:`3px solid ${st.color}`,padding:0,overflow:"hidden",
             ...(glowWoId===wo.id?{boxShadow:"0 0 0 3px #2563eb66",transition:"box-shadow .4s ease"}:{transition:"box-shadow .4s ease"})}}>
             <div style={{padding:"14px 16px",display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:8,alignItems:"center",
-              cursor:"pointer",background:isExp?"#f8faff":"#fff",borderBottom:isExp?"1px solid #e2e8f0":"none"}}
-              onClick={()=>setExpandedWo(p=>({...p,[wo.id]:!p[wo.id]}))}>
+              cursor:"pointer",background:latarKartu,borderBottom:isExp?"1px solid #e2e8f0":"none"}}
+              onClick={()=>{bukaKartu(wo);setExpandedWo(p=>({...p,[wo.id]:!p[wo.id]}));}}>
               <div style={{display:"flex",alignItems:"center",gap:10,flex:1,minWidth:0}}>
                 <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
                 <div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                     <span style={{fontWeight:800,fontSize:15,fontFamily:"'DM Mono',monospace",color:"#1d4ed8"}}>WO {wo.wo}</span>
                     <span style={{color:"var(--text-primary,#1e293b)",fontWeight:700}}>{wo.proyek}</span>
+                    {sKartu&&<span title={sKartu==="revisi"?`Direvisi ${wo.revisi_oleh?"oleh "+wo.revisi_oleh:""}${wo.revisi_ringkas?": "+wo.revisi_ringkas:""}`:`WO baru${wo.dibuat_oleh?" dari "+wo.dibuat_oleh:""} - belum Anda buka`}
+                      style={{fontSize:10,fontWeight:800,letterSpacing:".05em",borderRadius:20,padding:"2px 8px",
+                        background:sKartu==="baru"?"#16a34a":"#ca8a04",color:"#fff"}}>{sKartu==="baru"?"BARU":"REVISI"}</span>}
                     <span style={{color:"#94a3b8",fontSize:12}}>📅 {wo.target}</span>
                     {pct<100&&<span style={{fontSize:11,color:st.color,fontWeight:600}}>
                       {isDelayed(wo.target)?`⚠️ -${Math.abs(d)}hr`:`H-${d}`}
@@ -495,7 +512,7 @@ export function ManajemenWO({woData,setWoData,createWO,updateWO,logActivity,logA
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
-                <button onClick={()=>{setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:(p as any).jumlahCell??(p as any).jumlah_cell??0,tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
+                <button onClick={()=>{bukaKartu(wo);setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:(p as any).jumlahCell??(p as any).jumlah_cell??0,tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
                 <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(getLocalDateStr());setQuickGenResult(null);setQuickGenPola({});setQuickGenPakaiTemplate(true);setTipeBerTemplate(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
