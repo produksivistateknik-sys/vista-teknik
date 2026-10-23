@@ -12,6 +12,9 @@ import { markRenharDirty } from '../lib/globalState'
 import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 import { selesaiSebelumTanggal } from '../lib/kodeJadwalAktif'
+import { useJejakPengerjaan } from '../hooks/useJejakPengerjaan'
+import { kunciJejak, susunJejak } from '../lib/jejakPengerjaan'
+import { JejakPengerjaanSel } from './JejakPengerjaanSel'
 
 // Warna status pipeline (readiness per-komponen) - beda dari statusStyle di TaskMonitoring.tsx
 // (itu urusan tampilan sendiri, sengaja gak diseragamkan warnanya, cuma computeProsesStatus()
@@ -686,6 +689,12 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     return`${Math.floor(jam/24)} hari lalu`;
   };
 
+  // JEJAK PENGERJAAN (23 Okt 2026): riwayat per hari di bawah kolom Operator - SEMUA timer panel yang tampil (satu muat,
+  // polling 5 mnt, hooks/useJejakPengerjaan) + checkpoint yang SUDAH dimuat (checkpointOperatorData, utk label "dicatat:").
+  const panelIdsJejak=useMemo(()=>allTasks.map((t:any)=>t.panelId),[allTasks]);
+  const idxJejakTimer=useJejakPengerjaan(supabase,panelIdsJejak);
+  const idxJejakCp=useMemo(()=>{const m=new Map<string,any[]>();checkpointOperatorData.forEach((c:any)=>{const k=kunciJejak(c.panel_id,c.kode_komponen,c.proses);const a=m.get(k);if(a)a.push(c);else m.set(k,[c]);});return m;},[checkpointOperatorData]);
+
   const filteredTasks=selProses==="ALL"?allTasks:allTasks.filter(t=>t.proses===selProses);
 
   // Opsi filter kolom header (29 Sep 2026) - dari baris yang lagi ditampilkan (tanggal + tab proses
@@ -1244,6 +1253,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                               ):digeserKeTanggal?(
                                 <span style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>-</span>
                               ):(<span title={tooltipTerakhir} style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic"}}>{tooltipTerakhir?"Belum mulai hari ini":"Pilih sendiri di tablet"}</span>)}
+                              {/* Jejak pengerjaan per hari sebelum tanggal ini (23 Okt 2026) - baris di atas tetap aturan operator hari ini */}
+                              {!digeserKeTanggal&&<JejakPengerjaanSel hari={susunJejak({timer:idxJejakTimer.get(kunciJejak(t.panelId,kode,t.proses))||[],cl:clKode,proses:t.proses,checkpoint:idxJejakCp.get(kunciJejak(t.panelId,kode,t.proses))||[],namaById:namaPekerjaById,sebelum:selDate})}/>}
                             </td>
                             <td style={{...td,textAlign:"center"}}>
                               <div style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6}}>
