@@ -17,18 +17,22 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged, UKURAN_POTONGAN_ID } from './fetchAllPaged'
 import { selesaiTepatTanggal } from './kodeJadwalAktif'
-import { getBusbarProgress, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
+import { getBusbarProgress, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
+import { muatProsesRelevanGlobal } from './prosesRelevan'
+import { GLOBAL_PROSES_RELEVAN_TERMUAT } from './globalState'
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
 import { ALL_PROSES } from '../constants/panelTypes'
 
 export type Sumber = 'otomatis' | 'arsip' | 'manual'
 export type Pekerjaan = { id: string; teks: string; selesai: boolean }
-export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: string[] }
+// pekerjaanSemua/pekerjaanRingkas: dua daftar otomatis (V1 vs varian terpilih) utk tombol per proyek "Tampilkan semua proses terjadwal"
+export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: string[]; pekerjaanSemua?: Pekerjaan[]; pekerjaanRingkas?: Pekerjaan[] }
 // ringkas = satu baris pendek pengganti daftar panel (mis. WO baru turun belum ada planning).
-export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: string[]; panels: PanelLap[] }
+export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: string[]; panels: PanelLap[]; semua?: boolean }
 export type PrioritasLap = { id: string; nama: string; deadline: string; panels: string[] }
 export type DrafLaporan = {
   versi: 1
+  varian?: Varian // aturan pekerjaan yg dipakai saat dibuat (uji; bawaan V1)
   tanggal: string // YYYY-MM-DD (hari kerja WIB laporan)
   jam: string // "16.00"
   dibuatPada: string // ISO saat tombol Buat laporan diklik
@@ -90,15 +94,39 @@ const jadwalSampai = (sch: Record<string, any> | null | undefined, hariIni: stri
 const statusPct = (pct: number): Unit['status'] => (pct >= 100 ? 'basi' : pct > 0 ? 'mulai' : 'outstanding')
 const hariIniDari = (waktu: any, hariIni: string) => !!waktu && hariKerjaDari(waktu) === hariIni
 
-export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: string): Pekerjaan[] {
+// VARIAN ATURAN (uji, 23 Okt 2026 - belum dikunci; pilihan user menyusul). V1 = bawaan.
+//  V1: semua proses terjadwal s.d. hari ini yang belum selesai.
+//  V2: hanya proses AKTIF per komponen = ada progres / timer berjalan / proses sebelumnya (rantai relevan bom_proses_relevan,
+//      urutan ALL_PROSES - logika estafet isEstafetOk FCS) sudah 100% atau proses pertama; sisanya satu baris
+//      "(+N proses menunggu: ...)". Aktif tapi tanggal jadwal lewat & belum berjalan -> "(TERLAMBAT)".
+//  V3: seperti V2, proses aktif dgn kumpulan komponen sama digabung: "POTONG & BENDING (8 KOMPONEN)".
+export type Varian = 'V1' | 'V2' | 'V3'
+export type OpsiPekerjaan = { varian?: Varian; timerBerjalan?: Set<string> } // timer: `${panelId}|${kode}|${proses}`
+const PENANDA = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
+const rantaiKode = (kode: string, tipe: string) => getRelevantProsesForKode(kode, tipe).filter((p) => ALL_PROSES.includes(p) && p !== 'BUSBAR' && !PENANDA.includes(p))
+
+export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: string, opsi: OpsiPekerjaan = {}): Pekerjaan[] {
+  const varian = opsi.varian || 'V1'
   const rows = (rawRows || []).filter((r) => Number(r.panel_id ?? r.panelId) === Number(panel?.id))
   const cl = panel?.checklist || {}
+  const pctK = (k: string, pr: string) => Number(cl[k]?.progress?.[pr]) || 0
+  const timer = (k: string, pr: string) => !!opsi.timerBerjalan?.has(`${panel?.id}|${k}|${pr}`)
+  const aktifK = (k: string, pr: string) => {
+    if (pctK(k, pr) > 0 || timer(k, pr)) return true
+    const ch = rantaiKode(k, panel?.tipe), i = ch.indexOf(pr)
+    return i <= 0 || pctK(k, ch[i - 1]) >= 100
+  }
   const hasil: Pekerjaan[] = []
+  const menunggu: string[] = []
+  const gabung: { proses: string; kodes: Set<string>; mulai: boolean; telat: boolean }[] = []
+  let adaKomponenBelum = false // utk gerbang QC di V2/V3: masih ada pekerjaan komponen terjadwal yg belum 100%
+  rows.forEach((r) => { if (!PENANDA.includes(r.proses) && r.proses !== 'BUSBAR') Object.values(r.schedule || {}).forEach((es: any) => (es || []).forEach((e: any) => (e?.komponen || []).forEach((k: string) => { if (k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && pctK(k, r.proses) < 100) adaKomponenBelum = true }))) })
+  const catatMenunggu = (proses: string, telat: boolean) => menunggu.push(`${LABEL_PROSES[proses] || proses}${telat ? ' TERLAMBAT' : ''}`)
   for (const proses of PROSES_LAP) {
     if (!prosesBerlakuUntukTipe(panel?.tipe, proses)) continue
     const prow = rows.filter((r) => r.proses === proses)
     if (!prow.length) continue
-    if (proses === 'BUSBAR') {
+    if (proses === 'BUSBAR') { // paralel - selalu aktif di semua varian
       const semua = new Set<string>(), due = new Set<string>()
       prow.forEach((r) => Object.entries(r.busbar_schedule || {}).forEach(([t, ks]: [string, any]) => (ks || []).forEach((k: string) => { semua.add(k); if (t <= hariIni) due.add(k) })))
       const units: Unit[] = [...due].map((k) => {
@@ -108,24 +136,31 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
       hasil.push(...barisDariUnit(proses, units, [...semua]))
       continue
     }
-    if (['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK'].includes(proses)) {
+    if (PENANDA.includes(proses)) {
       // penanda per panel (komponen ["MARKED"]) - cukup "terjadwal s.d. hari ini"
-      if (!prow.some((r) => jadwalSampai(r.schedule, hariIni).some(([, es]) => (es || []).length > 0))) continue
+      const tglDue = prow.flatMap((r) => jadwalSampai(r.schedule, hariIni).filter(([, es]) => (es || []).length > 0).map(([t]) => t)).sort()
+      if (!tglDue.length) continue
       let st: Unit['status']
       if (proses === 'QC TEST' || proses === 'PACKING') {
         const s = statusPenandaPanel(panel, proses)
         const waktu = proses === 'QC TEST' ? (panel?.qc_checklist?._global?.complete_at || panel?.qc_checklist?._global?.updated_at) : panel?.packing_done_at
         st = s === 'DONE' ? (hariIniDari(waktu, hariIni) ? 'selesaiHariIni' : 'basi') : s === 'IN PROGRESS' ? 'mulai' : 'outstanding'
+        if (varian !== 'V1' && st === 'outstanding') {
+          const aktif = proses === 'QC TEST' ? !adaKomponenBelum : s === 'TO DO' // PACKING terbuka setelah QC complete (statusPenandaPanel)
+          if (!aktif) { catatMenunggu(proses, tglDue[0] < hariIni); continue }
+        }
       } else {
         const pre = proses === 'NAMEPLATE' ? 'nameplate' : 'yellowmark'
         const pct = Number(panel?.[`${pre}_progress`]) || 0
         st = pct >= 100 ? (hariIniDari(panel?.[`${pre}_updated_at`], hariIni) ? 'selesaiHariIni' : 'basi') : statusPct(pct)
       }
-      hasil.push(...barisDariUnit(proses, [{ label: '', status: st }], ['']))
+      const b = barisDariUnit(proses, [{ label: '', status: st }], [''])
+      if (varian !== 'V1' && st === 'outstanding' && tglDue[0] < hariIni) b.forEach((x) => { if (!x.selesai) x.teks += ' (TERLAMBAT)' })
+      hasil.push(...b)
       continue
     }
     // proses komponen: per WP
-    const semuaWp = new Set<string>(), perWp = new Map<string, Set<string>>()
+    const semuaWp = new Set<string>(), perWp = new Map<string, Set<string>>(), tglAwal = new Map<string, string>()
     prow.forEach((r) => Object.entries(r.schedule || {}).forEach(([t, es]: [string, any]) => (es || []).forEach((e: any) => {
       const kodes = (e?.komponen || []).filter((k: string) => k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0)
       if (!kodes.length) return
@@ -133,15 +168,37 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
       semuaWp.add(wp)
       if (t > hariIni) return
       if (!perWp.has(wp)) perWp.set(wp, new Set())
-      kodes.forEach((k: string) => perWp.get(wp)!.add(k))
+      kodes.forEach((k: string) => { perWp.get(wp)!.add(k); if (!tglAwal.has(k) || t < tglAwal.get(k)!) tglAwal.set(k, t) })
     })))
-    const units: Unit[] = [...perWp.entries()].sort(([a], [b]) => urutWp(a, b)).map(([wp, ks]) => {
-      const pcts = [...ks].map((k) => Number(cl[k]?.progress?.[proses]) || 0)
+    const unitDari = (wp: string, ks: Set<string>): Unit => {
+      const pcts = [...ks].map((k) => pctK(k, proses))
       if (pcts.every((p) => p >= 100)) return { label: wp, status: [...ks].some((k) => selesaiTepatTanggal(cl[k], proses, hariIni)) ? 'selesaiHariIni' : 'basi' }
       return { label: wp, status: pcts.some((p) => p > 0) ? 'mulai' : 'outstanding' }
-    })
-    hasil.push(...barisDariUnit(proses, units, [...semuaWp]))
+    }
+    const urut = [...perWp.entries()].sort(([a], [b]) => urutWp(a, b))
+    if (varian === 'V1') { hasil.push(...barisDariUnit(proses, urut.map(([wp, ks]) => unitDari(wp, ks)), [...semuaWp])); continue }
+    // V2/V3: selesai hari ini tetap ditulis; yang belum selesai dipisah aktif vs menunggu
+    hasil.push(...barisDariUnit(proses, urut.map(([wp, ks]) => unitDari(wp, ks)).filter((u) => u.status === 'selesaiHariIni'), [...semuaWp]))
+    const belum = urut.map(([wp, ks]) => [wp, new Set([...ks].filter((k) => pctK(k, proses) < 100))] as [string, Set<string>]).filter(([, ks]) => ks.size)
+    if (!belum.length) continue
+    const aktif = belum.map(([wp, ks]) => [wp, new Set([...ks].filter((k) => aktifK(k, proses)))] as [string, Set<string>]).filter(([, ks]) => ks.size)
+    const telatK = (k: string) => (tglAwal.get(k) || hariIni) < hariIni && pctK(k, proses) === 0 && !timer(k, proses)
+    if (!aktif.length) { catatMenunggu(proses, belum.some(([, ks]) => [...ks].some(telatK))); continue }
+    const kodesAktif = new Set(aktif.flatMap(([, ks]) => [...ks]))
+    const mulai = [...kodesAktif].some((k) => pctK(k, proses) > 0 || timer(k, proses))
+    const telat = [...kodesAktif].some(telatK)
+    if (varian === 'V3') { gabung.push({ proses, kodes: kodesAktif, mulai, telat }); continue }
+    const b = barisDariUnit(proses, aktif.map(([wp, ks]) => unitDari(wp, ks)), [...semuaWp])
+    if (telat) b.forEach((x) => { x.teks += ' (TERLAMBAT)' })
+    hasil.push(...b)
   }
+  if (varian === 'V3' && gabung.length) {
+    const grup = new Map<string, typeof gabung>()
+    gabung.forEach((g) => { const k = [...g.kodes].sort().join(','); grup.set(k, [...(grup.get(k) || []), g]) })
+    const baris = [...grup.values()].map((gs) => ({ id: idBaru(), teks: `${gs.map((g) => LABEL_PROSES[g.proses] || g.proses).join(' & ')} (${gs[0].kodes.size} KOMPONEN)${gs.some((g) => g.mulai) ? ' (PROSES)' : ''}${gs.some((g) => g.telat) ? ' (TERLAMBAT)' : ''}`, selesai: false }))
+    hasil.unshift(...baris)
+  }
+  if (varian !== 'V1' && menunggu.length) hasil.push({ id: idBaru(), teks: `(+${menunggu.length} PROSES MENUNGGU: ${menunggu.join(', ')})`, selesai: false })
   return hasil
 }
 
@@ -165,6 +222,8 @@ export type BahanLaporan = {
   kendalaTerbuka: { proyek: string; panel_id: number | null; teks: string }[]
   hariIni?: string
   jam?: string
+  timerBerjalan?: Set<string>
+  varian?: Varian
 }
 export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | null): DrafLaporan {
   const hariIni = b.hariIni || hariKerjaWib()
@@ -194,9 +253,11 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
     g.panels.forEach((p) => {
       const rows = rawPer.get(Number(p.id)) || []
       const a = jadwalAwal(rows); if (a && (!awal || a < awal)) awal = a
-      const pekerjaan = turunkanPekerjaanPanel(p, rows, hariIni)
+      const varian = b.varian || 'V1'
+      const pekerjaanSemua = turunkanPekerjaanPanel(p, rows, hariIni, { varian: 'V1', timerBerjalan: b.timerBerjalan })
+      const pekerjaan = varian === 'V1' ? pekerjaanSemua : turunkanPekerjaanPanel(p, rows, hariIni, { varian, timerBerjalan: b.timerBerjalan })
       const kd = kendalaPanel.get(Number(p.id)) || []
-      if (pekerjaan.length || kd.length) panels.push({ id: idBaru(), src: 'otomatis', nama: String(p.nama || '').trim(), panelId: Number(p.id), pekerjaan, kendala: kd })
+      if (pekerjaanSemua.length || kd.length) panels.push({ id: idBaru(), src: 'otomatis', nama: String(p.nama || '').trim(), panelId: Number(p.id), pekerjaan, kendala: kd, pekerjaanSemua, pekerjaanRingkas: pekerjaan })
     })
     let ringkas = ''
     if (!panels.length) {
@@ -209,7 +270,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   // pertahankan entri arsip & manual + catatan dari draf lama (Buat ulang hanya mengganti bagian otomatis)
   const tetap = (lama?.proyek || []).filter((p) => p.src !== 'otomatis')
   return {
-    versi: 1, tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
+    versi: 1, varian: b.varian || 'V1', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
     proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [],
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni),
   }
@@ -281,14 +342,19 @@ export function formatTeksWhatsApp(d: DrafLaporan): string {
 
 // ---------- muat data (baca saja; paginasi .range + urutan stabil, error dilempar) ----------
 
-export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'woAktif' | 'raw'>> {
+export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'woAktif' | 'raw' | 'timerBerjalan'>> {
+  // relevansi komponen-proses (bom_proses_relevan) utk rantai estafet V2/V3 - biasanya sudah dimuat App saat mulai
+  if (!GLOBAL_PROSES_RELEVAN_TERMUAT && !(await muatProsesRelevanGlobal(db))) throw new Error('gagal memuat bom_proses_relevan')
   const wo = await fetchAllPaged((a, z) => db.from('work_orders').select('id,wo,proyek,target,created_at').is('deleted_at', null).or('is_archived.is.null,is_archived.eq.false').order('id').range(a, z))
   const ids = wo.map((w: any) => w.id)
   const panels = await muatPerPotongan(ids, (pot, a, z) => db.from('panels').select('*').in('wo_id', pot).is('deleted_at', null).order('id').range(a, z))
   const raw = await muatPerPotongan(ids, (pot, a, z) => db.from('raw_schedule').select('id,wo_id,panel_id,proyek,panel,proses,schedule,busbar_schedule').in('wo_id', pot).is('deleted_at', null).order('id').range(a, z))
   const per = new Map<number, any[]>()
   panels.forEach((p: any) => { if (!per.has(p.wo_id)) per.set(p.wo_id, []); per.get(p.wo_id)!.push(p) })
-  return { woAktif: wo.map((w: any) => ({ ...w, panels: per.get(w.id) || [] })), raw }
+  // timer berjalan (selesai kosong) - V2/V3 menganggap proses komponen itu aktif
+  const tm = await fetchAllPaged((a, z) => db.from('fcs_timer_kerja').select('id,panel_id,kode_komponen,proses').is('selesai', null).order('id').range(a, z))
+  const timerBerjalan = new Set<string>(tm.map((t: any) => `${t.panel_id}|${t.kode_komponen}|${t.proses}`))
+  return { woAktif: wo.map((w: any) => ({ ...w, panels: per.get(w.id) || [] })), raw, timerBerjalan }
 }
 async function muatPerPotongan(ids: any[], build: (pot: any[], a: number, z: number) => any): Promise<any[]> {
   const out: any[] = []
