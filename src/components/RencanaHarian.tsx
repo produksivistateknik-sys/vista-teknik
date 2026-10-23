@@ -13,7 +13,7 @@ import { releaseKomponenToRenhar } from '../services/renharService'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 import { selesaiSebelumTanggal } from '../lib/kodeJadwalAktif'
 import { useJejakPengerjaan } from '../hooks/useJejakPengerjaan'
-import { kunciJejak, susunJejak } from '../lib/jejakPengerjaan'
+import { kunciJejak, susunJejak, menitGabungan, labelLama } from '../lib/jejakPengerjaan'
 import { JejakPengerjaanSel } from './JejakPengerjaanSel'
 
 // Warna status pipeline (readiness per-komponen) - beda dari statusStyle di TaskMonitoring.tsx
@@ -1189,6 +1189,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                         const terakhirOp=daftarOp.pengerja.length===0?(()=>{const f=getFallbackOperatorForKode(t.panelId,kode,t.proses);return f.names.length?f:getCheckpointOperatorForKode(t.panelId,kode,t.proses);})():null;
                         const tooltipTerakhir=terakhirOp&&terakhirOp.names.length&&terakhirOp.tanggal&&terakhirOp.tanggal!==selDate?`Belum ada yang mengerjakan ${fmtShort(selDate)} - terakhir dikerjakan ${fmtShort(terakhirOp.tanggal)} oleh ${terakhirOp.names.join(", ")}`:undefined;
                         const entriOp=[...liveOpNames.map((n:string)=>({id:null,nama:n,status:"checkpoint" as const,menit:0})),...(isFotoApprox?[{id:null,nama:fotoOpName as string,status:"checkpoint" as const,menit:0,foto:true}]:[]),...daftarOp.entri];
+                        // Durasi netral per operator di chip (23 Okt 2026, kasus FS.30 STEL 528): gabungan rentang timer orang itu HARI INI.
+                        const lamaOp=new Map<number,number>();[...new Set(timerKodeHari.map((x:any)=>Number(x.pekerja_id)))].forEach((pid:number)=>lamaOp.set(pid,menitGabungan(timerKodeHari.filter((x:any)=>Number(x.pekerja_id)===pid))));
                         const td={padding:"5px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:digeserKeTanggal?"#fafafa":sudahRelease?"#f0fdf4":rBg,verticalAlign:"middle",opacity:digeserKeTanggal?0.6:1};
                         return[(
                           <tr key={ti+"-"+kode}>
@@ -1246,7 +1248,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
                                       :LABEL_STATUS_OPERATOR[e.status as keyof typeof LABEL_STATUS_OPERATOR]+(e.menit>0?` · ${labelMenit(e.menit)}`:"");
                                     return(<span key={e.nama+e.status} title={ket}
                                       style={{...gaya,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:(gaya as any).fontWeight||700,whiteSpace:"nowrap" as const}}>
-                                      {ikon} {e.nama}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
+                                      {ikon} {e.nama}{(e.status==="selesai"||e.status==="berjalan")&&e.id!=null&&lamaOp.has(Number(e.id))?` · ${labelLama(lamaOp.get(Number(e.id))||0)}`:""}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
                                     </span>);
                                   })}
                                 </div>

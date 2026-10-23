@@ -19,7 +19,7 @@ export function useJejakPengerjaan(db: any, panelIds: (number | string)[]) {
       const semua: TimerJejak[] = []
       for (let i = 0; i < ids.length; i += UKURAN_POTONGAN_ID) {
         const pot = ids.slice(i, i + UKURAN_POTONGAN_ID)
-        semua.push(...await fetchAllPaged((a, z) => db.from('fcs_timer_kerja').select('id,panel_id,kode_komponen,proses,tahap,tanggal,pekerja_id,mulai,progress').in('panel_id', pot).order('id').range(a, z)))
+        semua.push(...await fetchAllPaged((a, z) => db.from('fcs_timer_kerja').select('id,panel_id,kode_komponen,proses,tahap,tanggal,pekerja_id,mulai,selesai,durasi_menit,progress').in('panel_id', pot).order('id').range(a, z)))
       }
       setRows(semua)
     } catch (e) {

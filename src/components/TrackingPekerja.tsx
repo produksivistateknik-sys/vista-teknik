@@ -4,6 +4,7 @@ import { renharService } from '../services/renharService'
 import { PANEL_TYPES, DIVISI_CONFIG, OPERATOR_ROLES, PROSES_COLOR, WP_COLOR } from '../constants/panelTypes'
 import { fmtDate, getRenharWindowRange, TODAY } from '../lib/dateHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint } from '../lib/operatorHarian'
+import { getProgressAsOfDate } from '../lib/panelHelpers'
 import { Modal, Btn } from './ui/Primitives'
 
 export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,livePanelTypes}:any){
@@ -201,10 +202,28 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
     if(!panel||!panel.checklist)return 0;
     const cl=panel.checklist[kode];
     if(!cl)return 0;
-    const proses=tugas.proses;
-    const byDate=cl.progressByDate?.[proses];
-    if(byDate&&byDate[tugas.tanggal]!==undefined)return byDate[tugas.tanggal];
-    return cl.progress?.[proses]||0;
+    return infoProgresTanggal(cl,tugas.proses,tugas.tanggal).pct;
+  };
+  // Progres komponen PADA tanggal tugas (23 Okt 2026, kasus FS.30 STEL panel #528: SISWOYO/EDI MUKLAS bekerja 22 Okt malam
+  // tanpa menyimpan qty, EDI MARWOTO menyelesaikan 23 Okt - dulu baris 22 Okt tampil "Tercapai 100%" karena tanggal tanpa
+  // catatan progres memakai progres TERKINI). Sekarang: tanggal tanpa catatan -> progres per tanggal itu (catatan terakhir <=
+  // tanggal), ditandai "tanpa catatan progres hari itu" + tanggal catatan berikutnya bila ada. Data lama tanpa catatan
+  // tanggal sama sekali -> perilaku lama (progres terkini). Siapa yang dihitung mengerjakan tetap dari timer.
+  const infoProgresTanggal=(cl:any,proses:string,tanggal:string):{pct:number;tercatat:boolean;tglBerikut:string|null}=>{
+    const byDate=cl?.progressByDate?.[proses]||{};
+    const hist:any[]=cl?.history?.[proses]||[];
+    if(byDate[tanggal]!==undefined)return{pct:Number(byDate[tanggal])||0,tercatat:true,tglBerikut:null};
+    if(hist.some((h:any)=>h?.tanggal===tanggal))return{pct:getProgressAsOfDate(cl,proses,tanggal),tercatat:true,tglBerikut:null};
+    const semuaTgl=[...Object.keys(byDate),...hist.map((h:any)=>h?.tanggal).filter(Boolean)];
+    if(!semuaTgl.length)return{pct:Number(cl?.progress?.[proses])||0,tercatat:true,tglBerikut:null}; // data lama
+    const berikut=semuaTgl.filter((t:string)=>t>tanggal).sort()[0]||null;
+    return{pct:getProgressAsOfDate(cl,proses,tanggal),tercatat:false,tglBerikut:berikut};
+  };
+  const infoProgresTugas=(tugas:any)=>{
+    const kode=tugas._komponenSpesifik;
+    const panel=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>String(p.id)===String(tugas.panel_id||tugas.panelId));
+    const cl=kode?panel?.checklist?.[kode]:null;
+    return cl?infoProgresTanggal(cl,tugas.proses,tugas.tanggal):null;
   };
 
   // Durasi kerja (menit) untuk 1 komponen spesifik dari fcs_timer_kerja
@@ -652,9 +671,16 @@ export function TrackingPekerja({pekerja,renhar,setRenhar,removeRenhar,woData,li
                                 })()}
                               </td>
                               <td style={td2}>
-                                <span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 8px",fontSize:9.5,fontWeight:700}}>
-                                  {st.label}
-                                </span>
+                                {(()=>{
+                                  const ip=infoProgresTugas(t);
+                                  if(ip&&!ip.tercatat&&ip.pct<100)return(<span title="Hari itu ada timer, tapi progres/qty komponen tidak disimpan pada tanggal ini" style={{display:"inline-flex",flexDirection:"column",gap:1}}>
+                                    <span style={{background:"#fffbeb",color:"#b45309",border:"1px solid #f59e0b30",borderRadius:20,padding:"2px 8px",fontSize:9.5,fontWeight:700,whiteSpace:"nowrap" as const}}>Belum selesai</span>
+                                    <span style={{fontSize:8.5,color:"#94a3b8"}}>tanpa catatan progres hari itu{ip.tglBerikut?` · progres tercatat ${fmtDate(ip.tglBerikut)}`:""}</span>
+                                  </span>);
+                                  return(<span style={{background:st.bg,color:st.color,border:`1px solid ${st.color}30`,borderRadius:20,padding:"2px 8px",fontSize:9.5,fontWeight:700}}>
+                                    {st.label}
+                                  </span>);
+                                })()}
                               </td>
                               <td style={{...td2,textAlign:"center" as const}}>
                                 {t.id!=null?<button onClick={()=>setDelId(t)}
