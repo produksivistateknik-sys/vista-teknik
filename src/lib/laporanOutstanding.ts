@@ -17,7 +17,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged, UKURAN_POTONGAN_ID } from './fetchAllPaged'
 import { selesaiTepatTanggal } from './kodeJadwalAktif'
-import { buildPanelTypesFromBom, getBusbarProgress, getEffCfgGlobal, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
+import { buildPanelTypesFromBom, getBusbarProgress, getEffCfgGlobal, getRelevantProsesForKode, isProsesApplicableForPanel, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
 import { muatProsesRelevanGlobal } from './prosesRelevan'
 import { GLOBAL_PROSES_RELEVAN_TERMUAT, GLOBAL_LIVE_PANEL_TYPES, setGlobalLivePanelTypes } from './globalState'
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
@@ -167,6 +167,8 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
     const prow = rows.filter((r) => r.proses === proses)
     if (!prow.length) continue
     if (proses === 'BUSBAR') { // paralel - selalu aktif di semua varian
+      // aturan SAMA dgn overall (panelHelpers isProsesApplicableForPanel): panel tuntas tanpa komponen busbar -> bukan pekerjaan
+      if (!isProsesApplicableForPanel(panel, 'BUSBAR')) continue
       const semua = new Set<string>(), due = new Set<string>()
       prow.forEach((r) => Object.entries(r.busbar_schedule || {}).forEach(([t, ks]: [string, any]) => (ks || []).forEach((k: string) => { semua.add(k); if (t <= hariIni) due.add(k) })))
       const units: Unit[] = [...due].map((k) => {

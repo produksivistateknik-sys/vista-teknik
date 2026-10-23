@@ -568,7 +568,12 @@ export function calcPanelProgress(panel, rawData?:any[]): Record<string, number>
 // menghitungnya sebagai 0%.
 export function isProsesApplicableForPanel(panel:any, proses:string):boolean{
   if(!prosesBerlakuUntukTipe(panel?.tipe,proses))return false; // (17 Okt 2026) jenis BUSBAR: tanpa QC/PACKING
-  if(proses==="BUSBAR")return true; // whole-panel, selalu applicable
+  // BUSBAR whole-panel, selalu applicable - KECUALI (23 Okt 2026, Opsi 1 keputusan user, kasus #549 FINNS RESORT FUSE BOX
+  // 90% padahal semua tuntas): panel SUDAH TUNTAS (QC TEST & PACKING DONE) dan TIDAK punya komponen busbar sama sekali
+  // (tanpa data progres/legacy - getPanelBusbarKomponen tanpa rawData, supaya hasil sama di semua halaman) -> BUSBAR 0%
+  // tidak ikut pembagi overall. Panel yang masih dikerjakan tetap menghitung BUSBAR (pekerjaan tertunda). Hanya perhitungan
+  // live; panels_archived.progress_snapshot (ditulis sekali saat arsip) tidak dihitung ulang.
+  if(proses==="BUSBAR")return !(statusPenandaPanel(panel,"QC TEST")==="DONE"&&statusPenandaPanel(panel,"PACKING")==="DONE"&&getPanelBusbarKomponen(panel).length===0);
   // QC TEST/PACKING whole-panel, selalu applicable (kecuali jenis busbar-saja di atas)
   if(proses==="QC TEST"||proses==="PACKING")return true;
   const cfg=getEffCfgGlobal(panel.tipe);
