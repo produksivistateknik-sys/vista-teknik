@@ -25,6 +25,16 @@ export function selesaiSebelumTanggal(cl: any, proses: string, tanggal: string):
   return hist.some((h) => h?.tanggal && h.tanggal < tanggal && Number(h?.pct) >= 100)
 }
 
+// "Komponen ini SELESAI (100%) TEPAT pada `tanggal`" - kebalikan positif selesaiSebelumTanggal (sumber catatan sama:
+// progressByDate, fallback history). Dipakai Laporan Outstanding (lib/laporanOutstanding) utk tanda ✅ "selesai hari ini".
+// Data lama tanpa catatan tanggal -> false (tidak diklaim selesai hari ini).
+export function selesaiTepatTanggal(cl: any, proses: string, tanggal: string): boolean {
+  if ((Number(cl?.progress?.[proses]) || 0) < 100) return false
+  if (Number(cl?.progressByDate?.[proses]?.[tanggal]) >= 100) return true
+  const hist: any[] = cl?.history?.[proses] || []
+  return hist.some((h) => h?.tanggal === tanggal && Number(h?.pct) >= 100)
+}
+
 export function kodeJadwalAktif(entry: any, kode: string, checklist: any, proses: string): boolean {
   if (!kode || kode.startsWith('__wiring_')) return false
   if (entry?.digeserKe?.[kode]) return false

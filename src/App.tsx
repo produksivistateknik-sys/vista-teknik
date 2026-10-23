@@ -55,6 +55,7 @@ const TrackingPekerja = lazyP(() => import('./components/TrackingPekerja').then(
 const RencanaHarian = lazyP(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
 const ActivityLogView = lazyP(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
 const KendalaAdmin = lazyP(() => import('./components/KendalaAdmin').then(m => ({ default: m.KendalaAdmin })))
+const LaporanOutstanding = lazyP(() => import('./components/LaporanOutstanding').then(m => ({ default: m.LaporanOutstanding })))
 const Dashboard = lazyP(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
 const AiAssistantChat = lazyP(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
 const TaskMonitoring = lazyP(() => import('./components/TaskMonitoring').then(m => ({ default: m.TaskMonitoring })))
@@ -725,6 +726,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       // Kendala produksi (23 Okt 2026) - dipindah dari grup SYSTEM ke dekat Rencana Harian/Outstanding; badge = belum teratasi.
       ...(canKendala?[{id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:galatKendala?"!":kendalaTerbuka.length>0?kendalaTerbuka.length:null}]:[]),
+      // Laporan Outstanding (23 Okt 2026) - teks WhatsApp harian planner; beda dari menu "Outstanding" (alat atur jadwal).
+      ...(canKendala?[{id:"laporan_outstanding",label:"Laporan Outstanding",icon:"ti ti-report-analytics"}]:[]),
       ...(canWO?[{id:"wo",label:"Manajemen WO",icon:"ti ti-file-description"}]:[]),
       ...(canWO?[{id:"arsip",label:"Arsip",icon:"ti ti-archive"}]:[]),
       // "WO Digital" DIHAPUS dari sidebar Admin (REVISI 4 Sep 2026) - digantikan section
@@ -1163,6 +1166,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
+              {visitedTabs.includes("laporan_outstanding")&&<div style={{display:tab==="laporan_outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanOutstanding db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}
