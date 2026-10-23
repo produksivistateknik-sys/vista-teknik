@@ -13,7 +13,8 @@
 //   BUSBAR dari checklist pseudo-komponen (getBusbarProgress), NAMEPLATE/YELLOWMARK dari kolom panel-nya.
 // - Belum 100% -> pekerjaan outstanding ("(PROSES)" bila sudah mulai). 100% dan selesai TEPAT hari ini
 //   (selesaiTepatTanggal / waktu penanda) -> baris ✅. 100% sebelum hari ini -> tidak ditulis (basi, CLAUDE.md B.3).
-// - Satu baris per proses: nama proses saja bila semua WP yang terjadwal ikut, selain itu "PROSES WP-1, WP-2".
+// - Proses per komponen: satu baris per WP "PROSES WP-n (NAMA, NAMA)" = komponen MAIN yang belum selesai (23 Okt 2026).
+//   BUSBAR/WIRING/QC/PACKING/NAMEPLATE/YELLOWMARK: satu baris per proses seperti sebelumnya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged, UKURAN_POTONGAN_ID } from './fetchAllPaged'
 import { selesaiTepatTanggal } from './kodeJadwalAktif'
@@ -239,27 +240,32 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
       if (belum.length) hasil.push({ id: idBaru(), teks: `${nama} ${label(belum, true)}${varian !== 'V1' && belum.some(telatW) ? ' (TERLAMBAT)' : ''}`, selesai: false })
       continue
     }
-    const unitDari = (wp: string, ks: Set<string>): Unit => {
-      const pcts = [...ks].map((k) => pctK(k, proses))
-      if (pcts.every((p) => p >= 100)) return { label: wp, status: [...ks].some((k) => selesaiTepatTanggal(cl[k], proses, hariIni)) ? 'selesaiHariIni' : 'basi' }
-      return { label: wp, status: pcts.some((p) => p > 0) ? 'mulai' : 'outstanding' }
-    }
+    // NAMA KOMPONEN (23 Okt 2026, permintaan user): SATU baris per WP "PROSES WP-n (NAMA, NAMA)" - nama komponen MAIN yang
+    // BELUM selesai (nama dari BOM live, huruf besar). WP yang semua komponen main-nya selesai: tidak ditulis, kecuali selesai
+    // HARI INI -> "PROSES WP-n (NAMA yang selesai hari ini)" ✅. V2: hanya komponen yang aktif (estafet) yang ditulis.
+    const namaProses = LABEL_PROSES[proses] || proses
+    const daftarNama = (ks: Iterable<string>) => [...new Set([...ks].map((k) => namaKomponen(panel?.tipe, k)))].join(', ')
+    const baris = (wp: string, ks: Iterable<string>, selesai: boolean, telat = false): Pekerjaan =>
+      ({ id: idBaru(), teks: `${namaProses} ${wp} (${daftarNama(ks)})${telat ? ' (TERLAMBAT)' : ''}`, selesai })
     const urut = [...perWp.entries()].sort(([a], [b]) => urutWp(a, b))
-    if (varian === 'V1') { hasil.push(...barisDariUnit(proses, urut.map(([wp, ks]) => unitDari(wp, ks)), [...semuaWp])); continue }
-    // V2/V3: selesai hari ini tetap ditulis; yang belum selesai dipisah aktif vs menunggu
-    hasil.push(...barisDariUnit(proses, urut.map(([wp, ks]) => unitDari(wp, ks)).filter((u) => u.status === 'selesaiHariIni'), [...semuaWp]))
+    const selesaiHariIni: Pekerjaan[] = []
+    urut.forEach(([wp, ks]) => {
+      const s = [...ks]
+      if (!s.every((k) => pctK(k, proses) >= 100)) return
+      const hi = s.filter((k) => selesaiTepatTanggal(cl[k], proses, hariIni))
+      if (hi.length) selesaiHariIni.push(baris(wp, hi, true))
+    })
     const belum = urut.map(([wp, ks]) => [wp, new Set([...ks].filter((k) => pctK(k, proses) < 100))] as [string, Set<string>]).filter(([, ks]) => ks.size)
-    if (!belum.length) continue
-    const aktif = belum.map(([wp, ks]) => [wp, new Set([...ks].filter((k) => aktifK(k, proses)))] as [string, Set<string>]).filter(([, ks]) => ks.size)
     const telatK = (k: string) => (tglAwal.get(k) || hariIni) < hariIni && pctK(k, proses) === 0 && !timer(k, proses)
-    if (!aktif.length) { catatMenunggu(proses, belum.some(([, ks]) => [...ks].some(telatK))); continue }
-    const kodesAktif = new Set(aktif.flatMap(([, ks]) => [...ks]))
-    const mulai = [...kodesAktif].some((k) => pctK(k, proses) > 0 || timer(k, proses))
-    const telat = [...kodesAktif].some(telatK)
-    if (varian === 'V3') { gabung.push({ proses, kodes: kodesAktif, mulai, telat }); continue }
-    const b = barisDariUnit(proses, aktif.map(([wp, ks]) => unitDari(wp, ks)), [...semuaWp])
-    if (telat) b.forEach((x) => { x.teks += ' (TERLAMBAT)' })
-    hasil.push(...b)
+    if (varian === 'V1') { belum.forEach(([wp, ks]) => hasil.push(baris(wp, ks, false))); hasil.push(...selesaiHariIni); continue }
+    // V2/V3: yang belum selesai dipisah aktif vs menunggu
+    const aktif = belum.map(([wp, ks]) => [wp, new Set([...ks].filter((k) => aktifK(k, proses)))] as [string, Set<string>]).filter(([, ks]) => ks.size)
+    if (belum.length && !aktif.length) catatMenunggu(proses, belum.some(([, ks]) => [...ks].some(telatK)))
+    if (aktif.length && varian === 'V3') {
+      const kodesAktif = new Set(aktif.flatMap(([, ks]) => [...ks]))
+      gabung.push({ proses, kodes: kodesAktif, mulai: [...kodesAktif].some((k) => pctK(k, proses) > 0 || timer(k, proses)), telat: [...kodesAktif].some(telatK) })
+    } else aktif.forEach(([wp, ks]) => hasil.push(baris(wp, ks, false, [...ks].some(telatK))))
+    hasil.push(...selesaiHariIni)
   }
   if (varian === 'V3' && gabung.length) {
     const grup = new Map<string, typeof gabung>()
