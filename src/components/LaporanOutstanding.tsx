@@ -13,6 +13,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
+import { cetakLaporanBerkop, htmlHalamanBerkop } from '../lib/laporanOutstandingBerkop'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
   proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI,
@@ -78,7 +79,7 @@ const CSS = `
 @media (max-width:640px){.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}}
 `
 
-type Tab = 'susun' | 'wa'
+type Tab = 'susun' | 'berkop' | 'wa'
 const LABEL_SRC: Record<Sumber, string> = { otomatis: 'Otomatis', arsip: 'Arsip', manual: 'Manual' }
 const Src = ({ s }: { s: Sumber }) => <span className={`lo-src ${s}`}>{LABEL_SRC[s]}</span>
 const geser = <T,>(arr: T[], i: number, d: number): T[] => { const j = i + d; if (j < 0 || j >= arr.length) return arr; const a = [...arr]; [a[i], a[j]] = [a[j], a[i]]; return a }
@@ -217,6 +218,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
       {!draf ? <div className="lo-empty">Belum ada draf di perangkat ini.</div> : <>
         <div className="lo-tabs" role="tablist">
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'susun'} onClick={() => setTab('susun')}>Susun &amp; edit{jumlahNonOtomatis > 0 && <span className="lo-badge">{jumlahNonOtomatis} manual/arsip</span>}</button>
+          <button className="loBtn" role="tab" type="button" aria-selected={tab === 'berkop'} onClick={() => setTab('berkop')}>Tampilan berkop</button>
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'wa'} onClick={() => setTab('wa')}>Teks WhatsApp{diedit && <span className="lo-badge">Diedit</span>}</button>
         </div>
 
@@ -342,6 +344,8 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
           <div className="lo-links"><button className="loBtn lnk" type="button" onClick={() => ubah((d) => ({ ...d, prioritas: [...d.prioritas, { id: idBaru(), nama: '', deadline: '', panels: [''] }] }))}>+ Tambah proyek prioritas</button></div>
         </section>}
 
+        {tab === 'berkop' && <PratinjauBerkop draf={draf} />}
+
         {tab === 'wa' && <section className="lo-wa">
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
             <div className="lo-hint">Bisa diedit langsung sebelum disalin. Selama belum diedit, teks ini mengikuti penyusun. Setelah diedit, perubahan di penyusun tidak menimpa teks ini; pakai “Buat ulang teks”. Tempel ke grup <b>Perencanaan Vista</b>.</div>
@@ -420,5 +424,36 @@ function BarisKendala({ k, label, placeholder, tampilTeratasi, onTeks, onHapus }
         <span className="siapa">{siapa}{k.tanggal ? <span className="tg">{tglK(k.tanggal)}</span> : null}</span>
       </div>}
     </div>
+  )
+}
+
+// Tab "Tampilan berkop" (Tahap B): pratinjau = HTML yang SAMA PERSIS dgn jendela cetak (lib/laporanOutstandingBerkop),
+// ditampilkan di iframe selebar A4 lalu diperkecil agar muat lebar layar (tanpa scroll ke samping).
+const LEBAR_A4_PX = 794 // 210 mm @96dpi
+function PratinjauBerkop({ draf }: { draf: DrafLaporan }) {
+  const html = useMemo(() => htmlHalamanBerkop(draf, { pratinjau: true }), [draf])
+  const wadah = useRef<HTMLDivElement | null>(null)
+  const [lebar, setLebar] = useState(LEBAR_A4_PX)
+  const [tinggi, setTinggi] = useState(1123)
+  useEffect(() => {
+    const el = wadah.current; if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setLebar(el.clientWidth)); ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+  const skala = Math.min(1, lebar / (LEBAR_A4_PX + 40))
+  const ukur = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
+    try { const d = e.currentTarget.contentDocument; if (d) setTinggi(Math.max(d.documentElement.scrollHeight, d.body.scrollHeight) + 24) } catch { /* biarkan tinggi bawaan */ }
+  }
+  return (
+    <section>
+      <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
+        <div className="lo-hint">Pratinjau dokumen berkop dari draf yang sama dengan teks WhatsApp. Kop penuh di halaman 1, kop ringkas di halaman berikutnya. Untuk PDF: klik “Cetak / Simpan PDF”, lalu pilih <b>Simpan sebagai PDF</b> di jendela cetak.</div>
+        <div className="lo-act"><button className="loBtn pri" type="button" onClick={() => cetakLaporanBerkop(draf)}>Cetak / Simpan PDF</button></div>
+      </div>
+      <div ref={wadah} style={{ width: '100%', overflow: 'hidden', height: tinggi * skala }}>
+        <iframe title="Pratinjau laporan berkop" srcDoc={html} onLoad={ukur} scrolling="no"
+          style={{ width: LEBAR_A4_PX + 40, height: tinggi, border: 0, transform: `scale(${skala})`, transformOrigin: '0 0', display: 'block' }} />
+      </div>
+    </section>
   )
 }

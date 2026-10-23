@@ -17,9 +17,9 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged, UKURAN_POTONGAN_ID } from './fetchAllPaged'
 import { selesaiTepatTanggal } from './kodeJadwalAktif'
-import { getBusbarProgress, getEffCfgGlobal, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
+import { buildPanelTypesFromBom, getBusbarProgress, getEffCfgGlobal, getRelevantProsesForKode, prosesBerlakuUntukTipe, statusPenandaPanel } from './panelHelpers'
 import { muatProsesRelevanGlobal } from './prosesRelevan'
-import { GLOBAL_PROSES_RELEVAN_TERMUAT } from './globalState'
+import { GLOBAL_PROSES_RELEVAN_TERMUAT, GLOBAL_LIVE_PANEL_TYPES, setGlobalLivePanelTypes } from './globalState'
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
 import { ALL_PROSES } from '../constants/panelTypes'
 import { labelDivisi } from './kendalaProduksi'
@@ -373,8 +373,10 @@ export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: stri
 }
 
 // ---------- teks WhatsApp (satu-satunya pembentuk teks) ----------
+// saringan kendala yang ikut laporan - SATU aturan utk teks WhatsApp & dokumen berkop
+export const kendalaTampil = (d: DrafLaporan) => (k: KendalaLap) => !!k.teks.trim() && (d.tampilTeratasi !== false || !k.teratasi)
 export function formatTeksWhatsApp(d: DrafLaporan): string {
-  const tampilK = (k: KendalaLap) => !!k.teks.trim() && (d.tampilTeratasi !== false || !k.teratasi)
+  const tampilK = kendalaTampil(d)
   const L: string[] = [judulLaporan(d.tanggal, d.jam), '']
   d.proyek.forEach((p) => {
     L.push(`${p.nama.trim() || 'PROYEK'}${p.deadline ? ` (${fmtTglLaporan(p.deadline)})` : ''}`)
@@ -404,11 +406,121 @@ export function formatTeksWhatsApp(d: DrafLaporan): string {
   return L.join('\n').replace(/\n+$/, '\n')
 }
 
+// ---------- dokumen berkop (Tahap B, 23 Okt 2026) - pembentuk HTML isi dokumen dari draf yang SAMA dgn teks WhatsApp ----------
+// Murni (tanpa DOM): dipakai pratinjau tab "Tampilan berkop" & jendela cetak (lib/laporanOutstandingBerkop, kop resmi
+// lib/kopSuratKonfig halamanCetakBerkop). Gaya mengikuti artifact pratinjau "Laporan Outstanding". Kendala = Opsi B:
+// teks di kiri, "Divisi · Nama · tgl" di kanan, kendala teratasi + baris hijau "✓ Teratasi tgl bln".
+const HARI_P = ['Minggu', 'Senin', 'Selasa', 'Rabu', 'Kamis', 'Jumat', 'Sabtu']
+const BLN_P = ['Januari', 'Februari', 'Maret', 'April', 'Mei', 'Juni', 'Juli', 'Agustus', 'September', 'Oktober', 'November', 'Desember']
+const BLN_K = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+export const tglPanjangLaporan = (iso: string) => { const d = new Date(`${iso}T00:00:00Z`); return `${HARI_P[d.getUTCDay()]}, ${d.getUTCDate()} ${BLN_P[d.getUTCMonth()]} ${d.getUTCFullYear()}` }
+const tglSedang = (iso: string) => { if (!iso) return ''; const [y, m, d] = iso.slice(0, 10).split('-'); return `${Number(d)} ${BLN_K[Number(m) - 1]} ${y}` }
+const tglKecil = (iso?: string) => { if (!iso) return ''; const [, m, d] = iso.slice(0, 10).split('-'); return `${Number(d)} ${BLN_K[Number(m) - 1]}` }
+const escH = (s: string) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+
+export const CSS_DOKUMEN_LAPORAN = `
+.lod{--ink:#171b2e;--dim:#5b6272;--line:#d9dde6;--soft:#f4f6fa;--ok:#15803d;--warn:#9a5b00;--warn-bg:#fff4d6;--brand:#f37321;
+  color:var(--ink);font-family:'KopCarlito','Carlito',Calibri,Arial,sans-serif;font-size:11pt;line-height:1.42;font-variant-numeric:tabular-nums}
+.lod *{box-sizing:border-box;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+.lod-title{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;flex-wrap:wrap;padding-bottom:.6em;border-bottom:2px solid var(--ink)}
+.lod-title h1{margin:0;font-size:17pt;font-weight:700;letter-spacing:.02em;line-height:1.1}
+.lod-title .when{font-size:10.5pt;color:var(--dim)}
+.lod-proj{margin-top:1.1em}
+.lod-ph{display:flex;align-items:baseline;justify-content:space-between;gap:10px;padding:.4em .7em;background:var(--soft);border-left:3px solid var(--brand);break-after:avoid}
+.lod-ph .nm{font-weight:700;letter-spacing:.02em;text-transform:uppercase}
+.lod-ph .dl{font-size:10pt;color:var(--dim);white-space:nowrap}
+.lod-ph .dl b{color:var(--ink)}
+.lod-pn{display:grid;grid-template-columns:2em 1fr;column-gap:.45em;padding:.45em .7em;border-bottom:1px solid var(--line);break-inside:avoid}
+.lod-pn:last-child{border-bottom:0}
+.lod-pn.nonum{grid-template-columns:1fr}
+.lod-pn .no{font-weight:700;color:var(--dim);text-align:right}
+.lod-pn .pnm{font-weight:700}
+.lod ul{margin:.2em 0 0;padding:0;list-style:none;display:flex;flex-direction:column;gap:.12em}
+.lod li{position:relative;padding-left:1.25em}
+.lod li::before{content:"";position:absolute;left:.25em;top:.58em;width:.36em;height:.36em;border-radius:1px;background:var(--brand)}
+.lod li.done{color:var(--dim)}
+.lod li.done::before{content:"\\2713";background:none;color:var(--ok);font-weight:700;width:auto;height:auto;left:0;top:0}
+.lod li.kd{padding-left:0;margin-top:.15em}
+.lod li.kd::before{display:none}
+.lod .kdr{display:flex;align-items:baseline;justify-content:space-between;gap:10px}
+.lod .kdt{color:var(--warn);font-style:italic;min-width:0}
+.lod .tag{font-style:normal;font-weight:700;font-size:8pt;letter-spacing:.04em;text-transform:uppercase;background:var(--warn-bg);color:var(--warn);border-radius:3px;padding:.05em .4em;margin-right:.4em}
+.lod .kdm{font-size:9pt;color:var(--dim);white-space:nowrap;text-align:right}
+.lod .kdm .tg{margin-left:.7em}
+.lod li.kd.ok .kdt{color:var(--dim)}
+.lod .kdok{color:var(--ok);font-weight:700;font-size:9.5pt;margin-top:.05em}
+.lod-umum{padding:.35em .7em 0}
+.lod-belum{padding:.45em .7em;color:var(--dim)}
+.lod-sec{margin-top:1.4em;padding-top:.6em;border-top:2px solid var(--ink)}
+.lod-sec h3{margin:0 0 .3em;font-size:10.5pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.lod ol{margin:.2em 0 0;padding:0;list-style:none}
+.lod ol li{display:grid;grid-template-columns:1.8em 1fr;column-gap:.4em;padding:.06em 0 .06em 0}
+.lod ol li::before{display:none}
+.lod ol li .no{text-align:right;color:var(--dim);font-weight:700}
+.lod ol.dua{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));column-gap:1.4em;padding:.35em .7em 0}
+.lod-pr{margin-top:.8em;break-inside:avoid}
+.lod-foot{margin-top:1.6em;font-size:9pt;color:var(--dim);display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:.5em}
+`
+
+function htmlKendala(k: KendalaLap, umum: boolean): string {
+  const siapa = [k.divisi, k.oleh].filter(Boolean).map((x) => escH(String(x))).join(' · ')
+  const meta = siapa || k.tanggal ? `<span class="kdm">${siapa}${k.tanggal ? `<span class="tg">${escH(tglKecil(k.tanggal))}</span>` : ''}</span>` : ''
+  return `<li class="kd${k.teratasi ? ' ok' : ''}"><div class="kdr"><span class="kdt"><span class="tag">${umum ? 'Kendala umum' : 'Kendala'}</span>${escH(k.teks.trim())}</span>${meta}</div>${k.teratasi ? `<div class="kdok">✓ Teratasi ${escH(tglKecil(k.teratasi))}</div>` : ''}</li>`
+}
+
+export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string } = {}): string {
+  const tampilK = kendalaTampil(d)
+  let h = `<div class="lod"><div class="lod-title"><h1>OUTSTANDING PEKERJAAN</h1><div class="when">${escH(tglPanjangLaporan(d.tanggal))} · ${escH(d.jam)} WIB</div></div>`
+  d.proyek.forEach((p) => {
+    h += `<div class="lod-proj"><div class="lod-ph"><span class="nm">${escH(p.nama.trim() || 'PROYEK')}</span><span class="dl">${p.deadline ? `Deadline <b>${escH(tglSedang(p.deadline))}</b>` : ''}</span></div>`
+    const umum = p.kendalaUmum.filter(tampilK)
+    if (umum.length) h += `<ul class="lod-umum">${umum.map((k) => htmlKendala(k, true)).join('')}</ul>`
+    if (p.ringkas.trim()) h += `<div class="lod-belum">${escH(p.ringkas.trim())}</div>`
+    else {
+      let no = 0
+      p.panels.forEach((pn) => {
+        const jobs = pn.pekerjaan.filter((j) => j.teks.trim()), kd = pn.kendala.filter(tampilK)
+        const bernama = !!pn.nama.trim()
+        if (!bernama && !jobs.length && !kd.length) return
+        h += `<div class="lod-pn${bernama ? '' : ' nonum'}">${bernama ? `<div class="no">${++no}.</div>` : ''}<div>${bernama ? `<div class="pnm">${escH(pn.nama.trim())}</div>` : ''}<ul>`
+        jobs.forEach((j) => { h += `<li${j.selesai ? ' class="done"' : ''}>${escH(j.teks.trim())}</li>` })
+        kd.forEach((k) => { h += htmlKendala(k, false) })
+        h += '</ul></div></div>'
+      })
+    }
+    h += '</div>'
+  })
+  const cat = d.catatan.map((c) => c.trim()).filter(Boolean)
+  if (cat.length) h += `<div class="lod-sec"><h3>Catatan</h3><ol>${cat.map((c, i) => `<li><span class="no">${i + 1}.</span><span>${escH(c)}</span></li>`).join('')}</ol></div>`
+  const prio = d.prioritas.filter((p) => p.nama.trim() || p.panels.some((x) => x.trim()))
+  if (prio.length) {
+    h += '<div class="lod-sec"><h3>Prioritas Pengerjaan Minggu Ini</h3>'
+    prio.forEach((p) => {
+      const pn = p.panels.map((x) => x.trim()).filter(Boolean)
+      h += `<div class="lod-pr"><div class="lod-ph"><span class="nm">${escH(p.nama.trim())}</span><span class="dl">${p.deadline ? `Deadline <b>${escH(tglSedang(p.deadline))}</b>` : ''}</span></div><ol class="dua">${pn.map((x, i) => `<li><span class="no">${i + 1}.</span><span>${escH(x)}</span></li>`).join('')}</ol></div>`
+    })
+    h += '</div>'
+  }
+  h += `<div class="lod-foot"><span>Dibuat dari data Vista Teknik ERP</span><span>${o.dibuatJam ? `Dicetak ${escH(o.dibuatJam)} WIB` : ''}</span></div></div>`
+  return h
+}
+
 // ---------- muat data (baca saja; paginasi .range + urutan stabil, error dilempar) ----------
 
+// Nama komponen (baris WIRING) dari BOM live - biasanya sudah dimuat App saat mulai (setGlobalLivePanelTypes); bila belum,
+// dimuat di sini dgn cara yang sama (bom_master semua halaman + panel_type_meta + panel_wp_meta, error dilempar).
+async function pastikanBomLive(db: any): Promise<void> {
+  if (GLOBAL_LIVE_PANEL_TYPES && Object.keys(GLOBAL_LIVE_PANEL_TYPES).length) return
+  const bom = await fetchAllPaged((a, z) => db.from('bom_master').select('*').order('id').range(a, z))
+  const [tm, wm] = await Promise.all([db.from('panel_type_meta').select('*').order('id').range(0, 999), db.from('panel_wp_meta').select('*').order('id').range(0, 999)])
+  if (tm.error) throw new Error('panel_type_meta: ' + tm.error.message)
+  if (wm.error) throw new Error('panel_wp_meta: ' + wm.error.message)
+  if (bom.length) setGlobalLivePanelTypes(buildPanelTypesFromBom(bom, tm.data, wm.data))
+}
 export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'woAktif' | 'raw' | 'timerBerjalan'>> {
   // relevansi komponen-proses (bom_proses_relevan) utk rantai estafet V2/V3 - biasanya sudah dimuat App saat mulai
   if (!GLOBAL_PROSES_RELEVAN_TERMUAT && !(await muatProsesRelevanGlobal(db))) throw new Error('gagal memuat bom_proses_relevan')
+  await pastikanBomLive(db)
   const wo = await fetchAllPaged((a, z) => db.from('work_orders').select('id,wo,proyek,target,created_at').is('deleted_at', null).or('is_archived.is.null,is_archived.eq.false').order('id').range(a, z))
   const ids = wo.map((w: any) => w.id)
   const panels = await muatPerPotongan(ids, (pot, a, z) => db.from('panels').select('*').in('wo_id', pot).is('deleted_at', null).order('id').range(a, z))
@@ -433,6 +545,7 @@ async function muatPerPotongan(ids: any[], build: (pot: any[], a: number, z: num
 export type PanelArsip = { id: number; nama: string; tipe: string; woId: number; target: string; diarsipkanPada: string; snapshot: number; pekerjaan: Pekerjaan[]; belumTuntas: boolean }
 export type GrupArsip = { kunci: string; wo: string; proyek: string; targets: string[]; panels: PanelArsip[] }
 export async function muatPilihanArsip(db: any, o: { hari?: number; kecualiPanelIds?: Set<number> } = {}): Promise<GrupArsip[]> {
+  await pastikanBomLive(db)
   const batas = new Date(Date.now() - (o.hari ?? 60) * 864e5).toISOString()
   const pa = await fetchAllPaged((a, z) => db.from('panels_archived').select('*').gte('diarsipkan_pada', batas).order('id').range(a, z))
   const ids = pa.map((p: any) => p.id)
