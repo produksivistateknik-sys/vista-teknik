@@ -69,7 +69,7 @@ const CSS = `
 .lo-meta{font-size:12px;color:var(--lo-mute)}
 .lo-wa textarea{width:100%;min-height:460px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.6;padding:12px;white-space:pre;overflow:auto}
 .lo-empty{padding:40px 16px;color:var(--lo-mute);text-align:center;border:1px dashed var(--lo-line);border-radius:10px}
-@media (max-width:640px){.lo .inp.dt{width:132px}}
+@media (max-width:640px){.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}}
 `
 
 type Tab = 'susun' | 'wa'
@@ -256,8 +256,8 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                     <div className="lo-row" key={j.id}>
                       <input className="chk" type="checkbox" title="Selesai hari ini (✅)" checked={j.selesai} onChange={(e) => setN(pi, ni, (x) => ({ ...x, pekerjaan: x.pekerjaan.map((v, i) => (i === ji ? { ...v, selesai: e.target.checked } : v)) }))} />
                       <input className="inp" value={j.teks} placeholder="Pekerjaan outstanding" onChange={(e) => setN(pi, ni, (x) => ({ ...x, pekerjaan: x.pekerjaan.map((v, i) => (i === ji ? { ...v, teks: e.target.value.toUpperCase() } : v)) }))} />
-                      <button className="loBtn ib" type="button" title="Naik" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: geser(x.pekerjaan, ji, -1) }))}>↑</button>
-                      <button className="loBtn ib" type="button" title="Turun" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: geser(x.pekerjaan, ji, 1) }))}>↓</button>
+                      <button className="loBtn ib mv" type="button" title="Naik" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: geser(x.pekerjaan, ji, -1) }))}>↑</button>
+                      <button className="loBtn ib mv" type="button" title="Turun" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: geser(x.pekerjaan, ji, 1) }))}>↓</button>
                       <button className="loBtn ib del" type="button" title="Hapus" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: x.pekerjaan.filter((_, i) => i !== ji) }))}>×</button>
                     </div>
                   ))}
