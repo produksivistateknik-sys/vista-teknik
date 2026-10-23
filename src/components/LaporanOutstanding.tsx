@@ -111,8 +111,8 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
     setSimpanGagal(!tulisSimpanan(nama, { draf, teksWa, teksSistem }))
   }, [draf, teksWa, teksSistem, nama])
 
-  // Varian aturan pekerjaan (UJI, belum dikunci - lib/laporanOutstanding Varian). Bawaan V1.
-  const [varian, setVarian] = useState<Varian>(awal?.draf?.varian || 'V1')
+  // Varian aturan pekerjaan (UJI, belum dikunci - lib/laporanOutstanding Varian). Bawaan V2 (keputusan sementara user 23 Okt).
+  const [varian, setVarian] = useState<Varian>(awal?.draf?.varian || 'V2')
   const buat = async (v: Varian = varian) => {
     if (draf && !window.confirm('Susun ulang bagian Otomatis dan Prioritas dari data terbaru?\nEdit pada entri Otomatis & Prioritas akan diganti. Entri Arsip, Manual, dan Catatan tetap.' + (diedit ? '\n\nTeks WhatsApp yang sudah Anda edit TIDAK diubah (pakai "Buat ulang teks").' : ''))) return
     setSibuk(true); setGalat(null)
@@ -196,7 +196,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
           <span className="lo-lbl">Aturan (uji)</span>
           <select className="inp jam" style={{ width: 'auto', height: 32 }} value={varian} disabled={sibuk} aria-label="Varian aturan pekerjaan (uji)" title="V1: semua proses terjadwal s.d. hari ini · V2: hanya proses aktif + (+N proses menunggu) · V3: seperti V2, digabung per proses"
             onChange={(e) => { const v = e.target.value as Varian; if (draf) buat(v); else setVarian(v) }}>
-            <option value="V1">V1 semua terjadwal</option><option value="V2">V2 proses aktif</option><option value="V3">V3 aktif digabung</option>
+            <option value="V1">V1 semua terjadwal</option><option value="V2">V2 proses aktif (bawaan)</option><option value="V3">V3 aktif digabung</option>
           </select>
           <button className="loBtn pri" type="button" onClick={() => buat()} disabled={sibuk}>{sibuk ? 'Memuat…' : draf ? 'Buat ulang laporan' : 'Buat laporan'}</button>
         </div>
@@ -285,7 +285,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
               <div className="lo-links">
                 {p.ringkas === '' && <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, panels: [...x.panels, panelManualBaru()] }))}>+ Tambah panel</button>}
                 <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, kendalaUmum: [...x.kendalaUmum, ''] }))}>+ Kendala umum</button>
-                {p.src === 'otomatis' && p.ringkas === '' && (draf.varian || 'V1') !== 'V1' && p.panels.some((n) => n.pekerjaanSemua) && <button className="loBtn lnk" type="button"
+                {p.src === 'otomatis' && p.ringkas === '' && (draf.varian || 'V2') !== 'V1' && p.panels.some((n) => n.pekerjaanSemua) && <button className="loBtn lnk" type="button"
                   onClick={() => { if (!window.confirm('Ganti daftar pekerjaan proyek ini? Edit pekerjaan pada panel otomatis proyek ini akan diganti.')) return
                     setP(pi, (x) => ({ ...x, semua: !x.semua, panels: x.panels.map((n) => (n.pekerjaanSemua ? { ...n, pekerjaan: (!x.semua ? n.pekerjaanSemua : n.pekerjaanRingkas || []).map((j) => ({ ...j, id: idBaru() })) } : n)) })) }}>
                   {p.semua ? `Ringkas lagi (aturan ${draf.varian})` : 'Tampilkan semua proses terjadwal'}</button>}

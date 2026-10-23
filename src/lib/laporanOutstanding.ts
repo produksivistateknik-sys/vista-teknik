@@ -94,7 +94,8 @@ const jadwalSampai = (sch: Record<string, any> | null | undefined, hariIni: stri
 const statusPct = (pct: number): Unit['status'] => (pct >= 100 ? 'basi' : pct > 0 ? 'mulai' : 'outstanding')
 const hariIniDari = (waktu: any, hariIni: string) => !!waktu && hariKerjaDari(waktu) === hariIni
 
-// VARIAN ATURAN (uji, 23 Okt 2026 - belum dikunci; pilihan user menyusul). V1 = bawaan.
+// VARIAN ATURAN (uji, 23 Okt 2026 - belum dikunci). Keputusan sementara user: V2 = bawaan laporan (buatLaporanOutstanding);
+// V1/V3 tetap bisa dipilih. turunkanPekerjaanPanel tanpa opsi = V1 (dipakai pemilih arsip: sisa pekerjaan lengkap).
 //  V1: semua proses terjadwal s.d. hari ini yang belum selesai.
 //  V2: hanya proses AKTIF per komponen = ada progres / timer berjalan / proses sebelumnya (rantai relevan bom_proses_relevan,
 //      urutan ALL_PROSES - logika estafet isEstafetOk FCS) sudah 100% atau proses pertama; sisanya satu baris
@@ -253,7 +254,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
     g.panels.forEach((p) => {
       const rows = rawPer.get(Number(p.id)) || []
       const a = jadwalAwal(rows); if (a && (!awal || a < awal)) awal = a
-      const varian = b.varian || 'V1'
+      const varian = b.varian || 'V2'
       const pekerjaanSemua = turunkanPekerjaanPanel(p, rows, hariIni, { varian: 'V1', timerBerjalan: b.timerBerjalan })
       const pekerjaan = varian === 'V1' ? pekerjaanSemua : turunkanPekerjaanPanel(p, rows, hariIni, { varian, timerBerjalan: b.timerBerjalan })
       const kd = kendalaPanel.get(Number(p.id)) || []
@@ -270,7 +271,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   // pertahankan entri arsip & manual + catatan dari draf lama (Buat ulang hanya mengganti bagian otomatis)
   const tetap = (lama?.proyek || []).filter((p) => p.src !== 'otomatis')
   return {
-    versi: 1, varian: b.varian || 'V1', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
+    versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
     proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [],
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni),
   }
