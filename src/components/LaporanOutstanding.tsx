@@ -9,7 +9,7 @@
 // - TIDAK menulis apa pun ke database (hanya select). Penanda sumber (Otomatis/Arsip/Manual) hanya di layar ini.
 // Tombol ber-class "loBtn": aturan global mode gelap `[data-theme=dark] button:not([class*="Btn"])` tidak menimpanya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
@@ -69,7 +69,8 @@ const CSS = `
 .lo-arc label{display:flex;gap:8px;align-items:flex-start;font-size:13.5px;cursor:pointer}
 .lo-arc label.off{opacity:.5;cursor:default}
 .lo-meta{font-size:12px;color:var(--lo-mute)}
-.lo-wa textarea{width:100%;min-height:460px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.6;padding:12px;white-space:pre;overflow:auto}
+.lo-wa textarea{width:100%;min-height:160px;max-height:calc(100vh - 220px);resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.6;padding:12px;white-space:pre-wrap;overflow-wrap:anywhere;word-break:normal;overflow-x:hidden;overflow-y:auto}
+.lo-wa .hit{margin-top:4px;font-size:12px;color:var(--lo-mute);text-align:right}
 .lo-empty{padding:40px 16px;color:var(--lo-mute);text-align:center;border:1px dashed var(--lo-line);border-radius:10px}
 .lo-kd{display:flex;flex-direction:column;gap:2px}
 .lo-kd-m{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--lo-mute);padding-left:4px}
@@ -358,7 +359,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
               <button className="loBtn pri" type="button" onClick={salinTeks}>{salin || 'Salin teks'}</button>
             </div>
           </div>
-          <textarea id="lo-wa-ta" spellCheck={false} aria-label={`Teks ${judulLaporan(draf.tanggal, draf.jam)}`} value={teksWa} onChange={(e) => setTeksWa(e.target.value)} />
+          <KotakTeksWa label={`Teks ${judulLaporan(draf.tanggal, draf.jam)}`} value={teksWa} onChange={setTeksWa} />
         </section>}
       </>}
     </div>
@@ -459,5 +460,30 @@ function PratinjauBerkop({ draf }: { draf: DrafLaporan }) {
           style={{ width: LEBAR_A4_PX + 40, height: tinggi, border: 0, transform: `scale(${skala})`, transformOrigin: '0 0', display: 'block' }} />
       </div>
     </section>
+  )
+}
+
+// Kotak teks WhatsApp (perbaikan 23 Okt 2026 - dulu tinggi tetap, baris terakhir terpotong & harus digulir di dalam kotak):
+// tinggi mengikuti isi (diukur ulang saat isi berubah, saat tab dibuka/komponen dipasang, dan saat jendela diubah ukurannya),
+// dibatasi max-height CSS calc(100vh - 220px) - gulir di dalam kotak hanya bila melewati batas itu. Baris panjang dilipat
+// (pre-wrap). Tetap bisa diedit & resize vertikal; id "lo-wa-ta" dipakai cadangan "Salin teks".
+function KotakTeksWa({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  const ref = useRef<HTMLTextAreaElement | null>(null)
+  const ukur = () => {
+    const el = ref.current; if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight + 2}px` // dibatasi max-height CSS
+  }
+  useLayoutEffect(ukur, [value])
+  useEffect(() => {
+    window.addEventListener('resize', ukur)
+    return () => window.removeEventListener('resize', ukur)
+  }, [])
+  const baris = value ? value.split('\n').length : 0
+  return (
+    <>
+      <textarea ref={ref} id="lo-wa-ta" spellCheck={false} aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />
+      <div className="hit">{baris} baris · {value.length} karakter</div>
+    </>
   )
 }
