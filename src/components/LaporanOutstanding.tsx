@@ -1,7 +1,7 @@
 // LAPORAN OUTSTANDING - PENYUSUN (Tahap A, 23 Okt 2026). Acuan UI: artifact pratinjau "Laporan Outstanding" (tab "Susun &
 // edit" & "Teks WhatsApp"; "Tampilan berkop"/PDF = Tahap B, belum). Semua isi dari SATU draf (lib/laporanOutstanding
 // DrafLaporan) - teks WhatsApp dibentuk HANYA oleh formatTeksWhatsApp(draf).
-// - "Buat laporan": muat ulang WO aktif + Raw Schedule + kendala belum selesai, susun ulang bagian OTOMATIS & prioritas;
+// - "Buat laporan": muat ulang WO aktif + Raw Schedule + kendala (terbuka + baru teratasi, lib kendalaMasukLaporan), susun ulang bagian OTOMATIS & prioritas;
 //   entri Arsip, Manual, dan Catatan dipertahankan.
 // - Teks WhatsApp mengikuti draf selama belum diedit. Setelah diedit tangan (badge "Diedit"), perubahan di penyusun TIDAK
 //   menimpanya - hanya "Buat ulang teks" (dengan konfirmasi).
@@ -10,13 +10,13 @@
 // Tombol ber-class "loBtn": aturan global mode gelap `[data-theme=dark] button:not([class*="Btn"])` tidak menimpanya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { ambilKendalaTerbuka } from '../lib/kendalaProduksi'
+import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
-  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan,
-  type DrafLaporan, type ProyekLap, type PanelLap, type GrupArsip, type PanelArsip, type Sumber, type Varian,
+  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI,
+  type DrafLaporan, type ProyekLap, type PanelLap, type GrupArsip, type PanelArsip, type Sumber, type Varian, type KendalaLap, type KendalaSumber,
 } from '../lib/laporanOutstanding'
 
 const CSS = `
@@ -69,6 +69,12 @@ const CSS = `
 .lo-meta{font-size:12px;color:var(--lo-mute)}
 .lo-wa textarea{width:100%;min-height:460px;resize:vertical;font-family:ui-monospace,SFMono-Regular,Consolas,monospace;font-size:13px;line-height:1.6;padding:12px;white-space:pre;overflow:auto}
 .lo-empty{padding:40px 16px;color:var(--lo-mute);text-align:center;border:1px dashed var(--lo-line);border-radius:10px}
+.lo-kd{display:flex;flex-direction:column;gap:2px}
+.lo-kd-m{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;font-size:12px;color:var(--lo-mute);padding-left:4px}
+.lo-kd-m .siapa{margin-left:auto;text-align:right}
+.lo-kd-m .tg{margin-left:10px;font-variant-numeric:tabular-nums}
+.lo-kd-m .ter{color:var(--lo-ok);font-weight:600}
+.lo-kd.off{opacity:.5}
 @media (max-width:640px){.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}}
 `
 
@@ -92,7 +98,8 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   const [sibuk, setSibuk] = useState(false)
   const [galat, setGalat] = useState<string | null>(null)
   const [simpanGagal, setSimpanGagal] = useState(false)
-  const [kendala, setKendala] = useState<{ proyek: string; panel_id: number | null; teks: string }[]>([])
+  // semua kendala tidak terhapus (terbuka + teratasi) - penyaringan teratasi di lib (kendalaMasukLaporan)
+  const [kendala, setKendala] = useState<KendalaSumber[] | null>(null)
   const [picker, setPicker] = useState<{ memuat: boolean; galat?: string; grup: GrupArsip[]; pilih: Set<number>; hanyaBelum: boolean } | null>(null)
   const [salin, setSalin] = useState('')
   const diedit = teksWa !== teksSistem
@@ -117,10 +124,10 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
     if (draf && !window.confirm('Susun ulang bagian Otomatis dan Prioritas dari data terbaru?\nEdit pada entri Otomatis & Prioritas akan diganti. Entri Arsip, Manual, dan Catatan tetap.' + (diedit ? '\n\nTeks WhatsApp yang sudah Anda edit TIDAK diubah (pakai "Buat ulang teks").' : ''))) return
     setSibuk(true); setGalat(null)
     try {
-      const [bahan, kd] = await Promise.all([muatBahanOtomatis(db), ambilKendalaTerbuka(db)])
-      const k = kd.map((x: any) => ({ proyek: x.proyek, panel_id: x.panel_id, teks: x.teks }))
+      const [bahan, kd] = await Promise.all([muatBahanOtomatis(db), muatKendala(db)])
+      const k = kd as KendalaSumber[]
       setKendala(k)
-      const baru = buatLaporanOutstanding({ ...bahan, kendalaTerbuka: k, varian: v, jam: draf && draf.tanggal === hariKerjaWib() ? draf.jam : undefined }, draf)
+      const baru = buatLaporanOutstanding({ ...bahan, kendala: k, varian: v, jam: draf && draf.tanggal === hariKerjaWib() ? draf.jam : undefined }, draf)
       setVarian(v)
       if (!draf) { const sys = formatTeksWhatsApp(baru); setTeksWa(sys); setTeksSistem(sys); terakhirDraf.current = baru }
       setDraf(baru)
@@ -148,7 +155,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
     setPicker({ memuat: true, grup: [], pilih: new Set(), hanyaBelum: true })
     try {
       let kd = kendala
-      if (!kd.length) { kd = (await ambilKendalaTerbuka(db)).map((x: any) => ({ proyek: x.proyek, panel_id: x.panel_id, teks: x.teks })); setKendala(kd) }
+      if (!kd) { kd = (await muatKendala(db)) as KendalaSumber[]; setKendala(kd) }
       const otomatis = new Set<number>((draf?.proyek || []).filter((p) => p.src === 'otomatis').flatMap((p) => p.panels.map((x) => x.panelId)).filter((x): x is number => x != null))
       const grup = await muatPilihanArsip(db, { hari: 60, kecualiPanelIds: otomatis })
       setPicker((p) => p && { ...p, memuat: false, grup })
@@ -163,7 +170,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
     const tambah: ProyekLap[] = []
     picker.grup.forEach((g) => {
       const dipilih = g.panels.filter((p) => picker.pilih.has(p.id) && !sudahAda.has(p.id))
-      if (dipilih.length) tambah.push(proyekDariArsip(g, dipilih, kendala))
+      if (dipilih.length) tambah.push(proyekDariArsip(g, dipilih, kendala || []))
     })
     if (tambah.length) {
       ubah((d) => {
@@ -215,7 +222,11 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
 
         {tab === 'susun' && <section>
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
-            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di draf ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.</div>
+            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di draf ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.
+              <label className="lo-row" style={{ marginTop: 6, cursor: 'pointer', color: 'var(--lo-fg)' }}>
+                <input className="chk" type="checkbox" checked={draf.tampilTeratasi !== false} onChange={(e) => ubah((d) => ({ ...d, tampilTeratasi: e.target.checked }))} />
+                Tampilkan kendala yang sudah teratasi <span className="lo-meta">(sampai {HARI_TAMPIL_TERATASI} hari kerja sesudah tanggal teratasi)</span>
+              </label></div>
             <div className="lo-act">
               <button className="loBtn" type="button" onClick={bukaArsip}>{picker ? 'Tutup arsip' : 'Ambil dari arsip'}</button>
               <button className="loBtn pri" type="button" onClick={() => ubah((d) => ({ ...d, proyek: [...d.proyek, proyekManualBaru()] }))}>+ Tambah proyek</button>
@@ -245,11 +256,9 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
               </div>}
               {p.ringkas !== '' && <div className="lo-meta">Baris pendek menggantikan daftar panel di laporan.</div>}
               {p.kendalaUmum.map((k, ki) => (
-                <div className="lo-row" key={ki}>
-                  <span className="lo-kt">Kendala umum</span>
-                  <input className="inp" value={k} placeholder="Kendala proyek" onChange={(e) => setP(pi, (x) => ({ ...x, kendalaUmum: x.kendalaUmum.map((v, i) => (i === ki ? e.target.value : v)) }))} />
-                  <button className="loBtn ib del" type="button" title="Hapus" onClick={() => setP(pi, (x) => ({ ...x, kendalaUmum: x.kendalaUmum.filter((_, i) => i !== ki) }))}>×</button>
-                </div>
+                <BarisKendala key={k.id} k={k} label="Kendala umum" placeholder="Kendala proyek" tampilTeratasi={draf.tampilTeratasi !== false}
+                  onTeks={(t) => setP(pi, (x) => ({ ...x, kendalaUmum: x.kendalaUmum.map((v, i) => (i === ki ? { ...v, teks: t } : v)) }))}
+                  onHapus={() => setP(pi, (x) => ({ ...x, kendalaUmum: x.kendalaUmum.filter((_, i) => i !== ki) }))} />
               ))}
               {p.ringkas === '' && p.panels.map((n, ni) => (
                 <div className="lo-pbox" key={n.id}>
@@ -270,21 +279,19 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                     </div>
                   ))}
                   {n.kendala.map((k, ki) => (
-                    <div className="lo-row" key={ki}>
-                      <span className="lo-kt">Kendala</span>
-                      <input className="inp" value={k} placeholder="Catatan kendala" onChange={(e) => setN(pi, ni, (x) => ({ ...x, kendala: x.kendala.map((v, i) => (i === ki ? e.target.value : v)) }))} />
-                      <button className="loBtn ib del" type="button" title="Hapus" onClick={() => setN(pi, ni, (x) => ({ ...x, kendala: x.kendala.filter((_, i) => i !== ki) }))}>×</button>
-                    </div>
+                    <BarisKendala key={k.id} k={k} label="Kendala" placeholder="Catatan kendala" tampilTeratasi={draf.tampilTeratasi !== false}
+                      onTeks={(t) => setN(pi, ni, (x) => ({ ...x, kendala: x.kendala.map((v, i) => (i === ki ? { ...v, teks: t } : v)) }))}
+                      onHapus={() => setN(pi, ni, (x) => ({ ...x, kendala: x.kendala.filter((_, i) => i !== ki) }))} />
                   ))}
                   <div className="lo-links">
                     <button className="loBtn lnk" type="button" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: [...x.pekerjaan, { id: idBaru(), teks: '', selesai: false }] }))}>+ Pekerjaan</button>
-                    <button className="loBtn lnk" type="button" onClick={() => setN(pi, ni, (x) => ({ ...x, kendala: [...x.kendala, ''] }))}>+ Kendala</button>
+                    <button className="loBtn lnk" type="button" onClick={() => setN(pi, ni, (x) => ({ ...x, kendala: [...x.kendala, { id: idBaru(), teks: '' }] }))}>+ Kendala</button>
                   </div>
                 </div>
               ))}
               <div className="lo-links">
                 {p.ringkas === '' && <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, panels: [...x.panels, panelManualBaru()] }))}>+ Tambah panel</button>}
-                <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, kendalaUmum: [...x.kendalaUmum, ''] }))}>+ Kendala umum</button>
+                <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, kendalaUmum: [...x.kendalaUmum, { id: idBaru(), teks: '' }] }))}>+ Kendala umum</button>
                 {p.src === 'otomatis' && p.ringkas === '' && (draf.varian || 'V2') !== 'V1' && p.panels.some((n) => n.pekerjaanSemua) && <button className="loBtn lnk" type="button"
                   onClick={() => { if (!window.confirm('Ganti daftar pekerjaan proyek ini? Edit pekerjaan pada panel otomatis proyek ini akan diganti.')) return
                     setP(pi, (x) => ({ ...x, semua: !x.semua, panels: x.panels.map((n) => (n.pekerjaanSemua ? { ...n, pekerjaan: (!x.semua ? n.pekerjaanSemua : n.pekerjaanRingkas || []).map((j) => ({ ...j, id: idBaru() })) } : n)) })) }}>
@@ -389,6 +396,29 @@ function PemilihArsip({ picker, setPicker, sudahAda, onMasuk }: {
         <button className="loBtn pri" type="button" onClick={onMasuk} disabled={!picker.pilih.size}>Masukkan ke laporan{picker.pilih.size ? ` (${picker.pilih.size})` : ''}</button>
         <button className="loBtn" type="button" onClick={() => setPicker(null)}>Batal</button>
       </div>
+    </div>
+  )
+}
+
+// Baris kendala (Opsi B, keputusan user): teks di kiri; kolom kanan "Divisi · Nama" + tanggal dicatat; kendala teratasi
+// mendapat baris hijau "✓ Teratasi tgl bln" (tanggal = hari kerja WIB dari kendala_produksi.teratasi_pada).
+const BLN3K = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+const tglK = (iso?: string) => { if (!iso) return ''; const [, m, d] = iso.split('-'); return `${Number(d)} ${BLN3K[Number(m) - 1]}` }
+function BarisKendala({ k, label, placeholder, tampilTeratasi, onTeks, onHapus }: {
+  k: KendalaLap; label: string; placeholder: string; tampilTeratasi: boolean; onTeks: (t: string) => void; onHapus: () => void
+}) {
+  const siapa = [k.divisi, k.oleh].filter(Boolean).join(' · ')
+  return (
+    <div className={'lo-kd' + (k.teratasi ? ' ok' : '') + (k.teratasi && !tampilTeratasi ? ' off' : '')}>
+      <div className="lo-row">
+        <span className="lo-kt">{label}</span>
+        <input className="inp" value={k.teks} placeholder={placeholder} onChange={(e) => onTeks(e.target.value.toUpperCase())} />
+        <button className="loBtn ib del" type="button" title="Hapus dari laporan" onClick={onHapus}>×</button>
+      </div>
+      {(siapa || k.tanggal || k.teratasi) && <div className="lo-kd-m">
+        <span className="ter">{k.teratasi ? <>✓ Teratasi {tglK(k.teratasi)}{!tampilTeratasi && ' · tidak ikut laporan'}</> : ''}</span>
+        <span className="siapa">{siapa}{k.tanggal ? <span className="tg">{tglK(k.tanggal)}</span> : null}</span>
+      </div>}
     </div>
   )
 }

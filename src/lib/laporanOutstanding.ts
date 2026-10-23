@@ -22,13 +22,14 @@ import { muatProsesRelevanGlobal } from './prosesRelevan'
 import { GLOBAL_PROSES_RELEVAN_TERMUAT } from './globalState'
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
 import { ALL_PROSES } from '../constants/panelTypes'
+import { labelDivisi } from './kendalaProduksi'
 
 export type Sumber = 'otomatis' | 'arsip' | 'manual'
 export type Pekerjaan = { id: string; teks: string; selesai: boolean }
 // pekerjaanSemua/pekerjaanRingkas: dua daftar otomatis (V1 vs varian terpilih) utk tombol per proyek "Tampilkan semua proses terjadwal"
-export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: string[]; pekerjaanSemua?: Pekerjaan[]; pekerjaanRingkas?: Pekerjaan[] }
+export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: KendalaLap[]; pekerjaanSemua?: Pekerjaan[]; pekerjaanRingkas?: Pekerjaan[] }
 // ringkas = satu baris pendek pengganti daftar panel (mis. WO baru turun belum ada planning).
-export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: string[]; panels: PanelLap[]; semua?: boolean }
+export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: KendalaLap[]; panels: PanelLap[]; semua?: boolean }
 export type PrioritasLap = { id: string; nama: string; deadline: string; panels: string[] }
 export type DrafLaporan = {
   versi: 1
@@ -39,7 +40,40 @@ export type DrafLaporan = {
   proyek: ProyekLap[]
   catatan: string[] // NOTE di luar proyek (urut)
   prioritas: PrioritasLap[]
+  tampilTeratasi?: boolean // "Tampilkan kendala yang sudah teratasi" (bawaan true)
 }
+
+// ---------- kendala di laporan ----------
+// Dari tabel kendala_produksi (tab Kendala admin). Kendala TERATASI tetap ditulis s.d. HARI_TAMPIL_TERATASI hari kerja
+// sesudah tanggal teratasi, lalu hilang sendiri. Tanggal teratasi HANYA dari kolom kendala_produksi.teratasi_pada
+// (timestamptz, diisi RPC tandai_kendala_teratasi), dihitung sbg HARI KERJA WIB (00.00-06.59 = hari sebelumnya).
+// Hari kerja = Senin-Sabtu (Minggu dilewati). Kendala manual (diketik di penyusun) tanpa pencatat/tanggal.
+export const HARI_TAMPIL_TERATASI = 1
+export type KendalaLap = { id: string; teks: string; kendalaId?: number; divisi?: string; oleh?: string; tanggal?: string; teratasi?: string }
+export type KendalaSumber = { id: number; proyek: string; panel_id: number | null; teks: string; pencatat?: string; divisi?: string | null; tanggal?: string; teratasi_pada?: string | null }
+export function hariKerjaKeN(iso: string, n: number): string {
+  let t = iso, sisa = n
+  while (sisa > 0) { t = tambahHariIso(t, 1); if (new Date(`${t}T00:00:00Z`).getUTCDay() !== 0) sisa-- }
+  return t
+}
+const tambahHariIso = (iso: string, n: number) => { const d = new Date(`${iso}T00:00:00Z`); d.setUTCDate(d.getUTCDate() + n); return d.toISOString().slice(0, 10) }
+export function kendalaMasukLaporan(k: KendalaSumber, hariIni: string, hariTampil = HARI_TAMPIL_TERATASI): boolean {
+  if (!k.teratasi_pada) return true
+  const tgl = hariKerjaDari(k.teratasi_pada)
+  return !!tgl && hariIni <= hariKerjaKeN(tgl, hariTampil)
+}
+export const kendalaDariSumber = (k: KendalaSumber): KendalaLap => ({
+  id: idBaru(), kendalaId: k.id, teks: String(k.teks || '').trim().toUpperCase(), divisi: k.divisi ? labelDivisi(k.divisi) : undefined,
+  oleh: k.pencatat || undefined, tanggal: k.tanggal || undefined, teratasi: k.teratasi_pada ? hariKerjaDari(k.teratasi_pada) : undefined,
+})
+const tglBln = (iso?: string) => { if (!iso) return ''; const [, m, d] = iso.split('-'); return `${Number(d)} ${BLN3[Number(m) - 1]}` }
+// "TEKS (DIVISI-NAMA, TGL BLN) ✅ TERATASI TGL BLN"
+export function teksKendalaWa(k: KendalaLap): string {
+  const meta = [k.divisi && k.oleh ? `${k.divisi.toUpperCase()}-${k.oleh.toUpperCase()}` : (k.oleh || k.divisi || '').toUpperCase(), tglBln(k.tanggal)].filter(Boolean).join(', ')
+  return `${k.teks.trim()}${meta ? ` (${meta})` : ''}${k.teratasi ? ` ✅ TERATASI ${tglBln(k.teratasi)}` : ''}`
+}
+// draf lama (kendala = string) -> KendalaLap
+const normKendala = (x: any): KendalaLap => (typeof x === 'string' ? { id: idBaru(), teks: x } : { ...x, id: x?.id || idBaru(), teks: String(x?.teks ?? '') })
 
 let seq = 0
 export const idBaru = () => `${Date.now().toString(36)}-${(seq++).toString(36)}-${Math.random().toString(36).slice(2, 6)}`
@@ -220,7 +254,8 @@ const kunciProyek = (nama: string, target: string) => `${upper(nama)}|${target |
 export type BahanLaporan = {
   woAktif: any[] // work_orders (+ panels) aktif
   raw: any[] // raw_schedule (WO aktif)
-  kendalaTerbuka: { proyek: string; panel_id: number | null; teks: string }[]
+  // semua kendala tidak terhapus (muatKendala); yg masuk laporan disaring kendalaMasukLaporan (terbuka + teratasi baru)
+  kendala: KendalaSumber[]
   hariIni?: string
   jam?: string
   timerBerjalan?: Set<string>
@@ -230,10 +265,10 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   const hariIni = b.hariIni || hariKerjaWib()
   const rawPer = new Map<number, any[]>()
   b.raw.forEach((r) => { const id = Number(r.panel_id ?? r.panelId); if (!rawPer.has(id)) rawPer.set(id, []); rawPer.get(id)!.push(r) })
-  const kendalaPanel = new Map<number, string[]>(), kendalaUmum = new Map<string, string[]>()
-  b.kendalaTerbuka.forEach((k) => {
-    if (k.panel_id == null) { const n = upper(k.proyek); kendalaUmum.set(n, [...(kendalaUmum.get(n) || []), upper(k.teks)]) }
-    else kendalaPanel.set(Number(k.panel_id), [...(kendalaPanel.get(Number(k.panel_id)) || []), upper(k.teks)])
+  const kendalaPanel = new Map<number, KendalaLap[]>(), kendalaUmum = new Map<string, KendalaLap[]>()
+  ;[...b.kendala].sort((a, c) => a.id - c.id).filter((k) => kendalaMasukLaporan(k, hariIni)).forEach((k) => {
+    if (k.panel_id == null) { const n = upper(k.proyek); kendalaUmum.set(n, [...(kendalaUmum.get(n) || []), kendalaDariSumber(k)]) }
+    else kendalaPanel.set(Number(k.panel_id), [...(kendalaPanel.get(Number(k.panel_id)) || []), kendalaDariSumber(k)])
   })
   // kelompok per (nama proyek, deadline) - WO bernomor sama / proyek sama dgn deadline sama digabung
   const grup = new Map<string, { nama: string; target: string; woDibuat: string; panels: any[] }>()
@@ -272,7 +307,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   const tetap = (lama?.proyek || []).filter((p) => p.src !== 'otomatis')
   return {
     versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
-    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [],
+    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni),
   }
 }
@@ -312,17 +347,18 @@ export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: stri
 
 // ---------- teks WhatsApp (satu-satunya pembentuk teks) ----------
 export function formatTeksWhatsApp(d: DrafLaporan): string {
+  const tampilK = (k: KendalaLap) => !!k.teks.trim() && (d.tampilTeratasi !== false || !k.teratasi)
   const L: string[] = [judulLaporan(d.tanggal, d.jam), '']
   d.proyek.forEach((p) => {
     L.push(`${p.nama.trim() || 'PROYEK'}${p.deadline ? ` (${fmtTglLaporan(p.deadline)})` : ''}`)
     if (p.ringkas.trim()) L.push(`* ${p.ringkas.trim()}`)
-    p.kendalaUmum.filter((k) => k.trim()).forEach((k) => L.push(`- ${k.trim()}`))
+    p.kendalaUmum.filter(tampilK).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
     if (!p.ringkas.trim()) {
       let no = 0
       p.panels.forEach((pn) => {
         if (pn.nama.trim()) L.push(`${++no}. ${pn.nama.trim()}`)
         pn.pekerjaan.filter((j) => j.teks.trim()).forEach((j) => L.push(`* ${j.teks.trim()}${j.selesai ? ' ✅' : ''}`))
-        pn.kendala.filter((k) => k.trim()).forEach((k) => L.push(`- ${k.trim()}`))
+        pn.kendala.filter(tampilK).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
       })
     }
     L.push('')
@@ -398,8 +434,8 @@ export async function muatPilihanArsip(db: any, o: { hari?: number; kecualiPanel
   return [...grup.values()].map((g) => ({ ...g, targets: g.targets.sort() })).sort((a, b) => terakhir(b).localeCompare(terakhir(a)))
 }
 // panel arsip terpilih -> entri proyek 'arsip' (per nomor WO / proyek); pekerjaan = sisa (yang belum selesai)
-export function proyekDariArsip(g: GrupArsip, pilih: PanelArsip[], kendalaTerbuka: { panel_id: number | null; teks: string }[]): ProyekLap {
-  const kd = (id: number) => kendalaTerbuka.filter((k) => Number(k.panel_id) === id).map((k) => upper(k.teks))
+export function proyekDariArsip(g: GrupArsip, pilih: PanelArsip[], kendala: KendalaSumber[], hariIni = hariKerjaWib()): ProyekLap {
+  const kd = (id: number) => kendala.filter((k) => Number(k.panel_id) === id && kendalaMasukLaporan(k, hariIni)).sort((a, c) => a.id - c.id).map(kendalaDariSumber)
   const targets = pilih.map((p) => p.target).filter(Boolean).sort()
   return {
     id: idBaru(), src: 'arsip', nama: g.proyek, deadline: targets[0] || '', ringkas: '', kendalaUmum: [],
@@ -417,7 +453,10 @@ export function bacaSimpanan(user: string): SimpananLaporan | null {
   try {
     const s = localStorage.getItem(kunciSimpan(user)); if (!s) return null
     const j = JSON.parse(s)
-    return j?.draf?.versi === 1 && Array.isArray(j.draf.proyek) ? j : null
+    if (!(j?.draf?.versi === 1 && Array.isArray(j.draf.proyek))) return null
+    // draf lama: kendala berupa teks -> KendalaLap
+    j.draf.proyek = j.draf.proyek.map((p: any) => ({ ...p, kendalaUmum: (p.kendalaUmum || []).map(normKendala), panels: (p.panels || []).map((n: any) => ({ ...n, kendala: (n.kendala || []).map(normKendala) })) }))
+    return j
   } catch { return null }
 }
 export function tulisSimpanan(user: string, s: SimpananLaporan): boolean {
