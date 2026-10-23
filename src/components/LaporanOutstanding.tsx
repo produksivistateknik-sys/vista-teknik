@@ -14,6 +14,7 @@ import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
 import { cetakLaporanBerkop, htmlHalamanBerkop } from '../lib/laporanOutstandingBerkop'
+import { KomponenMainPengaturan } from './KomponenMainPengaturan'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
   proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
@@ -102,6 +103,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   // semua kendala tidak terhapus (terbuka + teratasi) - penyaringan teratasi di lib (kendalaMasukLaporan)
   const [kendala, setKendala] = useState<KendalaSumber[] | null>(null)
   const [picker, setPicker] = useState<{ memuat: boolean; galat?: string; grup: GrupArsip[]; pilih: Set<number>; hanyaBelum: boolean } | null>(null)
+  const [aturMain, setAturMain] = useState(false) // pengaturan komponen main/printilan (KomponenMainPengaturan)
   const [salin, setSalin] = useState('')
   const diedit = teksWa !== teksSistem
 
@@ -230,12 +232,14 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                 Tampilkan kendala yang sudah teratasi <span className="lo-meta">(sampai {HARI_TAMPIL_TERATASI} hari kerja sesudah tanggal teratasi)</span>
               </label></div>
             <div className="lo-act">
+              <button className="loBtn" type="button" onClick={() => setAturMain((x) => !x)}>Komponen main</button>
               <button className="loBtn" type="button" onClick={bukaArsip}>{picker ? 'Tutup arsip' : 'Ambil dari arsip'}</button>
               <button className="loBtn pri" type="button" onClick={() => ubah((d) => ({ ...d, proyek: [...d.proyek, proyekManualBaru()] }))}>+ Tambah proyek</button>
             </div>
           </div>
 
           {picker && <PemilihArsip picker={picker} setPicker={setPicker} sudahAda={sudahAda} onMasuk={masukkanArsip} />}
+          {aturMain && <KomponenMainPengaturan db={db} user={user} onTutup={() => setAturMain(false)} />}
 
           {draf.proyek.length === 0 && <div className="lo-empty">Belum ada proyek. Klik “+ Tambah proyek” atau “Ambil dari arsip”.</div>}
           {draf.proyek.map((p, pi) => (

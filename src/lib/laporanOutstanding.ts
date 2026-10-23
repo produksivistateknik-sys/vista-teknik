@@ -136,7 +136,9 @@ const hariIniDari = (waktu: any, hariIni: string) => !!waktu && hariKerjaDari(wa
 //      "(+N proses menunggu: ...)". Aktif tapi tanggal jadwal lewat & belum berjalan -> "(TERLAMBAT)".
 //  V3: seperti V2, proses aktif dgn kumpulan komponen sama digabung: "POTONG & BENDING (8 KOMPONEN)".
 export type Varian = 'V1' | 'V2' | 'V3'
-export type OpsiPekerjaan = { varian?: Varian; timerBerjalan?: Set<string> } // timer: `${panelId}|${kode}|${proses}`
+// penandaMain: Map `${jenis_panel}|${kode}` -> is_main (tabel laporan_komponen_main); tidak ada = MAIN. Hanya proses per-WP
+// (bukan WIRING/BUSBAR/QC/PACKING/NAMEPLATE/YELLOWMARK) yang menyaring printilan.
+export type OpsiPekerjaan = { varian?: Varian; timerBerjalan?: Set<string>; penandaMain?: Map<string, boolean> } // timer: `${panelId}|${kode}|${proses}`
 const PENANDA = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
 // nama komponen dari BOM live (getEffCfgGlobal; fallback konstanta PANEL_TYPES) - huruf kapital; tak ketemu -> kode
 export function namaKomponen(tipe: string, kode: string): string {
@@ -159,8 +161,11 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
   const hasil: Pekerjaan[] = []
   const menunggu: string[] = []
   const gabung: { proses: string; kodes: Set<string>; mulai: boolean; telat: boolean }[] = []
-  let adaKomponenBelum = false // utk gerbang QC di V2/V3: masih ada pekerjaan komponen terjadwal yg belum 100%
-  rows.forEach((r) => { if (!PENANDA.includes(r.proses) && r.proses !== 'BUSBAR') Object.values(r.schedule || {}).forEach((es: any) => (es || []).forEach((e: any) => (e?.komponen || []).forEach((k: string) => { if (k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && pctK(k, r.proses) < 100) adaKomponenBelum = true }))) })
+  // KOMPONEN MAIN (23 Okt 2026): proses per-WP hanya dari komponen main (penanda per jenis panel); WIRING tidak disaring.
+  const isMainK = (k: string) => opsi.penandaMain?.get(`${panel?.tipe}|${k}`) ?? true
+  const ikutLaporan = (k: string, pr: string) => pr === 'WIRING CONTROL' || pr === 'WIRING POWER' || isMainK(k)
+  let adaKomponenBelum = false // utk gerbang QC di V2/V3: masih ada pekerjaan komponen (main) terjadwal yg belum 100%
+  rows.forEach((r) => { if (!PENANDA.includes(r.proses) && r.proses !== 'BUSBAR') Object.values(r.schedule || {}).forEach((es: any) => (es || []).forEach((e: any) => (e?.komponen || []).forEach((k: string) => { if (k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && ikutLaporan(k, r.proses) && pctK(k, r.proses) < 100) adaKomponenBelum = true }))) })
   const catatMenunggu = (proses: string, telat: boolean) => menunggu.push(`${LABEL_PROSES[proses] || proses}${telat ? ' TERLAMBAT' : ''}`)
   for (const proses of PROSES_LAP) {
     if (!prosesBerlakuUntukTipe(panel?.tipe, proses)) continue
@@ -204,7 +209,7 @@ export function turunkanPekerjaanPanel(panel: any, rawRows: any[], hariIni: stri
     // proses komponen: per WP
     const semuaWp = new Set<string>(), perWp = new Map<string, Set<string>>(), tglAwal = new Map<string, string>()
     prow.forEach((r) => Object.entries(r.schedule || {}).forEach(([t, es]: [string, any]) => (es || []).forEach((e: any) => {
-      const kodes = (e?.komponen || []).filter((k: string) => k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0)
+      const kodes = (e?.komponen || []).filter((k: string) => k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && ikutLaporan(k, proses))
       if (!kodes.length) return
       const wp = labelWp(e.wp)
       semuaWp.add(wp)
@@ -288,6 +293,7 @@ export type BahanLaporan = {
   hariIni?: string
   jam?: string
   timerBerjalan?: Set<string>
+  penandaMain?: Map<string, boolean>
   varian?: Varian
 }
 export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | null): DrafLaporan {
@@ -319,8 +325,8 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
       const rows = rawPer.get(Number(p.id)) || []
       const a = jadwalAwal(rows); if (a && (!awal || a < awal)) awal = a
       const varian = b.varian || 'V2'
-      const pekerjaanSemua = turunkanPekerjaanPanel(p, rows, hariIni, { varian: 'V1', timerBerjalan: b.timerBerjalan })
-      const pekerjaan = varian === 'V1' ? pekerjaanSemua : turunkanPekerjaanPanel(p, rows, hariIni, { varian, timerBerjalan: b.timerBerjalan })
+      const pekerjaanSemua = turunkanPekerjaanPanel(p, rows, hariIni, { varian: 'V1', timerBerjalan: b.timerBerjalan, penandaMain: b.penandaMain })
+      const pekerjaan = varian === 'V1' ? pekerjaanSemua : turunkanPekerjaanPanel(p, rows, hariIni, { varian, timerBerjalan: b.timerBerjalan, penandaMain: b.penandaMain })
       const kd = kendalaPanel.get(Number(p.id)) || []
       if (pekerjaanSemua.length || kd.length) panels.push({ id: idBaru(), src: 'otomatis', nama: String(p.nama || '').trim(), panelId: Number(p.id), pekerjaan, kendala: kd, pekerjaanSemua, pekerjaanRingkas: pekerjaan })
     })
@@ -338,7 +344,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   return {
     versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
     proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
-    prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni),
+    prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni, b.penandaMain),
   }
 }
 
@@ -368,7 +374,7 @@ function bawaDariDrafLama(baru: ProyekLap[], lama: ProyekLap[]): void {
 
 // "Prioritas Pengerjaan Minggu Ini" - draf dari Raw Schedule Senin-Sabtu minggu berjalan: panel yang punya pekerjaan
 // belum selesai terjadwal di rentang itu, per proyek, urut deadline terdekat. Bisa diedit di penyusun.
-export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: string): PrioritasLap[] {
+export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: string, penandaMain?: Map<string, boolean>): PrioritasLap[] {
   const { dari, sampai } = rentangMingguIni(hariIni)
   const dalam = (t: string) => t >= dari && t <= sampai
   const panelById = new Map<number, any>()
@@ -385,7 +391,7 @@ export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: stri
     const ada = Object.entries(r.schedule || {}).some(([t, es]: [string, any]) => dalam(t) && (es || []).some((e: any) => {
       if (r.proses === 'QC TEST' || r.proses === 'PACKING') return statusPenandaPanel(p, r.proses) !== 'DONE'
       if (r.proses === 'NAMEPLATE' || r.proses === 'YELLOWMARK') return (Number(p[`${r.proses.toLowerCase()}_progress`]) || 0) < 100
-      return (e?.komponen || []).some((k: string) => k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && (Number(cl[k]?.progress?.[r.proses]) || 0) < 100)
+      return (e?.komponen || []).some((k: string) => k && !k.startsWith('__wiring_') && !e?.digeserKe?.[k] && (Number(cl[k]?.qty) || 0) > 0 && (r.proses === 'WIRING CONTROL' || r.proses === 'WIRING POWER' || (penandaMain?.get(`${p.tipe}|${k}`) ?? true)) && (Number(cl[k]?.progress?.[r.proses]) || 0) < 100)
     }))
     if (ada) aktif.add(id)
   })
@@ -552,7 +558,13 @@ async function pastikanBomLive(db: any): Promise<void> {
   if (wm.error) throw new Error('panel_wp_meta: ' + wm.error.message)
   if (bom.length) setGlobalLivePanelTypes(buildPanelTypesFromBom(bom, tm.data, wm.data))
 }
-export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'woAktif' | 'raw' | 'timerBerjalan'>> {
+// Penanda komponen MAIN/printilan Laporan Outstanding (tabel laporan_komponen_main, kunci jenis_panel+kode). Dibaca sekali per
+// pembuatan laporan (.range penuh, urutan stabil); error dilempar. Tidak ada di tabel = MAIN.
+export async function muatPenandaMain(db: any): Promise<Map<string, boolean>> {
+  const rows = await fetchAllPaged((a, z) => db.from('laporan_komponen_main').select('jenis_panel,kode_komponen,is_main').order('jenis_panel').order('kode_komponen').range(a, z))
+  return new Map(rows.map((r: any) => [`${r.jenis_panel}|${r.kode_komponen}`, !!r.is_main]))
+}
+export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'woAktif' | 'raw' | 'timerBerjalan' | 'penandaMain'>> {
   // relevansi komponen-proses (bom_proses_relevan) utk rantai estafet V2/V3 - biasanya sudah dimuat App saat mulai
   if (!GLOBAL_PROSES_RELEVAN_TERMUAT && !(await muatProsesRelevanGlobal(db))) throw new Error('gagal memuat bom_proses_relevan')
   await pastikanBomLive(db)
@@ -565,7 +577,7 @@ export async function muatBahanOtomatis(db: any): Promise<Pick<BahanLaporan, 'wo
   // timer berjalan (selesai kosong) - V2/V3 menganggap proses komponen itu aktif
   const tm = await fetchAllPaged((a, z) => db.from('fcs_timer_kerja').select('id,panel_id,kode_komponen,proses').is('selesai', null).order('id').range(a, z))
   const timerBerjalan = new Set<string>(tm.map((t: any) => `${t.panel_id}|${t.kode_komponen}|${t.proses}`))
-  return { woAktif: wo.map((w: any) => ({ ...w, panels: per.get(w.id) || [] })), raw, timerBerjalan }
+  return { woAktif: wo.map((w: any) => ({ ...w, panels: per.get(w.id) || [] })), raw, timerBerjalan, penandaMain: await muatPenandaMain(db) }
 }
 async function muatPerPotongan(ids: any[], build: (pot: any[], a: number, z: number) => any): Promise<any[]> {
   const out: any[] = []
@@ -581,6 +593,7 @@ export type PanelArsip = { id: number; nama: string; tipe: string; woId: number;
 export type GrupArsip = { kunci: string; wo: string; proyek: string; targets: string[]; panels: PanelArsip[] }
 export async function muatPilihanArsip(db: any, o: { hari?: number; kecualiPanelIds?: Set<number> } = {}): Promise<GrupArsip[]> {
   await pastikanBomLive(db)
+  const penandaMain = await muatPenandaMain(db)
   const batas = new Date(Date.now() - (o.hari ?? 60) * 864e5).toISOString()
   const pa = await fetchAllPaged((a, z) => db.from('panels_archived').select('*').gte('diarsipkan_pada', batas).order('id').range(a, z))
   const ids = pa.map((p: any) => p.id)
@@ -595,7 +608,7 @@ export async function muatPilihanArsip(db: any, o: { hari?: number; kecualiPanel
     const w = woMap.get(p.wo_id) || {}
     const woNo = String(p.wo_number_snapshot ?? w.wo ?? '').trim(), nama = upper(p.proyek_snapshot || w.proyek || '')
     const k = `${woNo}|${nama}`
-    const pekerjaan = turunkanPekerjaanPanel(p, raw, hariIni)
+    const pekerjaan = turunkanPekerjaanPanel(p, raw, hariIni, { penandaMain }) // jenis = panels_archived.tipe
     const item: PanelArsip = {
       id: Number(p.id), nama: String(p.nama || '').trim(), tipe: p.tipe, woId: p.wo_id, target: w.target || '',
       diarsipkanPada: p.diarsipkan_pada, snapshot: Number(p.progress_snapshot) || 0, pekerjaan,
