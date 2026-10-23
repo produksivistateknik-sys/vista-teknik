@@ -16,7 +16,7 @@ import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
 import { cetakLaporanBerkop, htmlHalamanBerkop } from '../lib/laporanOutstandingBerkop'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
-  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI,
+  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
   type DrafLaporan, type ProyekLap, type PanelLap, type GrupArsip, type PanelArsip, type Sumber, type Varian, type KendalaLap, type KendalaSumber,
 } from '../lib/laporanOutstanding'
 
@@ -224,7 +224,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
 
         {tab === 'susun' && <section>
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
-            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di draf ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.
+            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Baris pekerjaan/kendala yang dibiarkan kosong menjadi garis tulis tangan di tampilan berkop/PDF (tidak ditulis di teks WhatsApp). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di draf ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.
               <label className="lo-row" style={{ marginTop: 6, cursor: 'pointer', color: 'var(--lo-fg)' }}>
                 <input className="chk" type="checkbox" checked={draf.tampilTeratasi !== false} onChange={(e) => ubah((d) => ({ ...d, tampilTeratasi: e.target.checked }))} />
                 Tampilkan kendala yang sudah teratasi <span className="lo-meta">(sampai {HARI_TAMPIL_TERATASI} hari kerja sesudah tanggal teratasi)</span>
@@ -296,7 +296,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                 <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, kendalaUmum: [...x.kendalaUmum, { id: idBaru(), teks: '' }] }))}>+ Kendala umum</button>
                 {p.src === 'otomatis' && p.ringkas === '' && (draf.varian || 'V2') !== 'V1' && p.panels.some((n) => n.pekerjaanSemua) && <button className="loBtn lnk" type="button"
                   onClick={() => { if (!window.confirm('Ganti daftar pekerjaan proyek ini? Edit pekerjaan pada panel otomatis proyek ini akan diganti.')) return
-                    setP(pi, (x) => ({ ...x, semua: !x.semua, panels: x.panels.map((n) => (n.pekerjaanSemua ? { ...n, pekerjaan: (!x.semua ? n.pekerjaanSemua : n.pekerjaanRingkas || []).map((j) => ({ ...j, id: idBaru() })) } : n)) })) }}>
+                    setP(pi, (x) => ({ ...x, semua: !x.semua, panels: x.panels.map((n) => (n.pekerjaanSemua ? { ...n, pekerjaan: [...(!x.semua ? n.pekerjaanSemua : n.pekerjaanRingkas || []).map((j) => ({ ...j, id: idBaru() })), ...n.pekerjaan.filter(kosong)] } : n)) })) }}>
                   {p.semua ? `Ringkas lagi (aturan ${draf.varian})` : 'Tampilkan semua proses terjadwal'}</button>}
                 {p.ringkas === '' && <button className="loBtn lnk" type="button" onClick={() => setP(pi, (x) => ({ ...x, ringkas: `WO TURUN TGL ${fmtTglLaporan(draf.tanggal)}, BELUM START PENGERJAAN` }))}>Ganti jadi satu baris</button>}
               </div>

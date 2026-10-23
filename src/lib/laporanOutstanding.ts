@@ -332,11 +332,36 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   })
   // pertahankan entri arsip & manual + catatan dari draf lama (Buat ulang hanya mengganti bagian otomatis)
   const tetap = (lama?.proyek || []).filter((p) => p.src !== 'otomatis')
+  bawaDariDrafLama(proyek, lama?.proyek || [])
   return {
     versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
     proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni),
   }
+}
+
+// "Buat ulang laporan" mengganti isi OTOMATIS, tetapi yang ditambahkan admin ke proyek otomatis TIDAK dibuang (23 Okt):
+// - baris KOSONG pekerjaan/kendala (garis tulis tangan di dokumen berkop) -> ditempel lagi ke panel yang sama (panelId)
+//   / kendala umum proyek yang sama (nama + deadline), di akhir daftarnya;
+// - panel Manual/Arsip yang disisipkan ke proyek otomatis -> dibawa utuh.
+// Proyek/panel yang sudah tidak ada di susunan baru dimunculkan lagi hanya berisi bawaan itu. `baru` diubah di tempat.
+function bawaDariDrafLama(baru: ProyekLap[], lama: ProyekLap[]): void {
+  lama.filter((p) => p.src === 'otomatis').forEach((lp) => {
+    const umumK = lp.kendalaUmum.filter(kosong)
+    const kosongPanel = lp.panels.filter((n) => n.src === 'otomatis')
+      .map((n) => ({ n, pk: n.pekerjaan.filter(kosong), kk: n.kendala.filter(kosong) })).filter((x) => x.pk.length || x.kk.length)
+    const panelTambahan = lp.panels.filter((n) => n.src !== 'otomatis')
+    if (!umumK.length && !kosongPanel.length && !panelTambahan.length) return
+    let tp = baru.find((p) => p.nama === lp.nama && p.deadline === lp.deadline)
+    if (!tp) { tp = { ...lp, ringkas: '', kendalaUmum: [], panels: [] }; baru.push(tp) }
+    tp.kendalaUmum = [...tp.kendalaUmum, ...umumK]
+    kosongPanel.forEach(({ n, pk, kk }) => {
+      const i = tp!.panels.findIndex((x) => x.panelId != null && x.panelId === n.panelId)
+      if (i >= 0) tp!.panels[i] = { ...tp!.panels[i], pekerjaan: [...tp!.panels[i].pekerjaan, ...pk], kendala: [...tp!.panels[i].kendala, ...kk] }
+      else tp!.panels.push({ ...n, pekerjaan: pk, kendala: kk, pekerjaanSemua: undefined, pekerjaanRingkas: undefined })
+    })
+    tp.panels.push(...panelTambahan)
+  })
 }
 
 // "Prioritas Pengerjaan Minggu Ini" - draf dari Raw Schedule Senin-Sabtu minggu berjalan: panel yang punya pekerjaan
@@ -374,20 +399,22 @@ export function buatPrioritasMingguIni(woAktif: any[], raw: any[], hariIni: stri
 
 // ---------- teks WhatsApp (satu-satunya pembentuk teks) ----------
 // saringan kendala yang ikut laporan - SATU aturan utk teks WhatsApp & dokumen berkop
-export const kendalaTampil = (d: DrafLaporan) => (k: KendalaLap) => !!k.teks.trim() && (d.tampilTeratasi !== false || !k.teratasi)
+// Baris KOSONG (pekerjaan/kendala tanpa teks): dilewati di teks WhatsApp, jadi garis tulis tangan di dokumen berkop.
+export const kosong = (x: { teks: string }) => !String(x.teks ?? '').trim()
+export const kendalaTampil = (d: DrafLaporan) => (k: KendalaLap) => d.tampilTeratasi !== false || !k.teratasi
 export function formatTeksWhatsApp(d: DrafLaporan): string {
   const tampilK = kendalaTampil(d)
   const L: string[] = [judulLaporan(d.tanggal, d.jam), '']
   d.proyek.forEach((p) => {
     L.push(`${p.nama.trim() || 'PROYEK'}${p.deadline ? ` (${fmtTglLaporan(p.deadline)})` : ''}`)
     if (p.ringkas.trim()) L.push(`* ${p.ringkas.trim()}`)
-    p.kendalaUmum.filter(tampilK).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
+    p.kendalaUmum.filter((k) => tampilK(k) && !kosong(k)).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
     if (!p.ringkas.trim()) {
       let no = 0
       p.panels.forEach((pn) => {
         if (pn.nama.trim()) L.push(`${++no}. ${pn.nama.trim()}`)
         pn.pekerjaan.filter((j) => j.teks.trim()).forEach((j) => L.push(`* ${j.teks.trim()}${j.selesai ? ' ✅' : ''}`))
-        pn.kendala.filter(tampilK).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
+        pn.kendala.filter((k) => tampilK(k) && !kosong(k)).forEach((k) => L.push(`- ${teksKendalaWa(k)}`))
       })
     }
     L.push('')
@@ -449,7 +476,11 @@ export const CSS_DOKUMEN_LAPORAN = `
 .lod .kdm .tg{margin-left:.7em}
 .lod li.kd.ok .kdt{color:var(--dim)}
 .lod .kdok{color:var(--ok);font-weight:700;font-size:9.5pt;margin-top:.05em}
-.lod-umum{padding:.35em .7em 0}
+.lod-umum{padding:.35em .7em 0;break-inside:avoid}
+.lod li.tulis{padding:0;height:2.9em;border-bottom:.6px solid #9aa1ad;break-inside:avoid}
+.lod li.tulis::before{display:none}
+.lod-proj{break-inside:auto}
+.lod-ph+.lod-pn,.lod-ph+.lod-umum{break-before:avoid}
 .lod-belum{padding:.45em .7em;color:var(--dim)}
 .lod-sec{margin-top:1.4em;padding-top:.6em;border-top:2px solid var(--ink)}
 .lod-sec h3{margin:0 0 .3em;font-size:10.5pt;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
@@ -462,6 +493,8 @@ export const CSS_DOKUMEN_LAPORAN = `
 .lod-foot{margin-top:1.6em;font-size:9pt;color:var(--dim);display:flex;justify-content:space-between;gap:10px;border-top:1px solid var(--line);padding-top:.5em}
 `
 
+// garis kosong utk ditulis tangan setelah dicetak (~2 baris teks, garis bawah tipis, tanpa poin)
+const BARIS_TULIS = '<li class="tulis"></li>'
 function htmlKendala(k: KendalaLap, umum: boolean): string {
   const siapa = [k.divisi, k.oleh].filter(Boolean).map((x) => escH(String(x))).join(' · ')
   const meta = siapa || k.tanggal ? `<span class="kdm">${siapa}${k.tanggal ? `<span class="tg">${escH(tglKecil(k.tanggal))}</span>` : ''}</span>` : ''
@@ -474,17 +507,17 @@ export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string } = {
   d.proyek.forEach((p) => {
     h += `<div class="lod-proj"><div class="lod-ph"><span class="nm">${escH(p.nama.trim() || 'PROYEK')}</span><span class="dl">${p.deadline ? `Deadline <b>${escH(tglSedang(p.deadline))}</b>` : ''}</span></div>`
     const umum = p.kendalaUmum.filter(tampilK)
-    if (umum.length) h += `<ul class="lod-umum">${umum.map((k) => htmlKendala(k, true)).join('')}</ul>`
+    if (umum.length) h += `<ul class="lod-umum">${umum.map((k) => (kosong(k) ? BARIS_TULIS : htmlKendala(k, true))).join('')}</ul>`
     if (p.ringkas.trim()) h += `<div class="lod-belum">${escH(p.ringkas.trim())}</div>`
     else {
       let no = 0
       p.panels.forEach((pn) => {
-        const jobs = pn.pekerjaan.filter((j) => j.teks.trim()), kd = pn.kendala.filter(tampilK)
+        const jobs = pn.pekerjaan, kd = pn.kendala.filter(tampilK)
         const bernama = !!pn.nama.trim()
         if (!bernama && !jobs.length && !kd.length) return
         h += `<div class="lod-pn${bernama ? '' : ' nonum'}">${bernama ? `<div class="no">${++no}.</div>` : ''}<div>${bernama ? `<div class="pnm">${escH(pn.nama.trim())}</div>` : ''}<ul>`
-        jobs.forEach((j) => { h += `<li${j.selesai ? ' class="done"' : ''}>${escH(j.teks.trim())}</li>` })
-        kd.forEach((k) => { h += htmlKendala(k, false) })
+        jobs.forEach((j) => { h += kosong(j) ? BARIS_TULIS : `<li${j.selesai ? ' class="done"' : ''}>${escH(j.teks.trim())}</li>` })
+        kd.forEach((k) => { h += kosong(k) ? BARIS_TULIS : htmlKendala(k, false) })
         h += '</ul></div></div>'
       })
     }
