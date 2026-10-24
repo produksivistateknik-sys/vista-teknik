@@ -6,6 +6,7 @@ import { FotoZoomViewer, type FotoViewer } from "./FotoZoomViewer";
 import { Card } from "./ui/Primitives";
 import { ThumbMedia } from './ui/ThumbMedia'
 import { isVideoFoto } from '../lib/mediaThumb'
+import { UnduhWordProyekLuar } from './UnduhWordProyekLuar'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - sidebar tab sendiri - laporan/dokumentasi pekerjaan operator di
@@ -45,6 +46,7 @@ export function ProyekLuarTab(){
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[savingId,setSavingId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
+  const[wordAwal,setWordAwal]=useState<any>(null); // dialog Unduh Word (24 Okt 2026)
   const[toast,setToast]=useState<{msg:string;error?:boolean}|null>(null);
   const toastTimer=useRef<any>(null);
   const tampilToast=(msg:string,error=false)=>{
@@ -232,12 +234,18 @@ export function ProyekLuarTab(){
                 {/* Baris bawah: operator | arsipkan */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginTop:12}}>
                   <span style={{fontSize:12,color:MUTED,minWidth:0,overflowWrap:"anywhere"}}>👤 {l.operator_nama}</span>
+                  <div style={{display:"flex",gap:6,flexShrink:0}}>
+                  <button onClick={()=>setWordAwal(l)} title="Unduh laporan proyek ini sebagai dokumen Word (.docx) yang bisa diedit"
+                    style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bfdbfe",background:"#eff6ff",color:"#1d4ed8",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                    Unduh Word
+                  </button>
                   <button onClick={()=>toggleArsip(l)} disabled={savingId!=null}
                     style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--card-bg,#fff)",
                       color:"var(--text-secondary,#475569)",fontSize:12,fontWeight:600,flexShrink:0,
                       cursor:savingId!=null?"not-allowed":"pointer",opacity:savingId!=null&&savingId!==l.id?.5:1}}>
                     {savingId===l.id?"Menyimpan...":l.is_archived?"Batalkan Arsip":"Arsipkan"}
                   </button>
+                  </div>
                 </div>
               </Card>
             );
@@ -253,6 +261,7 @@ export function ProyekLuarTab(){
         </div>
       )}
 
+      {wordAwal&&<UnduhWordProyekLuar awal={wordAwal} semua={list} onClose={()=>setWordAwal(null)}/>}
       {fotoViewer&&<FotoZoomViewer fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
     </div>
   );
