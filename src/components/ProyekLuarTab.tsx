@@ -47,6 +47,26 @@ export function ProyekLuarTab(){
   const[savingId,setSavingId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
   const[wordAwal,setWordAwal]=useState<any>(null); // dialog Unduh Word (24 Okt 2026)
+  // Edit catatan (24 Okt 2026): hanya akun divisi admin; lewat RPC ubah_catatan_proyek_luar (jejak diubah_oleh/pada + log
+  // proyek_luar_catatan_log). Admin boleh semua laporan; operator mengedit dari vista-pekerja (miliknya, selama Berlangsung).
+  const sesiAdmin=(()=>{try{return JSON.parse(localStorage.getItem("vista_admin_session")||"{}")}catch{return{}}})();
+  const bolehUbahCatatan=sesiAdmin?.divisi==="admin";
+  const[editCat,setEditCat]=useState<{id:number;teks:string}|null>(null);
+  const[simpanCat,setSimpanCat]=useState(false);
+  const simpanCatatan=async(l:any)=>{
+    if(!editCat||simpanCat)return;
+    setSimpanCat(true);
+    try{
+      const oleh=String(sesiAdmin?.nama||sesiAdmin?.name||"Admin").trim();
+      const{data,error}=await supabase.rpc("ubah_catatan_proyek_luar" as any,{p_id:l.id,p_catatan:editCat.teks,p_oleh:oleh,p_pekerja_id:null,p_admin:true} as any);
+      if(error)throw error;
+      setList(prev=>prev.map(x=>x.id===l.id?{...x,...(data as any)}:x));
+      setEditCat(null);tampilToast("Catatan tersimpan");
+    }catch(err:any){
+      console.error("[Proyek Luar] simpan catatan gagal:",err);
+      tampilToast("Gagal menyimpan catatan: "+(err?.message||err),true);
+    }finally{setSimpanCat(false);}
+  };
   const[toast,setToast]=useState<{msg:string;error?:boolean}|null>(null);
   const toastTimer=useRef<any>(null);
   const tampilToast=(msg:string,error=false)=>{
@@ -191,10 +211,20 @@ export function ProyekLuarTab(){
 
                 <div style={{height:1,background:"var(--border-color,#e2e8f0)",margin:"12px 0"}}/>
 
-                <div style={{fontSize:10.5,fontWeight:700,letterSpacing:.8,textTransform:"uppercase",color:MUTED,marginBottom:8}}>
-                  Catatan Pekerjaan
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}>
+                  <span style={{fontSize:10.5,fontWeight:700,letterSpacing:.8,textTransform:"uppercase",color:MUTED}}>Catatan Pekerjaan</span>
+                  {bolehUbahCatatan&&editCat?.id!==l.id&&<button onClick={()=>setEditCat({id:l.id,teks:l.catatan||""})} style={{border:0,background:"none",padding:0,color:"#2563eb",fontSize:12,fontWeight:600,cursor:"pointer"}}>Ubah catatan</button>}
                 </div>
-                {poin.length===0?(
+                {editCat?.id===l.id?(
+                  <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                    <textarea value={editCat.teks} onChange={e=>setEditCat({id:l.id,teks:e.target.value})} rows={Math.min(14,Math.max(4,editCat.teks.split(/\r?\n/).length+1))}
+                      style={{width:"100%",padding:10,borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,lineHeight:1.5,fontFamily:"inherit",resize:"vertical",color:"var(--text-primary,#1e293b)",background:"var(--card-bg,#fff)"}}/>
+                    <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                      <button onClick={()=>setEditCat(null)} disabled={simpanCat} style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--card-bg,#fff)",color:"var(--text-secondary,#475569)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Batal</button>
+                      <button onClick={()=>simpanCatatan(l)} disabled={simpanCat} style={{padding:"5px 12px",borderRadius:7,border:0,background:"#1d4ed8",color:"#fff",fontSize:12,fontWeight:700,cursor:simpanCat?"wait":"pointer"}}>{simpanCat?"Menyimpan...":"Simpan catatan"}</button>
+                    </div>
+                  </div>
+                ):poin.length===0?(
                   <div style={{fontSize:13,color:"#94a3b8"}}>Tidak ada catatan.</div>
                 ):(
                   <ol style={{listStyle:"none",margin:0,padding:0,display:"flex",flexDirection:"column",gap:7}}>
@@ -208,6 +238,7 @@ export function ProyekLuarTab(){
                     ))}
                   </ol>
                 )}
+                {l.catatan_diubah_oleh&&editCat?.id!==l.id&&<div style={{fontSize:11,color:MUTED,marginTop:6}}>Diubah oleh {l.catatan_diubah_oleh}{l.catatan_diubah_pada?" · "+new Date(l.catatan_diubah_pada).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):""}</div>}
 
                 {/* Foto dokumentasi */}
                 <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,flexWrap:"wrap"}}>
