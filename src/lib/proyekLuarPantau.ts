@@ -49,5 +49,5 @@ export function jejakUbahCatatanPL(l: any): { oleh: string; pada: string } | nul
 // Nama proyek dinormalkan - SAMA dgn mulai_laporan_proyek_luar (lower + spasi beruntun jadi satu).
 export const normalNamaPL = (s: string) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
 
-// Pesan bentrok dari RPC ubah_catatan_proyek_luar (errcode 40001).
-export const bentrokCatatanPL = (err: any) => err?.code === '40001' || /BENTROK/i.test(String(err?.message || ''))
+// Pesan bentrok dari RPC ubah_catatan_proyek_luar (errcode PT409 = HTTP 409; 40001 versi awal - diulang PostgREST sampai timeout).
+export const bentrokCatatanPL = (err: any) => err?.code === 'PT409' || err?.code === '40001' || /BENTROK/i.test(String(err?.message || ''))

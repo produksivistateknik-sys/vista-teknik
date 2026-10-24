@@ -87,7 +87,7 @@ begin
   end if;
   if r.catatan is not distinct from v_baru then return to_jsonb(r); end if;  -- tidak ada perubahan
   if coalesce(p_cek_dasar, false) and r.catatan is distinct from nullif(btrim(coalesce(p_dasar, '')), '') then
-    raise exception 'BENTROK: catatan sudah diubah % - muat versi terbaru dulu', coalesce(r.catatan_diubah_oleh, 'orang lain') using errcode = '40001';
+    raise exception 'BENTROK: catatan sudah diubah % - muat versi terbaru dulu', coalesce(r.catatan_diubah_oleh, 'orang lain') using errcode = 'PT409';
   end if;
   select id into v_log from public.proyek_luar_catatan_log
    where proyek_luar_id = r.id and oleh = btrim(p_oleh) and peran = v_peran and waktu > now() - interval '15 minutes'
@@ -196,7 +196,7 @@ begin
   select count(*) into n from public.proyek_luar_catatan_log where proyek_luar_id = v_id;
   if n <> 1 then raise exception 'log simpan otomatis harus digabung (1), dapat %', n; end if;
   begin perform public.ubah_catatan_proyek_luar(v_id, 'abc', '__UJI_ADMIN', null, true, 'a', true); raise exception 'bentrok seharusnya ditolak';
-  exception when serialization_failure then null; end;
+  exception when sqlstate 'PT409' then null; end;
   perform public.ubah_catatan_proyek_luar(v_id, 'ab x', '__UJI_ADMIN', null, true);   -- pemanggil lama 5 argumen tetap jalan
   select count(*) into n from public.proyek_luar_catatan_log where proyek_luar_id = v_id;
   if n <> 2 then raise exception 'ganti pengubah harus baris log baru (2), dapat %', n; end if;
