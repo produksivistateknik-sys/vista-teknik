@@ -10,9 +10,12 @@ import { laporError } from '../lib/laporError'
 import { buatDocxProyekLuar, namaBerkasPL, namaMirip, urutFoto, tglPanjang, labelDivisiPL, type RecordPL } from '../lib/laporanProyekLuarDocx'
 
 export function UnduhWordProyekLuar({ awal, semua, onClose }: { awal: RecordPL; semua: RecordPL[]; onClose: () => void }) {
-  const kandidat = useMemo(() => [...semua].sort((a, b) => (namaMirip(b.nama_lokasi, awal.nama_lokasi) ? 1 : 0) - (namaMirip(a.nama_lokasi, awal.nama_lokasi) ? 1 : 0) || a.tanggal.localeCompare(b.tanggal) || a.id - b.id), [semua, awal])
-  const [pilihRec, setPilihRec] = useState<Set<number>>(() => new Set(semua.filter((r) => r.id === awal.id || namaMirip(r.nama_lokasi, awal.nama_lokasi)).map((r) => r.id)))
-  const [pilihFoto, setPilihFoto] = useState<Set<string>>(() => new Set(semua.filter((r) => r.id === awal.id || namaMirip(r.nama_lokasi, awal.nama_lokasi)).flatMap((r) => urutFoto(r.foto).map((f) => f.url))))
+  // (25 Okt 2026, multi-hari) satu record = satu entri hari; entri proyek yang diklik selalu tercentang, proyek lain bernama
+  // mirip (laporan lama yang terpecah) ikut tercentang sbg usulan - admin bisa melepas.
+  const sekelompok = (r: RecordPL) => (awal.proyek_id != null && r.proyek_id === awal.proyek_id) || r.id === awal.id || namaMirip(r.nama_lokasi, awal.nama_lokasi)
+  const kandidat = useMemo(() => [...semua].sort((a, b) => (sekelompok(b) ? 1 : 0) - (sekelompok(a) ? 1 : 0) || a.tanggal.localeCompare(b.tanggal) || a.id - b.id), [semua, awal]) // eslint-disable-line react-hooks/exhaustive-deps
+  const [pilihRec, setPilihRec] = useState<Set<number>>(() => new Set(semua.filter(sekelompok).map((r) => r.id)))
+  const [pilihFoto, setPilihFoto] = useState<Set<string>>(() => new Set(semua.filter(sekelompok).flatMap((r) => urutFoto(r.foto).map((f) => f.url))))
   const [judul, setJudul] = useState(awal.nama_lokasi.trim().toUpperCase())
   const [tampilSemua, setTampilSemua] = useState(false)
   const [proses, setProses] = useState<string | null>(null)
@@ -38,7 +41,7 @@ export function UnduhWordProyekLuar({ awal, semua, onClose }: { awal: RecordPL; 
       alert('Gagal membuat dokumen Word: ' + (e?.message || e)); setProses(null)
     }
   }
-  const daftar = tampilSemua ? kandidat : kandidat.filter((r) => pilihRec.has(r.id) || namaMirip(r.nama_lokasi, awal.nama_lokasi))
+  const daftar = tampilSemua ? kandidat : kandidat.filter((r) => pilihRec.has(r.id) || sekelompok(r))
   return (
     <Modal title="Unduh Word – Laporan Proyek Luar" onClose={() => { if (!proses) onClose() }} width={720}>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12, textAlign: 'left' }}>
@@ -54,7 +57,7 @@ export function UnduhWordProyekLuar({ awal, semua, onClose }: { awal: RecordPL; 
               <div key={r.id} style={{ border: '1px solid #e2e8f0', borderRadius: 10, padding: 10, background: on ? '#f8fafc' : '#fff' }}>
                 <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', cursor: 'pointer' }}>
                   <input type="checkbox" checked={on} onChange={() => toggleRec(r)} style={{ marginTop: 3 }} />
-                  <span style={{ fontSize: 13, color: '#1e293b' }}><b>{tglPanjang(r.tanggal)}</b> · {r.nama_lokasi}
+                  <span style={{ fontSize: 13, color: '#1e293b' }}><b>{tglPanjang(r.tanggal)}</b> · {r.nama_lokasi}{r.lokasi && r.lokasi !== r.nama_lokasi ? ` (${r.lokasi})` : ''}
                     <br /><span style={{ fontSize: 12, color: '#64748b' }}>{r.operator_nama} ({labelDivisiPL(r.divisi)}) · {fs.length} foto{r.status === 'berlangsung' ? ' · Berlangsung' : ''}</span></span>
                 </label>
                 {on && fs.length > 0 && (

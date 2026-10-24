@@ -6,10 +6,13 @@
 // 2 kolom berketerangan "Foto N" (N mulai 1 lagi di tiap tanggal). Baris foto tidak terpotong antar halaman (cantSplit).
 // Foto: urut waktu unggah, dikecilkan (sisi terpanjang 1280 px, JPEG 0,8) satu per satu; gagal dimuat -> tulisan
 // "Foto N tidak dapat dimuat" (dokumen tetap jadi). Video tidak dimasukkan. Hanya membaca data (tanpa tulis DB).
+// (25 Okt 2026, multi-hari) satu record = satu ENTRI hari (proyek_luar_entri); baris "Lokasi" dari proyek_luar.lokasi.
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { poinCatatanPL } from './proyekLuarPantau'
 
 export type FotoPL = { url: string; uploaded_at?: string; mime?: string; name?: string }
-export type RecordPL = { id: number; nama_lokasi: string; tanggal: string; catatan: string | null; status: string; operator_nama: string; divisi: string; foto: FotoPL[] }
+// Satu RecordPL = satu ENTRI hari (multi-hari, 25 Okt 2026): nama/lokasi/status dari proyeknya, sisanya dari entri.
+export type RecordPL = { id: number; proyek_id?: number; nama_lokasi: string; lokasi?: string | null; tanggal: string; catatan: string | null; status: string; operator_nama: string; divisi: string; foto: FotoPL[] }
 
 const SISI_MAKS = 1280
 const LEBAR_FOTO_PX = 300 // lebar gambar di sel tabel (2 kolom A4 berbatas 2 cm)
@@ -54,7 +57,8 @@ export async function buatDocxProyekLuar(o: {
   const recs = [...o.records].sort((a, b) => a.tanggal.localeCompare(b.tanggal) || a.id - b.id)
   const tglList = [...new Set(recs.map((r) => r.tanggal))]
   const pelapor = [...new Set(recs.map((r) => `${r.operator_nama} (${labelDivisiPL(r.divisi)})`))]
-  const lokasi = [...new Set(recs.map((r) => r.nama_lokasi.trim()))]
+  const namaProyek = [...new Set(recs.map((r) => r.nama_lokasi.trim()))]
+  const lokasi = [...new Set(recs.map((r) => String(r.lokasi || r.nama_lokasi).trim()))]
   const status = recs.some((r) => r.status === 'berlangsung') ? 'Berlangsung' : 'Selesai'
   const rentang = tglList.length ? (tglList.length === 1 ? tglPendek(tglList[0]) : `${tglPendek(tglList[0])} – ${tglPendek(tglList[tglList.length - 1])}`) : '-'
   const totalFoto = recs.reduce((n, r) => n + urutFoto(r.foto).filter((f) => o.fotoDipilih.has(f.url)).length, 0)
@@ -73,8 +77,9 @@ export async function buatDocxProyekLuar(o: {
     new Table({
       width: { size: 100, type: WidthType.PERCENTAGE },
       rows: [
-        infoBaris('Proyek', o.judulProyek.trim() || lokasi[0] || '-'),
-        infoBaris('Lokasi / nama di laporan', lokasi.join('\n')),
+        infoBaris('Proyek', o.judulProyek.trim() || namaProyek[0] || '-'),
+        infoBaris('Lokasi', lokasi.join('\n')),
+        ...(namaProyek.length > 1 ? [infoBaris('Nama di laporan', namaProyek.join('\n'))] : []),
         infoBaris('Tanggal kerja', `${rentang} (${tglList.length} hari)`),
         infoBaris('Status', status),
         infoBaris('Pelapor / divisi', pelapor.join('\n')),
@@ -88,8 +93,8 @@ export async function buatDocxProyekLuar(o: {
     for (const r of recTgl) {
       isi.push(new Paragraph({ heading: HeadingLevel.HEADING_2, keepNext: true, children: [new TextRun({ text: recTgl.length > 1 ? `Catatan Pekerjaan – ${r.operator_nama} (${labelDivisiPL(r.divisi)})` : 'Catatan Pekerjaan' })] }))
       if (recTgl.length === 1) isi.push(new Paragraph({ keepNext: true, children: [new TextRun({ text: `Pelapor: ${r.operator_nama} (${labelDivisiPL(r.divisi)})`, italics: true, color: '64748B', size: 18 })] }))
-      const baris = String(r.catatan || '').split(/\r?\n/)
-      if (!baris.some((b) => b.trim())) isi.push(new Paragraph({ children: [new TextRun({ text: '(tidak ada catatan)', italics: true, color: '94A3B8' })] }))
+      const baris = poinCatatanPL(r.catatan)  // nomor yang diketik operator dibuang (lib/proyekLuarPantau)
+      if (!baris.length) isi.push(new Paragraph({ children: [new TextRun({ text: '(tidak ada catatan)', italics: true, color: '94A3B8' })] }))
       else baris.forEach((b) => isi.push(new Paragraph({ spacing: { after: 60 }, children: [new TextRun({ text: b })] })))
     }
     // foto tanggal ini (semua record tanggal itu), urut waktu unggah, nomor mulai 1

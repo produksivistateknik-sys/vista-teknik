@@ -18,7 +18,7 @@ export function useProyekLuarPantau(admin: string, bolehLihat: boolean, penanda:
   const muat = useCallback(async () => {
     try {
       const [rows, lihat] = await Promise.all([
-        fetchAllPaged((a, z) => supabase.from('proyek_luar' as any).select('id,created_at,updated_at,aktivitas_pada,is_archived').order('id').range(a, z)),
+        fetchAllPaged((a, z) => supabase.from('proyek_luar' as any).select('id,created_at,updated_at,aktivitas_pada,is_archived,dihapus_pada').order('id').range(a, z)),
         penanda && admin
           ? fetchAllPaged((a, z) => supabase.from('proyek_luar_dilihat_admin' as any).select('proyek_luar_id,dilihat_pada').eq('admin_nama', admin).order('proyek_luar_id').range(a, z))
           : Promise.resolve([]),
@@ -45,7 +45,7 @@ export function useProyekLuarPantau(admin: string, bolehLihat: boolean, penanda:
     const { error } = await supabase.rpc('tandai_proyek_luar_dilihat' as any, { p_ids: ids, p_admin: admin } as any)
     if (error) { console.error('[Pantau Proyek Luar] tandai dilihat gagal:', error); laporError('supabase_error', error, { aksi: 'tandai proyek luar dilihat', jumlah: ids.length }); muat() }
   }, [penanda, admin, muat])
-  const tanda = useMemo(() => ringkas.map((r) => `${r.id}:${r.aktivitas_pada}:${r.updated_at}:${r.is_archived ? 1 : 0}`).join('|'), [ringkas])
+  const tanda = useMemo(() => ringkas.map((r) => `${r.id}:${r.aktivitas_pada}:${r.updated_at}:${r.is_archived ? 1 : 0}:${r.dihapus_pada ? 1 : 0}`).join('|'), [ringkas])
   const jumlahPerluDilihat = useMemo(() => penanda ? ringkas.filter((r) => statusPantauPL(r, dilihat.get(Number(r.id)))).length : 0, [ringkas, dilihat, penanda])
   return { dilihat, tandai, tanda, jumlahPerluDilihat, galatPantau: galat, penanda }
 }

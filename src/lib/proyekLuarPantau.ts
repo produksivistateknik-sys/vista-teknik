@@ -5,7 +5,9 @@
 //    waktu terakhir ISI laporan berubah. updated_at TIDAK dipakai (ikut berubah saat admin mengarsip).
 //  - Hari kerja WIB: 00.00-06.59 = hari sebelumnya (lib/tanggalWib).
 //  - Penanda per admin: sudah pernah dilihat -> DIPERBARUI bila aktivitas sesudah dilihat; belum pernah dilihat -> hanya bila
-//    aktivitasnya hari kerja ini/kemarin (laporan lama tidak menyala saat fitur dirilis). Laporan diarsip tidak ditandai.
+//    aktivitasnya hari kerja ini/kemarin (laporan lama tidak menyala saat fitur dirilis). Laporan diarsip/dihapus tidak ditandai.
+//  - MULTI-HARI (25 Okt 2026, migration 20261025010000): proyek_luar = PROYEK, proyek_luar_entri = entri harian (tanggal hari
+//    kerja, penulis, catatan, foto). aktivitas_pada proyek ikut naik saat entri berubah (trigger) -> aturan penanda tetap sama.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { hariKerjaDari, hariKerjaWib } from './tanggalWib'
 
@@ -20,7 +22,7 @@ export const aktifHariIniPL = (l: any, sekarangMs: number = Date.now()): boolean
 export type StatusPantauPL = 'baru' | 'diperbarui' | null
 export function statusPantauPL(l: any, dilihatPada: string | undefined, sekarangMs: number = Date.now()): StatusPantauPL {
   const akt = aktivitasPL(l)
-  if (!l || l.is_archived || !akt) return null
+  if (!l || l.is_archived || l.dihapus_pada || !akt) return null
   if (dilihatPada) return Date.parse(akt) > Date.parse(dilihatPada) ? 'diperbarui' : null
   const hk = hariKerjaWib(sekarangMs), kemarin = hariKerjaWib(sekarangMs - 86400000)
   if (![hk, kemarin].includes(hariKerjaDari(akt))) return null
@@ -48,6 +50,17 @@ export function jejakUbahCatatanPL(l: any): { oleh: string; pada: string } | nul
 
 // Nama proyek dinormalkan - SAMA dgn mulai_laporan_proyek_luar (lower + spasi beruntun jadi satu).
 export const normalNamaPL = (s: string) => String(s || '').trim().replace(/\s+/g, ' ').toLowerCase()
+
+// Catatan -> poin per baris; nomor/butir yang DIKETIK operator ("1. ", "2) ", "- ", "• ") dibuang supaya tidak
+// bernomor ganda di admin & Word (keputusan user 24 Okt; contoh nyata #13 "1. chek connecting ...").
+export const poinCatatanPL = (c: string | null | undefined): string[] =>
+  String(c || '').split(/\r?\n/).map((s) => s.trim().replace(/^(\d{1,3}\s*[.)]|[-•*])\s+/, '').trim()).filter(Boolean)
+
+// Entri yang masih berlaku (bukan hapus lunak), urut tanggal terbaru dulu.
+export const entriAktifPL = (es: any[] | undefined): any[] =>
+  (es || []).filter((e) => !e.dihapus_pada).sort((a, b) => String(b.tanggal).localeCompare(String(a.tanggal)) || Number(b.id) - Number(a.id))
+export const adaEntriHariIniPL = (es: any[] | undefined, sekarangMs: number = Date.now()) =>
+  entriAktifPL(es).some((e) => e.tanggal === hariKerjaWib(sekarangMs))
 
 // Pesan bentrok dari RPC ubah_catatan_proyek_luar (errcode PT409 = HTTP 409; 40001 versi awal - diulang PostgREST sampai timeout).
 export const bentrokCatatanPL = (err: any) => err?.code === 'PT409' || err?.code === '40001' || /BENTROK/i.test(String(err?.message || ''))
