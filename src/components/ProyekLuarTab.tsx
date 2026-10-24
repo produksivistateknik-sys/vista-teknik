@@ -7,6 +7,8 @@ import { Card } from "./ui/Primitives";
 import { ThumbMedia } from './ui/ThumbMedia'
 import { isVideoFoto } from '../lib/mediaThumb'
 import { UnduhWordProyekLuar } from './UnduhWordProyekLuar'
+import type { PantauProyekLuar } from '../hooks/useProyekLuarPantau'
+import { aktivitasPL, aktifHariIniPL, statusPantauPL, labelWaktuPL, jejakUbahCatatanPL, bentrokCatatanPL } from '../lib/proyekLuarPantau'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - sidebar tab sendiri - laporan/dokumentasi pekerjaan operator di
@@ -21,6 +23,12 @@ import { UnduhWordProyekLuar } from './UnduhWordProyekLuar'
 //
 // Kartu: catatan dipecah per BARIS jadi poin bernomor - hanya split newline apa adanya dari
 // operator, SENGAJA tidak menebak pemecahan kalimat/koma di paragraf panjang.
+//
+// Pantau harian (24 Okt 2026): operator kini mengisi laporan BERTAHAP (dibuat saat mulai, catatan tersimpan otomatis, foto
+// diunggah saat dipilih) -> daftar diurutkan menurut aktivitas terakhir (aktivitas_pada), label "Diperbarui HH:MM", filter
+// "Aktif hari ini" (hari kerja WIB), penanda BARU (hijau) / DIPERBARUI (kuning) per admin - hilang setelah kartu terlihat
+// di layar 2 detik (tandai_proyek_luar_dilihat). Data dimuat ulang saat ringkasan pantau berubah (hooks/useProyekLuarPantau,
+// pemulih realtime + polling ringan) - aturan di lib/proyekLuarPantau (identik dgn vista-pekerja).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const statusStyle:Record<string,{bg:string;color:string;label:string}>={
@@ -36,7 +44,9 @@ const fmtTanggal=(t:string)=>{
 };
 const poinCatatan=(c:string|null)=>(c||"").split(/\r?\n/).map(s=>s.trim()).filter(Boolean);
 
-export function ProyekLuarTab(){
+const WARNA_PANTAU={baru:{bg:"#ecfdf5",border:"#86efac",fg:"#15803d",label:"BARU"},diperbarui:{bg:"#fefce8",border:"#fde047",fg:"#a16207",label:"DIPERBARUI"}} as const;
+
+export function ProyekLuarTab({pantau}:{pantau?:PantauProyekLuar}={}){
   const[loading,setLoading]=useState(true);
   const[loadError,setLoadError]=useState<string|null>(null);
   const[list,setList]=useState<any[]>([]);
@@ -44,6 +54,7 @@ export function ProyekLuarTab(){
   const[filterStatus,setFilterStatus]=useState("ALL");
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
+  const[hanyaHariIni,setHanyaHariIni]=useState(false);
   const[savingId,setSavingId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewer[],startIndex:number,label:string}|null>(null);
   const[wordAwal,setWordAwal]=useState<any>(null); // dialog Unduh Word (24 Okt 2026)
@@ -51,17 +62,27 @@ export function ProyekLuarTab(){
   // proyek_luar_catatan_log). Admin boleh semua laporan; operator mengedit dari vista-pekerja (miliknya, selama Berlangsung).
   const sesiAdmin=(()=>{try{return JSON.parse(localStorage.getItem("vista_admin_session")||"{}")}catch{return{}}})();
   const bolehUbahCatatan=sesiAdmin?.divisi==="admin";
-  const[editCat,setEditCat]=useState<{id:number;teks:string}|null>(null);
+  const[editCat,setEditCat]=useState<{id:number;teks:string;dasar:string|null}|null>(null);
   const[simpanCat,setSimpanCat]=useState(false);
   const simpanCatatan=async(l:any)=>{
     if(!editCat||simpanCat)return;
     setSimpanCat(true);
     try{
       const oleh=String(sesiAdmin?.nama||sesiAdmin?.name||"Admin").trim();
-      const{data,error}=await supabase.rpc("ubah_catatan_proyek_luar" as any,{p_id:l.id,p_catatan:editCat.teks,p_oleh:oleh,p_pekerja_id:null,p_admin:true} as any);
+      // p_dasar = catatan saat mulai mengedit: kalau operator mengubahnya sementara itu -> BENTROK, tidak ditimpa diam-diam.
+      const{data,error}=await supabase.rpc("ubah_catatan_proyek_luar" as any,{p_id:l.id,p_catatan:editCat.teks,p_oleh:oleh,p_pekerja_id:null,p_admin:true,p_dasar:editCat.dasar,p_cek_dasar:true} as any);
+      if(error&&bentrokCatatanPL(error)){
+        const{data:baru,error:e2}=await supabase.from("proyek_luar" as any).select("*").eq("id",l.id).range(0,0);
+        if(e2)throw e2;
+        const r:any=(baru as any)?.[0];
+        if(r){setList(prev=>prev.map(x=>x.id===l.id?r:x));setEditCat({id:l.id,teks:editCat.teks,dasar:r.catatan??null});}
+        tampilToast(`Catatan baru saja diubah ${r?.catatan_diubah_oleh||"orang lain"}. Tulisan Anda masih di kotak - periksa versi terbaru, lalu tekan Simpan lagi untuk menimpa.`,true);
+        return;
+      }
       if(error)throw error;
       setList(prev=>prev.map(x=>x.id===l.id?{...x,...(data as any)}:x));
       setEditCat(null);tampilToast("Catatan tersimpan");
+      pantau?.tandai([l.id]); // perubahan sendiri tidak perlu menyala
     }catch(err:any){
       console.error("[Proyek Luar] simpan catatan gagal:",err);
       tampilToast("Gagal menyimpan catatan: "+(err?.message||err),true);
@@ -102,23 +123,79 @@ export function ProyekLuarTab(){
   };
   useEffect(()=>{
     fetchList();
+    if(pantau)return; // dimuat ulang lewat ringkasan pantau (efek di bawah)
     const ch=supabase.channel("realtime-proyek-luar-admin")
       .on("postgres_changes",{event:"*",schema:"public",table:"proyek_luar"},()=>fetchList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
+  // Ringkasan pantau (id + aktivitas + updated_at + arsip) berubah -> muat ulang data lengkap (realtime/sambung ulang/tab aktif/
+  // polling ringan semuanya lewat hooks/useProyekLuarPantau - data lengkap TIDAK dipolling).
+  const tandaTerakhir=useRef<string|null>(null);
+  useEffect(()=>{
+    if(!pantau?.tanda)return;
+    if(tandaTerakhir.current===null){tandaTerakhir.current=pantau.tanda;return;}
+    if(tandaTerakhir.current===pantau.tanda)return;
+    tandaTerakhir.current=pantau.tanda;
+    fetchList(true);
+  },[pantau?.tanda]);
+
+  // Penanda hilang setelah kartu terlihat >= 50% selama 2 detik (tab tersembunyi = display:none -> tidak terlihat).
+  const statusKartu=(l:any)=>pantau?.penanda?statusPantauPL(l,pantau.dilihat.get(Number(l.id))):null;
+  const pengamat=useRef<IntersectionObserver|null>(null);
+  const timerLihat=useRef<Map<number,any>>(new Map());
+  const antreLihat=useRef<Set<number>>(new Set());
+  const kirimLihat=useRef<any>(null);
+  const tandaiRef=useRef(pantau?.tandai);
+  useEffect(()=>{tandaiRef.current=pantau?.tandai;});
+  // Observer dibuat saat pertama dibutuhkan (callback ref kartu berjalan SEBELUM useEffect). Kartu yang lebih tinggi dari
+  // layar dihitung terlihat bila >= 40% tinggi layar tampak.
+  const dapatPengamat=()=>{
+    if(pengamat.current||typeof IntersectionObserver==="undefined")return pengamat.current;
+    const timers=timerLihat.current;
+    pengamat.current=new IntersectionObserver(entri=>{
+      for(const e of entri){
+        const id=Number((e.target as HTMLElement).dataset.plId);
+        if(!id)continue;
+        const cukup=e.intersectionRatio>=0.5||e.intersectionRect.height>=window.innerHeight*0.4;
+        if(e.isIntersecting&&cukup&&document.visibilityState==="visible"){
+          if(!timers.has(id))timers.set(id,setTimeout(()=>{
+            timers.delete(id);antreLihat.current.add(id);
+            if(kirimLihat.current)clearTimeout(kirimLihat.current);
+            kirimLihat.current=setTimeout(()=>{const ids=[...antreLihat.current];antreLihat.current.clear();tandaiRef.current?.(ids);},300);
+          },2000));
+        }else if(timers.has(id)){clearTimeout(timers.get(id));timers.delete(id);}
+      }
+    },{threshold:[0,0.25,0.5,0.75,1]});
+    return pengamat.current;
+  };
+  useEffect(()=>()=>{
+    const timers=timerLihat.current;
+    pengamat.current?.disconnect();pengamat.current=null;
+    timers.forEach(t=>clearTimeout(t));timers.clear();if(kirimLihat.current)clearTimeout(kirimLihat.current);
+  },[]);
+  const refKartu=(aktif:boolean)=>(el:HTMLDivElement|null)=>{
+    const po=el?dapatPengamat():null;
+    if(!el||!po)return;
+    if(aktif)po.observe(el);else po.unobserve(el);
+  };
 
   const divisiList=useMemo(()=>[...new Set(list.map(l=>l.divisi))],[list]);
 
   const q=search.trim().toLowerCase();
-  const dalamMode=useMemo(()=>list.filter(l=>viewMode==="arsip"?!!l.is_archived:!l.is_archived),[list,viewMode]);
+  // Urut aktivitas terakhir (dibuat / catatan / foto / status), terbaru di atas.
+  const dalamMode=useMemo(()=>list.filter(l=>viewMode==="arsip"?!!l.is_archived:!l.is_archived)
+    .sort((a,b)=>(Date.parse(aktivitasPL(b)||"")||0)-(Date.parse(aktivitasPL(a)||"")||0)||b.id-a.id),[list,viewMode]);
+  const jmlHariIni=useMemo(()=>dalamMode.filter(l=>aktifHariIniPL(l)).length,[dalamMode]);
   const filtered=useMemo(()=>dalamMode.filter(l=>{
     if(filterDivisi!=="ALL"&&l.divisi!==filterDivisi)return false;
     if(filterStatus!=="ALL"&&l.status!==filterStatus)return false;
+    if(hanyaHariIni&&!aktifHariIniPL(l))return false;
     if(q&&!(l.nama_lokasi||"").toLowerCase().includes(q)&&!(l.operator_nama||"").toLowerCase().includes(q))return false;
     return true;
-  }),[dalamMode,filterDivisi,filterStatus,q]);
-  const adaFilter=filterDivisi!=="ALL"||filterStatus!=="ALL"||!!q;
+  }),[dalamMode,filterDivisi,filterStatus,q,hanyaHariIni]);
+  const adaFilter=filterDivisi!=="ALL"||filterStatus!=="ALL"||!!q||hanyaHariIni;
 
   const toggleArsip=async(l:any)=>{
     if(savingId!=null)return;
@@ -167,6 +244,8 @@ export function ProyekLuarTab(){
           <button onClick={()=>setViewMode("aktif")} style={tabBtn(viewMode==="aktif")}>Aktif</button>
           <button onClick={()=>setViewMode("arsip")} style={tabBtn(viewMode==="arsip")}>🗄️ Arsip</button>
         </div>
+        <button onClick={()=>setHanyaHariIni(x=>!x)} title="Laporan yang dibuat / catatan / foto / statusnya berubah pada hari kerja ini (07.00-06.59 WIB)"
+          style={{...tabBtn(hanyaHariIni),background:hanyaHariIni?"#15803d":"var(--bg-secondary,#f1f5f9)"}}>Aktif hari ini ({jmlHariIni})</button>
       </div>
 
       {!loading&&!loadError&&(
@@ -194,30 +273,37 @@ export function ProyekLuarTab(){
             const fotoList:any[]=Array.isArray(l.foto)?l.foto:[];
             const dc=(DIVISI_CONFIG as any)[l.divisi];
             const poin=poinCatatan(l.catatan);
+            const sp=statusKartu(l), wp=sp?WARNA_PANTAU[sp]:null;
+            const jejak=jejakUbahCatatanPL(l);
             return(
-              <Card key={l.id} style={{padding:"14px 16px",textAlign:"left"}}>
+              <div key={l.id} data-pl-id={l.id} ref={refKartu(!!sp)}>
+              <Card style={{padding:"14px 16px",textAlign:"left",...(wp?{background:wp.bg,border:`1px solid ${wp.border}`}:{})}}>
                 {/* Baris atas: nama proyek | status + tanggal */}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:12,flexWrap:"wrap"}}>
                   <div style={{fontWeight:700,fontSize:15,color:"var(--text-primary,#1e293b)",minWidth:0,flex:"1 1 220px",overflowWrap:"anywhere"}}>
                     {l.nama_lokasi}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    {wp&&<span style={{background:"#fff",color:wp.fg,border:`1px solid ${wp.border}`,borderRadius:99,padding:"2px 8px",fontSize:10.5,fontWeight:800,letterSpacing:.4}}>{wp.label}</span>}
                     <span style={{background:st.bg,color:st.color,borderRadius:99,padding:"3px 10px",fontSize:11,fontWeight:700}}>{st.label}</span>
                     <span style={{fontSize:12,color:MUTED}}>{fmtTanggal(l.tanggal)}</span>
                   </div>
                 </div>
-                {/* Baris kedua: divisi */}
-                <div style={{fontSize:12,color:MUTED,marginTop:3}}>{dc?.label||l.divisi}</div>
+                {/* Baris kedua: divisi | diperbarui */}
+                <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap",fontSize:12,color:MUTED,marginTop:3}}>
+                  <span>{dc?.label||l.divisi}</span>
+                  {aktivitasPL(l)&&<span title="Terakhir dibuat / catatan / foto / status berubah">Diperbarui {labelWaktuPL(aktivitasPL(l))}</span>}
+                </div>
 
                 <div style={{height:1,background:"var(--border-color,#e2e8f0)",margin:"12px 0"}}/>
 
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,marginBottom:8}}>
                   <span style={{fontSize:10.5,fontWeight:700,letterSpacing:.8,textTransform:"uppercase",color:MUTED}}>Catatan Pekerjaan</span>
-                  {bolehUbahCatatan&&editCat?.id!==l.id&&<button onClick={()=>setEditCat({id:l.id,teks:l.catatan||""})} style={{border:0,background:"none",padding:0,color:"#2563eb",fontSize:12,fontWeight:600,cursor:"pointer"}}>Ubah catatan</button>}
+                  {bolehUbahCatatan&&editCat?.id!==l.id&&<button onClick={()=>setEditCat({id:l.id,teks:l.catatan||"",dasar:l.catatan??null})} style={{border:0,background:"none",padding:0,color:"#2563eb",fontSize:12,fontWeight:600,cursor:"pointer"}}>Ubah catatan</button>}
                 </div>
                 {editCat?.id===l.id?(
                   <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                    <textarea value={editCat.teks} onChange={e=>setEditCat({id:l.id,teks:e.target.value})} rows={Math.min(14,Math.max(4,editCat.teks.split(/\r?\n/).length+1))}
+                    <textarea value={editCat.teks} onChange={e=>setEditCat({id:l.id,teks:e.target.value,dasar:editCat.dasar})} rows={Math.min(14,Math.max(4,editCat.teks.split(/\r?\n/).length+1))}
                       style={{width:"100%",padding:10,borderRadius:8,border:"1px solid var(--border-color,#e2e8f0)",fontSize:13,lineHeight:1.5,fontFamily:"inherit",resize:"vertical",color:"var(--text-primary,#1e293b)",background:"var(--card-bg,#fff)"}}/>
                     <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
                       <button onClick={()=>setEditCat(null)} disabled={simpanCat} style={{padding:"5px 12px",borderRadius:7,border:"1px solid var(--border-color,#e2e8f0)",background:"var(--card-bg,#fff)",color:"var(--text-secondary,#475569)",fontSize:12,fontWeight:600,cursor:"pointer"}}>Batal</button>
@@ -238,7 +324,7 @@ export function ProyekLuarTab(){
                     ))}
                   </ol>
                 )}
-                {l.catatan_diubah_oleh&&editCat?.id!==l.id&&<div style={{fontSize:11,color:MUTED,marginTop:6}}>Diubah oleh {l.catatan_diubah_oleh}{l.catatan_diubah_pada?" · "+new Date(l.catatan_diubah_pada).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"}):""}</div>}
+                {jejak&&editCat?.id!==l.id&&<div style={{fontSize:11,color:MUTED,marginTop:6}}>Diubah oleh {jejak.oleh} · {labelWaktuPL(jejak.pada)}</div>}
 
                 {/* Foto dokumentasi */}
                 <div style={{display:"flex",alignItems:"center",gap:10,marginTop:12,flexWrap:"wrap"}}>
@@ -279,6 +365,7 @@ export function ProyekLuarTab(){
                   </div>
                 </div>
               </Card>
+              </div>
             );
           })}
         </div>

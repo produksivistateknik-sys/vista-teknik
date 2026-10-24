@@ -7,6 +7,7 @@ import { usePekerja } from './hooks/usePekerja'
 import { useRenhar } from './hooks/useRenhar'
 import { useKendalaTerbuka } from './hooks/useKendalaTerbuka'
 import { useWoDilihat } from './hooks/useWoDilihat'
+import { useProyekLuarPantau } from './hooks/useProyekLuarPantau'
 import { statusWo } from './lib/woDilihat'
 import { supabase } from './lib/supabase'
 import { useWorkOrders } from './hooks/useWorkOrders'
@@ -281,6 +282,8 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   // Penanda BARU/REVISI Manajemen WO (23 Okt 2026) - per admin login, hanya akun divisi admin (lib/woDilihat).
   const namaAdminWo=String((user as any)?.nama||(user as any)?.name||'').trim();
   const { dilihat:woDilihat, bukaWo } = useWoDilihat(namaAdminWo,(user as any)?.divisi==='admin')
+  // Pantau harian Proyek Luar (24 Okt 2026): admin & Engineering bisa melihat tab-nya; penanda BARU/DIPERBARUI + badge admin saja.
+  const pantauPL = useProyekLuarPantau(namaAdminWo,['admin','engineering'].includes((user as any)?.divisi),(user as any)?.divisi==='admin')
   const [maintenanceOverdueCount, setMaintenanceOverdueCount] = useState(0)
   // Badge Maintenance (29 Sep 2026, CLAUDE.md A.1/A.2) - dulu select row lalu .length (kepotong
   // di 1000) & error ditelan (badge diam-diam hilang). Sekarang count exact head:true (gak narik
@@ -721,7 +724,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"tracking_report",label:"Quality Center",icon:"ti ti-list-search"},
         ...(["admin"].includes(user?.divisi)?[
           {id:"momfat",label:"MOM FAT",icon:"ti ti-file-text"},
-          {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2"},
+          {id:"proyekluar",label:"Proyek Luar",icon:"ti ti-building-factory-2",badge:pantauPL.jumlahPerluDilihat>0?pantauPL.jumlahPerluDilihat:null},
         ]:[]),
       ]},
     ]},
@@ -925,6 +928,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                         onMouseLeave={hideTooltip}>
                         <i className={item.icon} style={{fontSize:18,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
                         <span className="erp-nav-label">{item.label}</span>
+                        {!expandedNav[item.id]&&(()=>{const n=item.children.reduce((t:number,c:any)=>t+(typeof c.badge==="number"?c.badge:0),0);return n>0?<span className="erp-nav-badge">{n}</span>:null;})()}
                         <i className={"ti "+(expandedNav[item.id]?"ti-chevron-up":"ti-chevron-down")} style={{fontSize:13,flexShrink:0,marginLeft:"auto"}}/>
                       </button>
                       {expandedNav[item.id]&&!sidebarCollapsed&&item.children.map((child:any)=>(
@@ -935,6 +939,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                           onMouseLeave={hideTooltip}>
                           <i className={child.icon} style={{fontSize:16,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
                           <span className="erp-nav-label">{child.label}</span>
+                          {child.badge&&<span className="erp-nav-badge">{child.badge}</span>}
                         </button>
                       ))}
                     </div>
@@ -1174,7 +1179,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("laporan_outstanding")&&<div style={{display:tab==="laporan_outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanOutstanding db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
-              {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab/></Suspense></div>}
+              {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab pantau={pantauPL}/></Suspense></div>}
               {visitedTabs.includes("momfat")&&<div style={{display:tab==="momfat"?"block":"none"}}><Suspense fallback={TabFallback}><MomFatTab user={user}/></Suspense></div>}
               {visitedTabs.includes("wodigital")&&<div style={{display:tab==="wodigital"?"block":"none"}}><Suspense fallback={TabFallback}><WoDigitalTab user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("masteruser")&&<div style={{display:tab==="masteruser"?"block":"none"}}><Suspense fallback={TabFallback}><SystemTab user={user} woData={woData} logActivity={logActivity} activityLog={activityLog} activityLogSiap={activityLogSiap} muatActivityLog={refetchActivityLog} pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja}/></Suspense></div>}
