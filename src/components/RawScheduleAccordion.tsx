@@ -726,7 +726,9 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
     if (target.length === 0) { tampilToastAksi(dilewati ? 'Hapus di tampilan ini per chip header WP (baris tertutup). Untuk chip komponen/BUSBAR: klik chip lalu hapus di Edit.' : 'Tidak ada jadwal WP di sel ini.', 'err'); return }
     const rincian = target.slice(0, 8).map(t => `${t.panel} ${t.wp} ${t.proses} ${getDayLabel(t.d)} (${t.n} komponen)`).join('; ') + (target.length > 8 ? `; +${target.length - 8} lainnya` : '')
-    if (!(await mintaIzinWajib(`Hapus ${target.length} jadwal WP (${adaSemua ? 'SEMUA proses pada tanggal itu' : 'proses chip terpilih saja'})? ${rincian}.${dilewati ? ` (${dilewati} chip komponen/BUSBAR dilewati - hapus lewat Edit.)` : ''} Sama seperti tombol Hapus di modal edit - tersimpan ke jadwal.`))) return
+    const prosesKena = [...new Set(target.map(t => t.proses))].join(', ')
+    const nKomp = target.reduce((s, t) => s + t.n, 0)
+    if (!(await mintaIzinWajib(`Hapus WP dari ${target.length} sel jadwal - proses ${prosesKena} (${adaSemua ? 'SEMUA proses pada tanggal itu' : 'proses chip terpilih saja'}), total ${nKomp} komponen? ${rincian}.${dilewati ? ` (${dilewati} chip komponen/BUSBAR dilewati - hapus lewat Edit.)` : ''} Sama seperti tombol Hapus di modal edit - tersimpan ke jadwal.`))) return
     let ok = 0
     for (const t of target) { if (await modalJadwal.hapusWpDariSel(t.rawId, t.d, t.wp)) ok++ }
     setPilihan(new Set()); setJangkar(null)
