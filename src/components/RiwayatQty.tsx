@@ -19,7 +19,9 @@ export function useRiwayatQty({setFilterProyek,setFilterPanel,bacaSaja=false,db}
   };
   useEffect(()=>{
     fetchQtyChangeLog();
-    const ch=supabase.channel("realtime-qty-change-log-rawschedule")
+    // nama kanal unik per pemakai (28 Okt 2026): Raw Schedule (per WP) & Raw Schedule (lama) bisa hidup bersamaan
+    // (tab keep-alive) - nama sama di 2 halaman = crash ErrorBoundary (insiden 10 Okt).
+    const ch=supabase.channel("realtime-qty-change-log-rawschedule-"+Math.random().toString(36).slice(2))
       .on("postgres_changes",{event:"*",schema:"public",table:"qty_change_log"},fetchQtyChangeLog)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};

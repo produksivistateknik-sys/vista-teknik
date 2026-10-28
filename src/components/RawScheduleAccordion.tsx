@@ -1259,7 +1259,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
 // Realtime tambahan halaman ini (kapasitas, process time, notifikasi, urutan panel, timer) = 1 kanal sendiri dgn nama
 // berbeda dari kanal Raw Schedule lama (nama sama di 2 tab = crash ErrorBoundary, insiden 10 Okt). Kabar per tabel
 // dijeda 1,5 dtk supaya rentetan perubahan timer operator tidak memicu muat ulang beruntun.
-export const MODE_RAW_PER_WP: 'uji' | 'utama' = 'uji'
+export const MODE_RAW_PER_WP: 'uji' | 'utama' = 'utama' // 28 Okt 2026: PENUKARAN - tampilan ini = Raw Schedule utama (menu "raw"); tampilan lama = "raw_lama"
 
 export function RawScheduleAccordion(props: {
   woData: any[]; rawData: any[]; setRawData: (f: any) => void; updateRaw: (id: number, d: any) => Promise<any>; createRaw: (d: any) => Promise<any>; refetchRaw: () => void
