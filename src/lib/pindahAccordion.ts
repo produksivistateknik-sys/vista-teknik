@@ -4,6 +4,10 @@
 //   g:<panelId>:<grup>          header WP / BUSBAR  -> semua komponen grup itu pada tanggal tsb
 //   k:<panelId>:<grup>:<kode>   baris komponen      -> kode itu di SEMUA proses pada tanggal tsb
 //   p:<panelId>:<proses>        penanda QC/PACKING  -> penanda pada tanggal tsb
+// PER CHIP (B1, 28 Okt 2026) - satuan pilihan tampilan = chip (1 proses x 1 komponen x 1 tanggal):
+//   c:<panelId>:<grup>:<kode>#<proses>   chip komponen -> kode itu, proses itu saja
+//   h:<panelId>:<grup>#<proses>          chip ringkasan header WP/BUSBAR -> semua komponen grup itu, proses itu saja
+// (g:/k: tetap didukung - dipakai Hapus WP header & pemanggil lama). kb = kunci BARIS tampilan (g:/k:/p:) utk bayangan.
 // Pilihan dijabarkan per sel jadwal asal (baris raw_schedule x tanggal) lalu DIGABUNG (header + komponennya
 // / 2 komponen dari sel yang sama = 1 data pindah, tidak "dilepas" 2x). Yang tidak ikut: komponen selesai
 // (progress proses itu 100%), jejak (digeserKe), hari lanjutan WIRING (bukan entry tersimpan) - sama dgn
@@ -32,14 +36,27 @@ export type KonteksPindahAcc = KonteksMinggu & {
 export const pecahKunci = (kunci: string) => {
   const i = kunci.lastIndexOf('|')
   const baris = kunci.slice(0, i), tanggal = kunci.slice(i + 1)
-  const [jenis, pid, a, ...sisa] = baris.split(':')
-  return { baris, tanggal, jenis, panelId: Number(pid), grup: jenis === 'p' ? '' : a, kode: jenis === 'k' ? sisa.join(':') : '', proses: jenis === 'p' ? a : '' }
+  const jenis = baris.slice(0, baris.indexOf(':'))
+  // chip: proses di belakang '#' terakhir (nama proses tanpa '#'; kode boleh memuat ':')
+  const chip = jenis === 'c' || jenis === 'h'
+  const j = chip ? baris.lastIndexOf('#') : -1
+  const inti = chip ? baris.slice(0, j) : baris
+  const [, pid, a, ...sisa] = inti.split(':')
+  const kb = jenis === 'c' ? 'k' + inti.slice(1) : jenis === 'h' ? 'g' + inti.slice(1) : inti
+  return { baris, kb, tanggal, jenis, panelId: Number(pid), grup: jenis === 'p' ? '' : a, kode: jenis === 'k' || jenis === 'c' ? sisa.join(':') : '',
+    proses: jenis === 'p' ? a : chip ? baris.slice(j + 1) : '' }
 }
+// Kunci pilihan 1 chip dari kunci baris tampilan (kb) + proses chip + tanggal. Penanda: 1 sel = 1 chip.
+export const kunciChip = (kb: string, proses: string, d: string) =>
+  kb.startsWith('k:') ? 'c' + kb.slice(1) + '#' + proses + '|' + d : kb.startsWith('g:') ? 'h' + kb.slice(1) + '#' + proses + '|' + d : kb + '|' + d
 
 // Unit yang bisa dipindah dari 1 kunci pilihan (tanpa validasi tujuan): sel biasa [{rawId, wp, kode}],
 // BUSBAR [{rawId, kodeBusbar}], penanda [{rawId}] (seluruh isi sel penanda).
-type Unit = { rawId: number; dari: string; jenis: 'biasa' | 'busbar' | 'penanda'; wp?: string; kode?: string; grup?: string } // grup = kunci grup pivot (WP master BOM)
+type Unit = { rawId: number; dari: string; jenis: 'biasa' | 'busbar' | 'penanda'; wp?: string; kode?: string; grup?: string; kunci?: string } // grup = kunci grup pivot (WP master BOM)
 function unitDari(kunci: string, ctx: KonteksPindahAcc): Unit[] {
+  return unitDariInti(kunci, ctx).map(u => ({ ...u, kunci }))
+}
+function unitDariInti(kunci: string, ctx: KonteksPindahAcc): Unit[] {
   const k = pecahKunci(kunci)
   const blok = ctx.blokById.get(k.panelId); if (!blok) return []
   const d = k.tanggal
@@ -48,10 +65,11 @@ function unitDari(kunci: string, ctx: KonteksPindahAcc): Unit[] {
     return p && p.sel[d] ? [{ rawId: p.rawId, dari: d, jenis: 'penanda' }] : []
   }
   const g = blok.grup.find(x => x.key === k.grup); if (!g) return []
-  const komponen = k.jenis === 'k' ? g.komponen.filter(x => x.kode === k.kode) : g.komponen
+  const komponen = k.jenis === 'k' || k.jenis === 'c' ? g.komponen.filter(x => x.kode === k.kode) : g.komponen
   const out: Unit[] = []
   for (const km of komponen) for (const c of km.sel[d] || []) {
     if (c.jejakKe || c.lanjutan) continue
+    if (k.proses && c.proses !== k.proses) continue // kunci chip: proses itu saja
     if (g.jenis === 'busbar') out.push({ rawId: c.rawId, dari: d, jenis: 'busbar', kode: km.kode })
     else out.push({ rawId: c.rawId, dari: d, jenis: 'biasa', wp: c.wp, kode: km.kode, grup: g.key })
   }
@@ -68,6 +86,15 @@ export type HasilPindahAcc = {
   rowsSalin?: { raw_id: number; sebelum: any; sesudah: any }[] // mode salin: jadwal sebelum/sesudah per baris
   // (22 Okt 2026) kode yang TIDAK ikut karena saringan relevansi (diberitahukan; "Tambahkan juga" = ulangi dgn tanpaSaring)
   dilewati: { rawId: number; panelId: number; proses: string; wp: string; kode: string; dari: string; alasan: AlasanDilewati; grup: string }[] // grup = kunci pivot utk "Tambahkan juga"
+  // (B1, 28 Okt 2026) per chip header (h:) yang dipilih: n = komponen di chip (sama dgn angka chip, rawPivot.ringkas), ikut = yang
+  // benar-benar ikut, selesai = sudah 100% (tidak ikut). Sisa (n - ikut - selesai) = hari lanjutan WIRING / tidak relevan / BUSBAR tdk bisa.
+  ringkasHeader: { kunci: string; panelId: number; grup: string; proses: string; tanggal: string; n: number; ikut: number; selesai: number }[]
+}
+
+// Teks 1 chip header utk pesan: "WP2 RAKIT 28 Okt: 5 komponen, 3 dipindah, 2 sudah selesai[, 1 tidak ikut]"
+export const teksRingkasHeader = (h: HasilPindahAcc['ringkasHeader'][number], kerja: string, label: (d: string) => string) => {
+  const lain = h.n - h.ikut - h.selesai
+  return `${h.grup} ${h.proses} ${label(h.tanggal)}: ${h.n} komponen, ${h.ikut} ${kerja}${h.selesai ? `, ${h.selesai} sudah selesai` : ''}${lain > 0 ? `, ${lain} tidak ikut` : ''}`
 }
 
 // mode 'salin' (Tahap 3a): sel asal tidak diubah, tujuan DIGABUNG; tidak ada tolak "sel rentang"/"timer BUSBAR"
@@ -96,6 +123,12 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
   const sel: SelPindahV2[] = []; const jadwal = new Map<number, any>()
   const alasanSel = new Map<string, string>() // rawId|dari -> alasan tolak
   const kodeIkut = new Set<string>()
+  const ikutPerKunci = new Map<string, Set<string>>() // kunci pilihan -> kode yang ikut (ringkasHeader)
+  const tandaiIkut = (units: Unit[], cocok: (u: Unit) => boolean, kode: string) => units.forEach(u => {
+    if (!u.kunci || !cocok(u)) return
+    if (!ikutPerKunci.has(u.kunci)) ikutPerKunci.set(u.kunci, new Set())
+    ikutPerKunci.get(u.kunci)!.add(kode)
+  })
   for (const [kk, units] of unitPer) {
     const u0 = units[0]; const row = rowById.get(u0.rawId); if (!row) continue
     const dari = u0.dari, ke = keDari(dari)
@@ -106,7 +139,7 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
       const kode = (row.busbar_schedule?.[dari] || []).filter((k: string) => dipilih.has(k) && boleh.has(k))
       if (kode.length === 0) continue
       if (mode === 'pindah' && kode.some((k: string) => ctx.timerBusbar.has(pid + '|' + k))) alasanSel.set(kk, 'timer BUSBAR berjalan')
-      sel.push({ rawId: row.id, dari, ke, kodeBusbar: kode }); kode.forEach((k: string) => kodeIkut.add(pid + '|BB|' + k))
+      sel.push({ rawId: row.id, dari, ke, kodeBusbar: kode }); kode.forEach((k: string) => { kodeIkut.add(pid + '|BB|' + k); tandaiIkut(units, u => u.kode === k, k) })
     } else if (u0.jenis === 'penanda') {
       const entries = ctx.entriesTanpaSelesai(row, row.schedule?.[dari] || [])
       if (entries.length === 0) continue
@@ -133,7 +166,7 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
         if (pilih.length === 0) continue
         // Semua kode entry ikut = entry utuh (termasuk token __wiring_, sama dgn pindah sel utuh); sebagian = kode terpilih saja.
         entries.push(pilih.length === kodeAsli.length ? e : { ...e, komponen: pilih })
-        pilih.forEach((k: string) => kodeIkut.add(row.panel_id + '|' + k))
+        pilih.forEach((k: string) => { kodeIkut.add(row.panel_id + '|' + k); tandaiIkut(units, u => u.kode === k && u.wp === e.wp, k) })
       }
       if (entries.length === 0) continue
       sel.push({ rawId: row.id, dari, ke, entries, adaPengerjaan: new Set<string>() })
@@ -153,11 +186,24 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
   for (const s of sel) {
     const kk = s.rawId + '|' + s.dari; const alasan = alasanSel.get(kk)
     for (const kunci of kunciPer.get(kk) || []) {
-      const { baris } = pecahKunci(kunci); const t = baris + '|' + s.ke
+      const { kb } = pecahKunci(kunci); const t = kb + '|' + s.ke // bayangan per BARIS tampilan (kunci chip -> baris komponen/header)
       if (alasan) { tujuan.set(t, 'bad'); alasanTujuan.set(t, alasan); if (!kunciBentrok.has(kunci)) { kunciBentrok.add(kunci); bentrok.push({ kunci, ke: s.ke, alasan }) } }
       else if (tujuan.get(t) !== 'bad') tujuan.set(t, mingguOk.has(kk) ? 'minggu' : (tujuan.get(t) === 'minggu' ? 'minggu' : 'ok'))
     }
   }
   const rowsSalin = mode === 'salin' ? rencanakanSalinMultiV2(jadwal, sel, new Date().toISOString()) : undefined
-  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size, rowsSalin, dilewati }
+  // 5) ringkasan chip header (h:) - n & selesai dari chip yang SAMA dgn angka chip (rawPivot.ringkas: tanpa jejak)
+  const ringkasHeader: HasilPindahAcc['ringkasHeader'] = []
+  for (const kunci of new Set(kunciPilihan)) {
+    const k = pecahKunci(kunci); if (k.jenis !== 'h') continue
+    const g = ctx.blokById.get(k.panelId)?.grup.find(x => x.key === k.grup); if (!g) continue
+    let n = 0, selesai = 0
+    for (const km of g.komponen) {
+      const cs = (km.sel[k.tanggal] || []).filter(c => c.proses === k.proses && !c.jejakKe)
+      if (cs.length === 0) continue
+      n++; if (cs.every(c => c.selesai)) selesai++
+    }
+    if (n) ringkasHeader.push({ kunci, panelId: k.panelId, grup: k.grup, proses: k.proses, tanggal: k.tanggal, n, ikut: ikutPerKunci.get(kunci)?.size || 0, selesai })
+  }
+  return { sel, jadwal, bentrok, tujuan, alasanTujuan, jumlahKomponen: kodeIkut.size, rowsSalin, dilewati, ringkasHeader }
 }

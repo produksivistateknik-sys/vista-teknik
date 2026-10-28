@@ -11,7 +11,7 @@ import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
 import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
 import { withRetry } from '../lib/withRetry'
-import { rencanakanPindahAccordion, pecahKunci, type HasilPindahAcc } from '../lib/pindahAccordion'
+import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, type HasilPindahAcc } from '../lib/pindahAccordion'
 import { teksDilewati } from '../lib/relevansiJadwal'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -133,8 +133,17 @@ function simpanBuka(user: any, s: Set<string>) {
 
 // Operator per chip (12 Okt 2026): timer komponen+proses ini & peta nama pekerja (dari snapshot memori).
 type OpChip = { timers: any[]; nama: (id: any) => string | undefined } | null
+// PILIH PER CHIP (B1, 28 Okt 2026): chip = satuan pilihan (1 proses x 1 komponen x 1 tanggal; chip header = proses itu di WP itu).
+// ev = handler + data-chip (kunci pilihan, dibaca lasso) + data-bisa; gaya pilih/potong/salin di chip, bukan di sel.
+type PilihChip = { bisa: boolean; dipilih: boolean; dipotong: boolean; disalin: boolean; ev: any }
+const gayaPilih = (p?: PilihChip): any => !p ? {} : {
+  cursor: p.bisa ? 'grab' : 'pointer',
+  ...(p.dipilih ? { boxShadow: 'inset 0 0 0 1.5px #fff, 0 0 0 2px #1e3a8a' } : {}),
+  ...(p.disalin ? { outline: '2px dashed #1d4ed8', outlineOffset: 1 } : {}),
+  ...(p.dipotong ? { opacity: .4 } : {}),
+}
 // peringatan (21 Okt 2026): teks pelanggaran urutan proses utk chip ini (lib/urutanProses) -> bingkai merah + tooltip.
-function Chip({ c, kode, checklist, op, peringatan }: { c: ChipProses; kode: string; checklist: any; op?: OpChip; peringatan?: string[] }) {
+function Chip({ c, kode, checklist, op, peringatan, pilih }: { c: ChipProses; kode: string; checklist: any; op?: OpChip; peringatan?: string[]; pilih?: PilihChip }) {
   const warna = (PROSES_COLOR as any)[c.proses] || '#64748b'
   const opBusbar = c.proses === 'BUSBAR' && op ? formatBusbarTahapOperator(checklist?.[kode], op.timers, op.nama) : undefined
   const judul = [
@@ -151,12 +160,13 @@ function Chip({ c, kode, checklist, op, peringatan }: { c: ChipProses; kode: str
   ].filter(Boolean).join('\n')
   const jejak = !!c.jejakKe
   return (
-    <span title={judul} style={{
+    <span title={judul} {...pilih?.ev} style={{
       display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, maxWidth: '100%', boxSizing: 'border-box',
       fontSize: CHIP.font, fontWeight: 800, letterSpacing: .2, lineHeight: 1.15, padding: `2px ${CHIP.padX}px`, borderRadius: 4,
       background: jejak ? 'transparent' : warna, color: jejak ? warna : '#fff',
       border: jejak ? `1px dashed ${warna}` : `1px solid ${warna}`, opacity: c.selesai && !jejak ? .55 : 1,
       ...(peringatan?.length ? { outline: '2px solid #dc2626', outlineOffset: 1 } : {}),
+      ...gayaPilih(pilih),
     }}>
       {!!peringatan?.length && <span>⚠</span>}
       <span>{c.proses}</span>
@@ -371,7 +381,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const mintaIzinWajib = (pesan: string) => new Promise<boolean>(res => { setIzin({ pesan, jawab: res, wajib: true }) })
   const namaUser = () => user?.name || user?.nama || 'Admin'
   const [tujuanTempel, setTujuanTempel] = useState<string | null>(null)
-  const [konfirmasi, setKonfirmasi] = useState<{ kunci: string[]; offset: number } | null>(null)
+  const [konfirmasi, setKonfirmasi] = useState<{ kunci: string[]; offset: number; header?: string } | null>(null)
   const blokById = useMemo(() => new Map(blokTampil.map(b => [b.panelId, b])), [blokTampil])
   const panelSemua = useMemo(() => woData.flatMap((w: any) => w.panels || []), [woData])
   const entriesTanpaSelesaiRow = (row: any, entries: any[]) => { const pid = row.panel_id || row.panelId; return entriesTanpaSelesai(row.proses, entries, panelSemua.find((p: any) => p.id === pid)) }
@@ -411,14 +421,20 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     timerBusbar: pindahMulti.timerBusbarRef.current, kapasitasPada: (d: string, pr: string) => kapasitasPada(fcsKapasitas, d, pr),
     hitungTerpakaiHari: (rows: any[], d: string, pr: string) => hitungTerpakaiHari(rows, d, pr, ctxKap),
   })
-  // Sel berisi pekerjaan yang BISA dipindah (cek cepat utk tampilan; validasi pasti di rencanakanPindahAccordion).
-  const bisaPindah = (r: Baris, d: string): boolean => {
-    if (r.t === 'penanda') return !!r.p.sel[d]
-    const kompBisa = (k: BarisKomponen) => (k.sel[d] || []).some(c => !c.jejakKe && !c.lanjutan && !(r.g.jenis === 'wp' && c.selesai)
-      && (r.g.jenis !== 'busbar' || kodeBusbarBisaDipindah(rawData.find((x: any) => x.id === c.rawId), panelById.get(r.blok.panelId)?.checklist, d).includes(k.kode)))
-    return r.t === 'komp' ? kompBisa(r.k) : r.g.komponen.some(kompBisa)
-  }
   const kunciSel = (r: Baris, d: string) => r.kb + '|' + d
+  // PILIH PER CHIP (B1, 28 Okt 2026). Chip yang BISA dipilih/dipindah (cek cepat utk tampilan; validasi pasti di
+  // rencanakanPindahAccordion): bukan jejak, bukan hari lanjutan WIRING, bukan selesai (WP), BUSBAR = kodeBusbarBisaDipindah.
+  const chipBisa = (r: Exclude<Baris, { t: 'penanda' }>, k: BarisKomponen, c: ChipProses, d: string) => !c.jejakKe && !c.lanjutan && !(r.g.jenis === 'wp' && c.selesai)
+    && (r.g.jenis !== 'busbar' || kodeBusbarBisaDipindah(rawData.find((x: any) => x.id === c.rawId), panelById.get(r.blok.panelId)?.checklist, d).includes(k.kode))
+  // Chip di 1 sel tampilan (urutan = urutan tampil): baris komponen = chip proses; header WP tertutup = chip ringkasan per proses
+  // (bisa bila ada >=1 komponen proses itu yang bisa); header terbuka = tanpa chip; penanda = 1 chip.
+  type ChipSel = { kunci: string; bisa: boolean }
+  const chipSel = (r: Baris, d: string): ChipSel[] => {
+    if (r.t === 'penanda') return r.p.sel[d] ? [{ kunci: kunciSel(r, d), bisa: true }] : []
+    if (r.t === 'komp') return (r.k.sel[d] || []).map(c => ({ kunci: kunciChip(r.kb, c.proses, d), bisa: chipBisa(r, r.k, c, d) }))
+    if (r.buka) return []
+    return (r.g.ringkasan[d] || []).map(x => ({ kunci: kunciChip(r.kb, x.proses, d), bisa: r.g.komponen.some(k => (k.sel[d] || []).some(c => c.proses === x.proses && chipBisa(r, k, c, d))) }))
+  }
   // Sandbox: semua aksi berjalan pada SALINAN di memori -> tanpa dialog konfirmasi data produksi.
   const bolehTulis = async (_pesan: string, _sudahDikonfirmasi = false) => {
     if (!setRawData) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
@@ -437,7 +453,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   }
   const aksiDilewati = (r: HasilPindahAcc, offset: number, mode: 'pindah' | 'salin', tambahan: { label: string; fn: () => void }[] = []) => {
     const tr = r.dilewati.filter(d => d.alasan === 'tidak_relevan')
-    const kunciTambah = [...new Set(tr.map(d => `k:${d.panelId}:${d.grup}:${d.kode}|${d.dari}`))] // grup pivot, bukan wp entri
+    const kunciTambah = [...new Set(tr.map(d => kunciChip(`k:${d.panelId}:${d.grup}:${d.kode}`, d.proses, d.dari)))] // grup pivot, bukan wp entri; proses itu saja
     return [...(kunciTambah.length ? [{ label: 'Tambahkan juga', fn: async () => {
       const ok = mode === 'pindah' ? await jalankanPindahRef.current(kunciTambah, offset, true, true) : await jalankanSalinRef.current(kunciTambah, offset, true, true)
       if (ok) {
@@ -449,6 +465,14 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       }
     } }] : []), ...tambahan]
   }
+  // Rincian per baris jadwal utk activity_log pindah & salin: "<panel> <proses> <dari>→<ke> [wp:kode, ...]"
+  const rincianSel = (sel: HasilPindahAcc['sel']) => sel.map(s => {
+    const r = rawData.find((x: any) => x.id === s.rawId)
+    const kode = s.kodeBusbar || (s.entries || []).flatMap((e: any) => (e.komponen || []).filter((k: string) => !k.startsWith('__')).map((k: string) => `${e.wp}:${k}`))
+    return `${String(r?.panel || '').trim()} ${r?.proses} ${s.dari}→${s.ke} [${kode.join(', ')}]`
+  })
+  // Chip header terpilih: "WP2 RAKIT 28 Okt: 5 komponen, 3 dipindah, 2 sudah selesai"
+  const teksHeader = (r: HasilPindahAcc, kerja: string) => r.ringkasHeader.map(h => teksRingkasHeader(h, kerja, getDayLabel)).join('; ')
   const jalankanPindah = async (kunci: string[], offset: number, sudahDikonfirmasi = false, tanpaSaring = false) => {
     if (offset === 0) return false
     const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'pindah', { tanpaSaring })
@@ -458,8 +482,9 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
     if (rencana.sel.length === 0 && rencana.dilewati.length > 0) { tampilToastAksi('Tidak ada yang dipindah.\n' + teksDilewatiRencana(rencana), 'err', aksiDilewati(rencana, offset, 'pindah')); return false }
     if (!(await bolehTulis(`Pindah ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari di data produksi asli?`, sudahDikonfirmasi))) return false
+    const hdr = teksHeader(rencana, 'dipindah')
     const okPindah = await pindahMulti.jalankanPindahSel(rencana.sel, rencana.jadwal, {
-      jumlah: `${rencana.jumlahKomponen} komponen`, offset,
+      jumlah: `${rencana.jumlahKomponen} komponen${hdr ? ` (${hdr})` : ''}`, offset,
       ulangi: () => { jalankanPindahRef.current(kunci, offset) },
       onSukses: () => {
         const geser = (k: string) => { const x = pecahKunci(k); const i = tanggalKeIdx(x.tanggal) + offset; return x.baris + '|' + idxKeTanggal(i) }
@@ -470,11 +495,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (okPindah) {
       // (28 Okt 2026) log rinci per baris jadwal - log RPC pindah_multi_sel_v2 hanya berisi jumlah sel (tanpa panel/komponen)
       try {
-        const rincian = rencana.sel.map(s => {
-          const r = rawData.find((x: any) => x.id === s.rawId)
-          const kode = s.kodeBusbar || (s.entries || []).flatMap((e: any) => (e.komponen || []).filter((k: string) => !k.startsWith('__')).map((k: string) => `${e.wp}:${k}`))
-          return `${String(r?.panel || '').trim()} ${r?.proses} ${s.dari}→${s.ke} [${kode.join(', ')}]`
-        })
+        const rincian = rincianSel(rencana.sel)
         const b0 = blokById.get(pecahKunci(kunci[0]).panelId)
         await io.log.insert({ user_name: namaUser(), action: 'PINDAH JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
           description: `Pindah (tampilan per WP) ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari: ` + rincian.join('; '),
@@ -532,10 +553,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       const pid = pecahKunci(kunci[0]).panelId; const b0 = blokById.get(pid)
       try {
         await io.log.insert({ user_name: namaUser(), action: 'COPY JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
-          description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari - ${[...new Set(kunci.map(k => blokById.get(pecahKunci(k).panelId)?.panel))].join(', ')}`,
+          description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari: ` + rincianSel(rencana.sel).join('; '),
           proyek: b0?.proyek || '', panel: b0?.panel || '' })
       } catch (err) { console.error('[Raw per WP] gagal catat activity_log salin:', err) }
-      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).` + (rencana.dilewati.length ? '\n' + teksDilewatiRencana(rencana) : ''), 'ok', aksiDilewati(rencana, offset, 'salin'))
+      const hdrSalin = teksHeader(rencana, 'disalin')
+      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).` + (hdrSalin ? '\n' + hdrSalin : '') + (rencana.dilewati.length ? '\n' + teksDilewatiRencana(rencana) : ''), 'ok', aksiDilewati(rencana, offset, 'salin'))
       return true
     } finally { sedangSalinRef.current = false }
   }
@@ -683,28 +705,28 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (!paksaPilih && (opsi.length === 1 || terisi.length === 1)) { bukaEdit(opsi.length === 1 ? opsi[0] : terisi[0], r, d); return }
     setPopProses({ x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200, r, d, opsi })
   }
-  // HAPUS WP (menu klik kanan): sel header WP terpilih (atau sel yang diklik kanan) -> WP itu dihapus dari SEMUA proses
-  // pada tanggal itu, lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal (sinkron renhar + log per proses).
-  const hapusWpTerpilih = async (r: Baris, d: string) => {
-    const kunciMenu = kunciSel(r, d)
-    return hapusWpKunci(pilihan.has(kunciMenu) ? [...pilihan] : [kunciMenu])
-  }
+  // HAPUS WP: kunci header sel (g:, menu klik kanan header) -> WP itu dihapus dari SEMUA proses pada tanggal itu; chip header (h:,
+  // Delete / menu) -> WP itu dihapus dari proses chip itu saja. Lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal
+  // (sinkron renhar + log per proses). Chip komponen/BUSBAR belum (hapus per chip = tahap berikut): klik chip -> Edit.
   const hapusWpKunci = async (kunci: string[]) => {
     const target: { rawId: number; proses: string; d: string; wp: string; panel: string; n: number }[] = []
-    let dilewati = 0
+    const sudah = new Set<string>()
+    let dilewati = 0, adaSemua = false
     for (const k of kunci) {
       const x = pecahKunci(k)
-      if (x.jenis !== 'g') { dilewati++; continue }
+      if (x.jenis !== 'g' && x.jenis !== 'h') { dilewati++; continue }
       const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup)
       if (!b || !g || g.jenis !== 'wp') { dilewati++; continue }
-      rawData.filter((row: any) => Number(row.panel_id || row.panelId) === x.panelId && !['QC TEST', 'PACKING', 'BUSBAR'].includes(row.proses)).forEach((row: any) => {
+      if (x.jenis === 'g') adaSemua = true
+      rawData.filter((row: any) => Number(row.panel_id || row.panelId) === x.panelId && !['QC TEST', 'PACKING', 'BUSBAR'].includes(row.proses) && (x.jenis !== 'h' || row.proses === x.proses)).forEach((row: any) => {
         const e = (row.schedule?.[x.tanggal] || []).find((en: any) => en.wp === g.key)
-        if (e) target.push({ rawId: row.id, proses: row.proses, d: x.tanggal, wp: g.key, panel: b.panel, n: (e.komponen || []).filter((kd: string) => !kd.startsWith('__wiring_')).length })
+        const kk = row.id + '|' + x.tanggal + '|' + g.key
+        if (e && !sudah.has(kk)) { sudah.add(kk); target.push({ rawId: row.id, proses: row.proses, d: x.tanggal, wp: g.key, panel: b.panel, n: (e.komponen || []).filter((kd: string) => !kd.startsWith('__wiring_')).length }) }
       })
     }
-    if (target.length === 0) { tampilToastAksi(dilewati ? 'Hapus di tampilan ini per header WP (baris tertutup). Untuk komponen/BUSBAR: klik sel lalu Edit.' : 'Tidak ada jadwal WP di sel ini.', 'err'); return }
+    if (target.length === 0) { tampilToastAksi(dilewati ? 'Hapus di tampilan ini per chip header WP (baris tertutup). Untuk chip komponen/BUSBAR: klik chip lalu hapus di Edit.' : 'Tidak ada jadwal WP di sel ini.', 'err'); return }
     const rincian = target.slice(0, 8).map(t => `${t.panel} ${t.wp} ${t.proses} ${getDayLabel(t.d)} (${t.n} komponen)`).join('; ') + (target.length > 8 ? `; +${target.length - 8} lainnya` : '')
-    if (!(await mintaIzinWajib(`Hapus ${target.length} jadwal WP (SEMUA proses pada tanggal itu)? ${rincian}.${dilewati ? ` (${dilewati} sel non-header dilewati.)` : ''} Sama seperti tombol Hapus di tampilan lama - tersimpan ke jadwal.`))) return
+    if (!(await mintaIzinWajib(`Hapus ${target.length} jadwal WP (${adaSemua ? 'SEMUA proses pada tanggal itu' : 'proses chip terpilih saja'})? ${rincian}.${dilewati ? ` (${dilewati} chip komponen/BUSBAR dilewati - hapus lewat Edit.)` : ''} Sama seperti tombol Hapus di modal edit - tersimpan ke jadwal.`))) return
     let ok = 0
     for (const t of target) { if (await modalJadwal.hapusWpDariSel(t.rawId, t.d, t.wp)) ok++ }
     setPilihan(new Set()); setJangkar(null)
@@ -713,15 +735,15 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const batalkan = () => { setPilihan(new Set()); setJangkar(null); setPotongan([]); setSalinan([]); setTujuanTempel(null); setMenu(null) }
   const salin = () => {
     const isi = [...pilihan]
-    if (isi.length === 0) { tampilToastAksi('Pilih sel dulu (Ctrl+klik / lasso), lalu Ctrl+C.', 'err'); return }
+    if (isi.length === 0) { tampilToastAksi('Pilih chip dulu (Ctrl+klik / lasso), lalu Ctrl+C.', 'err'); return }
     setSalinan(isi); setPotongan([]); setTujuanTempel(null)
-    tampilToastAksi(`${isi.length} sel disalin. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
+    tampilToastAksi(`${isi.length} chip disalin. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
   }
   const potong = () => {
     const isi = [...pilihan]
-    if (isi.length === 0) { tampilToastAksi('Pilih sel dulu (Ctrl+klik / lasso), lalu Ctrl+X.', 'err'); return }
+    if (isi.length === 0) { tampilToastAksi('Pilih chip dulu (Ctrl+klik / lasso), lalu Ctrl+X.', 'err'); return }
     setPotongan(isi); setSalinan([]); setTujuanTempel(null); muatTimerUntuk(isi)
-    tampilToastAksi(`${isi.length} sel dipotong. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
+    tampilToastAksi(`${isi.length} chip dipotong. Klik hari tujuan, lalu Ctrl+V (atau tombol Tempel).`, 'ok')
   }
   // Tempel: potongan -> PINDAH; salinan -> SALIN (gabung). Sel PALING AWAL mendarat di hari tujuan.
   const tempel = async (tujuan?: string) => {
@@ -753,33 +775,54 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Shift+klik (ada jangkar): semua chip yang bisa di persegi jangkar..sini (baris x tanggal) ikut dipilih.
+  const pilihRentang = (i: number, d: string) => {
+    if (!jangkar) return false
+    const [a, b] = [Math.min(jangkar.i, i), Math.max(jangkar.i, i)]
+    const [da, db] = [Math.min(tanggalKeIdx(jangkar.d), tanggalKeIdx(d)), Math.max(tanggalKeIdx(jangkar.d), tanggalKeIdx(d))]
+    const s = new Set(pilihan)
+    for (let x = a; x <= b; x++) for (let y = da; y <= db; y++) chipSel(baris[x], idxKeTanggal(y)).forEach(c => { if (c.bisa) s.add(c.kunci) })
+    setPilihan(s); return true
+  }
+  // Klik AREA KOSONG sel (bukan chip): Ctrl/Alt = pilih/lepas semua chip sel itu; biasa = popup proses (penanda = toggle).
   const klikSel = (e: React.MouseEvent, r: Baris, d: string, i: number) => {
     if ((potongan.length || salinan.length) && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { setTujuanTempel(d); return }
-    const kunci = kunciSel(r, d)
-    if (e.shiftKey && jangkar) {
-      const [a, b] = [Math.min(jangkar.i, i), Math.max(jangkar.i, i)]
-      const [da, db] = [Math.min(tanggalKeIdx(jangkar.d), tanggalKeIdx(d)), Math.max(tanggalKeIdx(jangkar.d), tanggalKeIdx(d))]
-      const s = new Set(pilihan)
-      for (let x = a; x <= b; x++) for (let y = da; y <= db; y++) { const dd = idxKeTanggal(y); if (bisaPindah(baris[x], dd)) s.add(kunciSel(baris[x], dd)) }
-      setPilihan(s); return
-    }
-    if (e.ctrlKey || e.metaKey || e.altKey) {
-      const s = new Set(pilihan)
-      if (s.has(kunci)) s.delete(kunci)
-      else { if (!bisaPindah(r, d)) { tampilToastAksi('Sel ini kosong / semua isinya sudah selesai atau sudah digeser - tidak bisa dipilih.', 'err'); return } s.add(kunci) }
+    if (e.shiftKey && pilihRentang(i, d)) return
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+      const cs = chipSel(r, d).filter(c => c.bisa)
+      if (cs.length === 0) { tampilToastAksi('Sel ini kosong / semua isinya sudah selesai atau sudah digeser - tidak ada chip yang bisa dipilih.', 'err'); return }
+      const s = new Set(pilihan); const semua = cs.every(c => s.has(c.kunci))
+      cs.forEach(c => { if (semua) s.delete(c.kunci); else s.add(c.kunci) })
       setPilihan(s); setJangkar({ i, d }); return
     }
-    // klik biasa: penanda QC/PACKING = toggle (sama dgn tampilan lama); sel lain = edit jadwal (Tahap 3b)
     if (pilihan.size) { setPilihan(new Set()); setJangkar(null) }
     if (r.t === 'penanda') { togglePenandaSel(r, d); return }
-    klikEdit(e, r, d)
+    klikEdit(e, r, d, true)
+  }
+  // Klik CHIP: Ctrl/Alt/Shift = pilih/lepas chip itu; biasa = Edit Jadwal proses chip itu (penanda = toggle).
+  // rawId: chip komponen = baris jadwal chip itu; chip header = baris proses itu di panel (opsiProsesSel).
+  const klikChip = (e: React.MouseEvent, r: Baris, d: string, i: number, cs: ChipSel, proses: string, rawId: number | null) => {
+    e.stopPropagation()
+    if ((potongan.length || salinan.length) && !(e.ctrlKey || e.metaKey || e.shiftKey || e.altKey)) { setTujuanTempel(d); return }
+    if (e.shiftKey && pilihRentang(i, d)) return
+    if (e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) {
+      const s = new Set(pilihan)
+      if (s.has(cs.kunci)) s.delete(cs.kunci)
+      else { if (!cs.bisa) { tampilToastAksi('Chip ini sudah selesai / histori (sudah digeser) / hari lanjutan WIRING - tidak bisa dipilih.', 'err'); return } s.add(cs.kunci) }
+      setPilihan(s); setJangkar({ i, d }); return
+    }
+    if (pilihan.size) { setPilihan(new Set()); setJangkar(null) }
+    if (r.t === 'penanda') { togglePenandaSel(r, d); return }
+    const o = rawId != null ? { proses, rawId, terisi: true } : opsiProsesSel(r, d).find(x => x.proses === proses)
+    if (!o) { tampilToastAksi(`Baris jadwal ${proses} panel ini tidak ditemukan.`, 'err'); return }
+    bukaEdit({ ...o, terisi: true }, r, d)
   }
 
   // Lasso: tekan di area kosong sel tanggal lalu seret. Baris & kolom dihitung dari DATA (offset kumulatif +
   // lebar kolom tetap), bukan DOM - aman utk baris lazy & kolom yang divirtualisasi.
   const lassoRef = useRef<{ x: number; y: number; tambah: boolean; aktif: boolean } | null>(null)
   const kotakRef = useRef<HTMLDivElement | null>(null)
-  const lassoCtx = useRef<any>({}); lassoCtx.current = { baris, offset, pilihan, bisaPindah, cariIdx }
+  const lassoCtx = useRef<any>({}); lassoCtx.current = { pilihan }
   useEffect(() => {
     const cont = scrollRef.current; if (!cont) return
     const kotak = document.createElement('div'); kotak.style.cssText = 'position:fixed;z-index:9000;pointer-events:none;border:1.5px solid #2563eb;background:rgba(37,99,235,.12);border-radius:3px;display:none'
@@ -805,13 +848,17 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       const x1 = Math.max(Math.min(m.x, e.clientX), cr.left + LEBAR_KIRI), x2 = Math.max(m.x, e.clientX)
       const y1 = Math.max(Math.min(m.y, e.clientY), cr.top + TINGGI_HEADER), y2 = Math.max(m.y, e.clientY)
       if (x2 < x1 || y2 < y1) return
-      const kol = (cx: number) => Math.floor((cx - cr.left - cont.clientLeft + cont.scrollLeft - LEBAR_KIRI) / LEBAR_TGL)
-      const brs = (cy: number) => L.cariIdx(cy - cr.top - cont.clientTop + cont.scrollTop - TINGGI_HEADER)
+      // PER CHIP (B1): chip yang tersentuh kotak (bagian yang terlihat di selnya - chip yang meluap & terpotong sel tidak ikut).
+      // Kotak hanya mencakup area yang tampil, jadi chip yang dirender (virtualisasi) sudah cukup.
       const s = new Set<string>(m.tambah ? L.pilihan : [])
-      const i1 = Math.max(0, brs(y1)), i2 = Math.min(L.baris.length - 1, brs(y2))
-      for (let i = i1; i <= i2; i++) for (let c = Math.max(0, kol(x1)); c <= Math.min(TOTAL_KOLOM - 1, kol(x2)); c++) {
-        const d = idxKeTanggal(c); if (L.bisaPindah(L.baris[i], d)) s.add(L.baris[i].kb + '|' + d)
-      }
+      cont.querySelectorAll<HTMLElement>('[data-chip]').forEach(el => {
+        if (el.dataset.bisa !== '1') return
+        const a = el.getBoundingClientRect(); const td = el.closest('td')?.getBoundingClientRect()
+        const l = Math.max(a.left, td?.left ?? a.left), rr = Math.min(a.right, td?.right ?? a.right)
+        const t = Math.max(a.top, td?.top ?? a.top), bw = Math.min(a.bottom, td?.bottom ?? a.bottom)
+        if (rr <= l || bw <= t) return
+        if (rr >= x1 && l <= x2 && bw >= y1 && t <= y2) s.add(el.dataset.chip!)
+      })
       setPilihan(s)
     }
     cont.addEventListener('pointerdown', onDown); window.addEventListener('pointermove', onMove); window.addEventListener('pointerup', onUp)
@@ -829,14 +876,15 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   }, [])
   const dragRef = useRef<{ kunci: string[]; jangkar: string; offset: number | null; ditandai: HTMLElement[]; badge: HTMLDivElement } | null>(null)
   const bersihkanDrag = () => { const m = dragRef.current; if (!m) return; m.ditandai.forEach(el => { el.classList.remove('rsa-ok', 'rsa-minggu', 'rsa-bad'); delete el.dataset.lbl }); m.badge.remove(); dragRef.current = null }
-  const onDragStart = (e: React.DragEvent, r: Baris, d: string) => {
-    const kunci = kunciSel(r, d)
+  // Seret CHIP: chip terpilih -> seluruh pilihan ikut; chip di luar pilihan -> chip itu saja.
+  const onDragStart = (e: React.DragEvent, kunci: string, d: string) => {
+    e.stopPropagation()
     const isi = pilihan.has(kunci) ? [...pilihan] : [kunci]
     if (!pilihan.has(kunci) && pilihan.size) { setPilihan(new Set()); setJangkar(null) }
     e.dataTransfer.effectAllowed = 'move'
     const badge = document.createElement('div')
     badge.style.cssText = 'position:fixed;z-index:10001;pointer-events:none;padding:5px 11px;border-radius:99px;background:#2563eb;color:#fff;font:700 12px system-ui,sans-serif;white-space:nowrap;left:-1000px;top:-1000px'
-    badge.textContent = isi.length + ' sel'; document.body.appendChild(badge)
+    badge.textContent = isi.length + ' chip'; document.body.appendChild(badge)
     try { e.dataTransfer.setDragImage(badge, 12, 12) } catch { /* browser lama */ }
     dragRef.current = { kunci: isi, jangkar: d, offset: null, ditandai: [], badge }
     muatTimerUntuk(isi).then(() => { if (dragRef.current) dragRef.current.offset = null })
@@ -849,7 +897,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (offset === m.offset) return
     m.offset = offset
     m.ditandai.forEach(el => { el.classList.remove('rsa-ok', 'rsa-minggu', 'rsa-bad'); delete el.dataset.lbl }); m.ditandai = []
-    if (offset === 0) { m.badge.textContent = m.kunci.length + ' sel'; m.badge.style.background = '#2563eb'; return }
+    if (offset === 0) { m.badge.textContent = m.kunci.length + ' chip'; m.badge.style.background = '#2563eb'; return }
     const rencana = rencanakanPindahAccordion(m.kunci, offset, ctxPindah())
     const cont = scrollRef.current
     rencana.tujuan.forEach((st, t) => {
@@ -861,7 +909,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       m.ditandai.push(td)
     })
     const nb = rencana.bentrok.length
-    m.badge.textContent = `${m.kunci.length} sel · ${offset > 0 ? '+' : ''}${offset} hari${nb ? ` · ${nb} bentrok` : ''}`
+    m.badge.textContent = `${m.kunci.length} chip · ${offset > 0 ? '+' : ''}${offset} hari${nb ? ` · ${nb} bentrok` : ''}`
     m.badge.style.background = nb ? '#dc2626' : '#2563eb'
   }
   const onDrop = (e: React.DragEvent, d: string) => {
@@ -872,8 +920,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (offset === 0) return
     const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah())
     if (rencana.bentrok.length) { tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang dipindah.`, 'err'); return }
-    if (rencana.sel.length === 0) return
-    setKonfirmasi({ kunci, offset })
+    if (rencana.sel.length === 0) { if (rencana.ringkasHeader.length) tampilToastAksi('Tidak ada yang bisa dipindah.\n' + teksHeader(rencana, 'bisa dipindah'), 'err'); return }
+    setKonfirmasi({ kunci, offset, header: teksHeader(rencana, 'ikut') })
   }
 
   // 🚩 deadline per tanggal (panel yang tampil)
@@ -959,15 +1007,28 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
 
   const renderSelTanggal = (r: Baris, d: string, bgDasar: string, nomor: number) => {
     const garisAtas = r.pertama ? '2px solid #cbd5e1' : r.t === 'komp' ? '1px solid #f1f5f9' : '1px solid #e2e8f0'
-    const kunci = kunciSel(r, d); const dipilih = pilihan.has(kunci); const dipotong = potongan.includes(kunci)
-    const bisa = bisaPindah(r, d)
-    const td: any = { borderTop: garisAtas, borderRight: '1px solid #f1f5f9', padding: '2px 4px', verticalAlign: 'middle', background: dipilih ? '#dbeafe' : bgSel(d, bgDasar), width: LEBAR_TGL, minWidth: LEBAR_TGL, maxWidth: LEBAR_TGL, boxSizing: 'border-box', overflow: 'hidden',
-      outline: dipilih ? '2px solid #2563eb' : salinan.includes(kunci) ? '2px dashed #2563eb' : 'none', outlineOffset: -2, opacity: dipotong ? .45 : 1, cursor: (potongan.length || salinan.length) ? 'crosshair' : r.t === 'penanda' ? 'pointer' : bisa ? 'grab' : 'default' }
+    // PER CHIP (B1): sel = area klik (popup) & tujuan drop; chip = satuan pilih/seret/edit.
+    const chips = chipSel(r, d)
+    const adaPilih = chips.some(c => pilihan.has(c.kunci))
+    const td: any = { borderTop: garisAtas, borderRight: '1px solid #f1f5f9', padding: '2px 4px', verticalAlign: 'middle', background: adaPilih ? '#eff6ff' : bgSel(d, bgDasar), width: LEBAR_TGL, minWidth: LEBAR_TGL, maxWidth: LEBAR_TGL, boxSizing: 'border-box', overflow: 'hidden',
+      cursor: (potongan.length || salinan.length) ? 'crosshair' : 'pointer' }
     const ev = {
       onClick: (e: any) => klikSel(e, r, d, nomor),
-      onContextMenu: (e: any) => { e.preventDefault(); if (!pilihan.has(kunci) && bisa) { setPilihan(new Set([kunci])); setJangkar({ i: nomor, d }) } setMenu({ x: e.clientX, y: e.clientY, r, d }) },
+      onContextMenu: (e: any) => {
+        e.preventDefault()
+        if (!adaPilih) { const bs = chips.filter(c => c.bisa).map(c => c.kunci); if (bs.length) { setPilihan(new Set(bs)); setJangkar({ i: nomor, d }) } }
+        setMenu({ x: e.clientX, y: e.clientY, r, d })
+      },
       onDragOver: (e: any) => onDragOver(e, d), onDrop: (e: any) => onDrop(e, d),
-      draggable: bisa && !potongan.length, onDragStart: (e: any) => onDragStart(e, r, d), onDragEnd: () => bersihkanDrag(),
+    }
+    const pilihChip = (cs: ChipSel | undefined, proses: string, rawId: number | null): PilihChip | undefined => cs && {
+      bisa: cs.bisa, dipilih: pilihan.has(cs.kunci), dipotong: potongan.includes(cs.kunci), disalin: salinan.includes(cs.kunci),
+      ev: {
+        'data-chip': cs.kunci, 'data-bisa': cs.bisa ? '1' : '0',
+        onClick: (e: any) => klikChip(e, r, d, nomor, cs, proses, rawId),
+        onContextMenu: (e: any) => { e.preventDefault(); e.stopPropagation(); if (!pilihan.has(cs.kunci) && cs.bisa) { setPilihan(new Set([cs.kunci])); setJangkar({ i: nomor, d }) } setMenu({ x: e.clientX, y: e.clientY, r, d }) },
+        draggable: cs.bisa && !potongan.length, onDragStart: (e: any) => onDragStart(e, cs.kunci, d), onDragEnd: () => bersihkanDrag(),
+      },
     }
     // Semua chip tampil (urut proses dari rawPivot), membungkus ke bawah; tinggi baris sudah disiapkan tinggiPerKb.
     const wadah = (isi: any) => (
@@ -976,18 +1037,19 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (r.t === 'grup') {
       const rs = r.buka ? [] : (r.g.ringkasan[d] || [])
       return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(
-        rs.map(x => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; return (
-          <span key={x.proses} title={`${r.g.key} ${getDayLabel(d)}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}`} style={{ display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, background: w, color: '#fff', borderRadius: 4, padding: `2px ${CHIP.padX}px`, fontSize: CHIP.font, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%', boxSizing: 'border-box' }}>
+        rs.map((x, i) => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; const pc = pilihChip(chips[i], x.proses, null); return (
+          <span key={x.proses} title={`${r.g.key} ${getDayLabel(d)}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}\nKlik = edit ${x.proses} · Ctrl/Alt/Shift+klik = pilih (semua komponen ${x.proses} ${r.g.key} hari ini) · seret = pindah`} {...pc?.ev} style={{ display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, background: w, color: '#fff', borderRadius: 4, padding: `2px ${CHIP.padX}px`, fontSize: CHIP.font, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%', boxSizing: 'border-box', ...gayaPilih(pc) }}>
             <span>{x.proses}</span>
             <span style={{ background: 'rgba(255,255,255,.28)', borderRadius: 3, padding: `0 ${CHIP.badgePadX}px` }}>{x.n}</span>{x.selesai && '✓'}
           </span>) }))}</td>
     }
     if (r.t === 'komp') {
       const cs = r.k.sel[d] || []
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} peringatan={c.jejakKe ? undefined : tandaUrutan.get(`${r.blok.panelId}|${r.k.kode}|${c.proses}|${d}`)} />))}</td>
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} peringatan={c.jejakKe ? undefined : tandaUrutan.get(`${r.blok.panelId}|${r.k.kode}|${c.proses}|${d}`)} pilih={pilihChip(chips[i], c.proses, c.rawId)} />))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'
-    return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1 }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
+    const pp = ada ? pilihChip(chips[0], r.p.proses, r.p.rawId) : undefined
+    return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} {...pp?.ev} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1, ...gayaPilih(pp) }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
   }
 
   const jumlahKomponen = blokTampil.reduce((s, b) => s + b.grup.reduce((t, g) => t + g.komponen.length, 0), 0)
@@ -998,7 +1060,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan per WP.</b> Dikelompokkan per WP. Pilih: Ctrl/Alt/Shift+klik atau seret kotak (lasso); pindah: drag, atau Ctrl+X → klik hari tujuan → Ctrl+V; salin (digabung): Ctrl+C → klik hari tujuan → Ctrl+V; batalkan pindah: Ctrl+Z; klik sel = edit jadwal (pilih proses; modal sama dgn tampilan lama); prioritas & urutan panel di kolom Panel (dropdown, ⋮); klik baris kartu kapasitas = Atur Kapasitas; seret ⠿ = ubah urutan panel; klik header tanggal = daftar pekerjaan hari itu; Delete = hapus WP sel header terpilih; klik penanda QC/PACKING = tambah/hapus; klik kanan = menu (Edit, Hapus WP). Perubahan TERSIMPAN ke jadwal asli & Rencana Harian (sama dgn Raw Schedule utama). Pindah satu proses saja dari komponen: pilih proses itu di filter proses dulu.
+          <b>Raw Schedule tampilan per WP.</b> Dikelompokkan per WP. Satuan pilihan = <b>chip</b> (1 proses · 1 komponen · 1 hari; chip header = proses itu di WP itu). Klik chip = edit proses itu; Ctrl/Alt/Shift+klik chip = pilih; seret kotak (lasso) = pilih chip yang tersentuh; seret chip = pindah chip itu (atau seluruh pilihan); Ctrl+X → klik hari tujuan → Ctrl+V = pindah; Ctrl+C → Ctrl+V = salin (digabung); Ctrl+Z = batalkan pindah; klik area kosong sel = pilih proses (edit/tambah); Delete = hapus WP chip header terpilih (proses itu saja); klik kanan header = Hapus WP semua proses; prioritas & urutan panel di kolom Panel (dropdown, ⋮, seret ⠿); klik kartu kapasitas = Atur Kapasitas; klik header tanggal = daftar pekerjaan; klik penanda QC/PACKING = tambah/hapus. Perubahan TERSIMPAN ke jadwal asli & Rencana Harian.
         </div>
       </div>
 
@@ -1074,9 +1136,9 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
 
       {(pilihan.size > 0 || potongan.length > 0 || salinan.length > 0 || pindahMulti.undoMultiRef.current.length > 0) && (
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap', marginBottom: 8, background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 8, padding: '6px 10px', fontSize: 11 }}>
-          {pilihan.size > 0 && <b style={{ color: '#1d4ed8' }}>{pilihan.size} sel dipilih</b>}
-          {potongan.length > 0 && <span style={{ color: '#92400e', fontWeight: 700 }}>✂ {potongan.length} sel dipotong{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
-          {salinan.length > 0 && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>📋 {salinan.length} sel disalin{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
+          {pilihan.size > 0 && <b style={{ color: '#1d4ed8' }}>{pilihan.size} chip dipilih</b>}
+          {potongan.length > 0 && <span style={{ color: '#92400e', fontWeight: 700 }}>✂ {potongan.length} chip dipotong{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
+          {salinan.length > 0 && <span style={{ color: '#1d4ed8', fontWeight: 700 }}>📋 {salinan.length} chip disalin{tujuanTempel ? ` · tujuan ${getDayLabel(tujuanTempel)}` : ' · klik hari tujuan'}</span>}
           {pilihan.size > 0 && <button onClick={salin} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>📋 Salin (Ctrl+C)</button>}
           {pilihan.size > 0 && <button onClick={potong} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>✂ Potong (Ctrl+X)</button>}
           {(potongan.length > 0 || salinan.length > 0) && <button onClick={() => tempel()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Tempel (Ctrl+V)</button>}
@@ -1094,7 +1156,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       {konfirmasi && (
         <div onClick={() => setKonfirmasi(null)} style={{ position: 'fixed', inset: 0, zIndex: 10040, background: 'rgba(15,23,42,.35)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <div onClick={e => e.stopPropagation()} style={{ background: '#fff', borderRadius: 12, padding: 18, width: 360, maxWidth: 'calc(100vw - 32px)', boxShadow: '0 16px 40px rgba(0,0,0,.25)' }}>
-            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Pindah atau Copy {konfirmasi.kunci.length} sel {konfirmasi.offset > 0 ? '+' : ''}{konfirmasi.offset} hari?</div>
+            <div style={{ fontWeight: 800, fontSize: 14, marginBottom: 6 }}>Pindah atau Copy {konfirmasi.kunci.length} chip {konfirmasi.offset > 0 ? '+' : ''}{konfirmasi.offset} hari?</div>
+            {konfirmasi.header && <div style={{ fontSize: 11.5, color: '#1e3a8a', background: '#eff6ff', border: '1px solid #bfdbfe', borderRadius: 7, padding: '6px 9px', marginBottom: 8, whiteSpace: 'pre-line' }}>{konfirmasi.header.split('; ').join('\n')}</div>}
             <div style={{ fontSize: 12, color: '#64748b', marginBottom: 8 }}><b>Pindah</b>: komponen yang sudah selesai atau sudah digeser tetap di tempatnya; bisa dibatalkan dengan Ctrl+Z. <b>Copy</b>: digabung ke hari tujuan, asal tetap.</div>
             <div style={{ fontSize: 11.5, color: '#b45309', background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 7, padding: '6px 9px', marginBottom: 14 }}>Tersimpan ke jadwal asli; Rencana Harian ikut dipindah.</div>
             <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1168,12 +1231,13 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
                 </button>)
               const adaSumber = potongan.length || salinan.length
               return <>
-                {item(`📋 Salin ${pilihan.size} sel`, pilihan.size ? salin : null, '#1e293b', 'Ctrl+C')}
-                {item(`✂ Potong ${pilihan.size} sel`, pilihan.size ? potong : null, '#1e293b', 'Ctrl+X')}
+                {item(`📋 Salin ${pilihan.size} chip`, pilihan.size ? salin : null, '#1e293b', 'Ctrl+C')}
+                {item(`✂ Potong ${pilihan.size} chip`, pilihan.size ? potong : null, '#1e293b', 'Ctrl+X')}
                 {item(`📌 Tempel di ${getDayLabel(menu.d)}${potongan.length ? ' (pindah)' : salinan.length ? ' (salin)' : ''}`, adaSumber ? () => { setTujuanTempel(menu.d); tempel(menu.d) } : null, '#1d4ed8', 'Ctrl+V')}
                 {menu.r.t === 'penanda' && item(menu.r.p.sel[menu.d] ? `Hapus penanda ${menu.r.p.proses}` : `Tambah penanda ${menu.r.p.proses}`, () => togglePenandaSel(menu.r, menu.d))}
                 {menu.r.t !== 'penanda' && item('✏️ Edit jadwal…', () => klikEdit(null, menu.r, menu.d, true, { x: menu.x, y: menu.y }))}
-                {menu.r.t === 'grup' && menu.r.g.jenis === 'wp' && item(`🗑 Hapus ${pilihan.has(kunciSel(menu.r, menu.d)) && pilihan.size > 1 ? pilihan.size + ' sel' : menu.r.g.key + ' di ' + getDayLabel(menu.d)}`, () => hapusWpTerpilih(menu.r, menu.d), '#dc2626')}
+                {(() => { const nh = [...pilihan].filter(k => pecahKunci(k).jenis === 'h'); return nh.length > 0 && item(`🗑 Hapus ${nh.length} chip header (proses itu saja)`, () => hapusWpKunci(nh), '#dc2626', 'Delete') })()}
+                {menu.r.t === 'grup' && menu.r.g.jenis === 'wp' && item(`🗑 Hapus ${menu.r.g.key} di ${getDayLabel(menu.d)} (semua proses)`, () => hapusWpKunci([kunciSel(menu.r, menu.d)]), '#dc2626')}
                 <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
                 {item('Bersihkan pilihan', batalkan, '#64748b', 'Esc')}
               </>
