@@ -51,6 +51,8 @@ export type DepsModalJadwalSel={
   // (22 Okt 2026) pilih per WP tampilan lama: tampilkan centang per WP utk Pindahin (selalu nyala sejak tahap 2)
   modePilihWp?:boolean;
   namaPekerja?:(id:any)=>string|undefined; // (22 Okt 2026) peringatan timer berjalan saat Hapus WP
+  // (B2, 28 Okt 2026) opsional - nama operator yang timernya SEDANG berjalan utk komponen+proses (modal terkunci WP menampilkannya)
+  operatorBerjalan?:(panelId:number,kode:string,proses:string)=>string[];
   // opsional - sumber data/log lain (sandbox Raw Schedule per WP); tanpa io = Supabase & activity_log asli
   io?:IoJadwalRaw;
 };
@@ -93,9 +95,11 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
 
   // fokusWp (22 Okt 2026, permintaan user): klik-ganda chip WP di Raw = modal hanya menampilkan WP itu (tombol "Tampilkan
   // semua WP" utk melepas). Hanya TAMPILAN - cek data (WP sudah ada, Tambah WP) tetap pakai seluruh isi sel.
-  const openCellModal=(rawId,date,fokusWp?:string)=>{
-    setCellModal(fokusWp?{rawId,date,fokusWp}:{rawId,date});
-    setModalWp("");
+  // kunciWp (B2, 28 Okt 2026, Raw Schedule per WP): modal TERKUNCI ke 1 WP - tanpa kisi "Tambah WP", WP langsung terpilih, semua
+  // komponen BOM WP itu tampil dgn statusnya (lib/tambahKomponen); "Lihat semua WP" = modal biasa. Tampilan lama tidak mengirimnya.
+  const openCellModal=(rawId,date,fokusWp?:string,opsi?:{kunciWp?:string})=>{
+    setCellModal(opsi?.kunciWp?{rawId,date,fokusWp:opsi.kunciWp,kunciWp:opsi.kunciWp}:fokusWp?{rawId,date,fokusWp}:{rawId,date});
+    setModalWp(opsi?.kunciWp||"");
     setModalKomponen([]);
     // Load existing busbar selections
     const row=rawData.find(r=>r.id===rawId);
@@ -104,6 +108,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const rawRow=cellModal?rawData.find(r=>r.id===cellModal.rawId):null;
   const cellEntries=rawRow?.schedule?.[cellModal?.date]||[];
   const fokusWp:string|undefined=cellModal?.fokusWp;
+  const kunciWp:string|undefined=cellModal?.kunciWp;
+  const lihatSemuaWp=()=>{setCellModal({rawId:cellModal.rawId,date:cellModal.date});setModalWp("");setModalKomponen([]);setModalBobotPerKomponen({});};
   const entriTampil=fokusWp?cellEntries.filter((e:any)=>e.wp===fokusWp):cellEntries;
   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
   // Sisa qty yang beneran perlu dijadwalkan: total dikurangi yang lebih besar antara "sudah
@@ -344,15 +350,15 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       return;
     }
     await simpanTambah({rawId:cellModal.rawId,date:cellModal.date,wp:modalWp,komp:modalKomponen,bobotPilihan:modalBobotPerKomponen,busbarSel,
-      sebelumSimpan:()=>{setModalWp('');setModalKomponen([]);setModalBobotPerKomponen({});}});
+      sebelumSimpan:()=>{setModalWp(kunciWp||'');setModalKomponen([]);setModalBobotPerKomponen({});}});
   };
 
-  // TAMBAH LANGSUNG (B2, 28 Okt 2026) - "+ tambah" di popup baris komponen Raw Schedule per WP: kode -> WP (dari BOM) di sel itu
+  // TAMBAH KOMPONEN KE SEL / tambah langsung (B2, 28 Okt 2026) - "+ tambah" di popup baris komponen Raw Schedule per WP: kode -> WP (dari BOM) di sel itu
   // tanpa membuka modal. Aturan boleh-tambah = statusTambahKomponen (sama dgn daftar pilih modal); cek kapasitas & simpan =
   // fungsi yang sama dgn tombol Tambah modal. WIRING tidak lewat sini (bobot & kuota orang dipilih di modal).
   // Kapasitas kurang + ada opsi swap -> modal edit sel dibuka (WP & komponen terisi) + modal swap seperti biasa.
   // Hasil: 'tersimpan' | 'modal' (lanjut di modal swap) | 'batal' | 'ditolak' (alasan) | 'gagal'.
-  const tambahLangsung=async(rawId:number,date:string,wp:string,komp:string[]):Promise<{hasil:'tersimpan'|'modal'|'batal'|'ditolak'|'gagal';alasan?:string}>=>{
+  const tambahKomponenKeSel=async(rawId:number,date:string,wp:string,komp:string[]):Promise<{hasil:'tersimpan'|'modal'|'batal'|'ditolak'|'gagal';alasan?:string}>=>{
     const row=rawData.find(r=>r.id===rawId);
     if(!row)return{hasil:'gagal',alasan:'baris jadwal tidak ditemukan'};
     if(PROSES_ORANG_RAW.includes(row.proses))return{hasil:'ditolak',alasan:'WIRING ditambah lewat modal (bobot & kuota orang)'};
@@ -362,7 +368,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const cek=await cekKapasitasTambah(row,panel,date,wp,komp,{});
     if(!cek.ok){
       if(!cek.swapMenit&&!cek.swapOrang)return{hasil:'batal'};
-      openCellModal(rawId,date);setModalWp(wp);setModalKomponen(komp);
+      openCellModal(rawId,date,undefined,{kunciWp:wp});setModalKomponen(komp);
       if(cek.swapMenit){setSwapModal(cek.swapMenit);setSwapSelected([]);}
       if(cek.swapOrang){setSwapOrangModal(cek.swapOrang);setSwapOrangSelected([]);}
       return{hasil:'modal'};
@@ -510,7 +516,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const elemen=(
     <>
       {cellModal&&rawRow&&(
-        <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}`} onClose={()=>setCellModal(null)} width={520}>
+        <Modal title={`Jadwal ${getDayLabel(cellModal.date)} — ${rawRow.proses}${kunciWp?" · "+kunciWp:""}`} onClose={()=>setCellModal(null)} width={520}>
           <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>{rawRow.proyek} · {rawRow.panel}</div>
           {rawRow.proses!=="BUSBAR"&&cellEntries.length>0&&(
             <div style={{marginBottom:16}}>
@@ -518,8 +524,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
               {fokusWp&&(
                 <div style={{display:"flex",alignItems:"center",gap:8,background:"#fefce8",border:"1px solid #fde68a",borderRadius:8,padding:"6px 10px",marginBottom:8,fontSize:11,color:"#854d0e"}}>
                   <span style={{flex:1}}>Menampilkan <strong>{fokusWp}</strong> saja{cellEntries.length>1?` - ${cellEntries.length-1} WP lain di sel ini disembunyikan`:""}.</span>
-                  {cellEntries.length>1&&<button onClick={()=>setCellModal({rawId:cellModal.rawId,date:cellModal.date})}
-                    style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fde68a",background:"#fff",color:"#854d0e",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>Tampilkan semua WP ({cellEntries.length})</button>}
+                  {(cellEntries.length>1||kunciWp)&&<button onClick={()=>kunciWp?lihatSemuaWp():setCellModal({rawId:cellModal.rawId,date:cellModal.date})}
+                    style={{padding:"2px 8px",borderRadius:6,border:"1px solid #fde68a",background:"#fff",color:"#854d0e",fontSize:11,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>{kunciWp?"Lihat semua WP":`Tampilkan semua WP (${cellEntries.length})`}</button>}
                 </div>
               )}
               {selectedForMove.length>0&&(
@@ -635,8 +641,35 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
           )}
           <div style={{borderTop:"1px solid #f1f5f9",paddingTop:16}}>
           {rawRow?.proses!=="BUSBAR"&&(<>
-            <Lbl>Tambah WP</Lbl>
-            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
+            {kunciWp&&(()=>{
+              // Semua komponen BOM WP ini + status (satu sumber dgn daftar pilih: statusTambahKomponen). 'bisa' dipilih di bawah.
+              const lain=wpItemsAll.map((it:{kode:string;nama:string})=>({it,st:statusTambahKomponen(rawRow,livePanelForCell,cellModal.date,kunciWp,it.kode,TODAY)})).filter(x=>x.st.jenis!=="bisa");
+              const teks=(st:ReturnType<typeof statusTambahKomponen>)=>st.jenis==="terjadwal"?(st.x>0?`di sel ini · progres ${st.x}/${st.y}`:"di sel ini"):st.jenis==="tanggalLain"?`terjadwal ${getDayLabel(st.tanggal)}`:st.jenis==="selesai"?"selesai":st.jenis==="qty0"?"qty 0 di panel":st.jenis==="dilewati"?(st.alasan==="tidak_relevan"?"tidak relevan":"tidak ada di panel"):"";
+              return(<>
+                <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                  <Lbl>Komponen {kunciWp} — {rawRow.proses}</Lbl>
+                  <button onClick={lihatSemuaWp} style={{marginLeft:"auto",background:"none",border:"none",color:"#2563eb",fontSize:11,fontWeight:600,cursor:"pointer",textDecoration:"underline",fontFamily:"inherit"}}>Lihat semua WP</button>
+                </div>
+                {wpItems.length===0&&(
+                  <div style={{background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"8px 12px",marginBottom:10,fontSize:11.5,color:"#475569"}}>
+                    {wpItemsAll.length===0?`Tidak ada komponen ${kunciWp} di BOM panel ini.`:`Tidak ada komponen ${kunciWp} yang bisa ditambahkan untuk ${rawRow.proses} di ${getDayLabel(cellModal.date)} - semuanya sudah terjadwal, selesai, atau tidak berlaku (lihat daftar di bawah).`}
+                  </div>
+                )}
+                {lain.length>0&&(
+                  <div style={{display:"flex",flexWrap:"wrap" as const,gap:5,marginBottom:12}}>
+                    {lain.map(({it,st})=>{
+                      const op=deps.operatorBerjalan?.(Number(livePanelForCell?.id),it.kode,rawRow.proses)||[];
+                      return(<span key={it.kode} title={`${it.kode} - ${it.nama}: ${teks(st)}${op.length?` · sedang dikerjakan: ${op.join(", ")}`:""}`}
+                        style={{padding:"4px 9px",borderRadius:7,border:"1px solid #e2e8f0",background:st.jenis==="terjadwal"?"#eff6ff":"#f8fafc",color:st.jenis==="terjadwal"?"#1d4ed8":"#94a3b8",fontSize:10.5,fontWeight:600}}>
+                        {it.nama} <span style={{opacity:.75}}>({it.kode})</span> · {teks(st)}{op.length>0&&<span style={{color:"#b45309"}}> · ⏱ {op.join(", ")}</span>}
+                      </span>);
+                    })}
+                  </div>
+                )}
+              </>);
+            })()}
+            {!kunciWp&&<Lbl>Tambah WP</Lbl>}
+            {!kunciWp&&<div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:12}}>
               {WP_LIST.map(wp=>{
                 const added=cellEntries.some(e=>e.wp===wp);
                 const wpDone=isWpDone(livePanelForCell,wp,rawRow?.proses||"");
@@ -648,7 +681,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                   </button>
                 );
               })}
-            </div>
+            </div>}
             {modalWp&&wpItems.length>0&&(
               <>
                 <Lbl>Pilih Komponen {modalWp}</Lbl>
@@ -1142,5 +1175,5 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       )}
     </>
   );
-  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel,tambahLangsung,hapusKodeDariSel};
+  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel,tambahKomponenKeSel,hapusKodeDariSel};
 }

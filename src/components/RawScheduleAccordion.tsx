@@ -599,6 +599,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     removeRenhar: removeRenhar || (async () => ({ success: false, error: 'Rencana harian belum tersambung.' })),
     setRenhar: setRenhar || (() => {}),
     namaPekerja,
+    // (B2) operator yang timernya SEDANG berjalan (selesai kosong) utk komponen+proses - data timer yang sama dgn tooltip chip
+    operatorBerjalan: (panelId: number, kode: string, proses: string) => [...new Set((opData?.idx.get(kunciTimer(panelId, kode, proses)) || []).filter(t => !t.selesai).map(t => opData?.nama(t.pekerja_id) || '#' + t.pekerja_id))],
     io,
   })
   // ── Tahap 3c: bagian bersama tampilan lama ──
@@ -657,8 +659,10 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   // status (B2, 28 Okt 2026): baris komponen WP - aturan boleh-tambah SAMA dgn daftar pilih modal (lib/tambahKomponen)
-  type OpsiProses = { proses: string; rawId: number; terisi: boolean; status?: StatusTambah }
-  const [popProses, setPopProses] = useState<{ x: number; y: number; r: Baris; d: string; opsi: OpsiProses[] } | null>(null)
+  // wp (header WP, B2 28 Okt 2026): jumlah komponen BOM WP itu yang bisa ditambah / berlaku utk proses ini (status yang sama)
+  type OpsiProses = { proses: string; rawId: number; terisi: boolean; status?: StatusTambah; wp?: { bisa: number; berlaku: number } }
+  // semuaWp = dibuka dari menu "Edit jadwal (semua WP)…": modal biasa (pilihan WP), tanpa tambah langsung
+  const [popProses, setPopProses] = useState<{ x: number; y: number; r: Baris; d: string; opsi: OpsiProses[]; semuaWp?: boolean } | null>(null)
   // Proses yang bisa diedit di sel ini (baris jadwal panel itu): grup BUSBAR -> baris BUSBAR; header WP -> semua
   // proses per-komponen; baris komponen -> proses yang relevan utk kode itu (isKomponenRelevant, sama dgn modal).
   // QC TEST/PACKING lewat baris penanda (klik = toggle). terisi = sel sudah memuat WP/komponen itu di proses tsb.
@@ -673,16 +677,25 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       .map((x: any) => {
         const es = (x.schedule?.[d] || []).filter((e: any) => e.wp === r.g.key)
         const status = r.t === 'komp' ? statusTambahKomponen(x, panelById.get(pid), d, r.g.key, r.k.kode, TODAY) : undefined
-        return { proses: x.proses, rawId: x.id, terisi: r.t === 'komp' ? es.some((e: any) => (e.komponen || []).includes(r.k.kode)) : es.length > 0, status }
+        let wp: OpsiProses['wp']
+        if (r.t === 'grup') {
+          const items: { kode: string }[] = cfgTipe(tipe)?.wps?.find((w: { wp: string }) => w.wp === r.g.key)?.items || []
+          const st = items.map(it => statusTambahKomponen(x, panelById.get(pid), d, r.g.key, it.kode, TODAY).jenis)
+          wp = { bisa: st.filter(j => j === 'bisa').length, berlaku: st.filter(j => j !== 'qty0' && j !== 'dilewati').length }
+        }
+        return { proses: x.proses, rawId: x.id, terisi: r.t === 'komp' ? es.some((e: any) => (e.komponen || []).includes(r.k.kode)) : es.length > 0, status, wp }
       })
   }
   // Buka modal edit utk (baris jadwal, tanggal). Sel kosong di baris WP/komponen: WP (dan komponen) langsung
   // terpilih - sama dgn alur "Pilih Komponen Lain" tampilan lama (komponen lama WP itu ikut, utk hitung kapasitas).
-  const bukaEdit = async (o: OpsiProses, r: Baris, d: string) => {
+  // (B2, 28 Okt 2026) baris header WP & baris komponen -> modal TERKUNCI ke WP baris itu (kunciWp: tanpa kisi "Tambah WP",
+  // semua komponen WP itu + status); semuaWp (menu klik kanan "Edit jadwal (semua WP)…" / "Lihat semua WP" di modal) = modal biasa.
+  const bukaEdit = async (o: OpsiProses, r: Baris, d: string, opsi: { semuaWp?: boolean } = {}) => {
     setPopProses(null)
     if (r.t === 'penanda') return
     if (!(await bolehTulis(`Edit jadwal ${o.proses} ${r.blok.panel} pada ${getDayLabel(d)}`))) return
-    modalJadwal.buka(o.rawId, d)
+    modalJadwal.buka(o.rawId, d, undefined, r.g.jenis === 'wp' && !opsi.semuaWp ? { kunciWp: r.g.key } : undefined)
+    if (opsi.semuaWp) return
     if (o.terisi || r.g.jenis !== 'wp') return
     const wp = r.g.key
     modalJadwal.setModalWp(wp)
@@ -701,11 +714,15 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
   }
   // POPUP baris komponen (B2, 28 Okt 2026): label & aksi per status (lib/tambahKomponen, sama dgn modal).
-  //  '+ tambah' -> TAMBAH LANGSUNG (modalJadwal.tambahLangsung: cek kapasitas/urutan + renhar + log sama dgn modal), toast "Batalkan"
+  //  '+ tambah' -> TAMBAH LANGSUNG (modalJadwal.tambahKomponenKeSel: cek kapasitas/urutan + renhar + log sama dgn modal), toast "Batalkan"
   //  = modalJadwal.hapusKodeDariSel (cek timer, jejak, renhar). WIRING -> modal (bobot & kuota orang).
   //  'terjadwal'/'progres x/y' -> edit sel ini; 'terjadwal <tgl>' -> edit sel tanggal itu; selesai/qty 0/tidak relevan -> nonaktif.
   const labelOpsi = (o: OpsiProses): { teks: string; aktif: boolean; warna: string } => {
     const st = o.status
+    if (!st && o.wp && !o.terisi) {
+      if (o.wp.berlaku === 0) return { teks: 'tidak ada komponen untuk proses ini', aktif: false, warna: '#cbd5e1' }
+      return o.wp.bisa > 0 ? { teks: `+ tambah (${o.wp.bisa} komponen)`, aktif: true, warna: '#15803d' } : { teks: 'semua terjadwal/selesai · lihat', aktif: true, warna: '#b45309' }
+    }
     if (!st) return { teks: o.terisi ? 'terjadwal · edit' : '+ tambah', aktif: true, warna: o.terisi ? '#1d4ed8' : '#94a3b8' }
     switch (st.jenis) {
       case 'terjadwal': return { teks: st.x > 0 ? `progres ${st.x}/${st.y} · edit` : 'terjadwal · edit', aktif: true, warna: '#1d4ed8' }
@@ -716,15 +733,16 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       default: return { teks: PROSES_ORANG_RAW.includes(o.proses) ? '+ tambah (pilih bobot)' : '+ tambah', aktif: true, warna: '#15803d' }
     }
   }
-  const pilihOpsi = async (o: OpsiProses, r: Baris, d: string) => {
+  const pilihOpsi = async (o: OpsiProses, r: Baris, d: string, semuaWp = false) => {
     const st = o.status
+    if (semuaWp) { bukaEdit(o, r, d, { semuaWp: true }); return }
     if (r.t !== 'komp' || r.g.jenis !== 'wp' || !st) { bukaEdit(o, r, d); return }
     if (st.jenis === 'tanggalLain') { bukaEdit({ ...o, terisi: true }, r, st.tanggal); return }
     if (st.jenis !== 'bisa' || PROSES_ORANG_RAW.includes(o.proses)) { bukaEdit(o, r, d); return }
     setPopProses(null)
     const wp = r.g.key, kode = r.k.kode
     if (!(await bolehTulis(`Tambah ${o.proses} ${kode} ${r.blok.panel} pada ${getDayLabel(d)}`))) return
-    const h = await modalJadwal.tambahLangsung(o.rawId, d, wp, [kode])
+    const h = await modalJadwal.tambahKomponenKeSel(o.rawId, d, wp, [kode])
     if (h.hasil === 'tersimpan') {
       tampilToastAksi(`Ditambahkan: ${o.proses} ${kode} (${wp}) ${r.blok.panel} di ${getDayLabel(d)}.`, 'ok', [{ label: 'Batalkan', fn: async () => {
         if (await modalJadwal.hapusKodeDariSel(o.rawId, d, wp, [kode])) tampilToastAksi(`Dibatalkan: ${o.proses} ${kode} dihapus dari ${getDayLabel(d)}.`, 'ok')
@@ -734,12 +752,12 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     // 'modal' = lanjut di modal swap kapasitas; 'batal' = pengguna membatalkan (overbook); gagal simpan sudah diberi tahu modal
   }
   // Klik biasa sel non-penanda: 1 pilihan proses / tepat 1 proses terisi -> langsung modal; selain itu pilih proses dulu.
-  const klikEdit = (e: React.MouseEvent | null, r: Baris, d: string, paksaPilih = false, xy?: { x: number; y: number }) => {
+  const klikEdit = (e: React.MouseEvent | null, r: Baris, d: string, paksaPilih = false, xy?: { x: number; y: number }, semuaWp = false) => {
     const opsi = opsiProsesSel(r, d)
     if (opsi.length === 0) { tampilToastAksi('Panel ini belum punya baris jadwal proses yang bisa diisi di sini.', 'err'); return }
     const terisi = opsi.filter(o => o.terisi)
     if (!paksaPilih && (opsi.length === 1 || terisi.length === 1)) { bukaEdit(opsi.length === 1 ? opsi[0] : terisi[0], r, d); return }
-    setPopProses({ x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200, r, d, opsi })
+    setPopProses({ x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200, r, d, opsi: semuaWp ? opsi.map(o => ({ ...o, status: undefined, wp: undefined })) : opsi, semuaWp })
   }
   // HAPUS WP: kunci header sel (g:, menu klik kanan header) -> WP itu dihapus dari SEMUA proses pada tanggal itu; chip header (h:,
   // Delete / menu) -> WP itu dihapus dari proses chip itu saja. Lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal
@@ -1228,7 +1246,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
               {popProses.r.t !== 'penanda' && `${popProses.r.blok.panel} · ${popProses.r.t === 'komp' ? popProses.r.k.kode : popProses.r.g.key} · ${getDayLabel(popProses.d)}`}
             </div>
             {popProses.opsi.map(o => { const w = (PROSES_COLOR as any)[o.proses] || '#64748b'; const lb = labelOpsi(o); return (
-              <button key={o.rawId} role="menuitem" disabled={!lb.aktif} onClick={() => pilihOpsi(o, popProses.r, popProses.d)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '6px 14px', border: 'none', background: 'none', cursor: lb.aktif ? 'pointer' : 'default', fontSize: 12, textAlign: 'left', fontFamily: 'inherit', color: lb.aktif ? '#1e293b' : '#94a3b8' }}>
+              <button key={o.rawId} role="menuitem" disabled={!lb.aktif} onClick={() => pilihOpsi(o, popProses.r, popProses.d, popProses.semuaWp)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '6px 14px', border: 'none', background: 'none', cursor: lb.aktif ? 'pointer' : 'default', fontSize: 12, textAlign: 'left', fontFamily: 'inherit', color: lb.aktif ? '#1e293b' : '#94a3b8' }}>
                 <span style={{ width: 9, height: 9, borderRadius: 99, background: w, flex: '0 0 auto', opacity: lb.aktif ? 1 : .45 }} />
                 <span style={{ fontWeight: 700 }}>{o.proses}</span>
                 <span style={{ marginLeft: 'auto', fontSize: 10.5, color: lb.warna, fontWeight: lb.teks.startsWith('+') ? 700 : 500 }}>{lb.teks}</span>
@@ -1274,6 +1292,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
                 {item(`📌 Tempel di ${getDayLabel(menu.d)}${potongan.length ? ' (pindah)' : salinan.length ? ' (salin)' : ''}`, adaSumber ? () => { setTujuanTempel(menu.d); tempel(menu.d) } : null, '#1d4ed8', 'Ctrl+V')}
                 {menu.r.t === 'penanda' && item(menu.r.p.sel[menu.d] ? `Hapus penanda ${menu.r.p.proses}` : `Tambah penanda ${menu.r.p.proses}`, () => togglePenandaSel(menu.r, menu.d))}
                 {menu.r.t !== 'penanda' && item('✏️ Edit jadwal…', () => klikEdit(null, menu.r, menu.d, true, { x: menu.x, y: menu.y }))}
+                {menu.r.t !== 'penanda' && menu.r.g.jenis === 'wp' && item('✏️ Edit jadwal (semua WP)…', () => klikEdit(null, menu.r, menu.d, true, { x: menu.x, y: menu.y }, true))}
                 {(() => { const nh = [...pilihan].filter(k => pecahKunci(k).jenis === 'h'); return nh.length > 0 && item(`🗑 Hapus ${nh.length} chip header (proses itu saja)`, () => hapusWpKunci(nh), '#dc2626', 'Delete') })()}
                 {menu.r.t === 'grup' && menu.r.g.jenis === 'wp' && item(`🗑 Hapus ${menu.r.g.key} di ${getDayLabel(menu.d)} (semua proses)`, () => hapusWpKunci([kunciSel(menu.r, menu.d)]), '#dc2626')}
                 <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
