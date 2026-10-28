@@ -115,9 +115,11 @@ export default function App(){
   const [user,setUser]=useState(null);
   // FIX KEAMANAN (7 Sep 2026) - lihat komentar di effect "Restore admin session" di bawah.
   const [sessionMismatch,setSessionMismatch]=useState(false);
-  const [tab,setTab]=useState(()=>localStorage.getItem("vista_teknik_active_tab")||"dashboard");
+  // tab "raw_sandbox" (menu PERCOBAAN Raw per WP) dihapus 28 Okt 2026 saat penukaran -> tersimpan lama diarahkan ke "raw"
+  const tabAwal=()=>{const t=localStorage.getItem("vista_teknik_active_tab")||"dashboard";return t==="raw_sandbox"?"raw":t;};
+  const [tab,setTab]=useState(tabAwal);
   const MAX_MOUNTED_TABS=4;
-  const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[localStorage.getItem("vista_teknik_active_tab")||"dashboard"]);
+  const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[tabAwal()]);
   const tabDibukaSesiIni=useRef<Set<string>>(new Set());
   // (16 Okt 2026) unduh semua halaman di belakang layar setelah login - menu yang dibuka belakangan tidak gagal walau
   // ada deploy baru sementara tab ini terbuka (lib/lazyPrefetch.ts).
@@ -172,7 +174,7 @@ export default function App(){
     const params=new URLSearchParams(window.location.search);
     const tabParam=params.get("tab");
     const woIdParam=params.get("wo_id");
-    if(tabParam)setTab(tabParam);
+    if(tabParam)setTab(tabParam==="raw_sandbox"?"raw":tabParam);
     if(woIdParam)setHighlightWoId(Number(woIdParam));
     if(tabParam||woIdParam)window.history.replaceState(null,"",window.location.pathname);
   },[]);
@@ -729,7 +731,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ]},
     ]},
     {group:"PRODUKSI",items:[
+      // PENUKARAN (28 Okt 2026): "raw" = tampilan per WP (RawScheduleAccordion); tampilan lama tetap ada sbg cadangan "raw_lama".
       ...(canRaw?[{id:"raw",label:"Raw Schedule",icon:"ti ti-calendar-event"}]:[]),
+      ...(canRaw?[{id:"raw_lama",label:"Raw Schedule (lama)",icon:"ti ti-history"}]:[]),
       ...(canRaw?[{id:"outstanding",label:"Outstanding",icon:"ti ti-list-details"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       // Kendala produksi (23 Okt 2026) - dipindah dari grup SYSTEM ke dekat Rencana Harian/Outstanding; badge = belum teratasi.
@@ -754,14 +758,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
-    // PERCOBAAN - group TERPISAH JELAS dari menu produksi asli, di paling bawah sidebar, admin-only.
-    // Isinya RawScheduleAccordion (tampilan Raw Schedule per WP). Sejak 28 Okt 2026 (Tahap A penukaran) memakai data &
-    // fungsi simpan ASLI, dibatasi ke WO uji (MODE_RAW_PER_WP='uji', lib/penjagaUjiWo) sampai penukaran disetujui.
-    ...(["admin"].includes(user?.divisi)?[
-      {group:"PERCOBAAN",items:[
-        {id:"raw_sandbox",label:"Raw Schedule per WP (uji WO)",icon:"ti ti-flask"},
-      ]},
-    ]:[]),
   ];
 
   const alerts=woData.filter(w=>woOverall(w)<100&&(isDelayed(w.target)||isUrgent(w.target))).length;
@@ -1167,8 +1163,8 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("summary")&&<div style={{display:tab==="summary"?"block":"none"}}><TabKeepAlive aktif={tab==="summary"}><Suspense fallback={TabFallback}><SummaryProgress woData={woData}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("taskmonitoring")&&<div style={{display:tab==="taskmonitoring"?"block":"none"}}><Suspense fallback={TabFallback}><TaskMonitoring woData={woData} rawData={rawData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("detail")&&<div style={{display:tab==="detail"?"block":"none"}}><TabKeepAlive aktif={tab==="detail"}><Suspense fallback={TabFallback}><DetailProgress woData={woData} rawData={rawData} livePanelTypes={livePanelTypes} user={user}/></Suspense></TabKeepAlive></div>}
-              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><TabKeepAlive aktif={tab==="raw"}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
-              {visitedTabs.includes("raw_sandbox")&&<div style={{display:tab==="raw_sandbox"?"block":"none"}}><Suspense fallback={TabFallback}><RawScheduleAccordion woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} updateRaw={updateRaw} createRaw={createRaw} refetchRaw={refetchRaw} renhar={renhar} setRenhar={setRenhar} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} log={log} pekerja={pekerja} livePanelTypes={livePanelTypes} user={user}/></Suspense></div>}
+              {visitedTabs.includes("raw_lama")&&<div style={{display:tab==="raw_lama"?"block":"none"}}><TabKeepAlive aktif={tab==="raw_lama"}><Suspense fallback={TabFallback}><RawSchedule woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></TabKeepAlive></div>}
+              {visitedTabs.includes("raw")&&<div style={{display:tab==="raw"?"block":"none"}}><TabKeepAlive aktif={tab==="raw"}><Suspense fallback={TabFallback}><RawScheduleAccordion woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} updateRaw={updateRaw} createRaw={createRaw} refetchRaw={refetchRaw} renhar={renhar} setRenhar={setRenhar} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} withRenharQueue={withRenharQueue} log={log} pekerja={pekerja} livePanelTypes={livePanelTypes} user={user}/></Suspense></TabKeepAlive></div>}
               {visitedTabs.includes("outstanding")&&<div style={{display:tab==="outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><OutstandingView woData={woData} rawData={rawDataWoAktif} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} updateRaw={updateRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} withRenharQueue={withRenharQueue} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("rencana")&&<div style={{display:tab==="rencana"?"block":"none"}}><Suspense fallback={TabFallback}><RencanaHarian rawData={rawDataWoAktif} woData={woData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRaw={refetchRaw} withRenharQueue={withRenharQueue} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woDilihat={woDilihat} bukaWo={bukaWo} woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
