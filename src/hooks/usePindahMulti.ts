@@ -146,7 +146,12 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     if (sedangPindahRef.current || sedangBatalkanRef.current) { ambil().tampilToastAksi('Masih memproses pemindahan sebelumnya - tunggu sebentar.', 'err'); return false }
     if (sel.length === 0) { ambil().tampilToastAksi('Tidak ada pekerjaan yang bisa dipindah di pilihan ini.', 'err'); return false }
     sedangPindahRef.current = true
-    try { return await intiPindah(sel, jadwal, o) } finally { sedangPindahRef.current = false }
+    try {
+      // (28 Okt 2026) peringatan timer berjalan - sama dgn jalankanPindahMulti (tampilan lama)
+      const cek = ambil().cekSebelumPindah
+      if (cek && !(await cek(sel))) return false
+      return await intiPindah(sel, jadwal, o)
+    } finally { sedangPindahRef.current = false }
   }
 
   // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel_v2 (bukan pindah balik, yang
