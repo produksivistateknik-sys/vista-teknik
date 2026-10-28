@@ -7,7 +7,7 @@
 //      renhar       : raw_id baris yang kena / payload wajib baris jadwal WO uji
 //      activity_log : insert boleh
 //      tabel lain   : DITOLAK (kapasitas global, notifikasi, qty_change_log, panels, ...)
-//    RPC: pindah_multi_sel_v2 / pulihkan_multi_sel_v2 (raw_id wajib WO uji), pindah_urutan_panel_raw (panel WO uji);
+//    RPC: pindah_multi_sel_v2 / pulihkan_multi_sel_v2 / ubah_jadwal_multi_v1 / pulihkan_ubah_jadwal_v1 (raw_id wajib WO uji), pindah_urutan_panel_raw (panel WO uji);
 //    RPC lain ditolak. Kanal realtime diberi awalan supaya tidak bentrok dgn kanal bernama sama di Raw Schedule lama.
 //  - fungsi tulis App (updateRaw/createRaw/renhar create/update/remove) dibungkus dgn aturan yang sama.
 // Ditolak = { error: { code: 'P0001', message } } (pola penolakan server -> pesan tampil, tanpa "Ulangi").
@@ -114,6 +114,9 @@ export function buatPenjagaUji(woIdUji: () => number[], db: any = supabaseAsli):
       let alasan: string | null
       if (nama === 'pindah_multi_sel_v2') alasan = await rawIdUji([...(p?.p_rows || []).map((r: any) => r.raw_id), ...(p?.p_sel || []).map((s: any) => s.raw_id)])
       else if (nama === 'pulihkan_multi_sel_v2') alasan = await rawIdUji((p?.p_snap?.raw || []).map((r: any) => r.raw_id))
+      // (B3, 29 Okt 2026) salin/hapus per chip + Undo-nya: semua baris jadwal & renhar yang disentuh wajib milik WO uji
+      else if (nama === 'ubah_jadwal_multi_v1') alasan = await rawIdUji([...(p?.p_rows || []).map((r: { raw_id: number }) => r.raw_id), ...(p?.p_renhar || []).map((o: { raw_id: number }) => o.raw_id)])
+      else if (nama === 'pulihkan_ubah_jadwal_v1') alasan = await rawIdUji([...(p?.p_snap?.raw || []).map((r: { raw_id: number }) => r.raw_id), ...(p?.p_snap?.renhar_sebelum || []).map((h: { raw_id: number }) => h.raw_id)])
       else if (nama === 'pindah_urutan_panel_raw') alasan = await panelUji([p?.p_panel_id, ...(p?.p_materialize || []).map((m: any) => m.panel_id)].filter(x => x != null))
       else alasan = pesan(`RPC ${nama}`)
       if (alasan) { console.warn('[penjaga uji WO] RPC ditolak:', nama, alasan); return tolak(alasan) }

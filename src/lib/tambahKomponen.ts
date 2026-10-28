@@ -48,3 +48,32 @@ export function statusTambahKomponen(row: BarisJadwal, panel: PanelJadwal, tangg
   if (lain) return { jenis: 'tanggalLain', tanggal: lain }
   return { jenis: 'bisa' }
 }
+
+// BUANG KODE DARI 1 SEL (B3, 29 Okt 2026) - SATU sumber utk "Batalkan" tambah langsung (ModalJadwalSel.hapusKodeDariSel) &
+// hapus per chip (Raw Schedule per WP, RPC ubah_jadwal_multi_v1). Kode dibuang dari entri WP `wp` pada `tanggal` beserta
+// kunci per-kodenya (qtyPerKomponen / manualPin / digeserKe). Token __wiring_ ikut dibuang bila tidak ada kode asli tersisa;
+// entri kosong dihapus; tanggal tanpa entri dihapus. sisaAsli = kode asli yang tersisa (renhar: set_komponen; kosong = hapus).
+type EntriJadwal = { wp?: string; komponen?: string[]; qtyPerKomponen?: Record<string, number>; manualPin?: Record<string, string>; digeserKe?: Record<string, string> }
+export function buangKodeDariSel(schedule: Record<string, EntriJadwal[]>, tanggal: string, wp: string, kode: string[]): { schedule: Record<string, EntriJadwal[]>; sisaAsli: string[]; dibuang: string[] } {
+  const hapus = new Set(kode)
+  const entri = (schedule[tanggal] || []).find(e => e.wp === wp)
+  const dibuang = (entri?.komponen || []).filter(k => hapus.has(k))
+  if (!entri || dibuang.length === 0) return { schedule, sisaAsli: (entri?.komponen || []).filter(k => !k.startsWith('__wiring_')), dibuang: [] }
+  const sisaAsli = (entri.komponen || []).filter(k => !k.startsWith('__wiring_') && !hapus.has(k))
+  const tanpa = <T,>(m: Record<string, T> | undefined) => m ? Object.fromEntries(Object.entries(m).filter(([k]) => !hapus.has(k))) : m
+  const baru: EntriJadwal | null = sisaAsli.length ? {
+    ...entri, komponen: (entri.komponen || []).filter(k => !hapus.has(k)),
+    ...(entri.qtyPerKomponen ? { qtyPerKomponen: tanpa(entri.qtyPerKomponen) } : {}),
+    ...(entri.manualPin ? { manualPin: tanpa(entri.manualPin) } : {}),
+    ...(entri.digeserKe ? { digeserKe: tanpa(entri.digeserKe) } : {}),
+  } : null
+  const es = (schedule[tanggal] || []).flatMap(e => e.wp !== wp ? [e] : baru ? [baru] : [])
+  const hasil = { ...schedule }
+  if (es.length) hasil[tanggal] = es; else delete hasil[tanggal]
+  return { schedule: hasil, sisaAsli, dibuang }
+}
+
+// Isi sama (urutan kunci objek diabaikan - jsonb dari DB tidak menjaga urutan kunci). Utk menolak tulis dari tab basi.
+const urutKunci = (v: unknown): unknown => Array.isArray(v) ? v.map(urutKunci)
+  : v && typeof v === 'object' ? Object.fromEntries(Object.keys(v as object).sort().map(k => [k, urutKunci((v as Record<string, unknown>)[k])])) : v
+export const samaIsiJadwal = (a: unknown, b: unknown) => JSON.stringify(urutKunci(a ?? {})) === JSON.stringify(urutKunci(b ?? {}))

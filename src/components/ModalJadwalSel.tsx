@@ -10,7 +10,7 @@ import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
-import { statusTambahKomponen } from '../lib/tambahKomponen'
+import { statusTambahKomponen, buangKodeDariSel, samaIsiJadwal } from '../lib/tambahKomponen'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
@@ -353,6 +353,18 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       sebelumSimpan:()=>{setModalWp(kunciWp||'');setModalKomponen([]);setModalBobotPerKomponen({});}});
   };
 
+  // CEK TAB BASI (B3, 29 Okt 2026, keputusan user): tambah langsung & "Batalkan"-nya menolak bila isi baris jadwal di server sudah
+  // berbeda dari yang dimuat layar (diubah orang lain) - sama dgn penolakan RPC pindah/ubah (bukan menimpa). null = aman.
+  // Catatan: baca lalu tulis (bukan 1 transaksi) - jendela balapan sesingkat jeda baca->simpan.
+  const cekBarisSegar=async(rawId:number):Promise<string|null>=>{
+    const lokal=rawData.find(r=>r.id===rawId);
+    const{data,error}=await dbBaca.from("raw_schedule").select("schedule,busbar_schedule,busbar_jejak,busbar_manual_pin").eq("id",rawId).maybeSingle();
+    if(error){console.error("[Raw Schedule] cek versi baris gagal:",error);return "gagal memeriksa versi jadwal di server ("+error.message+")";}
+    if(!data)return "baris jadwal tidak ditemukan di server (mungkin sudah diarsip/dihapus)";
+    const kolom=["schedule","busbar_schedule","busbar_jejak","busbar_manual_pin"];
+    return kolom.every(k=>samaIsiJadwal(data[k],lokal?.[k]))?null:"jadwal baris ini sudah diubah orang lain sejak layar dimuat - muat ulang halaman lalu ulangi";
+  };
+
   // TAMBAH KOMPONEN KE SEL / tambah langsung (B2, 28 Okt 2026) - "+ tambah" di popup baris komponen Raw Schedule per WP: kode -> WP (dari BOM) di sel itu
   // tanpa membuka modal. Aturan boleh-tambah = statusTambahKomponen (sama dgn daftar pilih modal); cek kapasitas & simpan =
   // fungsi yang sama dgn tombol Tambah modal. WIRING tidak lewat sini (bobot & kuota orang dipilih di modal).
@@ -365,6 +377,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const panel=woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(row.panel_id||row.panelId));
     const tolak=komp.map(k=>({k,st:statusTambahKomponen(row,panel,date,wp,k,TODAY)})).filter(x=>x.st.jenis!=="bisa");
     if(tolak.length)return{hasil:'ditolak',alasan:tolak.map(x=>x.k+" ("+x.st.jenis+")").join(", ")};
+    const basi=await cekBarisSegar(rawId);
+    if(basi)return{hasil:'ditolak',alasan:basi};
     const cek=await cekKapasitasTambah(row,panel,date,wp,komp,{});
     if(!cek.ok){
       if(!cek.swapMenit&&!cek.swapOrang)return{hasil:'batal'};
@@ -444,6 +458,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const entri=(currentRow.schedule?.[date]||[]).find((e:{wp:string})=>e.wp===wp);
     const kodeHapus=kode.filter(k=>(entri?.komponen||[]).includes(k));
     if(!entri||kodeHapus.length===0){alert(`${kode.join(", ")} tidak ada lagi di ${wp} tanggal ${date} - tidak ada yang dihapus.`);return false;}
+    {const basi=await cekBarisSegar(rawId);if(basi){alert("Tidak dihapus: "+basi+".");return false;}}
     if(!(await konfirmasiTimerBerjalan([{panelId:Number(currentRow.panel_id||currentRow.panelId),proses:currentRow.proses,tanggal:date,kode:kodeHapus,label:String(currentRow.panel||"").trim()}],deps.namaPekerja||(()=>undefined),"hapus")))return false;
     const kodeNyata=kodeHapus.filter(k=>!k.startsWith("__")&&!entri.digeserKe?.[k]);
     const jejakKeSini=jejakMenujuTanggal(currentRow.schedule||{},date,wp,kodeNyata);
@@ -458,11 +473,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     }
     let jadwalAwal=currentRow.schedule||{};
     if(modeJejak)Object.entries(jejakPerTanggal).forEach(([d,ks])=>{jadwalAwal=modeJejak==="kembalikan"?aktifkanJejak(jadwalAwal,d,wp,ks):buangJejak(jadwalAwal,d,wp,ks);});
-    const newSch={...jadwalAwal};
-    const sisaAsli=(entri.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")&&!kodeHapus.includes(k));
-    const sisa=sisaAsli.length?(entri.komponen||[]).filter((k:string)=>!kodeHapus.includes(k)):[];
-    const updated=(newSch[date]||[]).flatMap((e:{wp:string})=>e.wp!==wp?[e]:sisa.length?[{...e,komponen:sisa}]:[]);
-    if(!updated.length)delete newSch[date];else newSch[date]=updated;
+    // fungsi bersama dgn hapus per chip (lib/tambahKomponen.buangKodeDariSel): kunci per-kode (qty/pin/jejak) ikut dibuang
+    const{schedule:newSch,sisaAsli:sisa}=buangKodeDariSel(jadwalAwal,date,wp,kodeHapus);
     markRawDirty(rawId);
     setRawData(prev=>prev.map(r=>r.id===rawId?{...currentRow,schedule:newSch}:r));
     const resRaw=await updateRaw(rawId,{schedule:newSch});

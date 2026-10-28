@@ -9,11 +9,12 @@ import { bandingkanBarisRaw, zonaDari, hitungTargetDrop, type Zona, type TargetD
 import { menitPerPcs, kapasitasPada, hitungTerpakaiHari } from '../lib/kapasitasHari'
 import { buatPetaDeadlinePanel, petaDeadlinePerTanggal, infoDeadline } from '../lib/deadlineRaw'
 import { PROSES_ORANG_RAW, entriesTanpaSelesai } from '../lib/isiSelJadwal'
-import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
+import { kodeBusbarBisaDipindah, togglePenanda, ambilJadwal4, jejakMenujuTanggal } from '../lib/jadwalPindah'
+import type { OpRenharUbah } from '../lib/pindahMulti'
 import { withRetry } from '../lib/withRetry'
 import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, type HasilPindahAcc } from '../lib/pindahAccordion'
 import { teksDilewati } from '../lib/relevansiJadwal'
-import { statusTambahKomponen, type StatusTambah } from '../lib/tambahKomponen'
+import { statusTambahKomponen, buangKodeDariSel, type StatusTambah } from '../lib/tambahKomponen'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
@@ -512,13 +513,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   const jalankanPindahRef = useRef(jalankanPindah); jalankanPindahRef.current = jalankanPindah
 
   // SALIN-GABUNG (Tahap 3a): sama dgn salin 1 sel tampilan lama - tujuan digabung (+pin), asal tidak berubah,
-  // rencana harian tidak ikut. Simpan per baris jadwal (updateRaw + retry + cek hasil); gagal -> baris itu
-  // dikembalikan, jadwal dimuat ulang, toast + Ulangi.
-  const sedangSalinRef = useRef(false)
+  // rencana harian tidak ikut. (B3, 29 Okt 2026) simpan lewat 1 RPC ubah_jadwal_multi_v1 (pindahMulti.simpanUbah): semua baris
+  // 1 transaksi, ditolak bila baris sudah diubah orang lain (dulu updateRaw per baris = simpan terakhir menang), bisa dibatalkan
+  // (Batalkan / Ctrl+Z = pulihkan_ubah_jadwal_v1). Peringatan urutan proses ditanyakan di simpanUbah.
   const jalankanSalin = async (kunci: string[], offset: number, sudahDikonfirmasi = false, tanpaSaring = false): Promise<boolean> => {
     if (offset === 0) return false
-    if (sedangSalinRef.current || pindahMulti.sedangPindahRef.current) { tampilToastAksi('Masih memproses aksi sebelumnya - tunggu sebentar.', 'err'); return false }
-    if (!updateRaw) { tampilToastAksi('Tampilan ini belum tersambung ke penyimpanan.', 'err'); return false }
     const rencana = rencanakanPindahAccordion(kunci, offset, ctxPindah(), 'salin', { tanpaSaring })
     if (rencana.bentrok.length > 0) {
       tampilToastAksi(`Dibatalkan: ${rencana.bentrok.length} sel tidak bisa mendarat (${[...new Set(rencana.bentrok.map(b => b.alasan))].join(', ')}). Tidak ada yang disalin.`, 'err')
@@ -528,39 +527,19 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (rows.length === 0 && rencana.dilewati.length > 0) { tampilToastAksi('Tidak ada yang disalin.\n' + teksDilewatiRencana(rencana), 'err', aksiDilewati(rencana, offset, 'salin')); return false }
     if (rows.length === 0) { tampilToastAksi('Tidak ada pekerjaan yang bisa disalin di pilihan ini.', 'err'); return false }
     if (!(await bolehTulis(`Salin ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan) di data produksi asli?`, sudahDikonfirmasi))) return false
-    if (!(await urutan.tanya(new Map(rows.map(r => [r.raw_id, r.sesudah]))))) { tampilToastAksi('Dibatalkan - jadwal tidak diubah.', 'ok'); return false }
-    sedangSalinRef.current = true
+    const label = `Salin ${rencana.jumlahKomponen} komponen ${offset > 0 ? '+' : ''}${offset} hari`
+    const ok = await pindahMulti.simpanUbah({ rows, renhar: [], aksi: 'salin', label, ulangi: () => { jalankanSalinRef.current(kunci, offset, true) } })
+    if (!ok) return false
+    const pid = pecahKunci(kunci[0]).panelId; const b0 = blokById.get(pid)
     try {
-      const perId = new Map(rows.map(r => [r.raw_id, r]))
-      rows.forEach(r => io.kotor.markRaw(r.raw_id))
-      setRawData!((prev: any[]) => prev.map((r: any) => perId.has(r.id) ? { ...r, ...perId.get(r.id)!.sesudah } : r))
-      const gagal: number[] = []
-      for (const r of rows) {
-        try {
-          await withRetry(async () => {
-            const res = await updateRaw(r.raw_id, { schedule: r.sesudah.schedule, busbar_schedule: r.sesudah.busbar_schedule, busbar_manual_pin: r.sesudah.busbar_manual_pin })
-            if (!res?.success) throw new Error(res?.error || 'Gagal menyimpan salinan jadwal')
-            return res
-          })
-        } catch (err) { console.error('[Raw per WP] salin gagal, baris', r.raw_id, err); gagal.push(r.raw_id) }
-        finally { io.kotor.clearRaw(r.raw_id) }
-      }
-      if (gagal.length) {
-        setRawData!((prev: any[]) => prev.map((x: any) => gagal.includes(x.id) ? { ...x, ...perId.get(x.id)!.sebelum } : x))
-        refetchRaw?.()
-        tampilToastAksi(`Gagal menyimpan salinan di ${gagal.length} dari ${rows.length} baris jadwal (koneksi?). Jadwal dimuat ulang dari server - cek sebelum mengulang.`, 'err', [{ label: 'Ulangi', fn: () => { jalankanSalinRef.current(kunci, offset, true) } }])
-        return false
-      }
-      const pid = pecahKunci(kunci[0]).panelId; const b0 = blokById.get(pid)
-      try {
-        await io.log.insert({ user_name: namaUser(), action: 'COPY JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
-          description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari: ` + rincianSel(rencana.sel).join('; '),
-          proyek: b0?.proyek || '', panel: b0?.panel || '' })
-      } catch (err) { console.error('[Raw per WP] gagal catat activity_log salin:', err) }
-      const hdrSalin = teksHeader(rencana, 'disalin')
-      tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).` + (hdrSalin ? '\n' + hdrSalin : '') + (rencana.dilewati.length ? '\n' + teksDilewatiRencana(rencana) : ''), 'ok', aksiDilewati(rencana, offset, 'salin'))
-      return true
-    } finally { sedangSalinRef.current = false }
+      await io.log.insert({ user_name: namaUser(), action: 'COPY JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
+        description: `Copy jadwal (tampilan per WP) ${rencana.jumlahKomponen} komponen, ${rows.length} baris jadwal ${offset > 0 ? '+' : ''}${offset} hari: ` + rincianSel(rencana.sel).join('; '),
+        proyek: b0?.proyek || '', panel: b0?.panel || '' })
+    } catch (err) { console.error('[Raw per WP] gagal catat activity_log salin:', err) }
+    const hdrSalin = teksHeader(rencana, 'disalin')
+    tampilToastAksi(`${rencana.jumlahKomponen} komponen disalin ${offset > 0 ? '+' : ''}${offset} hari (digabung ke tujuan).` + (hdrSalin ? '\n' + hdrSalin : '') + (rencana.dilewati.length ? '\n' + teksDilewatiRencana(rencana) : ''), 'ok',
+      aksiDilewati(rencana, offset, 'salin', [{ label: 'Batalkan', fn: () => pindahMulti.batalkanPindahTerakhir() }]))
+    return true
   }
   const jalankanSalinRef = useRef(jalankanSalin); jalankanSalinRef.current = jalankanSalin
 
@@ -759,34 +738,65 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (!paksaPilih && (opsi.length === 1 || terisi.length === 1)) { bukaEdit(opsi.length === 1 ? opsi[0] : terisi[0], r, d); return }
     setPopProses({ x: xy?.x ?? e?.clientX ?? 200, y: xy?.y ?? e?.clientY ?? 200, r, d, opsi: semuaWp ? opsi.map(o => ({ ...o, status: undefined, wp: undefined })) : opsi, semuaWp })
   }
-  // HAPUS WP: kunci header sel (g:, menu klik kanan header) -> WP itu dihapus dari SEMUA proses pada tanggal itu; chip header (h:,
-  // Delete / menu) -> WP itu dihapus dari proses chip itu saja. Lewat fungsi hapus yang sama dgn tombol "✕ Hapus" di modal
-  // (sinkron renhar + log per proses). Chip komponen/BUSBAR belum (hapus per chip = tahap berikut): klik chip -> Edit.
-  const hapusWpKunci = async (kunci: string[]) => {
-    const target: { rawId: number; proses: string; d: string; wp: string; panel: string; n: number }[] = []
-    const sudah = new Set<string>()
-    let dilewati = 0, adaSemua = false
+  // HAPUS PER CHIP (B3, 29 Okt 2026) - Delete / menu klik kanan. Kunci chip komponen (c:) = kode itu di proses itu; chip header (h:)
+  // = semua komponen WP itu di proses itu; header sel (g:, menu "semua proses") = semua proses. Satu RPC ubah_jadwal_multi_v1
+  // (tolak tab basi, renhar set_komponen / hapus bila WP kosong = sama dgn modal), bisa dibatalkan (Batalkan / Ctrl+Z).
+  // TIDAK dihapus & DIHITUNG di pesan (keputusan user): kode yang jadi TUJUAN jejak dari tanggal lain (riwayat - hapus lewat
+  // Edit), yang sudah selesai, BUSBAR (lewat Edit), penanda QC/PACKING (klik). Histori jejak & hari lanjutan WIRING bukan entri.
+  const hapusChipKunci = async (kunci: string[]) => {
+    const lewat = new Map<string, Set<string>>() // alasan -> unit unik (baris|tanggal|kode)
+    const catatLewat = (alasan: string, unit: string) => { if (!lewat.has(alasan)) lewat.set(alasan, new Set()); lewat.get(alasan)!.add(unit) }
+    const target = new Map<string, { rawId: number; d: string; wp: string; kode: Set<string> }>() // rawId|tanggal|wp
+    let adaSemua = false
     for (const k of kunci) {
       const x = pecahKunci(k)
-      if (x.jenis !== 'g' && x.jenis !== 'h') { dilewati++; continue }
-      const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup)
-      if (!b || !g || g.jenis !== 'wp') { dilewati++; continue }
+      if (x.jenis === 'p') { catatLewat('penanda QC/PACKING (klik penanda utk hapus)', k); continue }
+      const b = blokById.get(x.panelId); const g = b?.grup.find(y => y.key === x.grup); if (!b || !g) continue
+      if (g.jenis === 'busbar') { catatLewat('BUSBAR (hapus lewat Edit)', k); continue }
       if (x.jenis === 'g') adaSemua = true
-      rawData.filter((row: any) => Number(row.panel_id || row.panelId) === x.panelId && !['QC TEST', 'PACKING', 'BUSBAR'].includes(row.proses) && (x.jenis !== 'h' || row.proses === x.proses)).forEach((row: any) => {
-        const e = (row.schedule?.[x.tanggal] || []).find((en: any) => en.wp === g.key)
-        const kk = row.id + '|' + x.tanggal + '|' + g.key
-        if (e && !sudah.has(kk)) { sudah.add(kk); target.push({ rawId: row.id, proses: row.proses, d: x.tanggal, wp: g.key, panel: b.panel, n: (e.komponen || []).filter((kd: string) => !kd.startsWith('__wiring_')).length }) }
-      })
+      const komp = x.jenis === 'k' || x.jenis === 'c' ? g.komponen.filter(km => km.kode === x.kode) : g.komponen
+      for (const km of komp) for (const c of km.sel[x.tanggal] || []) {
+        if (x.proses && c.proses !== x.proses) continue
+        if (c.jejakKe || c.lanjutan) continue
+        const unit = c.rawId + '|' + x.tanggal + '|' + km.kode
+        const row = rawData.find((r: { id: number }) => r.id === c.rawId); if (!row) continue
+        if (c.selesai) { catatLewat('sudah selesai', unit); continue }
+        if (jejakMenujuTanggal(row.schedule || {}, x.tanggal, c.wp, [km.kode]).length) { catatLewat('tujuan jejak (hapus lewat Edit)', unit); continue }
+        const kk = c.rawId + '|' + x.tanggal + '|' + c.wp
+        if (!target.has(kk)) target.set(kk, { rawId: c.rawId, d: x.tanggal, wp: c.wp, kode: new Set() })
+        target.get(kk)!.kode.add(km.kode)
+      }
     }
-    if (target.length === 0) { tampilToastAksi(dilewati ? 'Hapus di tampilan ini per chip header WP (baris tertutup). Untuk chip komponen/BUSBAR: klik chip lalu hapus di Edit.' : 'Tidak ada jadwal WP di sel ini.', 'err'); return }
-    const rincian = target.slice(0, 8).map(t => `${t.panel} ${t.wp} ${t.proses} ${getDayLabel(t.d)} (${t.n} komponen)`).join('; ') + (target.length > 8 ? `; +${target.length - 8} lainnya` : '')
-    const prosesKena = [...new Set(target.map(t => t.proses))].join(', ')
-    const nKomp = target.reduce((s, t) => s + t.n, 0)
-    if (!(await mintaIzinWajib(`Hapus WP dari ${target.length} sel jadwal - proses ${prosesKena} (${adaSemua ? 'SEMUA proses pada tanggal itu' : 'proses chip terpilih saja'}), total ${nKomp} komponen? ${rincian}.${dilewati ? ` (${dilewati} chip komponen/BUSBAR dilewati - hapus lewat Edit.)` : ''} Sama seperti tombol Hapus di modal edit - tersimpan ke jadwal.`))) return
-    let ok = 0
-    for (const t of target) { if (await modalJadwal.hapusWpDariSel(t.rawId, t.d, t.wp)) ok++ }
+    const nHapus = [...target.values()].reduce((s, t) => s + t.kode.size, 0)
+    const nLewat = [...lewat.values()].reduce((s, u) => s + u.size, 0)
+    const teksLewat = [...lewat.entries()].map(([a, u]) => `${u.size} ${a}`).join(', ')
+    if (nHapus === 0) { tampilToastAksi(`Tidak ada yang dihapus${nLewat ? ` - ${nLewat} dilewati: ${teksLewat}` : ' (sel kosong)'}.`, 'err'); return }
+    const baris = (id: number) => rawData.find((r: { id: number }) => r.id === id)
+    const daftar = [...target.values()].map(t => ({ ...t, row: baris(t.rawId) }))
+    if (!(await konfirmasiTimerBerjalan(daftar.map(t => ({ panelId: Number(t.row?.panel_id || t.row?.panelId), proses: t.row?.proses, tanggal: t.d, kode: [...t.kode], label: String(t.row?.panel || '').trim() })), namaPekerja, 'hapus'))) return
+    const prosesKena = [...new Set(daftar.map(t => t.row?.proses))].join(', ')
+    const rincian = daftar.slice(0, 8).map(t => `${String(t.row?.panel || '').trim()} ${t.wp} ${t.row?.proses} ${getDayLabel(t.d)} [${[...t.kode].join(', ')}]`).join('; ') + (daftar.length > 8 ? `; +${daftar.length - 8} sel lainnya` : '')
+    if (!(await mintaIzinWajib(`Hapus ${nHapus} komponen dari ${daftar.length} sel jadwal - proses ${prosesKena}${adaSemua ? ' (header: SEMUA proses)' : ''}? ${rincian}.${nLewat ? ` ${nLewat} DILEWATI: ${teksLewat}.` : ''} Bisa dibatalkan (Ctrl+Z).`))) return
+    // jadwal baru per baris (fungsi bersama dgn "Batalkan" tambah langsung) + operasi renhar per sel
+    const jadwalBaru = new Map<number, ReturnType<typeof buangKodeDariSel>['schedule']>()
+    const renhar: OpRenharUbah[] = []
+    for (const t of daftar) {
+      const hasil = buangKodeDariSel(jadwalBaru.get(t.rawId) ?? t.row?.schedule ?? {}, t.d, t.wp, [...t.kode])
+      jadwalBaru.set(t.rawId, hasil.schedule)
+      renhar.push(hasil.sisaAsli.length ? { op: 'set_komponen', raw_id: t.rawId, wp: t.wp, tanggal: t.d, komponen: hasil.sisaAsli } : { op: 'hapus', raw_id: t.rawId, wp: t.wp, tanggal: t.d })
+    }
+    const rows = [...jadwalBaru.entries()].map(([id, sch]) => { const j = ambilJadwal4(baris(id)); return { raw_id: id, sebelum: j, sesudah: { ...j, schedule: sch } } })
+    const label = `Hapus ${nHapus} komponen`
+    const ok = await pindahMulti.simpanUbah({ rows, renhar, aksi: 'hapus', label, ulangi: () => { hapusChipKunci(kunci) } })
+    if (!ok) return
     setPilihan(new Set()); setJangkar(null)
-    tampilToastAksi(ok === target.length ? `${ok} jadwal WP dihapus.` : `${ok} dari ${target.length} jadwal WP dihapus - sisanya gagal (lihat pesan), cek lalu ulangi.`, ok === target.length ? 'ok' : 'err')
+    try {
+      const b0 = blokById.get(pecahKunci(kunci[0]).panelId)
+      await io.log.insert({ user_name: namaUser(), action: 'HAPUS JADWAL', module: 'raw', halaman: 'Raw Schedule per WP',
+        description: `Hapus (tampilan per WP) ${nHapus} komponen: ` + daftar.map(t => `${String(t.row?.panel || '').trim()} ${t.row?.proses} ${t.d} [${[...t.kode].map(k => t.wp + ':' + k).join(', ')}]`).join('; ') + (nLewat ? ` | dilewati ${nLewat}: ${teksLewat}` : ''),
+        proyek: b0?.proyek || '', panel: b0?.panel || '' })
+    } catch (err) { console.error('[Raw per WP] gagal catat activity_log hapus:', err) }
+    tampilToastAksi(`${nHapus} dihapus${nLewat ? `, ${nLewat} dilewati (${teksLewat})` : ''}.`, 'ok', [{ label: 'Batalkan', fn: () => pindahMulti.batalkanPindahTerakhir() }])
   }
   const batalkan = () => { setPilihan(new Set()); setJangkar(null); setPotongan([]); setSalinan([]); setTujuanTempel(null); setMenu(null) }
   const salin = () => {
@@ -812,7 +822,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     if (potongan.length) { const ok = await jalankanPindah(potongan, offset); if (ok) { setPotongan([]); setTujuanTempel(null) } }
     else { const ok = await jalankanSalin(salinan, offset); if (ok) setTujuanTempel(null) } // salinan tetap bisa ditempel lagi
   }
-  const aksiRef = useRef<any>({}); aksiRef.current = { potong, salin, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan, salinan, hapus: () => hapusWpKunci([...pilihan]) }
+  const aksiRef = useRef<any>({}); aksiRef.current = { potong, salin, tempel, batalkan, undo: pindahMulti.batalkanPindahTerakhir, pilihan, potongan, salinan, hapus: () => hapusChipKunci([...pilihan]) }
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement
@@ -1116,7 +1126,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       <div style={{ background: '#eff6ff', border: '1.5px solid #bfdbfe', borderRadius: 10, padding: '9px 14px', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 10 }}>
         <span style={{ fontSize: 17 }}>🧪</span>
         <div style={{ fontSize: 11.5, color: '#1e3a8a', lineHeight: 1.5 }}>
-          <b>Raw Schedule tampilan per WP.</b> Dikelompokkan per WP. Satuan pilihan = <b>chip</b> (1 proses · 1 komponen · 1 hari; chip header = proses itu di WP itu). Klik chip = edit proses itu; Ctrl/Alt/Shift+klik chip = pilih; seret kotak (lasso) = pilih chip yang tersentuh; seret chip = pindah chip itu (atau seluruh pilihan); Ctrl+X → klik hari tujuan → Ctrl+V = pindah; Ctrl+C → Ctrl+V = salin (digabung); Ctrl+Z = batalkan pindah; klik area kosong sel = pilih proses (edit/tambah); Delete = hapus WP chip header terpilih (proses itu saja); klik kanan header = Hapus WP semua proses; prioritas & urutan panel di kolom Panel (dropdown, ⋮, seret ⠿); klik kartu kapasitas = Atur Kapasitas; klik header tanggal = daftar pekerjaan; klik penanda QC/PACKING = tambah/hapus. Perubahan TERSIMPAN ke jadwal asli & Rencana Harian.
+          <b>Raw Schedule tampilan per WP.</b> Dikelompokkan per WP. Satuan pilihan = <b>chip</b> (1 proses · 1 komponen · 1 hari; chip header = proses itu di WP itu). Klik chip = edit proses itu; Ctrl/Alt/Shift+klik chip = pilih; seret kotak (lasso) = pilih chip yang tersentuh; seret chip = pindah chip itu (atau seluruh pilihan); Ctrl+X → klik hari tujuan → Ctrl+V = pindah; Ctrl+C → Ctrl+V = salin (digabung); Ctrl+Z = batalkan pindah; klik area kosong sel = pilih proses (edit/tambah); Delete = hapus chip terpilih (komponen selesai / tujuan jejak / BUSBAR dilewati & disebut jumlahnya; bisa Ctrl+Z); klik kanan header = hapus WP semua proses; prioritas & urutan panel di kolom Panel (dropdown, ⋮, seret ⠿); klik kartu kapasitas = Atur Kapasitas; klik header tanggal = daftar pekerjaan; klik penanda QC/PACKING = tambah/hapus. Perubahan TERSIMPAN ke jadwal asli & Rencana Harian.
         </div>
       </div>
 
@@ -1198,7 +1208,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
           {pilihan.size > 0 && <button onClick={salin} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>📋 Salin (Ctrl+C)</button>}
           {pilihan.size > 0 && <button onClick={potong} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #93c5fd', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>✂ Potong (Ctrl+X)</button>}
           {(potongan.length > 0 || salinan.length > 0) && <button onClick={() => tempel()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #2563eb', background: '#2563eb', color: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Tempel (Ctrl+V)</button>}
-          {pindahMulti.undoMultiRef.current.length > 0 && <button onClick={() => pindahMulti.batalkanPindahTerakhir()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>↶ Batalkan pindah terakhir (Ctrl+Z)</button>}
+          {pindahMulti.undoMultiRef.current.length > 0 && <button onClick={() => pindahMulti.batalkanPindahTerakhir()} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>↶ Batalkan terakhir: {pindahMulti.undoMultiRef.current[pindahMulti.undoMultiRef.current.length - 1]?.label} (Ctrl+Z)</button>}
           {(pilihan.size > 0 || potongan.length > 0 || salinan.length > 0) && <button onClick={batalkan} style={{ height: 24, padding: '0 9px', borderRadius: 5, border: '1px solid #d1d5db', background: '#fff', fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>Bersihkan (Esc)</button>}
         </div>
       )}
@@ -1293,8 +1303,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
                 {menu.r.t === 'penanda' && item(menu.r.p.sel[menu.d] ? `Hapus penanda ${menu.r.p.proses}` : `Tambah penanda ${menu.r.p.proses}`, () => togglePenandaSel(menu.r, menu.d))}
                 {menu.r.t !== 'penanda' && item('✏️ Edit jadwal…', () => klikEdit(null, menu.r, menu.d, true, { x: menu.x, y: menu.y }))}
                 {menu.r.t !== 'penanda' && menu.r.g.jenis === 'wp' && item('✏️ Edit jadwal (semua WP)…', () => klikEdit(null, menu.r, menu.d, true, { x: menu.x, y: menu.y }, true))}
-                {(() => { const nh = [...pilihan].filter(k => pecahKunci(k).jenis === 'h'); return nh.length > 0 && item(`🗑 Hapus ${nh.length} chip header (proses itu saja)`, () => hapusWpKunci(nh), '#dc2626', 'Delete') })()}
-                {menu.r.t === 'grup' && menu.r.g.jenis === 'wp' && item(`🗑 Hapus ${menu.r.g.key} di ${getDayLabel(menu.d)} (semua proses)`, () => hapusWpKunci([kunciSel(menu.r, menu.d)]), '#dc2626')}
+                {pilihan.size > 0 && item(`🗑 Hapus ${pilihan.size} chip terpilih`, () => hapusChipKunci([...pilihan]), '#dc2626', 'Delete')}
+                {menu.r.t === 'grup' && menu.r.g.jenis === 'wp' && item(`🗑 Hapus ${menu.r.g.key} di ${getDayLabel(menu.d)} (semua proses)`, () => hapusChipKunci([kunciSel(menu.r, menu.d)]), '#dc2626')}
                 <div style={{ height: 1, background: '#f1f5f9', margin: '4px 0' }} />
                 {item('Bersihkan pilihan', batalkan, '#64748b', 'Esc')}
               </>
