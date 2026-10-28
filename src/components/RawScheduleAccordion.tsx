@@ -13,6 +13,7 @@ import { kodeBusbarBisaDipindah, togglePenanda } from '../lib/jadwalPindah'
 import { withRetry } from '../lib/withRetry'
 import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, type HasilPindahAcc } from '../lib/pindahAccordion'
 import { teksDilewati } from '../lib/relevansiJadwal'
+import { statusTambahKomponen, type StatusTambah } from '../lib/tambahKomponen'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
@@ -655,7 +656,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     return dengar(t => { if (t === 'fcs_notifikasi') notifAvailable.fetchNotifAvailable() }) // perubahan SALINAN
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
-  type OpsiProses = { proses: string; rawId: number; terisi: boolean }
+  // status (B2, 28 Okt 2026): baris komponen WP - aturan boleh-tambah SAMA dgn daftar pilih modal (lib/tambahKomponen)
+  type OpsiProses = { proses: string; rawId: number; terisi: boolean; status?: StatusTambah }
   const [popProses, setPopProses] = useState<{ x: number; y: number; r: Baris; d: string; opsi: OpsiProses[] } | null>(null)
   // Proses yang bisa diedit di sel ini (baris jadwal panel itu): grup BUSBAR -> baris BUSBAR; header WP -> semua
   // proses per-komponen; baris komponen -> proses yang relevan utk kode itu (isKomponenRelevant, sama dgn modal).
@@ -670,7 +672,8 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       .sort((a: any, b: any) => ALL_PROSES.indexOf(a.proses) - ALL_PROSES.indexOf(b.proses))
       .map((x: any) => {
         const es = (x.schedule?.[d] || []).filter((e: any) => e.wp === r.g.key)
-        return { proses: x.proses, rawId: x.id, terisi: r.t === 'komp' ? es.some((e: any) => (e.komponen || []).includes(r.k.kode)) : es.length > 0 }
+        const status = r.t === 'komp' ? statusTambahKomponen(x, panelById.get(pid), d, r.g.key, r.k.kode, TODAY) : undefined
+        return { proses: x.proses, rawId: x.id, terisi: r.t === 'komp' ? es.some((e: any) => (e.komponen || []).includes(r.k.kode)) : es.length > 0, status }
       })
   }
   // Buka modal edit utk (baris jadwal, tanggal). Sel kosong di baris WP/komponen: WP (dan komponen) langsung
@@ -696,6 +699,39 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     } else {
       modalJadwal.setModalKomponen([...new Set([...(entri?.komponen || []), kode])])
     }
+  }
+  // POPUP baris komponen (B2, 28 Okt 2026): label & aksi per status (lib/tambahKomponen, sama dgn modal).
+  //  '+ tambah' -> TAMBAH LANGSUNG (modalJadwal.tambahLangsung: cek kapasitas/urutan + renhar + log sama dgn modal), toast "Batalkan"
+  //  = modalJadwal.hapusKodeDariSel (cek timer, jejak, renhar). WIRING -> modal (bobot & kuota orang).
+  //  'terjadwal'/'progres x/y' -> edit sel ini; 'terjadwal <tgl>' -> edit sel tanggal itu; selesai/qty 0/tidak relevan -> nonaktif.
+  const labelOpsi = (o: OpsiProses): { teks: string; aktif: boolean; warna: string } => {
+    const st = o.status
+    if (!st) return { teks: o.terisi ? 'terjadwal · edit' : '+ tambah', aktif: true, warna: o.terisi ? '#1d4ed8' : '#94a3b8' }
+    switch (st.jenis) {
+      case 'terjadwal': return { teks: st.x > 0 ? `progres ${st.x}/${st.y} · edit` : 'terjadwal · edit', aktif: true, warna: '#1d4ed8' }
+      case 'tanggalLain': return { teks: `terjadwal ${fmtTglPendek(st.tanggal)} · edit`, aktif: true, warna: '#b45309' }
+      case 'selesai': return { teks: 'selesai', aktif: false, warna: '#16a34a' }
+      case 'qty0': return { teks: 'qty 0 di panel', aktif: false, warna: '#cbd5e1' }
+      case 'dilewati': return { teks: st.alasan === 'tidak_relevan' ? 'tidak relevan' : st.alasan === 'qty_0' ? 'qty 0 di panel' : 'tidak ada di panel', aktif: false, warna: '#cbd5e1' }
+      default: return { teks: PROSES_ORANG_RAW.includes(o.proses) ? '+ tambah (pilih bobot)' : '+ tambah', aktif: true, warna: '#15803d' }
+    }
+  }
+  const pilihOpsi = async (o: OpsiProses, r: Baris, d: string) => {
+    const st = o.status
+    if (r.t !== 'komp' || r.g.jenis !== 'wp' || !st) { bukaEdit(o, r, d); return }
+    if (st.jenis === 'tanggalLain') { bukaEdit({ ...o, terisi: true }, r, st.tanggal); return }
+    if (st.jenis !== 'bisa' || PROSES_ORANG_RAW.includes(o.proses)) { bukaEdit(o, r, d); return }
+    setPopProses(null)
+    const wp = r.g.key, kode = r.k.kode
+    if (!(await bolehTulis(`Tambah ${o.proses} ${kode} ${r.blok.panel} pada ${getDayLabel(d)}`))) return
+    const h = await modalJadwal.tambahLangsung(o.rawId, d, wp, [kode])
+    if (h.hasil === 'tersimpan') {
+      tampilToastAksi(`Ditambahkan: ${o.proses} ${kode} (${wp}) ${r.blok.panel} di ${getDayLabel(d)}.`, 'ok', [{ label: 'Batalkan', fn: async () => {
+        if (await modalJadwal.hapusKodeDariSel(o.rawId, d, wp, [kode])) tampilToastAksi(`Dibatalkan: ${o.proses} ${kode} dihapus dari ${getDayLabel(d)}.`, 'ok')
+      } }])
+    } else if (h.hasil === 'ditolak') tampilToastAksi(`Tidak ditambahkan: ${h.alasan}.`, 'err')
+    else if (h.hasil === 'gagal' && h.alasan) tampilToastAksi(`Gagal menambah: ${h.alasan}.`, 'err')
+    // 'modal' = lanjut di modal swap kapasitas; 'batal' = pengguna membatalkan (overbook); gagal simpan sudah diberi tahu modal
   }
   // Klik biasa sel non-penanda: 1 pilihan proses / tepat 1 proses terisi -> langsung modal; selain itu pilih proses dulu.
   const klikEdit = (e: React.MouseEvent | null, r: Baris, d: string, paksaPilih = false, xy?: { x: number; y: number }) => {
@@ -1191,11 +1227,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
             <div style={{ padding: '2px 14px 6px', fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>
               {popProses.r.t !== 'penanda' && `${popProses.r.blok.panel} · ${popProses.r.t === 'komp' ? popProses.r.k.kode : popProses.r.g.key} · ${getDayLabel(popProses.d)}`}
             </div>
-            {popProses.opsi.map(o => { const w = (PROSES_COLOR as any)[o.proses] || '#64748b'; return (
-              <button key={o.rawId} role="menuitem" onClick={() => bukaEdit(o, popProses.r, popProses.d)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '6px 14px', border: 'none', background: 'none', cursor: 'pointer', fontSize: 12, textAlign: 'left', fontFamily: 'inherit', color: '#1e293b' }}>
-                <span style={{ width: 9, height: 9, borderRadius: 99, background: w, flex: '0 0 auto' }} />
+            {popProses.opsi.map(o => { const w = (PROSES_COLOR as any)[o.proses] || '#64748b'; const lb = labelOpsi(o); return (
+              <button key={o.rawId} role="menuitem" disabled={!lb.aktif} onClick={() => pilihOpsi(o, popProses.r, popProses.d)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '6px 14px', border: 'none', background: 'none', cursor: lb.aktif ? 'pointer' : 'default', fontSize: 12, textAlign: 'left', fontFamily: 'inherit', color: lb.aktif ? '#1e293b' : '#94a3b8' }}>
+                <span style={{ width: 9, height: 9, borderRadius: 99, background: w, flex: '0 0 auto', opacity: lb.aktif ? 1 : .45 }} />
                 <span style={{ fontWeight: 700 }}>{o.proses}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: o.terisi ? '#1d4ed8' : '#94a3b8' }}>{o.terisi ? 'terjadwal · edit' : '+ tambah'}</span>
+                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: lb.warna, fontWeight: lb.teks.startsWith('+') ? 700 : 500 }}>{lb.teks}</span>
               </button>) })}
           </div>
         </>

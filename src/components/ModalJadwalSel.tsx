@@ -10,7 +10,7 @@ import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
-import { alasanKomponenDilewati } from '../lib/relevansiJadwal'
+import { statusTambahKomponen } from '../lib/tambahKomponen'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
@@ -110,45 +110,29 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   // dijadwalkan" (cegah dobel-jadwal, dari raw_schedule) dan "sudah dikerjakan beneran"
   // (progress asli operator, panels.checklist.qtyProses) - dipakai buat validasi kapasitas
   // DAN badge tampilan di daftar pilih komponen.
-  const hitungSisaQty=(kode:string)=>{
-    const prosesCek=rawRow?.proses;
-    const totalQty=livePanelForCell?.checklist?.[kode]?.qty||0;
+  // (B2, 28 Okt 2026) dibuat berparameter (baris, panel, tanggal, WP) supaya tambah langsung dari popup "Raw Schedule per WP"
+  // memakai hitungan yang SAMA; modal memanggilnya lewat hitungSisaQty (sel & WP modal) - isi rumus tidak berubah.
+  const sisaQtyUntuk=(row,panel,date,wp,kode:string)=>{
+    const prosesCek=row?.proses;
+    const totalQty=panel?.checklist?.[kode]?.qty||0;
     let sudahTerjadwal=0;
-    const schedule=rawRow?.schedule||{};
+    const schedule=row?.schedule||{};
     Object.entries(schedule).forEach(([tgl,entries]:[string,any])=>{
       (entries as any[]).forEach((e:any)=>{
-        if(cellModal&&tgl===cellModal.date&&e.wp===modalWp)return;
+        if(date&&tgl===date&&e.wp===wp)return;
         if((e.komponen||[]).includes(kode))sudahTerjadwal+=e.qtyPerKomponen?.[kode]??totalQty;
       });
     });
-    const qtyProsesSelesai=livePanelForCell?.checklist?.[kode]?.qtyProses?.[prosesCek||""]||0;
+    const qtyProsesSelesai=panel?.checklist?.[kode]?.qtyProses?.[prosesCek||""]||0;
     const sudah=Math.max(sudahTerjadwal,qtyProsesSelesai);
     return{sisa:Math.max(0,totalQty-sudah),totalQty,qtyProsesSelesai};
   };
+  const hitungSisaQty=(kode:string)=>sisaQtyUntuk(rawRow,livePanelForCell,cellModal?.date,modalWp,kode);
   const panelCfg=livePanelForCell?getEffCfg(livePanelForCell.tipe):null;
   const wpItemsAll=panelCfg?.wps.find(w=>w.wp===modalWp)?.items||[];
-  const komponenSudahAda=cellEntries.find(e=>e.wp===modalWp)?.komponen||[];
-  const komponenSudahDipakaiTanggalLain=(()=>{
-    const result=new Set<string>();
-    const schedule=rawRow?.schedule||{};
-    Object.entries(schedule).forEach(([tgl,entries]:[string,any])=>{
-      if(tgl===cellModal?.date)return;
-      (entries||[]).forEach((e:any)=>{
-        (e.komponen||[]).forEach((kode:string)=>{
-          const progress=livePanelForCell?.checklist?.[kode]?.progress?.[rawRow?.proses||""]||0;
-          if(progress>=100){result.add(kode);return;}
-          if(tgl>=TODAY)result.add(kode);
-        });
-      });
-    });
-    return result;
-  })();
-  const wpItems=wpItemsAll.filter(it=>{
-    const qty=livePanelForCell?.checklist?.[it.kode]?.qty||0;
-    if(qty<=0)return false;
-    // (22 Okt 2026) relevansi lewat fungsi bersama lib/relevansiJadwal (sama dgn tempel/pindah) - relevansi belum termuat = tidak disaring.
-    return !alasanKomponenDilewati(it.kode,livePanelForCell,rawRow?.proses||"")&&!komponenSudahAda.includes(it.kode)&&!komponenSudahDipakaiTanggalLain.has(it.kode);
-  });
+  // Komponen yang boleh dipilih: qty>0, relevan (lib/relevansiJadwal), belum ada di WP ini, tidak terjadwal di tanggal lain
+  // >= hari ini / sudah 100% - SATU fungsi dgn popup "+ tambah" Raw Schedule per WP (lib/tambahKomponen, B2 28 Okt 2026).
+  const wpItems=wpItemsAll.filter(it=>statusTambahKomponen(rawRow,livePanelForCell,cellModal?.date||"",modalWp,it.kode,TODAY).jenis==="bisa");
 
   const syncRenharKomp=async(rawId,date,wp,newKomp)=>{
     const newKompBersih=(newKomp||[]).filter((k:string)=>!k.startsWith("__wiring_"));
@@ -179,36 +163,34 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   // 21 Okt 2026 atas keputusan user - diganti peringatan urutan proses lib/urutanProses.ts (lewat updateRaw yang
   // diperiksa di Raw Schedule per WP; tampilan lama menyusul setelah disetujui).
 
-  const addEntry=async()=>{
-    if(!modalWp||!modalKomponen.length)return;
-
-    const tipePanelCek=livePanelForCell?.tipe;
-    const prosesCek=rawRow?.proses;
-
-
+  // (B2, 28 Okt 2026) addEntry dipecah TANPA mengubah isinya: cekKapasitasTambah (kuota orang WIRING / kapasitas menit;
+  // modal swap dikembalikan ke pemanggil) + simpanTambah (tampilan optimistis, updateRaw, sinkron renhar, log). Dipakai
+  // tombol "Tambah" modal (addEntry) & "+ tambah" langsung di popup Raw Schedule per WP (tambahLangsung) - satu jalur.
+  type HasilCekTambah={ok:boolean;swapOrang?:Record<string,unknown>;swapMenit?:Record<string,unknown>};
+  const cekKapasitasTambah=async(row,panel,date:string,wp:string,komp:string[],bobotPilihan:Record<string,string>):Promise<HasilCekTambah>=>{
+    const tipePanelCek=panel?.tipe;
+    const prosesCek=row?.proses;
     // Validasi kuota ORANG (khusus WIRING POWER/CONTROL) - kebutuhan orang dinamis per komponen
     // dari bobot (dipilih di modal ini/sudah tersimpan di row) + hari kerja aktual komponen itu.
     if(prosesCek&&PROSES_ORANG_RAW.includes(prosesCek)){
-      const orangDibutuhkan=modalKomponen.reduce((s,k)=>{
-        const bobot=modalBobotPerKomponen[k]??rawRow?.bobot_komponen?.[k];
-        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,livePanelForCell?.id,k,prosesCek,cellModal.date);
+      const orangDibutuhkan=komp.reduce((s,k)=>{
+        const bobot=bobotPilihan[k]??row?.bobot_komponen?.[k];
+        const hariKeN=hariKeNFromMap(wiringHariKerjaMap,panel?.id,k,prosesCek,date);
         return s+kebutuhanOrangWiring(bobot,hariKeN);
       },0);
       const cekOrang=await checkKuotaOrangDanKomponenSwap({
-        tanggal:cellModal.date,
+        tanggal:date,
         jenisPekerjaan:prosesCek,
         orangDibutuhkan,
-        excludeRawId:cellModal.rawId,
-        excludeWp:modalWp,
+        excludeRawId:row.id,
+        excludeWp:wp,
       });
       if(!cekOrang.cukup){
         if(cekOrang.kuotaHari===0&&cekOrang.opsiSwap.length===0){
           alert("Kuota orang "+prosesCek+" tanggal ini belum diatur sama sekali.\n"+(cekOrang.error||"Silakan atur Override Tanggal dulu."));
-          return;
+          return{ok:false};
         }
-        setSwapOrangModal({tanggal:cellModal.date,proses:prosesCek,orangDibutuhkan,...cekOrang});
-        setSwapOrangSelected([]);
-        return;
+        return{ok:false,swapOrang:{tanggal:date,proses:prosesCek,orangDibutuhkan,...cekOrang}};
       }
     }
 
@@ -216,25 +198,23 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"&&!PROSES_ORANG_RAW.includes(prosesCek)){
       let menitDibutuhkan=0;
       let adaDataProcessTime=false;
-      for(const kode of modalKomponen){
-        const qty=hitungSisaQty(kode).sisa;
+      for(const kode of komp){
+        const qty=sisaQtyUntuk(row,panel,date,wp,kode).sisa;
         const menitPcs=getMenitPerPcs(tipePanelCek,prosesCek,kode);
         if(menitPcs>0)adaDataProcessTime=true;
         menitDibutuhkan+=qty*menitPcs;
       }
       if(adaDataProcessTime&&menitDibutuhkan>0){
         const cek=await checkKapasitasDanKomponenSwapV2({
-          tanggal:cellModal.date,
+          tanggal:date,
           jenisPekerjaan:prosesCek,
           menitDibutuhkan,
-          excludeRawId:cellModal.rawId,
-          excludeWp:modalWp,
+          excludeRawId:row.id,
+          excludeWp:wp,
         });
         if(!cek.cukup){
           if(cek.opsiSwap.length>0){
-            setSwapModal({tanggal:cellModal.date,proses:prosesCek,menitDibutuhkan,...cek});
-            setSwapSelected([]);
-            return;
+            return{ok:false,swapMenit:{tanggal:date,proses:prosesCek,menitDibutuhkan,...cek}};
           }
           // Gak ada yang bisa digeser (hari itu kosong/gak cukup dari komponen lain) - biasanya
           // karena qty komponen ini SENDIRIAN emang lebih besar dari kapasitas 1 hari (misal
@@ -246,12 +226,20 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
             "Kapasitas "+prosesCek+" tanggal ini gak cukup ("+cek.sisaKapasitas+" menit sisa, butuh "+menitDibutuhkan+" menit) dan tidak ada komponen lain yang bisa dipindah.\n\n"+
             "Tanggal ini akan OVERBOOK kalau dilanjutkan. Tetap tambahkan?"
           );
-          if(!lanjutOverbook)return;
+          if(!lanjutOverbook)return{ok:false};
         }
       }
     }
+    return{ok:true};
+  };
 
-    let finalKomp=modalKomponen;
+  // true = jadwal tersimpan. sebelumSimpan: dipanggil di titik yang sama dgn reset isian modal dulu (sebelum updateRaw).
+  const simpanTambah=async(o:{rawId:number;date:string;wp:string;komp:string[];bobotPilihan:Record<string,string>;busbarSel?:string[];sebelumSimpan?:()=>void}):Promise<boolean>=>{
+    const{rawId,date,wp,komp,bobotPilihan}=o;
+    const row=rawData.find(r=>r.id===rawId);
+    const panel=row?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(row.panel_id||row.panelId)):null;
+    const prosesCek=row?.proses;
+    let finalKomp=komp;
     let updatedRow=null;
     let oldKomp:string[]=[];
     let isEdit=false;
@@ -259,13 +247,13 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     // Bobot baru yang dipilih di modal ini digabung ke bobot_komponen level ROW (bukan per entry
     // - lihat panelHelpers.ts) - kode yang udah punya bobot tersimpan sebelumnya TETAP dipakai
     // (gak ke-timpa) kecuali sengaja diganti di picker.
-    const newBobotKomponen=isProsesOrangRow?{...(rawRow?.bobot_komponen||{}),...modalBobotPerKomponen}:null;
-    markRawDirty(cellModal.rawId);
+    const newBobotKomponen=isProsesOrangRow?{...(row?.bobot_komponen||{}),...bobotPilihan}:null;
+    markRawDirty(rawId);
     setRawData(prev=>prev.map(r=>{
-      if(r.id!==cellModal.rawId)return r;
+      if(r.id!==rawId)return r;
       const newSch={...r.schedule};
-      const existing=newSch[cellModal.date]||[];
-      const wpEntry=existing.find(e=>e.wp===modalWp);
+      const existing=newSch[date]||[];
+      const wpEntry=existing.find(e=>e.wp===wp);
       let updated;
       if(wpEntry){
         oldKomp=wpEntry.komponen;isEdit=true;
@@ -277,71 +265,111 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
           const tokenLama=(wpEntry.komponen||[]).filter((kode:string)=>kode.startsWith("__wiring_"));
           const komponenLamaBelumSelesai=(wpEntry.komponen||[]).filter((kode:string)=>{
             if(kode.startsWith("__wiring_"))return false;
-            const progress=livePanelForCell?.checklist?.[kode]?.progress?.[prosesCek||""]||0;
+            const progress=panel?.checklist?.[kode]?.progress?.[prosesCek||""]||0;
             return progress<100;
           });
-          const realBaru=[...new Set([...komponenLamaBelumSelesai,...modalKomponen.filter((k:string)=>!k.startsWith("__wiring_"))])];
+          const realBaru=[...new Set([...komponenLamaBelumSelesai,...komp.filter((k:string)=>!k.startsWith("__wiring_"))])];
           // Token cuma ada gunanya kalau masih nempel di komponen asli - kalau semua komponen
           // aslinya udah beres/dihapus, buang tokennya juga (jangan biarin entri jadi token-doang).
           finalKomp=realBaru.length>0?[...new Set([...tokenLama,...realBaru])]:realBaru;
         } else {
-          finalKomp=[...new Set([...wpEntry.komponen,...modalKomponen])];
+          finalKomp=[...new Set([...wpEntry.komponen,...komp])];
         }
-        updated=existing.map(e=>e.wp!==modalWp?e:{...e,komponen:finalKomp});
+        updated=existing.map(e=>e.wp!==wp?e:{...e,komponen:finalKomp});
       }
       else{
-        updated=[...existing,{wp:modalWp,komponen:modalKomponen,createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
+        updated=[...existing,{wp,komponen:komp,createdBy:user?.name||user?.nama||"Admin",createdAt:new Date().toISOString()}];
       }
-      newSch[cellModal.date]=updated;
+      newSch[date]=updated;
       updatedRow={...r,schedule:newSch,...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
       return updatedRow;
     }));
     // (8 Okt 2026) syncRenharKomp dipindah ke SETELAH raw tersimpan & di-await (lihat bawah) -
     // dulu dipanggil tanpa await & hasilnya tidak pernah dicek.
-    const ctxSinkron={rawId:cellModal.rawId,date:cellModal.date,wp:modalWp};
-    setModalWp('');setModalKomponen([]);setModalBobotPerKomponen({});
-    const isBusbarRow=rawRow?.proses==="BUSBAR";
+    const ctxSinkron={rawId,date,wp};
+    o.sebelumSimpan?.();
+    const isBusbarRow=row?.proses==="BUSBAR";
     if(updatedRow){
       const updatePayload:any={schedule:updatedRow.schedule,updated_by:user?.name||user?.nama||'Admin',...(newBobotKomponen?{bobot_komponen:newBobotKomponen}:{})};
-      if(isBusbarRow&&busbarSel!==undefined){
-        const newBusbarSch={...(rawRow?.busbar_schedule||{}),[cellModal.date]:busbarSel};
+      if(isBusbarRow&&o.busbarSel!==undefined){
+        const newBusbarSch={...(row?.busbar_schedule||{}),[date]:o.busbarSel};
         updatePayload.busbar_schedule=newBusbarSch;
         // Update local state dengan busbar_schedule
         setRawData(prev=>prev.map(r=>{
-          if(r.id!==cellModal.rawId)return r;
+          if(r.id!==rawId)return r;
           return{...r,schedule:updatedRow.schedule,busbar_schedule:newBusbarSch};
         }));
       }
-      const resRaw=await updateRaw(cellModal.rawId,updatePayload);
+      const resRaw=await updateRaw(rawId,updatePayload);
       // (8 Okt 2026) Dulu hasil tidak dicek. Gagal = beri tahu, renhar tidak disinkron (raw belum berubah).
       if(!resRaw?.success){
-        if(resRaw?.dibatalkan)return; // pengguna memilih Batal di peringatan urutan proses (tampilan sudah dikembalikan)
+        if(resRaw?.dibatalkan)return false; // pengguna memilih Batal di peringatan urutan proses (tampilan sudah dikembalikan)
         console.error("[Raw Schedule] simpan WP gagal:",resRaw?.error);
         alert("Gagal menyimpan WP ke server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
-        return;
+        return false;
       }
     }
     {
       const sinkron=()=>syncRenharKomp(ctxSinkron.rawId,ctxSinkron.date,ctxSinkron.wp,finalKomp);
       try{await sinkron();}catch(err:any){
-        await tanganiGagalSinkronRenhar(err,`${rawRow?.panel||""} ${ctxSinkron.wp} (${ctxSinkron.date})`,sinkron);
+        await tanganiGagalSinkronRenhar(err,`${row?.panel||""} ${ctxSinkron.wp} (${ctxSinkron.date})`,sinkron);
       }
     }
     const sess=JSON.parse(localStorage.getItem('vista_admin_session')||'{}');const uname=user?.name||user?.nama||sess?.nama||sess?.name||'Admin';
-    const getName=(k:string)=>panelCfg?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
+    const cfgRow=panel?getEffCfg(panel.tipe):null;
+    const getName=(k:string)=>cfgRow?.wps.flatMap(w=>w.items).find(it=>it.kode===k)?.nama||k;
     if(isEdit){
-      const added=modalKomponen.filter(k=>!oldKomp.includes(k)).map(getName);
-      const removed=oldKomp.filter(k=>!modalKomponen.includes(k)).map(getName);
+      const added=komp.filter(k=>!oldKomp.includes(k)).map(getName);
+      // (B2) dibanding isi AKHIR yang disimpan (finalKomp) - tambah langsung hanya mengirim kode baru, jadi dibanding `komp` semua kode lama
+      // tercatat "Hapus" padahal tetap ada. Modal (komp = lama + baru) hasilnya sama dgn sebelumnya.
+      const removed=oldKomp.filter(k=>!finalKomp.includes(k)).map(getName);
       const parts=[];
       if(added.length) parts.push('Tambah: '+added.join(', '));
       if(removed.length) parts.push('Hapus: '+removed.join(', '));
       const desc=parts.length?parts.join(' | '):'Tidak ada perubahan';
-      await activityLogService.insert({user_name:uname,action:'EDIT WP RAW SCHEDULE',description:'Edit '+modalWp+' '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+'): '+desc,module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+      await activityLogService.insert({user_name:uname,action:'EDIT WP RAW SCHEDULE',description:'Edit '+wp+' '+row?.panel+' - '+row?.proyek+' ('+date+'): '+desc,module:'raw',halaman:'Raw Schedule',proyek:row?.proyek||'',panel:row?.panel||''});
     } else {
       const kompNames=finalKomp.map(getName).join(', ');
-      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+modalWp+' ('+kompNames+') ke jadwal '+rawRow?.panel+' - '+rawRow?.proyek+' ('+cellModal?.date+')',module:'raw',halaman:'Raw Schedule',proyek:rawRow?.proyek||'',panel:rawRow?.panel||''});
+      await activityLogService.insert({user_name:uname,action:'TAMBAH WP RAW SCHEDULE',description:'Tambah '+wp+' ('+kompNames+') ke jadwal '+row?.panel+' - '+row?.proyek+' ('+date+')',module:'raw',halaman:'Raw Schedule',proyek:row?.proyek||'',panel:row?.panel||''});
     }
+    return true;
   };
+
+  const addEntry=async()=>{
+    if(!modalWp||!modalKomponen.length)return;
+    const cek=await cekKapasitasTambah(rawRow,livePanelForCell,cellModal.date,modalWp,modalKomponen,modalBobotPerKomponen);
+    if(!cek.ok){
+      if(cek.swapOrang){setSwapOrangModal(cek.swapOrang);setSwapOrangSelected([]);}
+      if(cek.swapMenit){setSwapModal(cek.swapMenit);setSwapSelected([]);}
+      return;
+    }
+    await simpanTambah({rawId:cellModal.rawId,date:cellModal.date,wp:modalWp,komp:modalKomponen,bobotPilihan:modalBobotPerKomponen,busbarSel,
+      sebelumSimpan:()=>{setModalWp('');setModalKomponen([]);setModalBobotPerKomponen({});}});
+  };
+
+  // TAMBAH LANGSUNG (B2, 28 Okt 2026) - "+ tambah" di popup baris komponen Raw Schedule per WP: kode -> WP (dari BOM) di sel itu
+  // tanpa membuka modal. Aturan boleh-tambah = statusTambahKomponen (sama dgn daftar pilih modal); cek kapasitas & simpan =
+  // fungsi yang sama dgn tombol Tambah modal. WIRING tidak lewat sini (bobot & kuota orang dipilih di modal).
+  // Kapasitas kurang + ada opsi swap -> modal edit sel dibuka (WP & komponen terisi) + modal swap seperti biasa.
+  // Hasil: 'tersimpan' | 'modal' (lanjut di modal swap) | 'batal' | 'ditolak' (alasan) | 'gagal'.
+  const tambahLangsung=async(rawId:number,date:string,wp:string,komp:string[]):Promise<{hasil:'tersimpan'|'modal'|'batal'|'ditolak'|'gagal';alasan?:string}>=>{
+    const row=rawData.find(r=>r.id===rawId);
+    if(!row)return{hasil:'gagal',alasan:'baris jadwal tidak ditemukan'};
+    if(PROSES_ORANG_RAW.includes(row.proses))return{hasil:'ditolak',alasan:'WIRING ditambah lewat modal (bobot & kuota orang)'};
+    const panel=woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(row.panel_id||row.panelId));
+    const tolak=komp.map(k=>({k,st:statusTambahKomponen(row,panel,date,wp,k,TODAY)})).filter(x=>x.st.jenis!=="bisa");
+    if(tolak.length)return{hasil:'ditolak',alasan:tolak.map(x=>x.k+" ("+x.st.jenis+")").join(", ")};
+    const cek=await cekKapasitasTambah(row,panel,date,wp,komp,{});
+    if(!cek.ok){
+      if(!cek.swapMenit&&!cek.swapOrang)return{hasil:'batal'};
+      openCellModal(rawId,date);setModalWp(wp);setModalKomponen(komp);
+      if(cek.swapMenit){setSwapModal(cek.swapMenit);setSwapSelected([]);}
+      if(cek.swapOrang){setSwapOrangModal(cek.swapOrang);setSwapOrangSelected([]);}
+      return{hasil:'modal'};
+    }
+    return(await simpanTambah({rawId,date,wp,komp,bobotPilihan:{}}))?{hasil:'tersimpan'}:{hasil:'gagal'};
+  };
+
   // Hapus 1 WP dari sel (rawId, tanggal) + sinkron renhar + log. Dipakai tombol "✕ Hapus" di modal (removeEntry)
   // dan menu "Hapus" tampilan accordion. Mengembalikan true bila jadwal tersimpan.
   const hapusWpDariSel=async(rawId:number,date:string,wp:string):Promise<boolean>=>{
@@ -400,6 +428,58 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     return true;
   };
   const removeEntry=async(wp)=>{await hapusWpDariSel(cellModal.rawId,cellModal.date,wp);};
+  // HAPUS KODE PER PROSES (B2, 28 Okt 2026) - kode tertentu dari WP di sel (rawId, tanggal); dipakai "Batalkan" setelah tambah
+  // langsung. Aturan sama dgn hapusWpDariSel: peringatan timer berjalan (kode itu saja), kode yang jadi TUJUAN jejak ditanya
+  // (kembalikan ke tanggal jejak / buang jejak / batal), sinkron renhar (sisa kode -> update; WP kosong -> hapus), log.
+  // Token __wiring_ ikut dibuang bila tidak ada kode asli tersisa. true = jadwal tersimpan.
+  const hapusKodeDariSel=async(rawId:number,date:string,wp:string,kode:string[]):Promise<boolean>=>{
+    const currentRow=rawData.find(r=>r.id===rawId);
+    if(!currentRow)return false;
+    const entri=(currentRow.schedule?.[date]||[]).find((e:{wp:string})=>e.wp===wp);
+    const kodeHapus=kode.filter(k=>(entri?.komponen||[]).includes(k));
+    if(!entri||kodeHapus.length===0){alert(`${kode.join(", ")} tidak ada lagi di ${wp} tanggal ${date} - tidak ada yang dihapus.`);return false;}
+    if(!(await konfirmasiTimerBerjalan([{panelId:Number(currentRow.panel_id||currentRow.panelId),proses:currentRow.proses,tanggal:date,kode:kodeHapus,label:String(currentRow.panel||"").trim()}],deps.namaPekerja||(()=>undefined),"hapus")))return false;
+    const kodeNyata=kodeHapus.filter(k=>!k.startsWith("__")&&!entri.digeserKe?.[k]);
+    const jejakKeSini=jejakMenujuTanggal(currentRow.schedule||{},date,wp,kodeNyata);
+    let modeJejak:null|"kembalikan"|"buang"=null;
+    const jejakPerTanggal:Record<string,string[]>={};
+    jejakKeSini.forEach(j=>{(jejakPerTanggal[j.dari]=jejakPerTanggal[j.dari]||[]).push(j.kode);});
+    if(jejakKeSini.length>0){
+      const daftar=Object.entries(jejakPerTanggal).map(([d,ks])=>ks.join(", ")+" (jejak di "+d+")").join("; ");
+      if(window.confirm(`${jejakKeSini.length} komponen di ${wp} tanggal ${date} adalah TUJUAN JEJAK dari tanggal lain:\n${daftar}\n\nOK = KEMBALIKAN komponen itu ke tanggal jejaknya (aktif lagi di sana), lalu hapus di sini.\nBatal = pilihan lain.`))modeJejak="kembalikan";
+      else if(window.confirm(`Hapus ${kodeHapus.join(", ")} dari ${wp} tanggal ${date} BESERTA jejaknya?\nKomponen ${jejakKeSini.map(j=>j.kode).join(", ")} akan KELUAR dari jadwal sama sekali.\n\nOK = hapus + jejaknya\nBatal = BATALKAN hapus.`))modeJejak="buang";
+      else return false;
+    }
+    let jadwalAwal=currentRow.schedule||{};
+    if(modeJejak)Object.entries(jejakPerTanggal).forEach(([d,ks])=>{jadwalAwal=modeJejak==="kembalikan"?aktifkanJejak(jadwalAwal,d,wp,ks):buangJejak(jadwalAwal,d,wp,ks);});
+    const newSch={...jadwalAwal};
+    const sisaAsli=(entri.komponen||[]).filter((k:string)=>!k.startsWith("__wiring_")&&!kodeHapus.includes(k));
+    const sisa=sisaAsli.length?(entri.komponen||[]).filter((k:string)=>!kodeHapus.includes(k)):[];
+    const updated=(newSch[date]||[]).flatMap((e:{wp:string})=>e.wp!==wp?[e]:sisa.length?[{...e,komponen:sisa}]:[]);
+    if(!updated.length)delete newSch[date];else newSch[date]=updated;
+    markRawDirty(rawId);
+    setRawData(prev=>prev.map(r=>r.id===rawId?{...currentRow,schedule:newSch}:r));
+    const resRaw=await updateRaw(rawId,{schedule:newSch});
+    if(!resRaw?.success){
+      if(resRaw?.dibatalkan)return false; // Batal di peringatan urutan proses
+      console.error("[Raw Schedule] hapus komponen gagal:",resRaw?.error);
+      alert("Gagal menghapus komponen di server: "+(resRaw?.error||"koneksi bermasalah")+"\n\nMuat ulang halaman lalu ulangi.");
+      return false;
+    }
+    if(modeJejak==="kembalikan"){
+      for(const[d,ks]of Object.entries(jejakPerTanggal)){
+        const sinkronBalik=async()=>{await pindahKomponenRenhar(depsRenharPindah,{rawId,wp,fromDate:date,toDate:d,kode:ks});};
+        try{await sinkronBalik();}catch(err){await tanganiGagalSinkronRenhar(err,`${currentRow?.panel||""} ${wp} ${ks.join(", ")} (${date} → ${d}) - kembalikan jejak`,sinkronBalik);}
+      }
+    }
+    {
+      const sinkron=()=>sisa.length?syncRenharKomp(rawId,date,wp,sisa):syncRenharDel(rawId,date,wp);
+      try{await sinkron();}catch(err){await tanganiGagalSinkronRenhar(err,`${currentRow?.panel||""} ${wp} (${date}) - hapus komponen`,sinkron);}
+    }
+    const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");const uname=user?.name||user?.nama||sess?.nama||"Admin";
+    await activityLogService.insert({user_name:uname,action:"HAPUS KOMPONEN RAW SCHEDULE",description:"Hapus "+kodeHapus.join(", ")+" dari "+wp+" jadwal "+currentRow?.panel+" - "+currentRow?.proyek+" ("+date+") proses "+(currentRow?.proses||"")+(sisa.length?"":" - WP kosong, dihapus")+(modeJejak==="kembalikan"?" - dikembalikan ke tanggal jejak: "+Object.entries(jejakPerTanggal).map(([d,ks])=>ks.join(", ")+" → "+d).join("; "):modeJejak==="buang"?" - jejak ikut dihapus: "+jejakKeSini.map(j=>j.kode+" ("+j.dari+")").join(", "):""),module:"raw",halaman:"Raw Schedule",proyek:currentRow?.proyek||"",panel:currentRow?.panel||""});
+    return true;
+  };
   // (14 Okt 2026) "Aktifkan di sini" pada chip JEJAK: tarik kode kembali ke tanggal ini. Entri nyata di ujung
   // rantai jejak dilepas (logika lepasDariAsal sama dgn drag: ada pengerjaan di sana -> tinggal jejak), lalu
   // ditaruh di sini (taruhDiTujuan menghapus jejak + pin). Rencana harian dipindah lewat helper yang sama.
@@ -1062,5 +1142,5 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
       )}
     </>
   );
-  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel};
+  return{cellModal,buka:openCellModal,elemen,setModalWp,setModalKomponen,setModalBobotPerKomponen,hapusWpDariSel,tambahLangsung,hapusKodeDariSel};
 }
