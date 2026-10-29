@@ -73,6 +73,17 @@ const TINGGI = { grup: 40, komp: 36, penanda: 30 }
 // supaya virtualisasi/lasso/seret panel (semua lewat `offset`) tetap tepat & baris tidak melompat saat digeser kiri-kanan.
 const CHIP = { padX: 3, gapDalam: 2, badgePadX: 2, gap: 2, tinggi: 16, font: 8.5 }
 const LEBAR_ISI_SEL = LEBAR_TGL - 8 // padding sel 4px kiri-kanan
+// NAMA PANEL 2 BARIS (29 Okt 2026, permintaan user: nama panel terpotong "..."). Kolom Panel tetap 150px; nama yang tidak
+// muat 1 baris dibungkus maks 2 baris (sisanya "..." + tooltip). Baris PERTAMA panel itu ditinggikan ke TINGGI_PANEL_2BARIS
+// (dari data, bukan DOM - sama alasan tinggiPerKb: virtualisasi/lasso/seret panel lewat `offset`).
+const NAMA_PANEL = { font: 9, garis: 11 } // fontSize sel kiri 9px, lineHeight 11px
+const LEBAR_NAMA_PANEL = 150 - 12 - 10 - 14 - 6 // kolom - padding sel - pegangan ⠿ - tombol ⋮ - jarak
+const TINGGI_PANEL_2BARIS = 4 + NAMA_PANEL.garis * 2 + 1 + 15 + 6 // padding + 2 baris nama + jarak + pilihan prioritas + batas
+function namaPanelDuaBaris(nama: string): boolean {
+  let w = nama.length * 5.6
+  try { const c = document.createElement('canvas').getContext('2d'); if (c) { c.font = `700 ${NAMA_PANEL.font}px ${getComputedStyle(document.body).fontFamily || 'sans-serif'}`; w = c.measureText(nama).width } } catch { /* perkiraan */ }
+  return w > LEBAR_NAMA_PANEL
+}
 const tinggiIsi = (garis: number) => garis * CHIP.tinggi + (garis - 1) * CHIP.gap + 6
 // Pengukur lebar teks (canvas, font halaman) - di-cache per teks.
 function buatPengukur(): (teks: string, spasi?: number) => number {
@@ -343,9 +354,14 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [blokTampil, fontSiap])
-  // header WP yang DIBUKA tidak menampilkan ringkasan -> tinggi minimum
-  const tinggiBaris = (r: Baris) => r.t === 'penanda' || (r.t === 'grup' && r.buka) ? TINGGI[r.t] : (tinggiPerKb.get(r.kb) ?? TINGGI[r.t])
-  const offset = useMemo(() => { const o = new Array(baris.length + 1); o[0] = 0; for (let i = 0; i < baris.length; i++) o[i + 1] = o[i] + tinggiBaris(baris[i]); return o }, [baris, tinggiPerKb]) // eslint-disable-line react-hooks/exhaustive-deps
+  const panelNamaPanjang = useMemo(() => new Set(blokTampil.filter(b => namaPanelDuaBaris(String(b.panel || ''))).map(b => b.panelId)),
+    [blokTampil, fontSiap]) // eslint-disable-line react-hooks/exhaustive-deps
+  // header WP yang DIBUKA tidak menampilkan ringkasan -> tinggi minimum; baris pertama panel bernama panjang >= TINGGI_PANEL_2BARIS
+  const tinggiBaris = (r: Baris) => {
+    const t = r.t === 'penanda' || (r.t === 'grup' && r.buka) ? TINGGI[r.t] : (tinggiPerKb.get(r.kb) ?? TINGGI[r.t])
+    return r.pertama && panelNamaPanjang.has(r.blok.panelId) ? Math.max(t, TINGGI_PANEL_2BARIS) : t
+  }
+  const offset = useMemo(() => { const o = new Array(baris.length + 1); o[0] = 0; for (let i = 0; i < baris.length; i++) o[i + 1] = o[i] + tinggiBaris(baris[i]); return o }, [baris, tinggiPerKb, panelNamaPanjang]) // eslint-disable-line react-hooks/exhaustive-deps
   const totalTinggi = offset[baris.length] || 0
 
   // ── scroll (virtualisasi baris & kolom) ──
@@ -1018,11 +1034,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
         <td style={stickyKiri('proyek', { ...td, color: '#475569', fontWeight: 600 })}>{r.pertama && batas(<div style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={b.proyek}>{b.proyek}</div>)}</td>
         <td style={stickyKiri('panel', { ...td, color: '#1e293b', fontWeight: 700 })}>{r.pertama && batas(
           <div title={`${b.panel} · ${b.tipe}`}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 3 }}>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: 3 }}>
               <span role="button" aria-label={`Seret untuk ubah urutan ${b.panel}`} title={urutanPanel.savingUrutan ? 'Sedang menyimpan urutan...' : 'Seret untuk ubah urutan panel (lintas kelompok = prioritas ikut berubah)'}
                 onPointerDown={(e: any) => mulaiDragPanel(e, b.panelId, b.panel, zonaDari(b.prioritas))}
                 style={{ cursor: urutanPanel.savingUrutan ? 'not-allowed' : 'grab', touchAction: 'none', color: '#94a3b8', fontSize: 12, lineHeight: 1, padding: '1px 1px', userSelect: 'none', flexShrink: 0 }}>⠿</span>
-              <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{b.panel}</span>
+              <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', lineHeight: NAMA_PANEL.garis + 'px', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>{b.panel}</span>
               <button title="Pindah urutan panel" aria-label="Pindah urutan panel" disabled={urutanPanel.savingUrutan}
                 onClick={(e: any) => { const rc = e.currentTarget.getBoundingClientRect(); setMenuUrutan(m => m?.panelId === b.panelId ? null : { panelId: b.panelId, x: rc.right, y: rc.bottom }) }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 12, fontWeight: 800, padding: '0 2px', lineHeight: 1, flexShrink: 0 }}>⋮</button>
