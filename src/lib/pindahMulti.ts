@@ -6,8 +6,12 @@
 // Rumus jadwal ada di lib/jadwalPindah.ts, kapasitas di lib/kapasitasHari.ts, aturan pilih di
 // lib/isiSelJadwal.ts.
 import { supabase as supabaseAsli } from './supabase'
+import type { Json } from '../types/supabase-generated'
 import { isMinggu, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, rencanakanSalinMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2, type RencanaPindahMultiV2 } from './jadwalPindah'
 
+// Baris & operasi renhar utk ubah_jadwal_multi_v1 (B3). sebelum/sesudah = 4 kolom jadwal (Jadwal4) [+ bobot_komponen].
+export type UbahBaris = { raw_id: number; sebelum: Record<string, unknown>; sesudah: Record<string, unknown> }
+export type OpRenharUbah = { op: 'set_komponen'; raw_id: number; wp: string; tanggal: string; komponen: string[] } | { op: 'hapus'; raw_id: number; wp: string; tanggal: string }
 export type SelAsal = { rawId: number; date: string; wps?: string[] } // wps: pilih per WP (undefined = seluruh sel)
 export type SelTujuan = SelAsal & { ke: string }
 export type SelBentrok = SelTujuan & { alasan: string }
@@ -168,10 +172,20 @@ export function buatAksesPindahMulti(supabase: typeof supabaseAsli = supabaseAsl
 
   const rpcPulihkanMultiV2 = (snap: any, user: string) =>
     supabase.rpc('pulihkan_multi_sel_v2', { p_snap: snap, p_user: user })
-  return { muatTimerBusbarAktif, isiPengerjaanAsal, rpcPindahMultiV2, rpcPulihkanMultiV2 }
+
+  // (B3, 29 Okt 2026) salin & hapus per chip Raw Schedule per WP - pasangan RPC TERPISAH dari pindah v2 (migration
+  // 20261029010000): tolak bila baris sudah diubah orang lain (isi != sebelum), snapshot Undo = renhar utuh (yang dihapus
+  // disisipkan kembali saat dibatalkan).
+  const rpcUbahJadwalV1 = (rows: UbahBaris[], renhar: OpRenharUbah[], aksi: string, user: string) =>
+    supabase.rpc('ubah_jadwal_multi_v1', { p_rows: rows as unknown as Json, p_renhar: renhar as unknown as Json, p_aksi: aksi, p_user: user })
+  const rpcPulihkanUbahV1 = (snap: Json, user: string) =>
+    supabase.rpc('pulihkan_ubah_jadwal_v1', { p_snap: snap, p_user: user })
+  return { muatTimerBusbarAktif, isiPengerjaanAsal, rpcPindahMultiV2, rpcPulihkanMultiV2, rpcUbahJadwalV1, rpcPulihkanUbahV1 }
 }
 const aksesAsli = buatAksesPindahMulti()
 export const muatTimerBusbarAktif = aksesAsli.muatTimerBusbarAktif
 export const isiPengerjaanAsal = aksesAsli.isiPengerjaanAsal
 export const rpcPindahMultiV2 = aksesAsli.rpcPindahMultiV2
 export const rpcPulihkanMultiV2 = aksesAsli.rpcPulihkanMultiV2
+export const rpcUbahJadwalV1 = aksesAsli.rpcUbahJadwalV1
+export const rpcPulihkanUbahV1 = aksesAsli.rpcPulihkanUbahV1

@@ -9,7 +9,8 @@ import { useRef } from 'react'
 import { markRawDirty as markRawDirtyAsli, clearRawDirty as clearRawDirtyAsli } from '../lib/globalState'
 import { rencanakanPindahMultiV2, type SelPindahV2 } from '../lib/jadwalPindah'
 import * as aksesPindahAsli from '../lib/pindahMulti'
-import type { SelAsal, SelTujuan, SelBentrok } from '../lib/pindahMulti'
+import type { SelAsal, SelTujuan, SelBentrok, UbahBaris, OpRenharUbah } from '../lib/pindahMulti'
+import type { Json } from '../types/supabase-generated'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 
 type AksiToast = { label: string; fn: () => void }
@@ -55,6 +56,8 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
   const isiPengerjaanAsal = (...a: Parameters<typeof aksesPindahAsli.isiPengerjaanAsal>) => akses().isiPengerjaanAsal(...a)
   const rpcPindahMultiV2 = (...a: Parameters<typeof aksesPindahAsli.rpcPindahMultiV2>) => akses().rpcPindahMultiV2(...a)
   const rpcPulihkanMultiV2 = (...a: Parameters<typeof aksesPindahAsli.rpcPulihkanMultiV2>) => akses().rpcPulihkanMultiV2(...a)
+  const rpcUbahJadwalV1 = (...a: Parameters<typeof aksesPindahAsli.rpcUbahJadwalV1>) => akses().rpcUbahJadwalV1(...a)
+  const rpcPulihkanUbahV1 = (...a: Parameters<typeof aksesPindahAsli.rpcPulihkanUbahV1>) => akses().rpcPulihkanUbahV1(...a)
   const markRawDirty = (id: number) => (ambil().io?.kotor.markRaw ?? markRawDirtyAsli)(id)
   const clearRawDirty = (id: number) => (ambil().io?.kotor.clearRaw ?? clearRawDirtyAsli)(id)
 
@@ -146,7 +149,46 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     if (sedangPindahRef.current || sedangBatalkanRef.current) { ambil().tampilToastAksi('Masih memproses pemindahan sebelumnya - tunggu sebentar.', 'err'); return false }
     if (sel.length === 0) { ambil().tampilToastAksi('Tidak ada pekerjaan yang bisa dipindah di pilihan ini.', 'err'); return false }
     sedangPindahRef.current = true
-    try { return await intiPindah(sel, jadwal, o) } finally { sedangPindahRef.current = false }
+    try {
+      // (28 Okt 2026) peringatan timer berjalan - sama dgn jalankanPindahMulti (tampilan lama)
+      const cek = ambil().cekSebelumPindah
+      if (cek && !(await cek(sel))) return false
+      return await intiPindah(sel, jadwal, o)
+    } finally { sedangPindahRef.current = false }
+  }
+
+  // UBAH JADWAL (B3, 29 Okt 2026 - salin & hapus per chip Raw Schedule per WP): 1 RPC ubah_jadwal_multi_v1 (tolak tab basi,
+  // renhar set_komponen/hapus, 1 transaksi). Pola SAMA dgn intiPindah: pengaman aksi ganda, peringatan urutan, tampilan
+  // optimistis -> RPC -> kembalikan bila gagal -> snapshot Undo (jenis 'ubah' = pulihkan_ubah_jadwal_v1). Toast sukses = pemanggil.
+  type OpsiUbah = { rows: UbahBaris[]; renhar: OpRenharUbah[]; aksi: string; label: string; ulangi: () => void }
+  const simpanUbah = async (o: OpsiUbah): Promise<boolean> => {
+    if (sedangPindahRef.current || sedangBatalkanRef.current) { ambil().tampilToastAksi('Masih memproses aksi sebelumnya - tunggu sebentar.', 'err'); return false }
+    if (o.rows.length === 0) return false
+    sedangPindahRef.current = true
+    try {
+      const d = ambil()
+      if (d.konfirmasiUrutan && !(await d.konfirmasiUrutan(new Map(o.rows.map(r => [r.raw_id, r.sesudah]))))) {
+        d.tampilToastAksi('Dibatalkan - jadwal tidak diubah.', 'ok')
+        return false
+      }
+      const perId = new Map(o.rows.map(r => [r.raw_id, r]))
+      o.rows.forEach(r => markRawDirty(r.raw_id))
+      d.setRawData(prev => prev.map(r => perId.has(r.id) ? { ...r, ...perId.get(r.id)!.sesudah } : r))
+      const { data, error } = await rpcUbahJadwalV1(o.rows, o.renhar, o.aksi, d.user?.name || d.user?.nama || 'Admin')
+      o.rows.forEach(r => clearRawDirty(r.raw_id))
+      if (error) {
+        console.error('[Ubah jadwal] gagal:', error)
+        d.setRawData(prev => prev.map(r => perId.has(r.id) ? { ...r, ...perId.get(r.id)!.sebelum } : r))
+        const kode = typeof error.code === 'string' && error.code.trim() ? error.code : ''
+        if (kode !== 'P0001') { d.refetchRaw?.(); d.refetchRenhar?.() }
+        d.tampilToastAksi(kode === 'P0001' ? error.message : `Gagal menyimpan ${o.label} (${kode ? 'server: ' + error.message : 'koneksi lambat/putus'}). Jadwal dimuat ulang dari server - cek sebelum mengulang.`, 'err',
+          kode === 'P0001' ? undefined : [{ label: 'Ulangi', fn: o.ulangi }])
+        return false
+      }
+      d.refetchRenhar?.()
+      undoMultiRef.current.push({ jenis: 'ubah', snap: data, label: o.label })
+      return true
+    } finally { sedangPindahRef.current = false }
   }
 
   // Undo = MEMULIHKAN keadaan persis sebelum pindah lewat pulihkan_multi_sel_v2 (bukan pindah balik, yang
@@ -165,7 +207,8 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
       if (!lanjut) { sedangBatalkanRef.current = false; d.tampilToastAksi('Batalkan pemindahan tidak jadi - jadwal tidak diubah.', 'ok'); return }
     }
     let error: any = null
-    try { ({ error } = await rpcPulihkanMultiV2(entri.snap, d.user?.name || d.user?.nama || 'Admin')) }
+    // entri jenis 'ubah' (B3 salin/hapus) dipulihkan lewat RPC pasangannya; entri pindah tetap pulihkan_multi_sel_v2.
+    try { ({ error } = entri.jenis === 'ubah' ? await rpcPulihkanUbahV1(entri.snap as Json, d.user?.name || d.user?.nama || 'Admin') : await rpcPulihkanMultiV2(entri.snap, d.user?.name || d.user?.nama || 'Admin')) }
     finally { sedangBatalkanRef.current = false }
     if (error) {
       console.error('[Batalkan pindah banyak sel] gagal:', error)
@@ -181,10 +224,10 @@ export function usePindahMulti(ambil: () => DepsPindahMulti) {
     d.setRawData((prev: any[]) => prev.map((r: any) => sebelum.has(r.id) ? { ...r, ...sebelum.get(r.id) } : r)) // 4 kolom (v2)
     d.refetchRenhar?.()
     d.onSesudahBatal?.()
-    d.tampilToastAksi(`Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`, 'ok')
+    d.tampilToastAksi(entri.jenis === 'ubah' ? `${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.` : `Pemindahan ${entri.label} dibatalkan - jadwal & rencana harian kembali seperti semula.`, 'ok')
   }
 
-  const api = { jalankanPindahMulti, jalankanPindahSel, batalkanPindahTerakhir, muatTimerBusbar, timerBusbarRef, undoMultiRef, sedangPindahRef, sedangBatalkanRef }
+  const api = { jalankanPindahMulti, jalankanPindahSel, batalkanPindahTerakhir, simpanUbah, muatTimerBusbar, timerBusbarRef, undoMultiRef, sedangPindahRef, sedangBatalkanRef }
   apiRef.current = api
   return api
 }
