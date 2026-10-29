@@ -10,6 +10,7 @@ import { useWoDilihat } from './hooks/useWoDilihat'
 import { useProyekLuarPantau } from './hooks/useProyekLuarPantau'
 import { statusWo } from './lib/woDilihat'
 import { supabase } from './lib/supabase'
+import { pasangPemulihRealtime } from './lib/pemulihRealtime'
 import { useWorkOrders } from './hooks/useWorkOrders'
 import { workOrderService } from './services/workOrderService'
 import { useRawSchedule } from './hooks/useRawSchedule'
@@ -31,7 +32,7 @@ import {
   calcPanelProgress, panelOverall, woOverall, wpProgress,
 } from './lib/panelHelpers'
 import {
-  getLocalDateStr, TODAY, daysUntil, isDelayed, isUrgent, getStatus,
+  TODAY, daysUntil, isDelayed, isUrgent, getStatus,
   pColor, pBg, addDays, fmtDate, fmtShort, getDayLabel, fmtDateFull,
 } from './lib/dateHelpers'
 import {
@@ -68,6 +69,7 @@ const RawSchedule = lazyP(() => import('./components/RawSchedule').then(m => ({ 
 const RawScheduleAccordion = lazyP(() => import('./components/RawScheduleAccordion').then(m => ({ default: m.RawScheduleAccordion })))
 const OutstandingView = lazyP(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
 const ManajemenWO = lazyP(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
+const InventarisMaintenanceTab = lazyP(() => import('./components/InventarisMaintenanceTab').then(m => ({ default: m.InventarisMaintenanceTab })))
 const MaintenancePageTab = lazyP(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
 const StokMonitoringTab = lazyP(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const PermintaanAdminTab = lazyP(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
@@ -292,24 +294,23 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   // row sama sekali), dan kalau gagal: console.error + badge "!" - angka lama gak ditimpa 0 biar
   // jadwal terlambat gak kelihatan "aman" padahal cuma gagal muat.
   const [maintenanceAlertError, setMaintenanceAlertError] = useState(false)
-  useEffect(() => {
-    const fetchMaintAlert = async () => {
-      const h3 = new Date(); h3.setDate(h3.getDate() + 3)
-      const { count, error } = await supabase.from('maintenance_rutin').select('id', { count: 'exact', head: true }).eq('is_active', true).lte('jatuh_tempo', getLocalDateStr(h3))
+  // (29 Okt 2026, Inventaris & Maintenance T2) badge pindah ke menu baru: jadwal AKTIF berstatus Terlambat/Segera dari
+  // view inv_jadwal_v (satu sumber dgn tab & HP operator; batas Segera = inv_pengaturan, 2 hari). Pemulih realtime:
+  // status berganti karena tanggal (bukan hanya karena data berubah) -> polling 30 dtk ikut menyegarkan.
+  useEffect(() => pasangPemulihRealtime(supabase, {
+    nama: 'realtime-maint-alert', tabel: 'inv_jadwal', label: 'badge Inventaris', jedaMs: 800,
+    muat: async () => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tabel inv_* belum ada di tipe hasil generate
+      const { count, error } = await (supabase as any).from('inv_jadwal_v').select('id', { count: 'exact', head: true }).eq('aktif', true).in('status_jadwal', ['terlambat', 'segera'])
       if (error) {
-        console.error('[App] gagal hitung badge Maintenance (maintenance_rutin):', error)
+        console.error('[App] gagal hitung badge Inventaris & Maintenance (inv_jadwal_v):', error)
         setMaintenanceAlertError(true)
         return
       }
       setMaintenanceAlertError(false)
       setMaintenanceOverdueCount(count || 0)
-    }
-    fetchMaintAlert()
-    const ch = supabase.channel('realtime-maint-alert')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'maintenance_rutin' }, fetchMaintAlert)
-      .subscribe()
-    return () => { supabase.removeChannel(ch) }
-  }, [])
+    },
+  }), [])
   // Badge "Permintaan Barang" (7 Sep 2026, fitur approval admin) - jumlah item status
   // 'menunggu_admin' yang belum diputuskan sama sekali.
   // Cek error (29 Sep 2026, CLAUDE.md A.2) - pola sama badge Maintenance di atas: gagal ->
@@ -754,7 +755,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"permintaan_admin",label:"Permintaan Barang",icon:"ti ti-clipboard-check",badge:pendingPermintaanError?"!":pendingPermintaanCount>0?pendingPermintaanCount:null},
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
-        {id:"maintenance",label:"Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+        {id:"inventaris",label:"Inventaris & Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+        // Tampilan lama (29 Okt 2026) - cadangan sampai T4 (QR diganti pesan, menu ini dihapus). Datanya tabel lama.
+        {id:"maintenance",label:"Maintenance (lama)",icon:"ti ti-history"},
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
@@ -1170,6 +1173,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("wo")&&<div style={{display:tab==="wo"?"block":"none"}}><Suspense fallback={TabFallback}><ManajemenWO woDilihat={woDilihat} bukaWo={bukaWo} woData={woData} setWoData={setWoData} createWO={createWO} updateWO={updateWO} logActivity={logActivity} logAct={logAct} log={log} user={user} refetchWO={refetchWO} highlightWoId={highlightWoId} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("inventaris")&&<div style={{display:tab==="inventaris"?"block":"none"}}><Suspense fallback={TabFallback}><InventarisMaintenanceTab user={user}/></Suspense></div>}
               {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("laporan_outstanding")&&<div style={{display:tab==="laporan_outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanOutstanding db={supabase} user={user}/></Suspense></div>}

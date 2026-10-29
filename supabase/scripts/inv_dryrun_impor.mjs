@@ -1,4 +1,5 @@
-// DRY-RUN impor Inventaris (T1) - BACA SAJA: membaca file Excel + data maintenance lama (anon key .env.local, tidak
+// ARSIP T1 (sudah dijalankan 29 Okt 2026; impor berikutnya lewat tombol "Impor dari Excel" yang memakai
+// src/lib/inventarisImpor.ts - hasilnya terbukti identik dgn payload T1, 121/121 baris). DRY-RUN impor Inventaris (T1) - BACA SAJA: membaca file Excel + data maintenance lama (anon key .env.local, tidak
 // mencetak kredensial), menulis laporan + file SQL impor. Tidak menulis apa pun ke database.
 //
 //   node supabase/scripts/inv_dryrun_impor.mjs --ga "<GA - DATABASE INVENTARIS VISTA.xlsx>" [--siap "<Inventaris_Vista_siap_impor.xlsx>"]
