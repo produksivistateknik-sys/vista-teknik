@@ -59,7 +59,15 @@ begin
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
   begin perform public.inv_tambah_barang('{"nama":"X","lokasi_kode":"WR"}', v_ak); raise exception 'GAGAL B1g: lokasi WR (nonaktif) bisa dipilih';
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
-  raise notice 'LULUS B1: nomor otomatis berurutan, kosong utk Belum ditentukan, dibuat saat lokasi pertama, tetap saat pindah, tidak bisa diubah';
+  -- B1h tambah barang + jadwal opsional dalam satu transaksi
+  v_h := public.inv_tambah_barang('{"nama":"UJI DGN JADWAL","lokasi_kode":"QC","jadwal":{"jenis":"UJI kalibrasi","frekuensi":"bulanan"}}', v_ak);
+  if (v_h->'jadwal'->>'jatuh_tempo')::date <> public.inv_hari_ini() + 7 or (v_h->'jadwal'->>'barang_id')::bigint <> (v_h->>'id')::bigint then
+    raise exception 'GAGAL B1h: jadwal ikut tambah barang %', v_h->'jadwal'; end if;
+  v_n := (select count(*) from public.inv_barang);
+  begin perform public.inv_tambah_barang('{"nama":"UJI JADWAL SALAH","lokasi_kode":"QC","jadwal":{"jenis":"x","frekuensi":"tiap-tiap"}}', v_ak); raise exception 'GAGAL B1i: jadwal salah diterima';
+  exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
+  if (select count(*) from public.inv_barang) <> v_n then raise exception 'GAGAL B1i: barang tersimpan walau jadwal gagal'; end if;
+  raise notice 'LULUS B1: jadwal opsional satu transaksi; nomor otomatis berurutan, kosong utk Belum ditentukan, dibuat saat lokasi pertama, tetap saat pindah, tidak bisa diubah';
 
   -- B2 kondisi operator
   v_ver := (select versi from public.inv_barang where id = v_id);
@@ -74,7 +82,11 @@ begin
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
   begin perform public.inv_set_kondisi(v_id, v_ver + 1, 'baik', null, jsonb_build_object('pekerja_id', v_op, 'divisi', 'mekanik')); raise exception 'GAGAL B2f: divisi palsu diterima';
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
-  raise notice 'LULUS B2: kondisi operator (3 pilihan, divisi sendiri, versi basi ditolak), pelapor & log otomatis';
+  -- B2g Rusak tanpa laporan (mis. Laptop 6) tetap bebas diubah admin
+  v_h := public.inv_set_kondisi(v_id2, (select versi from public.inv_barang where id = v_id2), 'rusak', null, v_ak);
+  v_h := public.inv_set_kondisi(v_id2, (v_h->>'versi')::int, 'baik', null, v_ak);
+  if v_h->>'kondisi' <> 'baik' then raise exception 'GAGAL B2g: admin tidak bisa ubah Rusak tanpa laporan'; end if;
+  raise notice 'LULUS B2: Rusak tanpa laporan bebas utk admin; kondisi operator (3 pilihan, divisi sendiri, versi basi ditolak), pelapor & log otomatis';
 
   -- B3 laporan
   v_h := public.inv_buat_laporan(v_id, 'UJI masalah 1', 'detail', m1, v_kunci, v_ok);
@@ -85,6 +97,18 @@ begin
   begin perform public.inv_set_kondisi(v_id, (select versi from public.inv_barang where id = v_id), 'baik', null, v_ok); raise exception 'GAGAL B3c: kondisi tidak terkunci';
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
   v_lap2 := (public.inv_buat_laporan(v_id, 'UJI masalah 2', null, null, null, v_ak)->'laporan'->>'id')::bigint;
+  -- B3k admin terkunci selama laporan aktif ("tutup laporan dulu"); detail tetap boleh
+  begin perform public.inv_set_kondisi(v_id, (select versi from public.inv_barang where id = v_id), 'baik', null, v_ak); raise exception 'GAGAL B3k: admin ubah kondisi saat laporan aktif';
+  exception when others then if sqlerrm like 'GAGAL%' then raise; end if; if sqlerrm not like '%tutup laporan dulu%' then raise exception 'GAGAL B3k: pesan %', sqlerrm; end if; end;
+  begin perform public.inv_ubah_barang(v_id, (select versi from public.inv_barang where id = v_id), '{"kondisi":"baik"}', v_ak); raise exception 'GAGAL B3l: admin ubah kondisi lewat ubah_barang';
+  exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
+  perform public.inv_set_kondisi(v_id, (select versi from public.inv_barang where id = v_id), 'rusak', 'uji catatan admin', v_ak);
+  -- B3m judul kosong -> baris pertama masalah
+  v_h := public.inv_buat_laporan(v_id, null, E'  Selang bocor di bawah\nair menetes terus', null, null, v_ok);
+  if v_h->'laporan'->>'judul' <> 'Selang bocor di bawah' then raise exception 'GAGAL B3m: judul %', v_h->'laporan'->>'judul'; end if;
+  perform public.inv_ubah_status_laporan((v_h->'laporan'->>'id')::bigint, 'closed', null, null, null, '[{"url":"https://uji.invalid/inventaris/g.jpg"}]', v_ak);
+  begin perform public.inv_buat_laporan(v_id, '', '   ', null, null, v_ok); raise exception 'GAGAL B3n: laporan kosong diterima';
+  exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
   begin perform public.inv_ubah_status_laporan(v_lap1, 'closed', null, null, null, null, v_ak); raise exception 'GAGAL B3d: tutup tanpa media sesudah';
   exception when others then if sqlerrm like 'GAGAL%' then raise; end if; end;
   begin perform public.inv_ubah_status_laporan(v_lap1, 'in_progress', null, null, null, null, v_ok); raise exception 'GAGAL B3e: operator ubah status';
@@ -96,7 +120,7 @@ begin
   if not exists (select 1 from public.inv_log where barang_id = v_id and jenis = 'kondisi' and ke = 'baik' and sumber = 'otomatis' and laporan_id = v_lap2) then raise exception 'GAGAL B3h: log otomatis'; end if;
   if (select count(*) from public.inv_media where tujuan = 'laporan' and ref_id = v_lap1 and peran in ('sebelum','sesudah')) <> 2 then raise exception 'GAGAL B3i: media sebelum/sesudah'; end if;
   if (select count(*) from public.inv_laporan_update where laporan_id = v_lap1) <> 1 then raise exception 'GAGAL B3j: riwayat status'; end if;
-  raise notice 'LULUS B3: laporan -> Rusak terkunci, anti-dobel, tutup wajib media sesudah, kembali baik hanya bila tidak ada laporan aktif lain';
+  raise notice 'LULUS B3: admin juga terkunci (tutup laporan dulu), judul dari baris pertama masalah; laporan -> Rusak terkunci, anti-dobel, tutup wajib media sesudah, kembali baik hanya bila tidak ada laporan aktif lain';
 
   -- B4 jadwal
   v_jad := (public.inv_simpan_jadwal(null, jsonb_build_object('barang_id', v_id, 'jenis', 'UJI cek', 'frekuensi', 'mingguan',

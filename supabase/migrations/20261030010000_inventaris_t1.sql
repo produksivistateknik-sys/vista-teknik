@@ -18,7 +18,7 @@
 --     otorisasi sungguhan (konvensi sama Proyek Luar 20261025010000).
 --   * Versi (optimistic lock): RPC ubah barang wajib kirim versi yang dibaca layar; beda -> ditolak "muat ulang".
 --   * Kunci uuid anti-dobel (laporan & selesai jadwal): kirim ulang dengan kunci sama -> dikembalikan yang sudah ada.
---   * Laporan aktif -> kondisi Rusak (terkunci utk operator). Laporan ditutup & tidak ada laporan aktif lain ->
+--   * Laporan aktif -> kondisi Rusak (terkunci utk operator DAN admin - "tutup laporan dulu"; Rusak tanpa laporan bebas diubah admin). Laporan ditutup & tidak ada laporan aktif lain ->
 --     kondisi kembali "baik" (sumber otomatis). Menutup laporan wajib >=1 media 'sesudah'.
 --   * Selesai jadwal: operator wajib >=1 media; admin boleh tanpa (tanpa_dokumentasi = true). Jatuh tempo berikutnya
 --     dihitung di server (inv_jatuh_tempo_berikut, tanggal WIB) - satu sumber.
@@ -479,12 +479,18 @@ grant select on public.inv_jadwal_v to anon, authenticated;
 -- ── 6. RPC barang ────────────────────────────────────────────────────────────────────────────
 create or replace function public.inv_tambah_barang(p_data jsonb, p_aktor jsonb) returns jsonb
 language plpgsql security definer set search_path = public as $$
-declare a record; b public.inv_barang; v_lok text := coalesce(nullif(p_data->>'lokasi_kode', ''), 'BELUM');
+-- p_data.jadwal opsional {jenis, frekuensi, jatuh_tempo?, teknisi?, catatan?} -> disimpan dalam transaksi yang sama
+-- (gagal = barang ikut batal). Jatuh tempo pertama kosong = hari ini + 7. Datasheet diunggah sesudahnya (butuh id).
+declare a record; b public.inv_barang; j public.inv_jadwal; v_lok text := coalesce(nullif(p_data->>'lokasi_kode', ''), 'BELUM');
+  v_jd jsonb := nullif(p_data->'jadwal', 'null'::jsonb);
 begin
   select * into a from public.inv_aktor(p_aktor);
   if a.peran <> 'admin' then raise exception 'Hanya admin yang bisa menambah barang' using errcode = '42501'; end if;
   if not exists (select 1 from public.inv_lokasi where kode = v_lok and aktif) then
     raise exception 'Lokasi % tidak tersedia', v_lok using errcode = '22023';
+  end if;
+  if v_jd is not null and (jsonb_typeof(v_jd) <> 'object' or coalesce(btrim(v_jd->>'jenis'), '') = '') then
+    raise exception 'Jadwal rutin: nama tugas wajib diisi' using errcode = '22023';
   end if;
   perform public.inv_konteks(a.nama, 'admin');
   insert into public.inv_barang (nama, lokasi_kode, pengguna, kondisi, detail_kondisi, merk_spesifikasi, nomor_seri,
@@ -494,7 +500,14 @@ begin
           nullif(btrim(p_data->>'merk_spesifikasi'), ''), nullif(btrim(p_data->>'nomor_seri'), ''),
           nullif(p_data->>'tanggal_perolehan', '')::date, a.nama)
   returning * into b;
-  return to_jsonb(b);
+  if v_jd is not null then
+    insert into public.inv_jadwal (barang_id, jenis, frekuensi, jatuh_tempo, teknisi, catatan, dibuat_oleh)
+    values (b.id, btrim(v_jd->>'jenis'), v_jd->>'frekuensi',
+            coalesce(nullif(v_jd->>'jatuh_tempo', '')::date, public.inv_hari_ini() + 7),
+            nullif(btrim(v_jd->>'teknisi'), ''), nullif(btrim(v_jd->>'catatan'), ''), a.nama)
+    returning * into j;
+  end if;
+  return to_jsonb(b) || jsonb_build_object('jadwal', to_jsonb(j));
 end $$;
 
 -- Admin: ubah kolom apa pun kecuali nomor (lokasi, kondisi, aktif ikut di sini). p_patch hanya kunci yang diubah.
@@ -515,6 +528,10 @@ begin
   if not found then raise exception 'Barang tidak ditemukan' using errcode = 'P0002'; end if;
   if b.versi <> p_versi then
     raise exception 'Barang ini baru diubah orang lain - muat ulang dulu' using errcode = '40001';
+  end if;
+  if p_patch ? 'kondisi' and p_patch->>'kondisi' is distinct from b.kondisi
+     and exists (select 1 from public.inv_laporan where barang_id = p_id and status <> 'closed') then
+    raise exception 'Ada laporan kerusakan aktif - tutup laporan dulu' using errcode = '42501';
   end if;
   if p_patch ? 'lokasi_kode' and p_patch->>'lokasi_kode' is distinct from b.lokasi_kode
      and not exists (select 1 from public.inv_lokasi where kode = p_patch->>'lokasi_kode' and aktif) then
@@ -561,8 +578,15 @@ begin
     if exists (select 1 from public.inv_laporan where barang_id = p_id and status <> 'closed') then
       raise exception 'Ada laporan kerusakan aktif - kondisi terkunci sampai laporan ditutup admin' using errcode = '42501';
     end if;
-  elsif p_kondisi not in ('baik','tidak_maksimal','perlu_maintenance','rusak','belum_dinilai') then
-    raise exception 'Kondisi % tidak dikenal', p_kondisi using errcode = '22023';
+  else
+    if p_kondisi not in ('baik','tidak_maksimal','perlu_maintenance','rusak','belum_dinilai') then
+      raise exception 'Kondisi % tidak dikenal', p_kondisi using errcode = '22023';
+    end if;
+    -- keputusan user: admin juga terkunci selama ada laporan aktif (Rusak tanpa laporan tetap bebas diubah)
+    if p_kondisi is distinct from b.kondisi
+       and exists (select 1 from public.inv_laporan where barang_id = p_id and status <> 'closed') then
+      raise exception 'Ada laporan kerusakan aktif - tutup laporan dulu' using errcode = '42501';
+    end if;
   end if;
   perform public.inv_konteks(a.nama, a.peran);
   update public.inv_barang
@@ -585,8 +609,10 @@ begin
     if found then return jsonb_build_object('laporan', to_jsonb(l), 'dobel', true); end if;
   end if;
   perform public.inv_validasi_media(p_media);
-  if coalesce(btrim(p_judul), '') = '' or length(p_judul) > 200 then
-    raise exception 'Judul masalah wajib diisi (maks 200 huruf)' using errcode = '22023';
+  -- judul boleh kosong (form HP hanya "Apa masalahnya?") -> baris pertama masalah, maks 200 huruf
+  p_judul := left(coalesce(nullif(btrim(p_judul), ''), btrim(split_part(btrim(coalesce(p_masalah, '')), E'\n', 1))), 200);
+  if p_judul = '' then
+    raise exception 'Tuliskan masalahnya' using errcode = '22023';
   end if;
   select * into b from public.inv_barang where id = p_barang_id for update;
   if not found then raise exception 'Barang tidak ditemukan' using errcode = 'P0002'; end if;

@@ -1,4 +1,4 @@
--- IMPOR AWAL INVENTARIS (T1) - DIBUAT OTOMATIS oleh supabase/scripts/inv_dryrun_impor.mjs 2026-10-29T15:06:35.119Z
+-- IMPOR AWAL INVENTARIS (T1) - DIBUAT OTOMATIS oleh supabase/scripts/inv_dryrun_impor.mjs 2026-10-29T15:25:09.174Z
 -- Sumber: GA - DATABASE INVENTARIS VISTA.xlsx (TANPA file siap-impor: nomor dibuat database)
 -- 124 baris. Jalankan di SQL Editor SETELAH migrasi 20261030010000:
 --   1) ganti ISI_USERNAME_ADMIN dengan username admin Anda (tabel admins)
@@ -126,8 +126,8 @@ select jsonb_pretty(public.inv_impor($IMPOR$[{"kunci":"GA:2","nama":"Mesin CNC L
 {"kunci":"GA:121","nama":"Apar","lokasi_kode":"BELUM","kondisi":"baik","tanggal_perolehan":"2022-01-07","tanggal_perolehan_teks":"07-01-2022"},
 {"kunci":"GA:122","nama":"AC R. Nameplate","lokasi_kode":"NP","kondisi":"baik","detail_kondisi":"Masih Baruu","merk_spesifikasi":"Gree 1,5PK","tanggal_perolehan":"2026-09-18","tanggal_perolehan_teks":"18-09-2026","pelapor":"LUTVAN"},
 {"kunci":"BARU:BAK-1","nama":"BAK DEGREASING","lokasi_kode":"PT","kondisi":"belum_dinilai","baru":true},
-{"kunci":"BARU:BAK-2","nama":"BAK AIR","lokasi_kode":"PT","kondisi":"belum_dinilai","baru":true},
-{"kunci":"BARU:BAK-3","nama":"BAK PHOSPHATING","lokasi_kode":"PT","kondisi":"belum_dinilai","baru":true}]$IMPOR$::jsonb,
+{"kunci":"BARU:BAK-3","nama":"BAK PHOSPHATING","lokasi_kode":"PT","kondisi":"belum_dinilai","baru":true},
+{"kunci":"BARU:BAK-2","nama":"BAK AIR","lokasi_kode":"PT","kondisi":"belum_dinilai","baru":true}]$IMPOR$::jsonb,
   true,                                   -- p_dry_run
   'GA - DATABASE INVENTARIS VISTA.xlsx',
   '{"admin":"ISI_USERNAME_ADMIN"}'::jsonb));

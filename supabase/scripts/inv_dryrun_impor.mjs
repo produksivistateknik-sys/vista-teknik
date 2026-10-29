@@ -71,7 +71,8 @@ const baris = ga.baris.map(({ r, excel }) => {
     _excel: excel, _nomorGa: teks(K(r, 'NOMOR INVENTARIS')) || null, _lokasiAsli: teks(K(r, 'LOKASI INVENTARIS')), _kondisiAsli: teks(K(r, 'KONDISI BARANG')),
   }
 })
-const BAK = [['BAK-1', 'BAK DEGREASING'], ['BAK-2', 'BAK AIR'], ['BAK-3', 'BAK PHOSPHATING']]
+// urutan keputusan user 29 Okt: di akhir urutan Painting -> Degreasing, Phosphating, Air
+const BAK = [['BAK-1', 'BAK DEGREASING'], ['BAK-3', 'BAK PHOSPHATING'], ['BAK-2', 'BAK AIR']]
   .map(([k, n]) => ({ kunci: `BARU:${k}`, nama: n, lokasi_kode: 'PT', pengguna: null, kondisi: 'belum_dinilai', detail_kondisi: null,
     merk_spesifikasi: null, nomor_seri: null, tanggal_perolehan: null, tanggal_perolehan_teks: null, pelapor: null, diperbarui_pada: null,
     baru: true, _excel: null, _kodeLama: k }))
@@ -117,8 +118,16 @@ const penghitung = {}
 for (const b of semua) {
   if (b.nomor_inventaris || !BERNOMOR.has(b.lokasi_kode)) { b._nomorTampil = b.nomor_inventaris || null; continue }
   penghitung[b.lokasi_kode] = (penghitung[b.lokasi_kode] || 0) + 1
-  b._nomorTampil = `VIT-${b.lokasi_kode}-${pad(penghitung[b.lokasi_kode])} (usulan)`
+  b._nomorTampil = `VIT-${b.lokasi_kode}-${pad(penghitung[b.lokasi_kode])}`
 }
+
+// Nomor terakhir per lokasi yang ditetapkan user (29 Okt 2026) - dry-run GAGAL bila berbeda.
+const NOMOR_AKHIR_HARUS = { MKN: 16, PT: 11, ASB: 23, QC: 3, NP: 8, WH: 7, KTR: 44, HR: 3, WS: 3, PKR: 1 }
+const cekNomor = Object.entries(NOMOR_AKHIR_HARUS).filter(([k, v]) => (penghitung[k] || 0) !== v).map(([k, v]) => `${k}: keluar ${penghitung[k] || 0}, harus ${v}`)
+  .concat(Object.keys(penghitung).filter(k => !(k in NOMOR_AKHIR_HARUS)).map(k => `${k}: tidak ada di daftar user (${penghitung[k]})`))
+if (cekNomor.length) galat.push('Nomor terakhir tidak sesuai: ' + cekNomor.join(', '))
+const fileNomor = arg('nomor-json')
+if (fileNomor) fs.writeFileSync(fileNomor, JSON.stringify(Object.fromEntries(semua.map(b => [b.kunci, b._nomorTampil]))))
 
 // ── data lama live (baca saja) ───────────────────────────────────────────────────────────────
 const env = Object.fromEntries(fs.readFileSync('.env.local', 'utf8').split(/\r?\n/).filter(l => l.includes('='))
@@ -135,7 +144,8 @@ const PADANAN = [[1, 'MSN-001', 'GA:3'], [2, 'MSN-002', 'GA:4'], [3, 'NP-001', '
 const out = []; const p = (...a) => out.push(a.join(' '))
 p('=== RINGKASAN DRY-RUN IMPOR ===')
 p(`File GA: ${path.basename(fileGa)} (sheet "${ga.nama}") - ${baris.length} barang + ${BAK.length} bak baru = ${semua.length}`)
-p(`File siap-impor: ${fileSiap ? path.basename(fileSiap) : 'TIDAK ADA -> nomor dibuat database, urut baris per lokasi (usulan di bawah)'}`)
+p(`Nomor: ${fileSiap ? 'dari ' + path.basename(fileSiap) : 'dibuat database saat impor - urutan baris Excel per kode lokasi, 2 digit, 3 bak di akhir Painting (keputusan user 29 Okt)'}`)
+p('Nomor terakhir per lokasi:', Object.entries(penghitung).map(([k, v]) => `${k}-${pad(v)}`).join(', '), `| bernomor ${semua.filter(b => b._nomorTampil).length}, tanpa nomor ${semua.filter(b => !b._nomorTampil).length}`, cekNomor.length ? '!! TIDAK SESUAI' : '(sesuai daftar user)')
 p(`Kolom Nomor Inventaris di GA terisi: ${baris.filter(b => b._nomorGa).length}`)
 const hitung = (f) => semua.reduce((a, b) => (a[f(b)] = (a[f(b)] || 0) + 1, a), {})
 p('Per lokasi:', JSON.stringify(hitung(b => b.lokasi_kode)))
@@ -171,11 +181,11 @@ const tak = mesin.filter(m => !PADANAN.some(x => x[0] === m.id))
 p('Tidak dipetakan (tetap di tabel lama):', tak.map(m => `${m.kode} "${m.nama}" (jadwal ${rutin.filter(r => r.mesin_id === m.id).length}, laporan ${mlog.filter(l => l.mesin_id === m.id).length})`).join('; '))
 p(`Total lama: jadwal ${rutin.length}, riwayat ${rlog.length}, laporan ${mlog.length} -> terpetakan: jadwal ${rutin.filter(r => PADANAN.some(x => x[0] === r.mesin_id)).length}, riwayat ${rlog.filter(l => rutin.some(r => r.id === l.rutin_id && PADANAN.some(x => x[0] === r.mesin_id))).length}, laporan ${mlog.filter(l => PADANAN.some(x => x[0] === l.mesin_id)).length}`)
 p('')
-p('=== SELISIH GA vs SIAP-IMPOR ===')
+p('=== SELISIH GA vs SIAP-IMPOR (dilewati - keputusan user 29 Okt) ===')
 p(fileSiap ? (selisih.length ? selisih.join('\n') : 'tidak ada selisih') : 'belum dibandingkan (file siap-impor tidak diberikan)')
 p('')
-p('=== NOMOR PER BARANG ===')
-for (const b of semua) p(`${b.kunci.padEnd(11)} ${(b._nomorTampil || '(kosong)').padEnd(24)} ${b.lokasi_kode.padEnd(5)} ${b.kondisi.padEnd(17)} ${b.nama}`)
+p('=== NOMOR PER BARANG (urutan impor) ===')
+for (const b of semua) p(`${b.kunci.padEnd(11)} ${(b._nomorTampil || '(tanpa nomor)').padEnd(13)} ${b.lokasi_kode.padEnd(5)} ${b.kondisi.padEnd(17)} ${b.nama}`)
 console.log(out.join('\n'))
 
 // ── file SQL impor ───────────────────────────────────────────────────────────────────────────
