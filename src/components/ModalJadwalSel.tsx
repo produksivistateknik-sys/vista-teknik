@@ -13,6 +13,7 @@ import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/pan
 import { statusTambahKomponen, buangKodeDariSel, samaIsiJadwal } from '../lib/tambahKomponen'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
+import { isiRenharDirilis } from '../services/renharService'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
@@ -157,9 +158,11 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     await withRenharQueue({rawId,wp,tanggal:date},async(existing)=>{
       if(existing){
         markRenharDirty(existing.id);
-        const upd=await updateRenhar(existing.id,{komponen:newKompBersih});
+        // (29 Okt 2026) isi renhar = yang dirilis = yang tampil di HP: kode tambahan langsung tampil -> ikut dirilis, kode buangan lepas.
+        const isi=isiRenharDirilis(newKompBersih);
+        const upd=await updateRenhar(existing.id,isi);
         if(!upd?.success)throw Object.assign(new Error(upd?.error||"Gagal menyimpan rencana harian"),{code:(upd as any)?.code});
-        setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,komponen:newKompBersih}:r));
+        setRenhar(prev=>prev.map(r=>r.id===existing.id?{...r,...isi}:r));
       } else {
         setRenhar(prev=>prev.map(r=>(String(r.raw_id||r.rawId)===String(rawId)&&r.wp===wp&&r.tanggal===date)?{...r,komponen:newKompBersih}:r));
       }
@@ -924,7 +927,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                     proyek:rawRow?.proyek,
                     proses:rawRow?.proses,
                     wp:"BUSBAR",
-                    komponen:busbarSel,
+                    // (29 Okt 2026) alur BUSBAR tetap spt dulu (simpan = langsung tampil di HP), kini tercatat dirilis.
+                    ...isiRenharDirilis(busbarSel),
                     tanggal:cellModal.date,
                     divisi:"assembling",
                     prioritas:rawRow?.prioritas||"Sedang",
