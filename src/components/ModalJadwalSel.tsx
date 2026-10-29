@@ -4,7 +4,7 @@
 // validasi kapasitas, sinkron renhar & log yang SAMA (CLAUDE.md B.1). Isi fungsi & JSX tidak diubah;
 // satu-satunya tambahan: pilih-komponen-untuk-"Pindahin" hanya aktif bila induk menyediakan alurnya
 // (setMoveKomponenState) - tampilan accordion punya alur pindah sendiri.
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import { activityLogService as activityLogServiceAsli } from '../services/activityLogService'
 import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
@@ -92,6 +92,18 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   const [swapOrangExpandedPanel,setSwapOrangExpandedPanel]=useState<Record<string,boolean>>({});
   const [swapOrangLoading,setSwapOrangLoading]=useState(false);
   const [busbarSel,setBusbarSel]=useState<string[]>([]);
+  // PENGAMAN KLIK GANDA (29 Okt 2026, investigasi log HAPUS WP dobel: 7 pasangan / 60 hari, MUIS 4x dalam 0,45 dtk). Tulis jadwal
+  // per BARIS raw_schedule hanya boleh 1 yang berjalan: klik berikutnya selama proses pertama (cek timer/kapasitas ke server)
+  // diabaikan - dulu tiap klik menyimpan & mencatat log lagi, dan 2 WP berbeda di baris yang sama yang dihapus cepat bisa
+  // saling menimpa (dihitung dari data lama yang sama). sibuk = rawId -> keterangan tombol ("hapus:WP2" / "tambah").
+  const sedangTulisRef=useRef<Set<number>>(new Set());
+  const [sibuk,setSibuk]=useState<Record<number,string>>({});
+  const sekali=async<T,>(rawId:number,ket:string,diabaikan:T,fn:()=>Promise<T>):Promise<T>=>{
+    if(sedangTulisRef.current.has(rawId)){console.warn("[Raw Schedule] diabaikan - perubahan sebelumnya di baris",rawId,"masih diproses:",ket);return diabaikan;}
+    sedangTulisRef.current.add(rawId);setSibuk(x=>({...x,[rawId]:ket}));
+    try{return await fn();}
+    finally{sedangTulisRef.current.delete(rawId);setSibuk(x=>{const y={...x};delete y[rawId];return y;});}
+  };
 
   // fokusWp (22 Okt 2026, permintaan user): klik-ganda chip WP di Raw = modal hanya menampilkan WP itu (tombol "Tampilkan
   // semua WP" utk melepas). Hanya TAMPILAN - cek data (WP sudah ada, Tambah WP) tetap pakai seluruh isi sel.
@@ -341,7 +353,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     return true;
   };
 
-  const addEntry=async()=>{
+  const addEntry=()=>cellModal?sekali(cellModal.rawId,"tambah",undefined,addEntryInti):Promise.resolve(undefined);
+  const addEntryInti=async()=>{
     if(!modalWp||!modalKomponen.length)return;
     const cek=await cekKapasitasTambah(rawRow,livePanelForCell,cellModal.date,modalWp,modalKomponen,modalBobotPerKomponen);
     if(!cek.ok){
@@ -370,7 +383,10 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   // fungsi yang sama dgn tombol Tambah modal. WIRING tidak lewat sini (bobot & kuota orang dipilih di modal).
   // Kapasitas kurang + ada opsi swap -> modal edit sel dibuka (WP & komponen terisi) + modal swap seperti biasa.
   // Hasil: 'tersimpan' | 'modal' (lanjut di modal swap) | 'batal' | 'ditolak' (alasan) | 'gagal'.
-  const tambahKomponenKeSel=async(rawId:number,date:string,wp:string,komp:string[]):Promise<{hasil:'tersimpan'|'modal'|'batal'|'ditolak'|'gagal';alasan?:string}>=>{
+  type HasilTambah={hasil:'tersimpan'|'modal'|'batal'|'ditolak'|'gagal';alasan?:string};
+  const tambahKomponenKeSel=(rawId:number,date:string,wp:string,komp:string[]):Promise<HasilTambah>=>
+    sekali<HasilTambah>(rawId,"tambah",{hasil:'ditolak',alasan:'perubahan sebelumnya di baris jadwal ini masih diproses - tunggu sebentar'},()=>tambahKomponenKeSelInti(rawId,date,wp,komp));
+  const tambahKomponenKeSelInti=async(rawId:number,date:string,wp:string,komp:string[]):Promise<HasilTambah>=>{
     const row=rawData.find(r=>r.id===rawId);
     if(!row)return{hasil:'gagal',alasan:'baris jadwal tidak ditemukan'};
     if(PROSES_ORANG_RAW.includes(row.proses))return{hasil:'ditolak',alasan:'WIRING ditambah lewat modal (bobot & kuota orang)'};
@@ -392,7 +408,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
 
   // Hapus 1 WP dari sel (rawId, tanggal) + sinkron renhar + log. Dipakai tombol "✕ Hapus" di modal (removeEntry)
   // dan menu "Hapus" tampilan accordion. Mengembalikan true bila jadwal tersimpan.
-  const hapusWpDariSel=async(rawId:number,date:string,wp:string):Promise<boolean>=>{
+  const hapusWpDariSel=(rawId:number,date:string,wp:string):Promise<boolean>=>sekali(rawId,"hapus:"+wp,false,()=>hapusWpDariSelInti(rawId,date,wp));
+  const hapusWpDariSelInti=async(rawId:number,date:string,wp:string):Promise<boolean>=>{
     // Hitung new schedule dulu sebelum update state
     const currentRow=rawData.find(r=>r.id===rawId);
     if(!currentRow)return false;
@@ -452,7 +469,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   // langsung. Aturan sama dgn hapusWpDariSel: peringatan timer berjalan (kode itu saja), kode yang jadi TUJUAN jejak ditanya
   // (kembalikan ke tanggal jejak / buang jejak / batal), sinkron renhar (sisa kode -> update; WP kosong -> hapus), log.
   // Token __wiring_ ikut dibuang bila tidak ada kode asli tersisa. true = jadwal tersimpan.
-  const hapusKodeDariSel=async(rawId:number,date:string,wp:string,kode:string[]):Promise<boolean>=>{
+  const hapusKodeDariSel=(rawId:number,date:string,wp:string,kode:string[]):Promise<boolean>=>sekali(rawId,"hapus:"+wp,false,()=>hapusKodeDariSelInti(rawId,date,wp,kode));
+  const hapusKodeDariSelInti=async(rawId:number,date:string,wp:string,kode:string[]):Promise<boolean>=>{
     const currentRow=rawData.find(r=>r.id===rawId);
     if(!currentRow)return false;
     const entri=(currentRow.schedule?.[date]||[]).find((e:{wp:string})=>e.wp===wp);
@@ -501,7 +519,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
   // (14 Okt 2026) "Aktifkan di sini" pada chip JEJAK: tarik kode kembali ke tanggal ini. Entri nyata di ujung
   // rantai jejak dilepas (logika lepasDariAsal sama dgn drag: ada pengerjaan di sana -> tinggal jejak), lalu
   // ditaruh di sini (taruhDiTujuan menghapus jejak + pin). Rencana harian dipindah lewat helper yang sama.
-  const aktifkanDiSini=async(rawId:number,date:string,wp:string,kode:string)=>{
+  const aktifkanDiSini=(rawId:number,date:string,wp:string,kode:string)=>sekali(rawId,"aktifkan:"+wp,undefined,()=>aktifkanDiSiniInti(rawId,date,wp,kode));
+  const aktifkanDiSiniInti=async(rawId:number,date:string,wp:string,kode:string)=>{
     const row=rawData.find(r=>r.id===rawId);
     if(!row)return;
     const nyata=tanggalNyataDariJejak(row.schedule||{},date,wp,kode);
@@ -599,7 +618,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                           } else {
                             setModalKomponen([...e.komponen]);
                           }
-                        }} style={{background:'#eff6ff',border:'1px solid #bfdbfe',cursor:'pointer',color:'#2563eb',fontSize:12,borderRadius:6,padding:'2px 10px',fontWeight:600}}>✏️ Edit</button><button onClick={()=>removeEntry(e.wp)} style={{background:'none',border:'none',cursor:'pointer',color:'#fca5a5',fontSize:13}}>✕ Hapus</button></div>
+                        }} style={{background:'#eff6ff',border:'1px solid #bfdbfe',cursor:'pointer',color:'#2563eb',fontSize:12,borderRadius:6,padding:'2px 10px',fontWeight:600}}>✏️ Edit</button><button onClick={()=>removeEntry(e.wp)} disabled={!!sibuk[cellModal.rawId]} style={{background:'none',border:'none',cursor:sibuk[cellModal.rawId]?'wait':'pointer',color:sibuk[cellModal.rawId]?'#cbd5e1':'#fca5a5',fontSize:13}}>{sibuk[cellModal.rawId]==="hapus:"+e.wp?"⏳ Menghapus…":"✕ Hapus"}</button></div>
                     </div>
                     <div style={{display:"flex",gap:4,flexWrap:"wrap"}}>
                       {e.komponen.map(k=>{
@@ -824,8 +843,8 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                     })}
                   </div>
                 </>)}
-                <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length}>
-                  {PROSES_ORANG_RAW.includes(rawRow?.proses||"")
+                <Btn color="#1d4ed8" style={{width:"100%"}} onClick={addEntry} disabled={!modalKomponen.length||!!sibuk[cellModal.rawId]}>
+                  {sibuk[cellModal.rawId]?"⏳ Menyimpan…":PROSES_ORANG_RAW.includes(rawRow?.proses||"")
                     ?"+ Tambah "+modalWp+" ("+modalKomponen.length+" komponen, "+modalKomponen.reduce((s,k)=>{
                         const bobot=modalBobotPerKomponen[k]??rawRow?.bobot_komponen?.[k];
                         const hariKeN=hariKeNFromMap(wiringHariKerjaMap,livePanelForCell?.id,k,rawRow?.proses||"",cellModal?.date||"");
