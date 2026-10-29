@@ -4,8 +4,13 @@
 -- Cron pembersih log SENGAJA TIDAK dihidupkan lagi (keputusan user: riwayat permanen). Definisinya ada di
 -- cadangan_cron_maintenance_20261030 (header disamarkan) bila suatu saat benar-benar diminta.
 begin;
-alter publication supabase_realtime drop table public.inv_barang, public.inv_jadwal, public.inv_jadwal_selesai,
-  public.inv_laporan, public.inv_laporan_update, public.inv_media, public.inv_log, public.inv_lokasi;
+-- FOR ALL TABLES (produksi): tabel lepas sendiri dari publikasi saat di-drop.
+do $$ begin
+  if not (select puballtables from pg_publication where pubname = 'supabase_realtime') then
+    alter publication supabase_realtime drop table public.inv_barang, public.inv_jadwal, public.inv_jadwal_selesai,
+      public.inv_laporan, public.inv_laporan_update, public.inv_media, public.inv_log, public.inv_lokasi;
+  end if;
+end $$;
 drop view if exists public.inv_jadwal_v;
 drop function if exists public.inv_migrasi_data_lama(boolean, jsonb);
 drop function if exists public.inv_impor(jsonb, boolean, text, jsonb);

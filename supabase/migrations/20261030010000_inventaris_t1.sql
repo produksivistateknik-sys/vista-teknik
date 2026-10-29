@@ -1068,7 +1068,13 @@ grant execute on function public.inv_hari_ini(), public.inv_batas_segera(), publ
   to anon, authenticated;
 
 -- ── 12. Realtime ─────────────────────────────────────────────────────────────────────────────
-alter publication supabase_realtime add table public.inv_barang, public.inv_jadwal, public.inv_jadwal_selesai,
-  public.inv_laporan, public.inv_laporan_update, public.inv_media, public.inv_log, public.inv_lokasi;
+-- Produksi: supabase_realtime = FOR ALL TABLES (tabel baru otomatis ikut; ADD TABLE ditolak - galat 55000 saat
+-- percobaan pertama 29 Okt 2026, transaksi batal utuh). Tambah manual hanya bila publikasinya per tabel.
+do $$ begin
+  if not (select puballtables from pg_publication where pubname = 'supabase_realtime') then
+    alter publication supabase_realtime add table public.inv_barang, public.inv_jadwal, public.inv_jadwal_selesai,
+      public.inv_laporan, public.inv_laporan_update, public.inv_media, public.inv_log, public.inv_lokasi;
+  end if;
+end $$;
 
 commit;
