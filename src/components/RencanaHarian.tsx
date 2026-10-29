@@ -9,7 +9,8 @@ import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRele
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
-import { releaseKomponenToRenhar } from '../services/renharService'
+import { releaseKomponenToRenhar, isiRenharDirilis } from '../services/renharService'
+import { cekTimerBerjalan } from '../lib/timerBerjalan'
 import { Card, Btn, Modal, Badge, Lbl } from './ui/Primitives'
 import { selesaiSebelumTanggal } from '../lib/kodeJadwalAktif'
 import { useJejakPengerjaan } from '../hooks/useJejakPengerjaan'
@@ -877,6 +878,15 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
     // fresh di bawah - ini cuma buat nentuin perlu nanya "yakin?" atau enggak).
     if(kemungkinanSudahRelease){
       if(!window.confirm(`Batalkan rilis "${namaTampil}"? Operator gak akan bisa lihat/kerjakan lagi sampai dirilis ulang.`))return;
+      // (29 Okt 2026, keputusan user) Tarik kini benar-benar menghilangkan kartu dari HP -> DITOLAK selama timer kode
+      // itu berjalan (kalau tidak, operator tidak bisa menghentikan timer dari kartunya). Gagal memeriksa = ditolak juga.
+      const{temuan,error}=await cekTimerBerjalan([{panelId:task.panelId,proses:task.proses,tanggal:task.tanggal,kode:[kode]}],namaPekerjaById);
+      if(error){console.error(`[Tarik ${kode} raw ${task.rawId}] gagal memeriksa timer:`,error);alert(`Tidak bisa memeriksa timer yang sedang berjalan (${error?.message||error}).
+
+Tarik "${namaTampil}" dibatalkan - coba lagi.`);return;}
+      if(temuan.length){alert(`Tarik "${namaTampil}" ditolak: sedang dikerjakan ${[...new Set(temuan.flatMap(t=>t.pekerja))].join(", ")} (timer berjalan).
+
+Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
     }
     setPendingRelease(prev=>new Set(prev).add(key));
     try{
@@ -899,8 +909,9 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
             proyek:task.proyek,panel:task.panel,proses:task.proses,
-            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
-            tanggal:task.tanggal,divisi,pekerja:[],komponen_released:[kode],
+            // (29 Okt 2026) renhar baru hanya berisi kode yang dirilis - dulu semua kode WP ikut tampil di HP.
+            prioritas:task.prioritas||"Sedang",wp:task.wp,...isiRenharDirilis([kode]),
+            tanggal:task.tanggal,divisi,pekerja:[],
           });
           if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
           markRenharDirty(result.data.id);
@@ -932,7 +943,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
         const result=await createRenhar({
           raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
+          // (29 Okt 2026) pilih operator sebelum rilis = rilis semua kode WP (tampil di HP spt dulu, kini tercatat dirilis).
+          prioritas:task.prioritas||"Sedang",wp:task.wp,...isiRenharDirilis(task.komponen||[]),
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
         if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
@@ -972,8 +984,8 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           const result=await createRenhar({
             raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
             proyek:task.proyek,panel:task.panel,proses:task.proses,
-            prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
-            tanggal:task.tanggal,divisi,pekerja:[],komponen_released:allKode,
+            prioritas:task.prioritas||"Sedang",wp:task.wp,...isiRenharDirilis(allKode),
+            tanggal:task.tanggal,divisi,pekerja:[],
           });
           if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
           markRenharDirty(result.data.id);

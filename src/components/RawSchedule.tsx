@@ -11,7 +11,7 @@ import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
-import { renharService } from '../services/renharService'
+import { renharService, isiRenharDirilis } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { cariPelanggaranUrutan, petaTandaUrutan, useVersiAturanUrutan, type KonteksUrutan, type PelanggaranUrutan } from '../lib/urutanProses'
@@ -1544,7 +1544,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         const result=await createRenhar({
           raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
+          // (29 Okt 2026) pilih operator sebelum rilis = rilis semua kode WP (isi renhar = yang dirilis = yang tampil di HP).
+          prioritas:task.prioritas||"Sedang",wp:task.wp,...isiRenharDirilis(task.komponen||[]),
           tanggal:task.tanggal,divisi,pekerja:selPekerja,
         });
         if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});
@@ -1572,7 +1573,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         const result=await createRenhar({
           raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
           proyek:task.proyek,panel:task.panel,proses:task.proses,
-          prioritas:task.prioritas||"Sedang",wp:task.wp,komponen:Array.from(new Set(task.komponen||[])),
+          prioritas:task.prioritas||"Sedang",wp:task.wp,...isiRenharDirilis(task.komponen||[]),
           tanggal:task.tanggal,divisi,pekerja:[],
         });
         if(!(result?.success&&result.data))throw Object.assign(new Error(result?.error||"Gagal membuat renhar"),{code:(result as any)?.code});

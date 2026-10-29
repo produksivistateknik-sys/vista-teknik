@@ -7,9 +7,10 @@ import { activityLogService } from './activityLogService'
 // (field tracking rilis sisi admin). Root cause insiden "Pintu Hitam gak muncul" (6 Agu 2026,
 // CAPACITOR BANK-1): toggleReleaseKomponen/distributeAll dulu cuma nulis komponen_released,
 // gak pernah nyentuh komponen buat baris yang udah ada.
-// SENGAJA cuma nambah (union) pas "rilis" - "tarik" cuma lepas dari komponen_released, TIDAK
-// menghapus dari komponen (itu tanggung jawab alur lain - edit sel Raw Schedule/drag-move -
-// bukan toggle rilis ini, biar scope perubahan tetap sempit sesuai yang diminta).
+// ATURAN (29 Okt 2026, keputusan user): yang tampil di HP = isi renhar = yang dirilis, tidak boleh beda.
+// `komponen` dan `komponen_released` selalu sama. Dulu "tarik" cuma melepas komponen_released (kode tetap
+// tampil di HP walau konfirmasinya bilang operator tidak bisa melihat lagi) - sekarang dilepas dari keduanya.
+// Rilis per kode di renhar BARU hanya berisi kode itu (lihat RencanaHarian.toggleReleaseKomponen).
 export function releaseKomponenToRenhar(
   existing: { komponen?: string[]; komponen_released?: string[] } | null | undefined,
   kodeList: string[],
@@ -22,8 +23,17 @@ export function releaseKomponenToRenhar(
     : releasedLama.filter((k: string) => !kodeList.includes(k))
   const komponenBaru = aksi === 'rilis'
     ? [...new Set([...komponenLama, ...kodeList])]
-    : komponenLama
+    : komponenLama.filter((k: string) => !kodeList.includes(k))
   return { komponen: komponenBaru, komponen_released: releasedBaru }
+}
+
+// Isi renhar dari daftar kode yang tampil di HP - dipakai semua jalur yang menulis `komponen` langsung (modal edit,
+// tambah langsung, simpan BUSBAR, pilih operator sebelum rilis): kode yang ada = dirilis, kode yang dibuang ikut
+// lepas dari komponen_released. pekerja_per_komponen TIDAK disentuh (rencana planner, riwayat - aturan 22 Okt).
+// Cermin SQL: op set_komponen di ubah_jadwal_multi_v1 (migration 20261029020000).
+export function isiRenharDirilis(kode: string[]): { komponen: string[]; komponen_released: string[] } {
+  const komponen = [...new Set(kode || [])]
+  return { komponen, komponen_released: [...komponen] }
 }
 
 export const renharService = {
