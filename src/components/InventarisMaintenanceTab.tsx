@@ -389,6 +389,9 @@ function DetailLaporan({ l, c }: { l: Laporan; c: Ctx }) {
   const [perbaikan, setPerbaikan] = useState('')
   const [files, setFiles] = useState<File[]>([])
   const [hint, setHint] = useState('')
+  const [kondisiSetelah, setKondisiSetelah] = useState('baik')
+  const menutup = status === 'closed' && l.status !== 'closed'
+  const adaLaporanLain = (c.idx.laporanPerBarang.get(l.barang_id) || []).some(x => x.id !== l.id && laporanAktif(x))
   const sesudah = c.mediaDari('laporan', l.id, 'sesudah')
   const upd = c.idx.updatePerLaporan.get(l.id) || []
   const simpan = async () => {
@@ -396,7 +399,7 @@ function DetailLaporan({ l, c }: { l: Laporan; c: Ctx }) {
     if (status === l.status && !catatan.trim() && !perbaikan.trim() && !files.length) { setHint('Tidak ada perubahan.'); return }
     const ok = await c.jalankan('lap' + l.id, async () => {
       const m = files.length ? await unggahMediaInventaris(files, `inventaris/${l.barang_id}/laporan/${l.id}/sesudah`) : []
-      await ubahStatusLaporan(db, c.user, { laporanId: l.id, status, catatan, perbaikan, mediaSesudah: m })
+      await ubahStatusLaporan(db, c.user, { laporanId: l.id, status, catatan, perbaikan, mediaSesudah: m, kondisiSetelah: menutup ? kondisiSetelah : undefined })
     })
     if (ok) c.setBuka(null)
   }
@@ -419,6 +422,10 @@ function DetailLaporan({ l, c }: { l: Laporan; c: Ctx }) {
         {Object.entries(STATUS_LAPORAN).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}</select>
       <input type="text" value={perbaikan} onChange={e => setPerbaikan(e.target.value)} placeholder="Perbaikan yang dilakukan (opsional)" style={{ flex: 1, minWidth: 200 }} />
     </div>
+    {menutup && <div className="iv-acts" style={{ marginTop: 8 }}><span className="iv-mute">Kondisi barang setelah perbaikan</span>
+      <select value={kondisiSetelah} onChange={e => setKondisiSetelah(e.target.value)} aria-label="Kondisi setelah perbaikan">
+        {KONDISI.filter(k => ['baik', 'tidak_maksimal', 'perlu_maintenance'].includes(k.kode)).map(k => <option key={k.kode} value={k.kode}>{k.label}</option>)}</select>
+      {adaLaporanLain && <span className="iv-mute">Masih ada laporan aktif lain - kondisi tetap Rusak sampai semuanya ditutup.</span>}</div>}
     <textarea rows={2} value={catatan} onChange={e => setCatatan(e.target.value)} placeholder="Tambah update (opsional): apa yang sudah dikerjakan?" style={{ marginTop: 8 }} />
     <div className="iv-mute" style={{ marginTop: 8 }}>Dokumentasi setelah diperbaiki (wajib untuk menutup laporan)</div>
     <div className="iv-acts" style={{ marginTop: 4 }}><FilePilihan files={files} setFiles={f => { setFiles(f); setHint('') }} /></div>

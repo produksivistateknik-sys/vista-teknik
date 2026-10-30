@@ -40,9 +40,12 @@ export const ubahBarang = (db: any, user: any, b: Barang, patch: Record<string, 
 export const tandaiDiperiksa = (db: any, user: any, b: Barang) => rpc(db, 'inv_tandai_diperiksa', { p_id: b.id, p_aktor: aktorAdmin(user) })
 export const setKondisi = (db: any, user: any, b: Barang, kondisi: string, detail: string | null = null) =>
   rpc(db, 'inv_set_kondisi', { p_id: b.id, p_versi: b.versi, p_kondisi: kondisi, p_detail: detail, p_aktor: aktorAdmin(user) })
-export const ubahStatusLaporan = (db: any, user: any, a: { laporanId: number; status: string; catatan?: string; perbaikan?: string; teknisi?: string; mediaSesudah?: any[] }) =>
+// kondisiSetelah (migrasi 20261030050000): kondisi barang saat laporan ditutup (baik/tidak_maksimal/perlu_maintenance), berlaku
+// hanya bila tidak ada laporan aktif lain pada barang itu; dikirim hanya saat menutup.
+export const ubahStatusLaporan = (db: any, user: any, a: { laporanId: number; status: string; catatan?: string; perbaikan?: string; teknisi?: string; mediaSesudah?: any[]; kondisiSetelah?: string }) =>
   rpc(db, 'inv_ubah_status_laporan', { p_laporan_id: a.laporanId, p_status: a.status, p_catatan: a.catatan || null, p_perbaikan: a.perbaikan || null,
-    p_teknisi: a.teknisi || null, p_media_sesudah: a.mediaSesudah?.length ? a.mediaSesudah : null, p_aktor: aktorAdmin(user) })
+    p_teknisi: a.teknisi || null, p_media_sesudah: a.mediaSesudah?.length ? a.mediaSesudah : null, p_aktor: aktorAdmin(user),
+    ...(a.kondisiSetelah ? { p_kondisi_setelah: a.kondisiSetelah } : {}) })
 export const simpanJadwal = (db: any, user: any, id: number | null, data: Record<string, any>) => rpc(db, 'inv_simpan_jadwal', { p_id: id, p_data: data, p_aktor: aktorAdmin(user) })
 export const selesaiJadwal = (db: any, user: any, jadwalId: number, catatan: string, media: any[]) =>
   rpc(db, 'inv_selesai_jadwal', { p_jadwal_id: jadwalId, p_catatan: catatan || null, p_media: media.length ? media : null, p_kunci: crypto.randomUUID(), p_aktor: aktorAdmin(user) })
