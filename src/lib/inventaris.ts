@@ -37,6 +37,7 @@ export const aktorAdmin = (user: any) => {
 }
 export const tambahBarang = (db: any, user: any, data: Record<string, any>) => rpc(db, 'inv_tambah_barang', { p_data: data, p_aktor: aktorAdmin(user) })
 export const ubahBarang = (db: any, user: any, b: Barang, patch: Record<string, any>) => rpc(db, 'inv_ubah_barang', { p_id: b.id, p_versi: b.versi, p_patch: patch, p_aktor: aktorAdmin(user) })
+export const tandaiDiperiksa = (db: any, user: any, b: Barang) => rpc(db, 'inv_tandai_diperiksa', { p_id: b.id, p_aktor: aktorAdmin(user) })
 export const setKondisi = (db: any, user: any, b: Barang, kondisi: string, detail: string | null = null) =>
   rpc(db, 'inv_set_kondisi', { p_id: b.id, p_versi: b.versi, p_kondisi: kondisi, p_detail: detail, p_aktor: aktorAdmin(user) })
 export const ubahStatusLaporan = (db: any, user: any, a: { laporanId: number; status: string; catatan?: string; perbaikan?: string; teknisi?: string; mediaSesudah?: any[] }) =>
