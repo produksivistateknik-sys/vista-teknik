@@ -8,7 +8,7 @@ const namaRepo=path.basename(akar)
 const sebelah=path.join(akar,'..',namaRepo==='vista-pekerja'?'vista-teknik':'vista-pekerja')
 const FILE=['src/lib/kopSuratKonfig.ts','src/lib/kopSuratAsetUrl.ts','src/assets/kop/vista-logo-clean.png','src/assets/kop/Carlito-Regular.ttf','src/assets/kop/Carlito-Bold.ttf','src/assets/kop/OFL-Carlito.txt','scripts/cek-kop-sinkron.mjs',
   // (8 Okt 2026) komponen bersama lain yang wajib identik di kedua repo:
-  'src/components/ui/MediaPickerSheet.tsx']
+  'src/components/ui/MediaPickerSheet.tsx','src/lib/pemulihRealtime.ts','src/lib/inventarisAturan.ts']
 if(!fs.existsSync(sebelah)){console.log('cek:kop - repo sebelah tidak ditemukan ('+sebelah+'), dilewati.');process.exit(0)}
 const sidik=f=>{if(!fs.existsSync(f))return null;let b=fs.readFileSync(f);if(/\.(ts|mjs|txt)$/.test(f))b=Buffer.from(b.toString('utf8').replace(/\r\n/g,'\n'));return crypto.createHash('sha256').update(b).digest('hex')}
 let beda=0

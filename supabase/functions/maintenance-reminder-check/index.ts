@@ -1,4 +1,10 @@
 /*
+(30 Okt 2026, Inventaris & Maintenance go-live) SUMBER DATA DIGANTI: jadwal = view inv_jadwal_v (aktif, barang aktif),
+nama = inv_barang (nama + nomor inventaris), divisi penerima = inv_lokasi.divisi_operator dari lokasi barang (lokasi yang
+tidak tampil di operator -> admin saja). Dedup di inv_pengingat_log (jadwal_id) - maintenance_reminder_log lama punya FK ke
+maintenance_rutin. Aturan kirim (H-1, jatuh tempo, terlambat), dedup per hari & hapus subscription kadaluarsa TIDAK berubah.
+Teks di bawah = penjelasan versi lama (mesin.divisi), tetap relevan untuk aturan kirimnya.
+
 Maintenance Reminder Check - dipicu pg_cron HARIAN jam 00:00 UTC (07:00 WIB, lihat migrasi
 cron.schedule terkait, sama pola dengan timer-reminder-check yang sudah ada).
 
@@ -81,29 +87,32 @@ Deno.serve(async (req) => {
     const hariIni = getWibDateStr()
     const besok = new Date(new Date(hariIni + 'T00:00:00Z').getTime() + 86400000).toISOString().slice(0, 10)
 
-    const rutinAktif = await fetchAll(supabase, 'maintenance_rutin', 'id,mesin_id,jenis_maintenance,jatuh_tempo', (q) => q.eq('is_active', true))
+    const jadwalAktif = await fetchAll(supabase, 'inv_jadwal_v', 'id,barang_id,jenis,jatuh_tempo', (q) => q.eq('aktif', true).order('id'))
+    const barangRows = await fetchAll(supabase, 'inv_barang', 'id,nama,nomor_inventaris,lokasi_kode,aktif', (q) => q.order('id'))
+    const lokasiRows = await fetchAll(supabase, 'inv_lokasi', 'kode,tampil_operator,divisi_operator', (q) => q.order('kode'))
+    const barangMap: Record<string, any> = {}
+    barangRows.forEach((b: any) => (barangMap[String(b.id)] = b))
+    const lokasiMap: Record<string, any> = {}
+    lokasiRows.forEach((l: any) => (lokasiMap[l.kode] = l))
+    const rutinAktif = jadwalAktif.filter((j: any) => barangMap[String(j.barang_id)]?.aktif).map((j: any) => ({ id: j.id, barang_id: j.barang_id, jenis_maintenance: j.jenis, jatuh_tempo: j.jatuh_tempo }))
     // Kandidat: H-1 (jatuh_tempo === besok) ATAU jatuh_tempo <= hari ini (jatuh tempo/terlambat).
-    const kandidat = rutinAktif.filter((r: any) => r.jatuh_tempo === besok || r.jatuh_tempo <= hariIni)
+    const kandidat = rutinAktif.filter((r: any) => r.jatuh_tempo && (r.jatuh_tempo === besok || r.jatuh_tempo <= hariIni))
     if (kandidat.length === 0) return jsonResponse({ checked: rutinAktif.length, kandidat: 0, dikirim: 0 })
 
     // Dedup: skip yang UDAH dapat reminder hari ini untuk siklus jatuh_tempo yang SAMA.
-    const existingLog = await fetchAll(supabase, 'maintenance_reminder_log', 'rutin_id,jatuh_tempo_saat_kirim,tanggal_kirim', (q) => q.eq('tanggal_kirim', hariIni))
-    const sudahDikirimSet = new Set(existingLog.map((l: any) => `${l.rutin_id}|${l.jatuh_tempo_saat_kirim}`))
+    const existingLog = await fetchAll(supabase, 'inv_pengingat_log', 'jadwal_id,jatuh_tempo_saat_kirim,tanggal_kirim', (q) => q.eq('tanggal_kirim', hariIni).order('jadwal_id'))
+    const sudahDikirimSet = new Set(existingLog.map((l: any) => `${l.jadwal_id}|${l.jatuh_tempo_saat_kirim}`))
     const perluDikirim = kandidat.filter((r: any) => !sudahDikirimSet.has(`${r.id}|${r.jatuh_tempo}`))
     if (perluDikirim.length === 0) return jsonResponse({ checked: rutinAktif.length, kandidat: kandidat.length, dikirim: 0, catatan: 'semua sudah dapat reminder hari ini' })
-
-    const mesinIds = [...new Set(perluDikirim.map((r: any) => r.mesin_id))]
-    const mesinRows = mesinIds.length ? await fetchAll(supabase, 'mesin', 'id,nama,kode,divisi', (q) => q.in('id', mesinIds)) : []
-    const mesinMap: Record<string, any> = {}
-    mesinRows.forEach((m: any) => (mesinMap[String(m.id)] = m))
 
     const subs = await fetchAll(supabase, 'push_subscriptions', 'id,endpoint,p256dh,auth,admin_username,divisi')
     if (subs.length === 0) {
       // Gak ada satupun yang subscribe (admin maupun divisi manapun) - gak ada yang bisa dikirimin,
       // tapi TETAP catat log dedup (jumlah_penerima:0) biar gak nyoba lagi berkali-kali hari yang
       // sama begitu ada yang subscribe di tengah hari.
-      const logRows = perluDikirim.map((r: any) => ({ rutin_id: r.id, jatuh_tempo_saat_kirim: r.jatuh_tempo, tanggal_kirim: hariIni, jumlah_penerima: 0 }))
-      await supabase.from('maintenance_reminder_log').insert(logRows)
+      const logRows = perluDikirim.map((r: any) => ({ jadwal_id: r.id, jatuh_tempo_saat_kirim: r.jatuh_tempo, tanggal_kirim: hariIni, jumlah_penerima: 0 }))
+      const { error: eLog0 } = await supabase.from('inv_pengingat_log').insert(logRows)
+      if (eLog0) throw eLog0
       return jsonResponse({ checked: rutinAktif.length, kandidat: kandidat.length, dikirim: 0, catatan: 'belum ada admin/teknisi yang subscribe push notification' })
     }
     const adminSubs = subs.filter((s: any) => s.admin_username)
@@ -119,8 +128,8 @@ Deno.serve(async (req) => {
     const logRows: any[] = []
 
     for (const r of perluDikirim) {
-      const mesin = mesinMap[String(r.mesin_id)]
-      const namaMesin = mesin ? `${mesin.nama} (${mesin.kode})` : 'Mesin'
+      const barang = barangMap[String(r.barang_id)]
+      const namaMesin = barang ? `${barang.nama}${barang.nomor_inventaris ? ` (${barang.nomor_inventaris})` : ''}` : 'Barang'
       const selisih = diffHari(r.jatuh_tempo, hariIni)
       let title: string, statusText: string
       if (selisih === 1) {
@@ -136,15 +145,15 @@ Deno.serve(async (req) => {
       const payload = JSON.stringify({
         title,
         body: `${namaMesin} - ${r.jenis_maintenance} ${statusText}`,
-        url: '/?tab=maintenance',
+        url: '/?tab=inventaris',
       })
 
-      // Target: admin (selalu) + divisi yang match mesin.divisi. Kalau mesin.divisi belum diisi,
+      // Target: admin (selalu) + divisi operator lokasi barang (inv_lokasi.divisi_operator; lokasi non-operator = admin saja).
       // fallback ke SEMUA subscription (admin + semua divisi) - lihat komentar di atas file.
-      const divisiMesin = mesin?.divisi
-      const targetSubs = divisiMesin
-        ? [...adminSubs, ...(subsByDivisi[divisiMesin] || [])]
-        : subs
+      // divisi penerima = divisi operator lokasi barang; lokasi tanpa operator (kantor, gudang, belum ditentukan) -> admin saja
+      const lok = barang ? lokasiMap[barang.lokasi_kode] : null
+      const divisiPenerima: string[] = lok?.tampil_operator ? (lok.divisi_operator || []) : []
+      const targetSubs = [...adminSubs, ...divisiPenerima.flatMap((d: string) => subsByDivisi[d] || [])]
       const targetUnik = [...new Map(targetSubs.map((s: any) => [s.id, s])).values()]
 
       let terkirimUntukIni = 0
@@ -160,11 +169,11 @@ Deno.serve(async (req) => {
         }
       }
       totalTerkirim += terkirimUntukIni
-      logRows.push({ rutin_id: r.id, jatuh_tempo_saat_kirim: r.jatuh_tempo, tanggal_kirim: hariIni, jumlah_penerima: terkirimUntukIni })
+      logRows.push({ jadwal_id: r.id, jatuh_tempo_saat_kirim: r.jatuh_tempo, tanggal_kirim: hariIni, jumlah_penerima: terkirimUntukIni })
     }
 
     if (logRows.length > 0) {
-      const { error: logErr } = await supabase.from('maintenance_reminder_log').insert(logRows)
+      const { error: logErr } = await supabase.from('inv_pengingat_log').insert(logRows)
       if (logErr) throw logErr
     }
     if (subsInvalid.size > 0) {
