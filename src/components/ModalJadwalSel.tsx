@@ -17,7 +17,7 @@ import { isiRenharDirilis } from '../services/renharService'
 import { getBusbarKomponen, getProgressAsOfDate, getQtyProsesAsOfDate, WIRING_BOBOT_LIST, WIRING_BOBOT_LABEL, WIRING_BOBOT_COLOR, WIRING_BOBOT_TABLE, kebutuhanOrangWiring } from '../lib/panelHelpers'
 import { markRenharDirty as markRenharDirtyAsli, markRawDirty as markRawDirtyAsli } from '../lib/globalState'
 import { tanganiGagalSinkronRenhar, pindahKomponenRenhar } from '../lib/renharSinkron'
-import { jejakMenujuTanggal, aktifkanJejak, buangJejak, tanggalNyataDariJejak, lepasDariAsal, taruhDiTujuan } from '../lib/jadwalPindah'
+import { jejakMenujuTanggal, aktifkanJejak, buangJejak, tanggalNyataDariJejak, lepasDariAsal, taruhDiTujuan, denganQtyAsal } from '../lib/jadwalPindah'
 import { supabase as supabaseAsli } from '../lib/supabase'
 import { TODAY, fmtDate, getDayLabel } from '../lib/dateHelpers'
 import { Modal, Lbl, Btn } from './ui/Primitives'
@@ -529,12 +529,14 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
     const nyata=tanggalNyataDariJejak(row.schedule||{},date,wp,kode);
     if(!window.confirm(`Aktifkan ${kode} di ${date}?\n\n`+(nyata?`${kode} dipindah dari ${nyata} ke tanggal ini, jejak di sini dihapus.`:`Tidak ada entri aktif ${kode} di tanggal tujuan jejaknya - jejak di sini dihapus sehingga ${kode} aktif lagi di tanggal ini.`)))return;
     let sch=row.schedule||{};
+    // porsi qty dari entri asal ikut pindah (lib/jadwalPindah denganQtyAsal, 30 Okt 2026)
+    const entriPindah=nyata?denganQtyAsal(sch,nyata,[{wp,komponen:[kode]}]):[{wp,komponen:[kode]}];
     if(nyata){
       const{data:timerRows,error:tErr}=await dbBaca.from("fcs_timer_kerja").select("kode_komponen").eq("panel_id",row.panel_id||row.panelId).eq("proses",row.proses).eq("tanggal",nyata).eq("kode_komponen",kode);
       if(tErr){console.error("[Aktifkan jejak] baca timer gagal:",tErr);alert("Gagal membaca data pengerjaan: "+tErr.message);return;}
-      sch=lepasDariAsal(sch,nyata,date,[{wp,komponen:[kode]}],new Set((timerRows||[]).map((t:any)=>t.kode_komponen)));
+      sch=lepasDariAsal(sch,nyata,date,entriPindah,new Set((timerRows||[]).map((t:any)=>t.kode_komponen)));
     }
-    sch=taruhDiTujuan(sch,date,[{wp,komponen:[kode]}],new Date().toISOString());
+    sch=taruhDiTujuan(sch,date,entriPindah,new Date().toISOString());
     markRawDirty(rawId);
     setRawData(prev=>prev.map(r=>r.id===rawId?{...r,schedule:sch}:r));
     const res=await updateRaw(rawId,{schedule:sch});

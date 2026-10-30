@@ -916,18 +916,37 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
     Object.entries(dateOps).forEach(([tanggal, ops]) => {
       sebelumSnapshot[tanggal] = scheduleTerkini[tanggal] || []
       let entries = (scheduleTerkini[tanggal] || []).map((e: any) => ({ ...e, komponen: [...(e.komponen || [])], digeserKe: { ...(e.digeserKe || {}) } }))
+      // PORSI QTY (30 Okt 2026, insiden "proses dobel"): pecahan qtyPerKomponen ikut dibawa ke tujuan & dibuang dari asal.
+      // CERMIN aturan src/lib/jadwalPindah.ts (buangQty/gabungQty) - Edge Function tidak bisa import src, jaga tetap sama:
+      // kode baru di tujuan -> porsi asal ikut (tanpa porsi = penuh); kode sudah ada & keduanya berporsi -> dijumlah;
+      // salah satu penuh -> penuh. Dulu porsi hilang -> kode dianggap qty penuh, total terjadwal > qty panel.
+      const tanpaQty = (e: any, kode: string) => {
+        if (!e.qtyPerKomponen || !(kode in e.qtyPerKomponen)) return e
+        const { [kode]: _q, ...sisa } = e.qtyPerKomponen
+        if (Object.keys(sisa).length) return { ...e, qtyPerKomponen: sisa }
+        const { qtyPerKomponen: _x, ...rest } = e
+        return rest
+      }
       ops.remove.forEach(({ wp, kode }) => {
         const idx = entries.findIndex((e: any) => e.wp === wp)
         if (idx === -1) return
         const { [kode]: _drop, ...restDigeserKe } = entries[idx].digeserKe
-        entries[idx] = { ...entries[idx], komponen: entries[idx].komponen.filter((k: string) => k !== kode), digeserKe: restDigeserKe }
+        entries[idx] = tanpaQty({ ...entries[idx], komponen: entries[idx].komponen.filter((k: string) => k !== kode), digeserKe: restDigeserKe }, kode)
       })
       ops.add.forEach(({ wp, kode, asalTanggal }) => {
+        const porsi = (scheduleTerkini[asalTanggal] || []).find((e: any) => e.wp === wp)?.qtyPerKomponen?.[kode]
         const idx = entries.findIndex((e: any) => e.wp === wp)
         if (idx === -1) {
-          entries.push({ wp, komponen: [kode], digeserKe: {}, carriedOverFrom: asalTanggal })
+          entries.push({ wp, komponen: [kode], digeserKe: {}, carriedOverFrom: asalTanggal, ...(porsi != null ? { qtyPerKomponen: { [kode]: porsi } } : {}) })
         } else if (!entries[idx].komponen.includes(kode)) {
-          entries[idx] = { ...entries[idx], komponen: [...entries[idx].komponen, kode] }
+          const q = { ...(entries[idx].qtyPerKomponen || {}) }
+          if (porsi != null) q[kode] = porsi; else delete q[kode]
+          const { qtyPerKomponen: _lama, ...rest } = entries[idx]
+          entries[idx] = { ...rest, komponen: [...entries[idx].komponen, kode], ...(Object.keys(q).length ? { qtyPerKomponen: q } : {}) }
+        } else {
+          const ada = entries[idx].qtyPerKomponen?.[kode]
+          if (ada != null && porsi != null) entries[idx] = { ...entries[idx], qtyPerKomponen: { ...entries[idx].qtyPerKomponen, [kode]: ada + porsi } }
+          else if (ada != null) entries[idx] = tanpaQty(entries[idx], kode)
         }
       })
       ops.jejak.forEach(({ wp, kode, tujuan }) => {

@@ -20,13 +20,17 @@ export function lepasDariAsal(schedule: Jadwal, fromDate: string, toDate: string
     const dragged = entries.find((e: any) => e.wp === orig.wp)
     if (!dragged) return orig
     const digeserKe = { ...(orig.digeserKe || {}) }
+    const dibuang: string[] = []
     const komponenSisa = (orig.komponen || []).filter((k: string) => {
       if (!dragged.komponen.includes(k)) return true
       if (adaPengerjaan.has(k)) { digeserKe[k] = toDate; return true }
+      dibuang.push(k)
       return false
     })
     if (komponenSisa.length === 0) return null
-    return Object.keys(digeserKe).length > 0 ? { ...orig, komponen: komponenSisa, digeserKe } : { ...orig, komponen: komponenSisa }
+    const hasil: EntriJadwal = Object.keys(digeserKe).length > 0 ? { ...orig, komponen: komponenSisa, digeserKe } : { ...orig, komponen: komponenSisa }
+    // (30 Okt 2026) porsi qty kode yang pindah ikut pergi - jangan tertinggal usang di asal (jejak tetap simpan porsinya)
+    return buangQty(hasil, dibuang)
   }).filter(Boolean) as EntriJadwal[]
   if (sisaDiAsal.length > 0) newSch[fromDate] = sisaDiAsal; else delete newSch[fromDate]
   return newSch
@@ -36,6 +40,39 @@ export function lepasDariAsal(schedule: Jadwal, fromDate: string, toDate: string
 // JEJAK kode yang ditaruh (digeserKe[kode] di entry WP yang sama - mis. ditarik balik ke tanggal asal
 // auto-geser), jejaknya DIHAPUS supaya kode aktif lagi di sini. Dulu kode cuma digabung + diberi pin, jejak
 // tetap -> kode abu-abu di sini & sudah hilang dari tanggal asal = hilang dari jadwal aktif.
+// PORSI QTY (30 Okt 2026, insiden "proses dobel" Raw per WP): entri boleh memecah qty komponen ke beberapa hari lewat
+// qtyPerKomponen (template/generator FCS). Dulu pindah ke WP yang sudah punya entri di tujuan MEMBUANG porsinya -> kode jadi
+// dianggap qty penuh, total terjadwal > qty panel (127 pasangan WO 084/085/076/095). Aturan gabung (cermin di
+// supabase/functions/auto-geser-harian - Edge Function tidak bisa import src, jaga tetap sama):
+//  - kode belum ada di entri tujuan: porsi pindahan ikut (tanpa porsi = qty penuh, tetap tanpa porsi);
+//  - kode sudah ada & keduanya berporsi: dijumlah; salah satunya tanpa porsi (= penuh): tujuan menjadi penuh (tanpa porsi).
+export function buangQty(e: EntriJadwal, kode: string[]): EntriJadwal {
+  if (!e.qtyPerKomponen || !kode.some(k => k in e.qtyPerKomponen)) return e
+  const q = Object.fromEntries(Object.entries(e.qtyPerKomponen).filter(([k]) => !kode.includes(k)))
+  if (Object.keys(q).length) return { ...e, qtyPerKomponen: q }
+  const tanpa: EntriJadwal = { ...e }
+  delete tanpa.qtyPerKomponen
+  return tanpa
+}
+function gabungQty(found: EntriJadwal, e: EntriJadwal, kode: string[], sudahAda: Set<string>) {
+  const q: Record<string, number> = { ...(found.qtyPerKomponen || {}) }
+  for (const k of kode) {
+    const pindah = e.qtyPerKomponen?.[k]
+    if (!sudahAda.has(k)) { if (pindah != null) q[k] = pindah; else delete q[k] }
+    else if (q[k] != null && pindah != null) q[k] = q[k] + pindah
+    else delete q[k]
+  }
+  if (Object.keys(q).length) found.qtyPerKomponen = q; else delete found.qtyPerKomponen
+}
+// entri {wp, komponen} tanpa porsi (mis. aktifkan jejak) -> lengkapi porsi dari entri asalnya
+export function denganQtyAsal(schedule: Jadwal, fromDate: string, entries: EntriJadwal[]): EntriJadwal[] {
+  return entries.map((e) => {
+    const asal = (schedule?.[fromDate] || []).find((x) => x.wp === e.wp)
+    const q = Object.fromEntries((e.komponen || []).filter((k) => asal?.qtyPerKomponen?.[k] != null).map((k) => [k, asal!.qtyPerKomponen![k]]))
+    return Object.keys(q).length ? { ...e, qtyPerKomponen: { ...q, ...(e.qtyPerKomponen || {}) } } : e
+  })
+}
+
 export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJadwal[], nowIso: string): Jadwal {
   const newSch: Jadwal = { ...(schedule || {}) }
   const merged: EntriJadwal[] = (newSch[toDate] || []).map((m) => ({ ...m }))
@@ -43,7 +80,9 @@ export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJa
     const kodeAsliDrag = (e.komponen || []).filter((k: string) => !k.startsWith('__wiring_'))
     const found = merged.find((m) => m.wp === e.wp)
     if (found) {
+      const sudahAda = new Set(found.komponen || [])
       found.komponen = [...new Set([...found.komponen, ...e.komponen])]
+      gabungQty(found, e, kodeAsliDrag, sudahAda)
       const manualPin = { ...(found.manualPin || {}) }
       kodeAsliDrag.forEach((k: string) => { manualPin[k] = nowIso })
       found.manualPin = manualPin
@@ -55,7 +94,7 @@ export function taruhDiTujuan(schedule: Jadwal, toDate: string, entries: EntriJa
     } else {
       const manualPin: Record<string, string> = {}
       kodeAsliDrag.forEach((k: string) => { manualPin[k] = nowIso })
-      merged.push({ ...e, manualPin })
+      merged.push(buangQty({ ...e, manualPin }, Object.keys(e.qtyPerKomponen || {}).filter(k => !e.komponen.includes(k))))
     }
   })
   newSch[toDate] = merged
