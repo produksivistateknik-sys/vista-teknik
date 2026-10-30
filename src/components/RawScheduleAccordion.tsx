@@ -30,6 +30,7 @@ import { buatSupabaseRepo } from '../lib/supabaseRepoJadwalRaw'
 import { buatPenjagaUji, WO_UJI_RAW_PERWP } from '../lib/penjagaUjiWo'
 import { fetchPanelOrderMap } from '../lib/rawPanelOrder'
 import { supabase } from '../lib/supabase'
+import { statusDariPersen } from '../lib/statusProgres'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses, type RingkasanProses } from '../lib/rawPivot'
 
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
@@ -103,13 +104,17 @@ function buatPengukur(): (teks: string, spasi?: number) => number {
   }
 }
 // Lebar chip ringkasan header WP / chip komponen - rumus mengikuti gaya chip di bawah (padding, jarak, badge, border).
-const lebarChipRingkas = (u: ReturnType<typeof buatPengukur>, x: RingkasanProses) =>
-  CHIP.padX * 2 + u(x.proses) + CHIP.gapDalam + CHIP.badgePadX * 2 + u(String(x.n)) + (x.selesai ? CHIP.gapDalam + u('✓') : 0) + 2
-const lebarChipKomp = (u: ReturnType<typeof buatPengukur>, c: ChipProses) => {
+// WIRING: badge = 👥 total orang baris komponen (bukan jumlah komponen). progres = ada komponen berprogres (●, lib/statusProgres).
+const isiBadgeRingkas = (x: RingkasanProses) => x.orang != null ? '👥' + Number(x.orang.toFixed(1)) : String(x.n)
+const lebarChipRingkas = (u: ReturnType<typeof buatPengukur>, x: RingkasanProses, progres = false) =>
+  CHIP.padX * 2 + u(x.proses) + CHIP.gapDalam + CHIP.badgePadX * 2 + u(isiBadgeRingkas(x)) + (x.selesai ? CHIP.gapDalam + u('✓') : progres ? CHIP.gapDalam + u('●') : 0) + 2
+const teksPorsi = (c: ChipProses) => c.porsi ? `${c.porsi.q}/${c.porsi.qty}` : ''
+const lebarChipKomp = (u: ReturnType<typeof buatPengukur>, c: ChipProses, progres = false) => {
   const jejak = !!c.jejakKe
   return 2 + CHIP.padX * 2 + u(c.proses, .2)
+    + (c.porsi ? CHIP.gapDalam + u(teksPorsi(c), .2) : 0)
     + (c.orang != null && !jejak ? CHIP.gapDalam + u('👥' + Number(c.orang.toFixed(1)), .2) : 0)
-    + (c.selesai && !jejak ? CHIP.gapDalam + u('✓', .2) : 0) + (jejak ? CHIP.gapDalam + u('➡️', .2) : 0) + 2
+    + (c.selesai && !jejak ? CHIP.gapDalam + u('✓', .2) : progres ? CHIP.gapDalam + u('●', .2) : 0) + (jejak ? CHIP.gapDalam + u('➡️', .2) : 0) + 2
 }
 // Jumlah garis chip dalam satu sel (flex-wrap, kiri ke kanan). Chip yang lebih lebar dari sel membungkus namanya di dalam
 // chip -> dihitung 2 garis sendiri.
@@ -156,12 +161,15 @@ const gayaPilih = (p?: PilihChip): any => !p ? {} : {
   ...(p.dipotong ? { opacity: .4 } : {}),
 }
 // peringatan (21 Okt 2026): teks pelanggaran urutan proses utk chip ini (lib/urutanProses) -> bingkai merah + tooltip.
-function Chip({ c, kode, checklist, op, peringatan, pilih }: { c: ChipProses; kode: string; checklist: any; op?: OpChip; peringatan?: string[]; pilih?: PilihChip }) {
+// progres (30 Okt 2026): ● berprogres = 0 < progres < 100 ATAU timer operator sedang berjalan (keputusan user) - dihitung pemanggil
+// (chipBerprogres), visual sepadan ✓ (posisi & ukuran sama), chip tidak dipudarkan. porsi: qty dipecah ke beberapa hari.
+function Chip({ c, kode, checklist, op, peringatan, pilih, progres }: { c: ChipProses; kode: string; checklist: any; op?: OpChip; peringatan?: string[]; pilih?: PilihChip; progres?: boolean }) {
   const warna = (PROSES_COLOR as any)[c.proses] || '#64748b'
   const opBusbar = c.proses === 'BUSBAR' && op ? formatBusbarTahapOperator(checklist?.[kode], op.timers, op.nama) : undefined
   const judul = [
     `${c.proses} · ${kode}`,
-    c.selesai ? 'Selesai (100%)' : null,
+    c.selesai ? 'Selesai (100%)' : progres ? `Berprogres ${Math.round(c.progres || 0)}%${op?.timers.some(t => !t.selesai) ? ' · sedang dikerjakan (timer berjalan)' : ''}` : null,
+    c.porsi ? `Porsi hari ini ${c.porsi.q} dari ${c.porsi.qty} (qty dipecah ke beberapa hari)` : null,
     c.jejakKe ? `Sudah digeser ke ${fmtTglPendek(c.jejakKe)} (histori)` : null,
     c.pin ? 'Dipin manual (tidak ikut auto-geser)' : null,
     c.dariTanggal ? `Lanjutan dari ${fmtTglPendek(c.dariTanggal)}` : null,
@@ -183,8 +191,10 @@ function Chip({ c, kode, checklist, op, peringatan, pilih }: { c: ChipProses; ko
     }}>
       {!!peringatan?.length && <span>⚠</span>}
       <span>{c.proses}</span>
+      {c.porsi && <span style={{ fontWeight: 700, opacity: .9 }}>{teksPorsi(c)}</span>}
       {c.orang != null && !jejak && <span style={{ fontWeight: 700, opacity: .9 }}>👥{Number(c.orang.toFixed(1))}</span>}
       {c.selesai && !jejak && <span>✓</span>}
+      {progres && !c.selesai && !jejak && <span>●</span>}
       {jejak && <span>➡️</span>}
     </span>
   )
@@ -253,6 +263,11 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
   }, [io]) // eslint-disable-line react-hooks/exhaustive-deps
   const namaPekerja = (id: any) => opData?.nama(id) ?? (pekerja || []).find((p: any) => Number(p.id) === Number(id))?.nama
   const opChip = (panelId: any, kode: string, proses: string): OpChip => opData ? { timers: opData.idx.get(kunciTimer(panelId, kode, proses)) || [], nama: opData.nama } : null
+  // ● berprogres (30 Okt 2026): progres 0-100 (lib/statusProgres, sama dgn tampilan lama) atau timer operator berjalan; jejak/selesai tidak
+  const chipBerprogres = (c: ChipProses, panelId: number, kode: string) => !c.jejakKe && !c.selesai
+    && (statusDariPersen(c.progres) === 'on_progress' || (opData?.idx.get(kunciTimer(panelId, kode, c.proses)) || []).some(t => !t.selesai))
+  const ringkasBerprogres = (g: GrupKomponen, panelId: number, d: string, x: RingkasanProses) => !x.selesai
+    && g.komponen.some(k => (k.sel[d] || []).some(c => c.proses === x.proses && chipBerprogres(c, panelId, k.kode)))
 
   // ── data pendukung (sama sumber dgn Raw Schedule lama) ──
   const [fcsKapasitas, setFcsKapasitas] = useState<any[]>([])
@@ -343,17 +358,17 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     const u = buatPengukur(); const m = new Map<string, number>()
     for (const b of blokTampil) for (const g of b.grup) {
       let gMaks = 1
-      for (const rs of Object.values(g.ringkasan) as RingkasanProses[][]) gMaks = Math.max(gMaks, garisChip(rs.map(x => lebarChipRingkas(u, x))))
+      for (const [d, rs] of Object.entries(g.ringkasan) as [string, RingkasanProses[]][]) gMaks = Math.max(gMaks, garisChip(rs.map(x => lebarChipRingkas(u, x, ringkasBerprogres(g, b.panelId, d, x)))))
       m.set(`g:${b.panelId}:${g.key}`, Math.max(TINGGI.grup, tinggiIsi(gMaks)))
       for (const k of g.komponen) {
         let kMaks = 1
-        for (const cs of Object.values(k.sel) as ChipProses[][]) kMaks = Math.max(kMaks, garisChip(cs.map(c => lebarChipKomp(u, c))))
+        for (const cs of Object.values(k.sel) as ChipProses[][]) kMaks = Math.max(kMaks, garisChip(cs.map(c => lebarChipKomp(u, c, chipBerprogres(c, b.panelId, k.kode)))))
         m.set(`k:${b.panelId}:${g.key}:${k.kode}`, Math.max(TINGGI.komp, tinggiIsi(kMaks)))
       }
     }
     return m
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [blokTampil, fontSiap])
+  }, [blokTampil, fontSiap, opData])
   const panelNamaPanjang = useMemo(() => new Set(blokTampil.filter(b => namaPanelDuaBaris(String(b.panel || ''))).map(b => b.panelId)),
     [blokTampil, fontSiap]) // eslint-disable-line react-hooks/exhaustive-deps
   // header WP yang DIBUKA tidak menampilkan ringkasan -> tinggi minimum; baris pertama panel bernama panjang >= TINGGI_PANEL_2BARIS
@@ -1120,18 +1135,18 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       const rs = r.buka ? [] : (r.g.ringkasan[d] || [])
       return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(
         rs.map((x, i) => { const w = (PROSES_COLOR as any)[x.proses] || '#64748b'; const pc = pilihChip(chips[i], x.proses, null); return (
-          <span key={x.proses} title={`${r.g.key} ${getDayLabel(d)}: ${x.n} komponen ${x.proses}${x.selesai ? ' - semua selesai' : ''}\nKlik = edit ${x.proses} · Ctrl/Alt/Shift+klik = pilih (semua komponen ${x.proses} ${r.g.key} hari ini) · seret = pindah`} {...pc?.ev} style={{ display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, background: w, color: '#fff', borderRadius: 4, padding: `2px ${CHIP.padX}px`, fontSize: CHIP.font, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%', boxSizing: 'border-box', ...gayaPilih(pc) }}>
+          <span key={x.proses} title={`${r.g.key} ${getDayLabel(d)}: ${x.n} komponen ${x.proses}${x.orang != null ? ` · kebutuhan ${Number(x.orang.toFixed(1))} orang` : ''}${x.selesai ? ' - semua selesai' : ringkasBerprogres(r.g, r.blok.panelId, d, x) ? ' - ada yang berprogres' : ''}\nKlik = edit ${x.proses} · Ctrl/Alt/Shift+klik = pilih (semua komponen ${x.proses} ${r.g.key} hari ini) · seret = pindah`} {...pc?.ev} style={{ display: 'inline-flex', alignItems: 'center', gap: CHIP.gapDalam, background: w, color: '#fff', borderRadius: 4, padding: `2px ${CHIP.padX}px`, fontSize: CHIP.font, fontWeight: 800, opacity: x.selesai ? .55 : 1, maxWidth: '100%', boxSizing: 'border-box', ...gayaPilih(pc) }}>
             <span>{x.proses}</span>
-            <span style={{ background: 'rgba(255,255,255,.28)', borderRadius: 3, padding: `0 ${CHIP.badgePadX}px` }}>{x.n}</span>{x.selesai && '✓'}
+            <span style={{ background: 'rgba(255,255,255,.28)', borderRadius: 3, padding: `0 ${CHIP.badgePadX}px` }}>{isiBadgeRingkas(x)}</span>{x.selesai ? '✓' : ringkasBerprogres(r.g, r.blok.panelId, d, x) ? '●' : null}
           </span>) }))}</td>
     }
     if (r.t === 'komp') {
       const cs = r.k.sel[d] || []
-      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} peringatan={c.jejakKe ? undefined : tandaUrutan.get(`${r.blok.panelId}|${r.k.kode}|${c.proses}|${d}`)} pilih={pilihChip(chips[i], c.proses, c.rawId)} />))}</td>
+      return <td key={d} data-tgl={d} style={td} {...ev}>{wadah(cs.map((c, i) => <Chip key={c.proses + i} c={c} kode={r.k.kode} progres={chipBerprogres(c, r.blok.panelId, r.k.kode)} checklist={panelById.get(r.blok.panelId)?.checklist} op={opChip(r.blok.panelId, r.k.kode, c.proses)} peringatan={c.jejakKe ? undefined : tandaUrutan.get(`${r.blok.panelId}|${r.k.kode}|${c.proses}|${d}`)} pilih={pilihChip(chips[i], c.proses, c.rawId)} />))}</td>
     }
     const ada = r.p.sel[d]; const w = (PROSES_COLOR as any)[r.p.proses] || '#64748b'
     const pp = ada ? pilihChip(chips[0], r.p.proses, r.p.rawId) : undefined
-    return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : ''}`} {...pp?.ev} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1, ...gayaPilih(pp) }}>{r.p.proses}{r.p.selesai && ' ✓'}</span>}</td>
+    return <td key={d} data-tgl={d} style={td} {...ev}>{ada && <span title={`${r.p.proses}${r.p.selesai ? ' - selesai' : r.p.progres ? ' - berprogres' : ''}`} {...pp?.ev} style={{ display: 'inline-flex', gap: 3, background: w, color: '#fff', borderRadius: 4, padding: '2px 5px', fontSize: 8.5, fontWeight: 800, opacity: r.p.selesai ? .55 : 1, ...gayaPilih(pp) }}>{r.p.proses}{r.p.selesai ? ' ✓' : r.p.progres ? ' ●' : null}</span>}</td>
   }
 
   const jumlahKomponen = blokTampil.reduce((s, b) => s + b.grup.reduce((t, g) => t + g.komponen.length, 0), 0)
@@ -1390,7 +1405,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       {kartuHari.elemen}
       {urutan.elemen}
       <div style={{ fontSize: 10, color: '#94a3b8', marginTop: 6 }}>
-        Chip putus-putus ➡️ = histori (sudah digeser) · ✓ = selesai · ⚠ bingkai merah = urutan proses terbalik · 👥 = kebutuhan orang WIRING · arahkan kursor ke chip untuk detail.
+        Chip putus-putus ➡️ = histori (sudah digeser) · ✓ = selesai · ● = berprogres (sudah dimulai / sedang dikerjakan) · 1/4 = porsi qty hari itu · ⚠ bingkai merah = urutan proses terbalik · 👥 = kebutuhan orang WIRING · arahkan kursor ke chip untuk detail.
       </div>
     </div>
   )

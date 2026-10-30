@@ -36,16 +36,19 @@ export type ChipProses = {
   dariTanggal?: string // carriedOverFrom (auto-geser)
   lanjutan?: boolean // WIRING: hari lanjutan dari durasi standar bobot (bukan entry tersimpan)
   orang?: number // WIRING: kebutuhan orang hari itu
+  progres?: number // % progres proses ini (BUSBAR: per tanggal) - status ✓/● lewat lib/statusProgres
+  porsi?: { q: number; qty: number } // entri memecah qty (qtyPerKomponen) - porsi hari ini dari qty panel
 }
 export type BarisKomponen = { kode: string; nama: string; sel: Record<string, ChipProses[]> }
-export type RingkasanProses = { proses: string; n: number; selesai: boolean }
+// orang: WIRING - jumlah kebutuhan orang (👥) semua chip komponen hari itu = yang tampil di baris komponen (keputusan user 30 Okt)
+export type RingkasanProses = { proses: string; n: number; selesai: boolean; orang?: number }
 export type GrupKomponen = {
   key: string // 'WP1' ... | 'BUSBAR'
   jenis: 'wp' | 'busbar'
   komponen: BarisKomponen[]
   ringkasan: Record<string, RingkasanProses[]> // tanggal -> chip ringkasan (urut ALL_PROSES)
 }
-export type Penanda = { proses: string; rawId: number; sel: Record<string, true>; selesai: boolean }
+export type Penanda = { proses: string; rawId: number; sel: Record<string, true>; selesai: boolean; progres: boolean }
 export type BlokPanel = {
   panelId: number
   proyek: string
@@ -69,7 +72,7 @@ const urutProses = (a: string, b: string) => {
 }
 
 function ringkas(komponen: BarisKomponen[]): Record<string, RingkasanProses[]> {
-  const perTgl: Record<string, Map<string, { kode: Set<string>; selesai: boolean }>> = {}
+  const perTgl: Record<string, Map<string, { kode: Set<string>; selesai: boolean; orang?: number }>> = {}
   for (const k of komponen) {
     for (const [d, chips] of Object.entries(k.sel)) {
       for (const c of chips) {
@@ -77,13 +80,14 @@ function ringkas(komponen: BarisKomponen[]): Record<string, RingkasanProses[]> {
         const m = (perTgl[d] = perTgl[d] || new Map())
         const x = m.get(c.proses) || { kode: new Set<string>(), selesai: true }
         if (!x.kode.has(k.kode)) { x.kode.add(k.kode); if (!c.selesai) x.selesai = false }
+        if (c.orang != null) x.orang = (x.orang || 0) + c.orang
         m.set(c.proses, x)
       }
     }
   }
   const out: Record<string, RingkasanProses[]> = {}
   for (const [d, m] of Object.entries(perTgl)) {
-    out[d] = [...m.entries()].sort((a, b) => urutProses(a[0], b[0])).map(([proses, x]) => ({ proses, n: x.kode.size, selesai: x.selesai }))
+    out[d] = [...m.entries()].sort((a, b) => urutProses(a[0], b[0])).map(([proses, x]) => ({ proses, n: x.kode.size, selesai: x.selesai, ...(x.orang != null ? { orang: x.orang } : {}) }))
   }
   return out
 }
@@ -123,7 +127,9 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
             if (kode.startsWith('__wiring_')) continue
             if (!wpKode.has(kode)) wpKode.set(kode, e.wp)
             realHari.add(kode + '|' + d)
-            const c: ChipProses = { proses: r.proses, rawId: r.id, wp: e.wp, selesai: (cl[kode]?.progress?.[r.proses] || 0) >= 100 }
+            const pct = cl[kode]?.progress?.[r.proses] || 0, q = e.qtyPerKomponen?.[kode], qty = Number(cl[kode]?.qty) || 0
+            const c: ChipProses = { proses: r.proses, rawId: r.id, wp: e.wp, selesai: pct >= 100, progres: pct }
+            if (q != null && qty > 0 && q < qty) c.porsi = { q, qty }
             if (e.digeserKe?.[kode]) c.jejakKe = e.digeserKe[kode]
             if (e.manualPin?.[kode]) c.pin = true
             if (e.carriedOverFrom) c.dariTanggal = e.carriedOverFrom
@@ -136,7 +142,7 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
         for (const [d, list] of Object.entries(jadwalLanjutanWiring(r, panelData, ctx.wiringHariKerjaMap))) {
           for (const p of list) {
             if (realHari.has(p.kode + '|' + d)) continue
-            tambahChip(p.kode, d, { proses: r.proses, rawId: r.id, wp: p.wp, selesai: false, lanjutan: true, orang: p.orang })
+            tambahChip(p.kode, d, { proses: r.proses, rawId: r.id, wp: p.wp, selesai: false, lanjutan: true, orang: p.orang, progres: cl[p.kode]?.progress?.[r.proses] || 0 })
           }
         }
       }
@@ -176,7 +182,8 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
         const sel: Record<string, ChipProses[]> = {}
         for (const [d, list] of Object.entries(rowBB.busbar_schedule || {}) as [string, string[]][]) {
           if (!(list || []).includes(kode)) continue
-          const c: ChipProses = { proses: 'BUSBAR', rawId: rowBB.id, wp: 'BUSBAR', selesai: getProgressAsOfDate(cl[kode], 'BUSBAR', d) >= 100 }
+          const pctBB = getProgressAsOfDate(cl[kode], 'BUSBAR', d)
+          const c: ChipProses = { proses: 'BUSBAR', rawId: rowBB.id, wp: 'BUSBAR', selesai: pctBB >= 100, progres: pctBB }
           const jejak = rowBB.busbar_jejak?.[d]?.[kode]; if (jejak) c.jejakKe = jejak
           if (rowBB.busbar_manual_pin?.[d]?.[kode]) c.pin = true
           sel[d] = [c]
@@ -193,7 +200,8 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
       if (!r) continue
       const sel: Record<string, true> = {}
       for (const [d, ents] of Object.entries(r.schedule || {}) as [string, any[]][]) if ((ents || []).length) sel[d] = true
-      penanda.push({ proses: pr, rawId: r.id, sel, selesai: statusPenandaPanel(panelData, pr) === 'DONE' })
+      const st = statusPenandaPanel(panelData, pr)
+      penanda.push({ proses: pr, rawId: r.id, sel, selesai: st === 'DONE', progres: st === 'IN PROGRESS' })
     }
 
     hasil.push({ panelId: pid, proyek: r0.proyek, panel: r0.panel, prioritas: r0.prioritas, tipe, woId: r0.wo_id ?? r0.woId ?? null, grup, penanda })

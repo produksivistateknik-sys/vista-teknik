@@ -5,6 +5,7 @@ import { useState, useMemo } from 'react'
 import { PROSES_COLOR, WP_COLOR, PRIORITAS_COLOR } from '../constants/panelTypes'
 import { fmtDateFull } from '../lib/dateHelpers'
 import { Card, Badge } from './ui/Primitives'
+import { statusDariPersen } from '../lib/statusProgres'
 
 // Status komponen / tugas (WP di 1 sel) di 1 proses dari panels.checklist.progress - dipakai grid tampilan lama & kartu hari.
 export const statusKomponen=(woData:any,panelId,proses,kode)=>{
@@ -12,10 +13,7 @@ export const statusKomponen=(woData:any,panelId,proses,kode)=>{
   if(!panelData)return"belum_mulai";
   const cl=panelData.checklist?.[kode];
   if(!cl)return"belum_mulai";
-  const v=cl.progress?.[proses]||0;
-  if(v>=100)return"finish";
-  if(v>0)return"on_progress";
-  return"belum_mulai";
+  return statusDariPersen(cl.progress?.[proses]);
 };
 
 export const statusTugas=(woData:any,row,date,wp,komponen)=>{
@@ -26,13 +24,13 @@ export const statusTugas=(woData:any,row,date,wp,komponen)=>{
   const allDone=komponen.every(kode=>{
     const cl=panelData.checklist?.[kode];
     if(!cl)return false;
-    return(cl.progress?.[proses]||0)>=100;
+    return statusDariPersen(cl.progress?.[proses])==="finish";
   });
   if(allDone&&komponen.length>0)return"finish";
   const anyStarted=komponen.some(kode=>{
     const cl=panelData.checklist?.[kode];
     if(!cl)return false;
-    return(cl.progress?.[proses]||0)>0;
+    return statusDariPersen(cl.progress?.[proses])!=="belum_mulai";
   });
   if(anyStarted)return"on_progress";
   return"belum_mulai";
