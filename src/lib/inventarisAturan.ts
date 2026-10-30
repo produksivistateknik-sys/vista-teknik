@@ -9,6 +9,8 @@ export type Barang = {
   detail_kondisi: string | null; merk_spesifikasi: string | null; nomor_seri: string | null; tanggal_perolehan: string | null
   tanggal_perolehan_teks: string | null; pelapor: string | null; diperbarui_pada: string | null; kode_lama: string | null
   aktif: boolean; versi: number; dibuat_oleh: string | null; dibuat_pada: string
+  // ditambah operator dari HP (30 Okt 2026): tampil langsung, berlabel "Baru dari operator" di admin sampai ditandai diperiksa
+  ditambah_operator?: boolean; sudah_diperiksa?: boolean; diperiksa_oleh?: string | null; diperiksa_pada?: string | null
 }
 export type Jadwal = {
   id: number; barang_id: number; jenis: string; frekuensi: string; jatuh_tempo: string | null; terakhir_dilakukan: string | null

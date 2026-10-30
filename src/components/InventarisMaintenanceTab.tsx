@@ -9,7 +9,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { supabase } from '../lib/supabase'
 import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import {
-  muatInventaris, muatLogBarang, tambahBarang, ubahBarang, setKondisi, ubahStatusLaporan, simpanJadwal, selesaiJadwal,
+  muatInventaris, muatLogBarang, tambahBarang, ubahBarang, setKondisi, tandaiDiperiksa, ubahStatusLaporan, simpanJadwal, selesaiJadwal,
   tambahMedia, hapusMedia, imporBarang, unggahMediaInventaris, KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, FREKUENSI,
   labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf, BATAS_DATASHEET_MB,
   type DataInventaris, type Barang, type Jadwal, type Laporan, type Media, type LogBarang,
@@ -24,7 +24,7 @@ const BARIS_PER_HALAMAN = 200 // riwayat terus bertambah - tabel tidak merender 
 type Tab = 'inventaris' | 'laporan' | 'maintenance' | 'riwayat'
 const TABS: [Tab, string][] = [['inventaris', 'Inventaris'], ['laporan', 'Laporan'], ['maintenance', 'Maintenance'], ['riwayat', 'Riwayat']]
 const OPSI_FILTER: Record<Tab, [string, string][]> = {
-  inventaris: [['semua', 'Semua kondisi'], ...KONDISI.map(k => [k.kode, k.label] as [string, string])],
+  inventaris: [['semua', 'Semua kondisi'], ...KONDISI.map(k => [k.kode, k.label] as [string, string]), ['baru_operator', 'Baru dari operator (belum diperiksa)']],
   laporan: [['semua', 'Semua status'], ['aktif', 'Aktif (Open / In Progress)'], ['closed', 'Closed']],
   maintenance: [['semua', 'Semua jadwal aktif'], ['terlambat', 'Terlambat'], ['segera', 'Jatuh tempo ≤ 2 hari'], ['normal', 'Normal'], ['nonaktif', 'Nonaktif']],
   riwayat: [['semua', 'Semua jenis'], ['rutin', 'Rutin'], ['kerusakan', 'Kerusakan']],
@@ -98,6 +98,8 @@ const CSS = `
 `
 
 const badge = (warna: string, latar: string, label: string) => <span className="iv-badge" style={{ color: warna, background: latar }}>{label}</span>
+// barang ditambah operator dari HP: tampil langsung, berlabel sampai admin menandai sudah diperiksa (inv_tandai_diperiksa)
+const baruOperator = (x?: Barang) => !!x && !!x.ditambah_operator && !x.sudah_diperiksa
 const badgeJadwal = (j: Jadwal) => !j.aktif ? badge('#64748b', '#eef1f5', 'Nonaktif') : badge(STATUS_JADWAL[j.status_jadwal].warna, STATUS_JADWAL[j.status_jadwal].latar, STATUS_JADWAL[j.status_jadwal].label)
 const badgeLaporan = (s: Laporan['status']) => badge(STATUS_LAPORAN[s].warna, STATUS_LAPORAN[s].latar, STATUS_LAPORAN[s].label)
 const pesanGalat = (e: any) => e?.message || String(e)
@@ -169,6 +171,7 @@ export function InventarisMaintenanceTab({ user }: any) {
       terlambat: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'terlambat').length || 0,
       segera: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'segera').length || 0,
       rusak: d?.laporan.filter(l => laporanAktif(l) && aktif(l.barang_id)).length || 0,
+      baru: d?.barang.filter(x => x.aktif && baruOperator(x)).length || 0,
     }
   }, [d, idx])
 
@@ -179,7 +182,7 @@ export function InventarisMaintenanceTab({ user }: any) {
     const teksBarang = (x: Barang) => [x.nama, x.nomor_inventaris, x.kode_lama, x.pengguna, x.detail_kondisi, x.merk_spesifikasi, x.nomor_seri, x.pelapor, namaLokasi(x.lokasi_kode)].join(' ')
     // barang nonaktif (dan laporan/jadwal/riwayatnya) disembunyikan kecuali "termasuk nonaktif" dicentang (keputusan user 30 Okt)
     const tampilB = (id: number) => nonaktif || b(id).aktif
-    const inventaris = d.barang.filter(x => tampilB(x.id)).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, cari: teksBarang(x), x }))
+    const inventaris = d.barang.filter(x => tampilB(x.id)).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, baru: baruOperator(x), cari: teksBarang(x), x }))
     const laporan = d.laporan.filter(l => tampilB(l.barang_id)).sort((p, r) => r.dibuat_pada.localeCompare(p.dibuat_pada)).map(l => ({ id: 'l' + l.id, lok: b(l.barang_id).lokasi_kode,
       kunci: laporanAktif(l) ? 'aktif' : 'closed', cari: [l.judul, l.masalah, l.pelapor, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l }))
     const maintenance = d.jadwal.filter(j => tampilB(j.barang_id)).sort((p, r) => (p.jatuh_tempo || '9').localeCompare(r.jatuh_tempo || '9')).map(j => ({ id: 'j' + j.id, lok: b(j.barang_id).lokasi_kode,
@@ -193,7 +196,7 @@ export function InventarisMaintenanceTab({ user }: any) {
 
   const saring = (t: Tab, abaikanLokasi = false) => baris[t].filter(r =>
     (abaikanLokasi || !fLok.length || fLok.includes(r.lok))
-    && (fKon === 'semua' ? (t !== 'maintenance' || r.kunci !== 'nonaktif') : r.kunci === fKon)
+    && (fKon === 'semua' ? (t !== 'maintenance' || r.kunci !== 'nonaktif') : fKon === 'baru_operator' ? r.baru : r.kunci === fKon)
     && (!q || r.cari.toLowerCase().includes(q.toLowerCase())))
   // angka di judul sub-tab: tab aktif = hasil filter; tab lain = bawaan (jadwal nonaktif tidak dihitung)
   const tampil = (t: Tab) => (t === tab ? saring(t) : baris[t].filter(r => t !== 'maintenance' || r.kunci !== 'nonaktif'))
@@ -239,6 +242,7 @@ export function InventarisMaintenanceTab({ user }: any) {
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'terlambat'} onClick={() => tab === 'maintenance' && fKon === 'terlambat' ? setFKon('semua') : gantiTab('maintenance', 'terlambat')}><b style={{ color: '#b91c1c' }}>{cnt.terlambat}</b><span>jadwal terlambat</span></button>
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'segera'} onClick={() => tab === 'maintenance' && fKon === 'segera' ? setFKon('semua') : gantiTab('maintenance', 'segera')}><b style={{ color: '#a15c07' }}>{cnt.segera}</b><span>jatuh tempo ≤ 2 hari</span></button>
         <button type="button" aria-pressed={tab === 'laporan' && fKon === 'aktif'} onClick={() => tab === 'laporan' && fKon === 'aktif' ? setFKon('semua') : gantiTab('laporan', 'aktif')}><b style={{ color: '#6d28d9' }}>{cnt.rusak}</b><span>kerusakan aktif</span></button>
+        {cnt.baru > 0 && <button type="button" aria-pressed={tab === 'inventaris' && fKon === 'baru_operator'} onClick={() => tab === 'inventaris' && fKon === 'baru_operator' ? setFKon('semua') : gantiTab('inventaris', 'baru_operator')}><b style={{ color: '#1d4ed8' }}>{cnt.baru}</b><span>barang baru dari operator</span></button>}
       </div>
       <div className="iv-tabs" role="tablist">{TABS.map(([t, l]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}>{l}<i>{tampil(t).length}</i></button>)}</div>
       <div className="iv-bar">
@@ -266,7 +270,7 @@ export function InventarisMaintenanceTab({ user }: any) {
               const aktifLap = (idx.laporanPerBarang.get(x.id) || []).filter(laporanAktif)
               return <Fragment key={r.id}>
                 <tr className="klik" onClick={e => { if (!(e.target as HTMLElement).closest('select,button,a,input')) setBuka(buka === r.id ? null : r.id) }} style={x.aktif ? undefined : { opacity: .55 }}>
-                  <td>{x.nama}{!x.aktif && <span className="iv-mute"> (nonaktif)</span>}</td>
+                  <td>{x.nama}{!x.aktif && <span className="iv-mute"> (nonaktif)</span>}{baruOperator(x) && <> {badge('#1d4ed8', '#dbeafe', 'Baru dari operator')}</>}</td>
                   <td>{kodeSel(x.id)}</td><td>{fmtTanggal(x.diperbarui_pada)}</td><td>{x.pelapor || ''}</td>
                   <td><select className="iv-cs" style={{ background: 'var(--iv-head)', color: 'var(--iv-fg)' }} value={x.lokasi_kode} disabled={!!sibuk} aria-label="Lokasi"
                     onChange={e => gantiLokasi(x, e.target.value)}>{opsiLokasi(x).map(l => <option key={l.kode} value={l.kode}>{l.nama}</option>)}</select></td>
@@ -336,7 +340,7 @@ type Ctx = { idx: any; user: any; sibuk: string | null; jalankan: (label: string
   setModal: (m: any) => void; setBuka: (b: string | null) => void }
 
 function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
-  const jd = c.idx.jadwalPerBarang.get(x.id) || [], lp = c.idx.laporanPerBarang.get(x.id) || [], ds = c.mediaDari('barang', x.id, 'datasheet')
+  const jd = c.idx.jadwalPerBarang.get(x.id) || [], lp = c.idx.laporanPerBarang.get(x.id) || [], ds = c.mediaDari('barang', x.id, 'datasheet'), foto = c.mediaDari('barang', x.id, 'foto')
   const fileRef = useRef<HTMLInputElement>(null)
   const unggahDatasheet = async (f: File | undefined) => {
     if (!f) return
@@ -351,10 +355,14 @@ function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
       <div><dt>Jadwal rutin</dt><dd>{jd.filter(j => j.aktif).length} tugas aktif</dd></div>
       <div><dt>Laporan kerusakan</dt><dd>{lp.length} laporan ({lp.filter(laporanAktif).length} aktif)</dd></div>
       <div><dt>Kode lama</dt><dd>{x.kode_lama || '—'}</dd></div>
-      <div><dt>Dibuat</dt><dd>{x.dibuat_oleh || '—'} · {fmtTanggal(x.dibuat_pada)}</dd></div>
+      <div><dt>Dibuat</dt><dd>{x.dibuat_oleh || '—'} · {fmtTanggal(x.dibuat_pada)}{x.ditambah_operator && ' · dari HP operator'}</dd></div>
+      {x.ditambah_operator && <div><dt>Diperiksa admin</dt><dd>{x.sudah_diperiksa ? `${x.diperiksa_oleh || '—'} · ${fmtTanggal(x.diperiksa_pada)}` : 'belum'}</dd></div>}
     </dl>
+    {foto.length > 0 && <><div className="iv-sec">Foto barang</div><Thumbs media={foto} /></>}
     <div className="iv-acts">
       <input ref={fileRef} type="file" accept="application/pdf" hidden onChange={e => { unggahDatasheet(e.target.files?.[0]); e.target.value = '' }} />
+      {baruOperator(x) && <button className="iv-btn pri" type="button" disabled={!!c.sibuk} title="Data sudah dicek (nama, merk, nomor seri, lokasi) - label Baru dari operator hilang"
+        onClick={() => c.jalankan('dp' + x.id, () => tandaiDiperiksa(db, c.user, x))}>{c.sibuk === 'dp' + x.id ? 'Menyimpan…' : 'Tandai sudah diperiksa'}</button>}
       <button className="iv-btn pri" type="button" disabled={!!c.sibuk} onClick={() => fileRef.current?.click()}>{c.sibuk === 'ds' + x.id ? 'Mengunggah…' : 'Unggah datasheet PDF'}</button>
       <button className="iv-btn" type="button" onClick={() => c.gantiTab('maintenance', 'semua', x.nomor_inventaris || x.nama)}>Lihat jadwal</button>
       <button className="iv-btn" type="button" onClick={() => c.gantiTab('laporan', 'semua', x.nomor_inventaris || x.nama)}>Lihat laporan</button>
