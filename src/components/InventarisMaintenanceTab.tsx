@@ -17,6 +17,8 @@ import {
 import { bacaBarisInventaris, ringkasImpor, barisUntukRpc, rapikanTeks, type BarisImpor } from '../lib/inventarisImpor'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
+import { FotoZoomViewer, type FotoViewer } from './FotoZoomViewer'
+import { createPortal } from 'react-dom'
 import { Modal, Inp, Sel, Lbl, Btn } from './ui/Primitives'
 
 const db: any = supabase
@@ -86,8 +88,9 @@ const CSS = `
 .invm .iv-g dd{margin:2px 0 0;font-size:12.5px;overflow-wrap:anywhere}
 .invm .iv-acts{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-top:8px}
 .invm .iv-thumbs{display:flex;gap:6px;flex-wrap:wrap;margin-top:4px}
-.invm .iv-thumbs a{display:block;width:56px;height:56px;border-radius:8px;overflow:hidden;border:1px solid var(--iv-line);position:relative}
-.invm .iv-thumbs a span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
+.invm .iv-thumbs button{padding:0;background:none;cursor:pointer;display:block;width:56px;height:56px;border-radius:8px;overflow:hidden;border:1px solid var(--iv-line);position:relative}
+.invm .iv-thumbs .n{align-self:center;font-size:11.5px;color:var(--iv-mute)}
+.invm .iv-thumbs button span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
 .invm .iv-exp textarea,.invm .iv-exp input[type=text],.invm .iv-exp select{font:inherit;color:var(--iv-fg);background:var(--iv-card);border:1px solid var(--iv-line);border-radius:8px;padding:7px 9px}
 .invm .iv-exp textarea{width:100%}
 .invm .iv-hint{color:#b91c1c;font-size:12.5px;margin-top:4px}
@@ -104,12 +107,19 @@ const badgeJadwal = (j: Jadwal) => !j.aktif ? badge('#64748b', '#eef1f5', 'Nonak
 const badgeLaporan = (s: Laporan['status']) => badge(STATUS_LAPORAN[s].warna, STATUS_LAPORAN[s].latar, STATUS_LAPORAN[s].label)
 const pesanGalat = (e: any) => e?.message || String(e)
 
-function Thumbs({ media }: { media: Media[] }) {
+// Media dibuka DI DALAM aplikasi (FotoZoomViewer, sama dgn Proyek Luar/QC/Kerusakan lama: geser antar berkas, zoom, putar,
+// download, video diputar di tempat; PDF = kartu berkas + "Buka File"), bukan tab browser. Judul viewer = label (name hanya utk PDF). Portal ke body: viewer fixed
+// tidak terpengaruh sel tabel / kartu induk (klik di viewer dihentikan: event portal tetap merambat ke baris induk React). label = judul viewer & keterangan jumlah berkas.
+const keViewer = (m: Media): FotoViewer => ({ url: m.url, mime: m.mime || undefined, uploaded_at: m.dibuat_pada, uploaded_by: m.oleh || undefined, name: isPdf(m) ? m.url.split('/').pop() : undefined })
+function Thumbs({ media, label }: { media: Media[]; label?: string }) {
+  const [buka, setBuka] = useState<number | null>(null)
   if (!media.length) return <span className="iv-mute">—</span>
-  return <div className="iv-thumbs">{media.map(m => (
-    <a key={m.id} href={m.url} target="_blank" rel="noreferrer" title={m.peran + ' · ' + (m.oleh || '') + ' · ' + fmtWaktu(m.dibuat_pada)}>
+  return <div className="iv-thumbs">{media.map((m, i) => (
+    <button key={m.id} type="button" onClick={e => { e.stopPropagation(); setBuka(i) }} title={m.peran + ' · ' + (m.oleh || '') + ' · ' + fmtWaktu(m.dibuat_pada)}>
       {isPdf(m) ? <span>PDF</span> : <ThumbMedia url={m.url} thumb={m.thumb} video={isVideo(m)} />}
-    </a>))}</div>
+    </button>))}<span className="n">{media.length} berkas</span>
+    {buka != null && createPortal(<div onClick={e => e.stopPropagation()}><FotoZoomViewer fotos={media.map(keViewer)} startIndex={buka} label={`${label || 'Dokumentasi'} · ${media.length} berkas`} onClose={() => setBuka(null)} /></div>, document.body)}
+  </div>
 }
 
 function FilePilihan({ files, setFiles }: { files: File[]; setFiles: (f: File[]) => void }) {
@@ -315,7 +325,7 @@ export function InventarisMaintenanceTab({ user }: any) {
                 return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(s.tanggal)}</td><td>{badge('#64748b', '#eef1f5', 'Rutin')}</td><td>{kodeSel(s.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
                   <td>{d.jadwal.find(j => j.id === s.jadwal_id)?.jenis}{s.catatan && <span className="iv-mute"> · {s.catatan}</span>}</td>
                   <td>{s.oleh}{s.sumber === 'qr_lama' && <span className="iv-mute"> (QR)</span>}</td>
-                  <td>{m.length ? <Thumbs media={m} /> : <span className="iv-mute">{s.tanpa_dokumentasi ? 'tanpa dokumentasi' : '—'}</span>}</td></tr> }
+                  <td>{m.length ? <Thumbs media={m} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} /> : <span className="iv-mute">{s.tanpa_dokumentasi ? 'tanpa dokumentasi' : '—'}</span>}</td></tr> }
               const l: Laporan = r.x; const seb = mediaDari('laporan', l.id, 'sebelum').length + mediaDari('laporan', l.id, 'lama').length, ses = mediaDari('laporan', l.id, 'sesudah').length
               return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(l.dibuat_pada)}</td><td>{badge('#6d28d9', '#ece3ff', 'Kerusakan')}</td><td>{kodeSel(l.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
                 <td>{l.judul} <span className="iv-mute">{STATUS_LAPORAN[l.status].label}</span></td><td>{l.pelapor}</td>
@@ -350,15 +360,15 @@ function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
   }
   return <div className="iv-exp">
     <dl className="iv-g">
-      <div><dt>Datasheet PDF</dt><dd>{ds.length ? ds.map(m => <div key={m.id}><a href={m.url} target="_blank" rel="noreferrer">PDF · {fmtTanggal(m.dibuat_pada)}</a>{' '}
-        <button className="iv-btn" style={{ padding: '0 6px' }} type="button" title="Hapus datasheet" onClick={() => confirm('Hapus datasheet ini?') && c.jalankan('hd', () => hapusMedia(db, c.user, m.id))}>✕</button></div>) : 'belum ada'}</dd></div>
+      <div><dt>Datasheet PDF</dt><dd>{ds.length ? <><Thumbs media={ds} label="Datasheet" />{ds.map(m => <div key={m.id} className="iv-mute">PDF · {fmtTanggal(m.dibuat_pada)}{' '}
+        <button className="iv-btn" style={{ padding: '0 6px' }} type="button" title="Hapus datasheet" onClick={() => confirm('Hapus datasheet ini?') && c.jalankan('hd', () => hapusMedia(db, c.user, m.id))}>✕</button></div>)}</> : 'belum ada'}</dd></div>
       <div><dt>Jadwal rutin</dt><dd>{jd.filter(j => j.aktif).length} tugas aktif</dd></div>
       <div><dt>Laporan kerusakan</dt><dd>{lp.length} laporan ({lp.filter(laporanAktif).length} aktif)</dd></div>
       <div><dt>Kode lama</dt><dd>{x.kode_lama || '—'}</dd></div>
       <div><dt>Dibuat</dt><dd>{x.dibuat_oleh || '—'} · {fmtTanggal(x.dibuat_pada)}{x.ditambah_operator && ' · dari HP operator'}</dd></div>
       {x.ditambah_operator && <div><dt>Diperiksa admin</dt><dd>{x.sudah_diperiksa ? `${x.diperiksa_oleh || '—'} · ${fmtTanggal(x.diperiksa_pada)}` : 'belum'}</dd></div>}
     </dl>
-    {foto.length > 0 && <><div className="iv-sec">Foto barang</div><Thumbs media={foto} /></>}
+    {foto.length > 0 && <><div className="iv-sec">Foto barang</div><Thumbs media={foto} label={`Foto ${x.nama}`} /></>}
     <div className="iv-acts">
       <input ref={fileRef} type="file" accept="application/pdf" hidden onChange={e => { unggahDatasheet(e.target.files?.[0]); e.target.value = '' }} />
       {baruOperator(x) && <button className="iv-btn pri" type="button" disabled={!!c.sibuk} title="Data sudah dicek (nama, merk, nomor seri, lokasi) - label Baru dari operator hilang"
@@ -398,11 +408,11 @@ function DetailLaporan({ l, c }: { l: Laporan; c: Ctx }) {
       {l.catatan_lama && <div><dt>Catatan lama</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{l.catatan_lama}</dd></div>}
       {l.ditutup_pada && <div><dt>Ditutup</dt><dd>{l.ditutup_oleh} · {fmtWaktu(l.ditutup_pada)}</dd></div>}
     </dl>
-    <div className="iv-sec">Dokumentasi sebelum</div><Thumbs media={[...c.mediaDari('laporan', l.id, 'sebelum'), ...c.mediaDari('laporan', l.id, 'lama')]} />
-    <div className="iv-sec">Dokumentasi sesudah perbaikan</div><Thumbs media={sesudah} />
+    <div className="iv-sec">Dokumentasi sebelum</div><Thumbs media={[...c.mediaDari('laporan', l.id, 'sebelum'), ...c.mediaDari('laporan', l.id, 'lama')]} label="Sebelum" />
+    <div className="iv-sec">Dokumentasi sesudah perbaikan</div><Thumbs media={sesudah} label="Sesudah" />
     {upd.length > 0 && <><div className="iv-sec">Update</div>{upd.map(u => <div key={u.id} className="iv-upd">
       <b>{u.oleh}</b> <span className="iv-mute">{fmtWaktu(u.waktu)}</span>{u.status_ke && <span className="iv-mute"> · {STATUS_LAPORAN[u.status_dari as Laporan['status']]?.label || u.status_dari} → {STATUS_LAPORAN[u.status_ke as Laporan['status']]?.label || u.status_ke}</span>}
-      {u.catatan && <div style={{ whiteSpace: 'pre-wrap' }}>{u.catatan}</div>}{c.mediaDari('laporan_update', u.id).length > 0 && <Thumbs media={c.mediaDari('laporan_update', u.id)} />}</div>)}</>}
+      {u.catatan && <div style={{ whiteSpace: 'pre-wrap' }}>{u.catatan}</div>}{c.mediaDari('laporan_update', u.id).length > 0 && <Thumbs media={c.mediaDari('laporan_update', u.id)} label={`Update ${u.oleh}`} />}</div>)}</>}
     <div className="iv-sec">Ubah status laporan</div>
     <div className="iv-acts" style={{ marginTop: 0 }}>
       <select value={status} onChange={e => { setStatus(e.target.value as Laporan['status']); setHint('') }} aria-label="Status laporan">
@@ -443,7 +453,7 @@ function DetailJadwal({ j, c }: { j: Jadwal; c: Ctx }) {
     </div>
     {riw.length > 0 && <><div className="iv-sec">Riwayat selesai</div>{riw.map(s => <div key={s.id} className="iv-upd">
       <b>{fmtTanggal(s.tanggal)}</b> · {s.oleh}{s.sumber === 'qr_lama' ? ' (QR)' : ''}{s.tanpa_dokumentasi ? <span className="iv-mute"> · tanpa dokumentasi</span> : ''}{s.catatan ? ' · ' + s.catatan : ''}
-      {c.mediaDari('jadwal_selesai', s.id).length > 0 && <Thumbs media={c.mediaDari('jadwal_selesai', s.id)} />}</div>)}</>}
+      {c.mediaDari('jadwal_selesai', s.id).length > 0 && <Thumbs media={c.mediaDari('jadwal_selesai', s.id)} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} />}</div>)}</>}
   </div>
 }
 
