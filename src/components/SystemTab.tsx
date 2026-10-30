@@ -5,7 +5,6 @@ import { woOverall, panelOverall, calcPanelProgress } from '../lib/panelHelpers'
 import { isDelayed, isUrgent } from '../lib/dateHelpers'
 import { ALL_PROSES, DIVISI_CONFIG } from '../constants/panelTypes'
 import { MasterUserTab } from './MasterUserTab'
-import { MasterMesinTab } from './MasterMesinTab'
 import { MasterPekerja } from './MasterPekerja'
 import { InventarisWrapper } from './InventarisWrapper'
 import { EVENT_BUKA_SESI_PRODUKSI_STOK, adaPermintaanBukaSesi } from '../lib/navProduksiStok'
@@ -24,57 +23,33 @@ export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,peke
     return()=>window.removeEventListener(EVENT_BUKA_SESI_PRODUKSI_STOK,buka);
   },[]);
   const [admins,setAdmins]=useState([]);
-  const [mesinList,setMesinList]=useState([]);
-  const [maintenanceList,setMaintenanceList]=useState([]);
   const [loading,setLoading]=useState(true);
 
   useEffect(()=>{
     const fetchAll=async()=>{
       setLoading(true);
-      const [{data:ad},{data:ms},{data:ml}]=await Promise.all([
-        supabase.from("admins").select("*").order("created_at",{ascending:true}),
-        supabase.from("mesin").select("*").is("deleted_at",null).order("kode",{ascending:true}),
-        supabase.from("maintenance_log").select("*,mesin(nama,kode)").order("created_at",{ascending:false}),
-      ]);
-      setAdmins(ad??[]);setMesinList(ms??[]);setMaintenanceList(ml??[]);
+      // (T4 Inventaris 30 Okt 2026) Master Mesin & data mesin/maintenance_log lama tidak dimuat lagi - pengganti: menu Inventaris & Maintenance
+      const{data:ad,error}=await supabase.from("admins").select("*").order("created_at",{ascending:true});
+      if(error)console.error("[SystemTab] gagal memuat admins:",error);
+      setAdmins(ad??[]);
       setLoading(false);
     };
     fetchAll();
     // mesin diedit lewat MasterMesinTab (subtab lain di SystemTab ini, atau bahkan dari
     // MaintenancePageTab) - refetch silent (gak toggle `loading` full-tab) biar admin yang lagi
     // buka subtab LAIN (mis. Kapasitas) gak kesenggol spinner cuma gara-gara mesin diedit.
-    const fetchMesin=async()=>{
-      const{data}=await supabase.from("mesin").select("*").is("deleted_at",null).order("kode",{ascending:true});
-      setMesinList(data??[]);
-    };
-    // Sama alasannya kayak mesin di atas - akun admin (Master User) diedit dari sini juga, tab
-    // lain yang kebetulan kebuka bareng gak pernah tau ada perubahan tanpa ini.
     const fetchAdmins=async()=>{
       const{data}=await supabase.from("admins").select("*").order("created_at",{ascending:true});
       setAdmins(data??[]);
     };
     const ch=supabase.channel("realtime-maintenance-log")
-      .on("postgres_changes",{event:"*",schema:"public",table:"mesin"},fetchMesin)
       .on("postgres_changes",{event:"*",schema:"public",table:"admins"},fetchAdmins)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"maintenance_log"},
-        async(payload)=>{
-          const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
-          if(data) setMaintenanceList(prev=>prev.some(m=>m.id===data.id)?prev:[data,...prev]);
-        })
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"maintenance_log"},
-        async(payload)=>{
-          const{data}=await supabase.from("maintenance_log").select("*,mesin(nama,kode)").eq("id",payload.new.id).single();
-          if(data) setMaintenanceList(prev=>prev.map(m=>m.id===data.id?data:m));
-        })
-      .on("postgres_changes",{event:"DELETE",schema:"public",table:"maintenance_log"},
-        (payload)=>{setMaintenanceList(prev=>prev.filter(m=>m.id!==payload.old.id));})
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
   const subTabs=[
     {id:"masteruser",label:"👤 Master User"},
-    {id:"mesin",label:"⚙️ Master Mesin"},
     {id:"pekerja",label:"👥 Master Pekerja"},
     {id:"stok",label:"📦 Stok"},
     {id:"kapasitas",label:"🗄 Database"},
@@ -182,7 +157,6 @@ export function SystemTab({user,activityLog,activityLogSiap,muatActivityLog,peke
       ):(
         <>
           {subTab==="masteruser"&&<MasterUserTab admins={admins} setAdmins={setAdmins} user={user} pekerja={pekerja}/>}
-          {subTab==="mesin"&&<MasterMesinTab mesinList={mesinList} setMesinList={setMesinList} user={user}/>}
 
           {subTab==="pekerja"&&<MasterPekerja pekerja={pekerja} setPekerja={setPekerja} createPekerja={createPekerja} updatePekerja={updatePekerja} removePekerja={removePekerja} logActivity={logActivity} log={null} user={user}/>}
           {subTab==="stok"&&<InventarisWrapper user={user} activityLog={activityLog}/>}

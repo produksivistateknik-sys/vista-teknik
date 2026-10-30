@@ -70,7 +70,6 @@ const RawScheduleAccordion = lazyP(() => import('./components/RawScheduleAccordi
 const OutstandingView = lazyP(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
 const ManajemenWO = lazyP(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
 const InventarisMaintenanceTab = lazyP(() => import('./components/InventarisMaintenanceTab').then(m => ({ default: m.InventarisMaintenanceTab })))
-const MaintenancePageTab = lazyP(() => import('./components/MaintenancePageTab').then(m => ({ default: m.MaintenancePageTab })))
 const StokMonitoringTab = lazyP(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const PermintaanAdminTab = lazyP(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
 const ArsipTab = lazyP(() => import('./components/ArsipTab').then(m => ({ default: m.ArsipTab })))
@@ -118,7 +117,9 @@ export default function App(){
   // FIX KEAMANAN (7 Sep 2026) - lihat komentar di effect "Restore admin session" di bawah.
   const [sessionMismatch,setSessionMismatch]=useState(false);
   // tab "raw_sandbox" (menu PERCOBAAN Raw per WP) dihapus 28 Okt 2026 saat penukaran -> tersimpan lama diarahkan ke "raw"
-  const tabAwal=()=>{const t=localStorage.getItem("vista_teknik_active_tab")||"dashboard";return t==="raw_sandbox"?"raw":t;};
+  // T4 Inventaris (30 Okt 2026): menu "Maintenance (lama)" dihapus -> tab tersimpan / tautan notifikasi lama (?tab=maintenance) ke "inventaris"
+  const tabLama=(t:string)=>t==="raw_sandbox"?"raw":t==="maintenance"?"inventaris":t;
+  const tabAwal=()=>tabLama(localStorage.getItem("vista_teknik_active_tab")||"dashboard");
   const [tab,setTab]=useState(tabAwal);
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[tabAwal()]);
@@ -176,7 +177,7 @@ export default function App(){
     const params=new URLSearchParams(window.location.search);
     const tabParam=params.get("tab");
     const woIdParam=params.get("wo_id");
-    if(tabParam)setTab(tabParam==="raw_sandbox"?"raw":tabParam);
+    if(tabParam)setTab(tabLama(tabParam));
     if(woIdParam)setHighlightWoId(Number(woIdParam));
     if(tabParam||woIdParam)window.history.replaceState(null,"",window.location.pathname);
   },[]);
@@ -766,8 +767,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         {id:"tracking",label:"Tracking Pekerja",icon:"ti ti-chart-line"},
         {id:"activity",label:"Activity Log",icon:"ti ti-list-details"},
         {id:"inventaris",label:"Inventaris & Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
-        // Tampilan lama (29 Okt 2026) - cadangan sampai T4 (QR diganti pesan, menu ini dihapus). Datanya tabel lama.
-        {id:"maintenance",label:"Maintenance (lama)",icon:"ti ti-history"},
         {id:"masteruser",label:"Database",icon:"ti ti-settings"},
       ]:[]),
     ]},
@@ -1184,7 +1183,6 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("inventaris")&&<div style={{display:tab==="inventaris"?"block":"none"}}><Suspense fallback={TabFallback}><InventarisMaintenanceTab user={user}/></Suspense></div>}
-              {visitedTabs.includes("maintenance")&&<div style={{display:tab==="maintenance"?"block":"none"}}><Suspense fallback={TabFallback}><MaintenancePageTab user={user}/></Suspense></div>}
               {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("laporan_outstanding")&&<div style={{display:tab==="laporan_outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanOutstanding db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}

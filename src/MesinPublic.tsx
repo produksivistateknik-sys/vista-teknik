@@ -1,520 +1,60 @@
-import { useState, useEffect } from 'react'
+// HALAMAN QR /mesin?id= (T4 Inventaris & Maintenance, 30 Okt 2026, keputusan user). Maintenance kini lewat aplikasi Vista
+// Pekerja (menu Inventaris & Maintenance) - halaman ini TIDAK lagi menulis apa pun (dulu "Tandai Selesai" ke maintenance_rutin/
+// maintenance_rutin_log; data lama tetap utuh di tabel lama + sudah dimigrasi ke inv_*). QR fisik yang tertempel tetap berguna:
+// menampilkan barang padanannya (inv_barang.mesin_id_lama = id mesin lama) + arahan ke aplikasi. Versi lengkap lama ada di git
+// (sebelum commit T4). useVersionCheck tetap dipasang: tablet/HP yang tab-nya lama terbuka diminta muat ulang.
+import { useEffect, useState } from 'react'
 import { supabase } from './lib/supabase'
-import { getLocalDateStr } from './lib/dateHelpers'
-import { ThumbMedia } from './components/ui/ThumbMedia'
-import { MediaPickerSheet } from './components/ui/MediaPickerSheet'
-import { BATAS_VIDEO_MENTAH_MB } from './lib/siapkanMedia'
-import { simpanSelesaiMaintenanceRutin, unggahFotoKeLogMaintenance, type FotoGagal } from './lib/maintenanceRutinSelesai'
-import { fetchRotasiBatch } from './lib/mediaRotasi'
 import { useVersionCheck } from './lib/versionCheck'
 
-// Sama persis calcNext di MaintenanceRutinTab.tsx (Vista Teknik) - sengaja diduplikasi kecil,
-// bukan di-share, karena halaman ini PUBLIC/tanpa login sementara MaintenanceRutinTab bagian
-// admin - biar dua konteks itu tetap independen satu sama lain.
-function calcNext(d:string,f:string){
-  if(!d)return""
-  const dt=new Date(d)
-  if(f==="harian")dt.setDate(dt.getDate()+1)
-  else if(f==="mingguan")dt.setDate(dt.getDate()+7)
-  else if(f==="bulanan")dt.setMonth(dt.getMonth()+1)
-  else if(f==="3bulan")dt.setMonth(dt.getMonth()+3)
-  else if(f==="tahunan")dt.setFullYear(dt.getFullYear()+1)
-  return dt.toISOString().slice(0,10)
-}
+type Padanan = { nama: string; nomor_inventaris: string | null; lokasi: string; kondisi: string } | null
 
-// Dokumentasi foto/video "Tandai Selesai" (16 Sep 2026, fitur baru) - OPSIONAL, gak boleh
-// jadi syarat submit (pekerja yang gak sempat foto tetap harus bisa tandai selesai). Cermin
-// dari pola upload di KerusakanTab.tsx (Vista Teknik, uploadToR2 ke Cloudflare R2) - TAPI
-// diduplikasi kecil di sini (bukan di-share), alasan sama kayak calcNext di atas: halaman
-// public/tanpa-login ini sengaja independen dari bundle admin. Beda dari KerusakanTab: di sini
-// dukung video juga (bukan cuma foto), jadi ekstensi file R2 key diambil dari nama file asli
-// (bukan di-hardcode .jpg kayak KerusakanTab - biar video gak kesimpen dengan ekstensi salah).
-const MAX_FOTO_MB=100
-// Upload & urutan simpan sekarang di lib/maintenanceRutinSelesai.ts (5 Okt 2026, dipakai bareng admin).
+export default function MesinPublic() {
+  const hasNewVersion = useVersionCheck()
+  const mesinId = Number(new URLSearchParams(window.location.search).get('id'))
+  const [barang, setBarang] = useState<Padanan | undefined>(mesinId ? undefined : null)
 
-export default function MesinPublic(){
-  // Deteksi tab basi (17 Sep 2026, BUG FIX - dilaporkan user: sesi upload dokumentasi
-  // "Tandai Selesai" gak muncul, khusus dialami Tim Painting) - root cause BUKAN kode/data
-  // yang exclude jenis maintenance tertentu (dicek live: upload muncul identik di semua
-  // divisi mesin), tapi halaman PUBLIK/kiosk ini gak pernah pasang useVersionCheck() sama
-  // sekali (sudah ada & dipakai di App.tsx, TAPI gak ikut ditambahkan ke sini pas dibikin) -
-  // device scan QR di lantai produksi wajar dibiarkan terbuka lama tanpa pernah di-refresh
-  // (beda dari app admin yang login ulang tiap sesi), jadi kalau fitur baru di-deploy
-  // (mis. upload dokumentasi ini, 16 Sep 2026), device yang tab-nya udah lama kebuka SAMA
-  // SEKALI gak punya kode fitur itu di memori - insiden KELAS SAMA yang sudah pernah kejadian
-  // di App.tsx (14 Agu 2026, lihat komentar di lib/versionCheck.ts), sekarang kejadian lagi
-  // di halaman ini karena belum ikut dipasangi.
-  const hasNewVersion=useVersionCheck()
-  const [mesin,setMesin]=useState<any>(null)
-  const [rutinList,setRutinList]=useState<any[]>([])
-  // Log Maintenance Rutin (18 Sep 2026, FITUR BARU + BUG FIX "hilang setelah Selesai") - dulu
-  // gak ada tempat nampilin histori "baru aja diselesaikan" sama sekali di halaman ini, beda
-  // dari Log Kerusakan yang barisnya permanen tampil apa pun statusnya - begitu jadwal rutin
-  // ditandai selesai, jatuh_tempo-nya mundur (calcNext) jadi lolos filter rutinDue, KESANNYA
-  // hilang total padahal sebenarnya cuma gak actionable lagi hari ini. Section terpisah ini
-  // baca dari maintenance_rutin_log (SUDAH otomatis keisi tiap "Tandai Selesai" sejak fitur
-  // dokumentasi foto 16 Sep 2026) - independen dari status due/tidaknya jadwal, jadi entri
-  // "baru diselesaikan" tetap kelihatan di sini dengan badge Selesai, PERSIS pola Log Kerusakan.
-  // ROLLING 30 HARI (query di-scope .gte dilakukan_pada) - selaras sama pg_cron harian
-  // (maintenance-rutin-log-cleanup) yang hapus fisik baris >30 hari, lihat migration
-  // 20260918010000. Dicek dulu (18 Sep 2026): jatuh_tempo/terakhir_dilakukan/kepatuhan% semua
-  // baca dari kolom maintenance_rutin sendiri, BUKAN dari tabel log ini - jadi rolling-delete di
-  // sini TIDAK merusak kalkulasi jadwal apa pun, murni histori/dokumentasi.
-  const [rutinLogList,setRutinLogList]=useState<any[]>([])
-  const [logList,setLogList]=useState<any[]>([])
-  const [pekerjaList,setPekerjaList]=useState<any[]>([])
-  const [loading,setLoading]=useState(true)
-  const [notFound,setNotFound]=useState(false)
-  // Rotate PERMANEN (17 Sep 2026) - baca-saja di halaman publik ini (rotasi cuma bisa DIUBAH
-  // dari sisi admin, KerusakanTab.tsx - lihat komentar lengkap di lib/mediaRotasi.ts &
-  // migration 20260917030000_media_rotasi.sql). Sengaja gak dikasih tombol putar di sini -
-  // halaman QR ini diakses publik tanpa login, jangan buka jalur ubah data ke pengunjung
-  // anonim - tapi hasil rotate dari admin tetap kelihatan benar di sini juga (fetch+terapkan
-  // transform, gak nulis apa pun).
-  const [rotasiMap,setRotasiMap]=useState<Record<string,number>>({})
-  useEffect(()=>{
-    const urls=[...logList,...rutinLogList].flatMap((l:any)=>(l.foto||[]).map((f:any)=>f.url))
-    fetchRotasiBatch(urls).then(setRotasiMap)
-  },[logList,rutinLogList])
-  // Rutin mana yang lagi buka form "pilih pekerja", nama yang dipilih, dan status simpan.
-  const [selesaiFormId,setSelesaiFormId]=useState<any>(null)
-  const [pekerjaPilih,setPekerjaPilih]=useState("")
-  const [menyimpan,setMenyimpan]=useState(false)
-  // File dokumentasi (foto/video) yang lagi distaged buat "Tandai Selesai" yang formnya lagi
-  // terbuka (selesaiFormId) - direset tiap form dibuka/ditutup/berhasil submit, sama pola siklus
-  // hidupnya kayak pekerjaPilih di atas.
-  const [stagedFoto,setStagedFoto]=useState<{file:File,previewUrl:string}[]>([])
-  const pilihFoto=(fileList:FileList|null)=>{
-    if(!fileList||fileList.length===0)return
-    const tolak:string[]=[]
-    const dipilih=Array.from(fileList).filter(f=>{
-      const batas=f.type.startsWith("video/")?BATAS_VIDEO_MENTAH_MB:MAX_FOTO_MB
-      if(f.size>batas*1024*1024){tolak.push(f.name+" ("+(f.size/1024/1024).toFixed(0)+" MB, maks "+batas+" MB)");return false}
-      return true
-    }).map(file=>({file,previewUrl:URL.createObjectURL(file)}))
-    if(tolak.length>0)alert(`File berikut dilewati karena terlalu besar:\n${tolak.join("\n")}`)
-    setStagedFoto(prev=>[...prev,...dipilih])
-  }
-  const batalkanFotoStaged=(idx:number)=>{
-    setStagedFoto(prev=>{const arr=[...prev];URL.revokeObjectURL(arr[idx]?.previewUrl);arr.splice(idx,1);return arr})
-  }
-  const resetStagedFoto=()=>{
-    stagedFoto.forEach(s=>URL.revokeObjectURL(s.previewUrl))
-    setStagedFoto([])
-  }
-  // Rutin id yang BARU AJA ditandai selesai di sesi halaman ini - dikecualikan dari daftar
-  // seketika (optimistic, sebelum round-trip server kelar) supaya item langsung hilang, bukan
-  // nongol jadi status "Selesai". Direset kalau item beneran jatuh tempo lagi (reload halaman).
-  const [selesaiHariIniIds,setSelesaiHariIniIds]=useState<Set<any>>(new Set())
-  // Status "Tandai Selesai" per jadwal (5 Okt 2026) - item TIDAK lagi langsung hilang: tetap tampil
-  // dgn status sampai foto selesai terkirim (insiden BAK DEGREASING: item hilang duluan, halaman
-  // ditinggal saat upload masih jalan, log & foto tidak pernah tersimpan). Catatan selesai sudah
-  // aman sejak fase "mengunggah" (log disimpan lebih dulu).
-  type ProsesSelesai={fase:"menyimpan"|"mengunggah"|"gagal_foto";logId?:number;terkirim:number;total:number;gagal:FotoGagal[];rutinBaru?:any}
-  const [prosesSelesai,setProsesSelesai]=useState<Record<string,ProsesSelesai>>({})
-  const adaYangBerjalan=Object.values(prosesSelesai).some(p=>p.fase==="menyimpan"||p.fase==="mengunggah")
-  useEffect(()=>{
-    if(!adaYangBerjalan)return
-    const cegah=(e:BeforeUnloadEvent)=>{e.preventDefault();e.returnValue="Foto masih diunggah - yakin tinggalkan halaman?";return e.returnValue}
-    window.addEventListener("beforeunload",cegah)
-    return()=>window.removeEventListener("beforeunload",cegah)
-  },[adaYangBerjalan])
-  // Log kerusakan mana yang lagi diperluas (detail lengkap) dan berapa banyak yang ditampilkan
-  // duluan (batasi awal, "Lihat lebih banyak" nambah - semua log tetap bisa diakses).
-  const [expandedLogId,setExpandedLogId]=useState<any>(null)
-  const [logShowCount,setLogShowCount]=useState(10)
+  useEffect(() => {
+    if (!mesinId) return
+    const db: any = supabase   // eslint-disable-line @typescript-eslint/no-explicit-any -- tabel inv_* belum ada di tipe hasil generate
+    ;(async () => {
+      const { data: b, error } = await db.from('inv_barang').select('nama,nomor_inventaris,lokasi_kode,kondisi').eq('mesin_id_lama', mesinId).maybeSingle()
+      if (error) console.error('[MesinPublic] gagal membaca padanan barang:', error)
+      if (!b) { setBarang(null); return }
+      const { data: l, error: eL } = await db.from('inv_lokasi').select('nama').eq('kode', b.lokasi_kode).maybeSingle()
+      if (eL) console.error('[MesinPublic] gagal membaca lokasi:', eL)
+      setBarang({ nama: b.nama, nomor_inventaris: b.nomor_inventaris, lokasi: l?.nama || b.lokasi_kode, kondisi: b.kondisi })
+    })()
+  }, [mesinId])
 
-  const mesinId=new URLSearchParams(window.location.search).get("id")
-
-  useEffect(()=>{
-    if(!mesinId){setNotFound(true);setLoading(false);return}
-    fetchData()
-  },[mesinId])
-
-  const RETENSI_LOG_RUTIN_HARI=30
-  // rutinIds dipisah dari r yang dipilih init (bukan cuma yang lagi due) - Riwayat tetap kebaca
-  // buat jadwal yang lagi gak due juga (mis. baru aja diselesaikan, jatuh_tempo udah maju).
-  const fetchRutinLog=async(rutinIds:number[])=>{
-    if(rutinIds.length===0){setRutinLogList([]);return}
-    const batas=new Date();batas.setDate(batas.getDate()-RETENSI_LOG_RUTIN_HARI)
-    const{data}=await supabase.from("maintenance_rutin_log").select("*")
-      .in("rutin_id",rutinIds).gte("dilakukan_pada",batas.toISOString().slice(0,10))
-      .order("dilakukan_pada",{ascending:false})
-    setRutinLogList(data??[])
-  }
-
-  const fetchData=async()=>{
-    const mesinIdNum=Number(mesinId)
-    const [{data:m},{data:r},{data:l},{data:p}]=await Promise.all([
-      supabase.from("mesin").select("*").eq("id",mesinIdNum).single(),
-      supabase.from("maintenance_rutin").select("*").eq("mesin_id",mesinIdNum).eq("is_active",true).order("jatuh_tempo",{ascending:true}),
-      supabase.from("maintenance_log").select("*").eq("mesin_id",mesinIdNum).order("created_at",{ascending:false}),
-      supabase.from("pekerja").select("id,nama").is("deleted_at",null).order("nama"),
-    ])
-    if(!m){setNotFound(true);setLoading(false);return}
-    setMesin(m)
-    setRutinList(r??[])
-    setLogList(l??[])
-    setPekerjaList(p??[])
-    setLoading(false)
-    await fetchRutinLog((r??[]).map((x:any)=>x.id))
-  }
-
-  // Selesai penuh: item hilang dari daftar jadwal (sama spt dulu), jadwal di state diganti versi baru.
-  const tuntaskan=(rutinId:any,rutinBaru:any)=>{
-    setSelesaiHariIniIds(prev=>new Set(prev).add(rutinId))
-    if(rutinBaru)setRutinList((prev:any[])=>prev.map((x:any)=>x.id===rutinId?rutinBaru:x))
-    setProsesSelesai(prev=>{const n={...prev};delete n[rutinId];return n})
-  }
-  const jalankanUnggah=async(rutinId:any,logId:number,files:File[],rutinBaru:any)=>{
-    setProsesSelesai(prev=>({...prev,[rutinId]:{fase:"mengunggah",logId,terkirim:0,total:files.length,gagal:[],rutinBaru}}))
-    const hasil=await unggahFotoKeLogMaintenance(logId,rutinId,files,(terkirim,total)=>
-      setProsesSelesai(prev=>prev[rutinId]?{...prev,[rutinId]:{...prev[rutinId],terkirim,total}}:prev))
-    await fetchRutinLog(rutinList.map((x:any)=>x.id))
-    if(hasil.gagal.length===0){tuntaskan(rutinId,rutinBaru);return}
-    setProsesSelesai(prev=>({...prev,[rutinId]:{fase:"gagal_foto",logId,terkirim:hasil.terkirim,total:files.length,gagal:hasil.gagal,rutinBaru}}))
-  }
-
-  const tandaiSelesai=async(rutin:any)=>{
-    if(!pekerjaPilih)return
-    setMenyimpan(true)
-    const pekerjaTerpilih=pekerjaPilih
-    const fileTerpilih=stagedFoto.map(s=>s.file)
-    setProsesSelesai(prev=>({...prev,[rutin.id]:{fase:"menyimpan",terkirim:0,total:fileTerpilih.length,gagal:[]}}))
-    const todayStr=getLocalDateStr()
-    const nextDate=calcNext(todayStr,rutin.frekuensi)
-    let hasil:{rutinBaru:any;logId:number}
-    try{
-      hasil=await simpanSelesaiMaintenanceRutin({rutin,teknisi:pekerjaTerpilih,via:"qr_worker",tanggal:todayStr,jatuhTempoBaru:nextDate})
-    }catch(err:any){
-      console.error("Tandai Selesai (QR) gagal disimpan:",err)
-      setProsesSelesai(prev=>{const n={...prev};delete n[rutin.id];return n})
-      alert("Gagal menyimpan - coba lagi.\n\n"+(err?.message||"koneksi bermasalah"))
-      setMenyimpan(false)
-      return // form & foto yang dipilih TETAP ada, tinggal tekan Konfirmasi lagi
-    }
-    // Catatan selesai SUDAH tersimpan - form boleh ditutup.
-    setSelesaiFormId(null);setPekerjaPilih("");resetStagedFoto();setMenyimpan(false)
-    const{error:eAkt}=await supabase.from("activity_log").insert({
-      user_name:pekerjaTerpilih,action:"MAINTENANCE RUTIN DONE (QR)",
-      description:"Selesai via QR: "+rutin.jenis_maintenance+" - "+mesin?.nama+" ("+todayStr+"). Jadwal berikutnya: "+nextDate+(fileTerpilih.length?" ("+fileTerpilih.length+" file dokumentasi)":""),
-      module:"maintenance",halaman:"Mesin Public (QR)",
-    })
-    if(eAkt)console.error("activity_log MAINTENANCE RUTIN DONE (QR) gagal:",eAkt)
-    if(fileTerpilih.length===0){await fetchRutinLog(rutinList.map((x:any)=>x.id));tuntaskan(rutin.id,hasil.rutinBaru);return}
-    await jalankanUnggah(rutin.id,hasil.logId,fileTerpilih,hasil.rutinBaru)
-  }
-
-  const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-"
-  const today=new Date().toISOString().slice(0,10)
-
-  const getDaysLeft=(target:string)=>{
-    if(!target)return null
-    const diff=Math.ceil((new Date(target).getTime()-new Date(today).getTime())/(1000*60*60*24))
-    return diff
-  }
-
-  // Label badge SEKARANG tanggal jatuh tempo aslinya (bukan hitungan mundur "Terlambat X hr"/
-  // "H-X") - warna tetap dipakai buat indikasi terlambat/mendesak/aman, cuma teksnya diganti.
-  const getDaysBadge=(d:number|null,tanggal?:string)=>{
-    if(d===null||!tanggal)return{label:"—",bg:"#f1f5f9",color:"#64748b"}
-    const label=fmtDate(tanggal)
-    if(d<0)return{label,bg:"#FCEBEB",color:"#A32D2D"}
-    if(d<=3)return{label,bg:"#FAEEDA",color:"#854F0B"}
-    if(d<=7)return{label,bg:"#FEF3C7",color:"#92400E"}
-    return{label,bg:"#EAF3DE",color:"#3B6D11"}
-  }
-
-  const STATUS_COLOR:any={aktif:"#16a34a",maintenance:"#f59e0b",nonaktif:"#94a3b8"}
-  const LOG_STATUS:any={
-    open:{bg:"#FCEBEB",color:"#A32D2D",label:"Open"},
-    in_progress:{bg:"#FAEEDA",color:"#854F0B",label:"In Progress"},
-    closed:{bg:"#EAF3DE",color:"#3B6D11",label:"Selesai"},
-  }
-
-  if(loading)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc",fontFamily:"Inter,sans-serif"}}>
-      <div style={{color:"#94a3b8",fontSize:14}}>Memuat data mesin...</div>
-    </div>
-  )
-
-  if(notFound)return(
-    <div style={{minHeight:"100vh",display:"flex",alignItems:"center",justifyContent:"center",background:"#f8fafc",fontFamily:"Inter,sans-serif"}}>
-      <div style={{textAlign:"center",color:"#94a3b8"}}>
-        <div style={{fontSize:40,marginBottom:12}}>⚙️</div>
-        <div style={{fontSize:16,fontWeight:600,color:"#1e293b",marginBottom:6}}>Mesin tidak ditemukan</div>
-        <div style={{fontSize:13}}>ID mesin tidak valid atau sudah dihapus</div>
-      </div>
-    </div>
-  )
-
-  const nearestRutin=rutinList[0]
-  const daysLeft=getDaysLeft(nearestRutin?.jatuh_tempo)
-  const daysBadge=getDaysBadge(daysLeft,nearestRutin?.jatuh_tempo)
-  const lastLog=logList[0]
-  // Yang ditampilkan di daftar "Jadwal Maintenance Rutin" cuma yang beneran jatuh tempo (hari ini
-  // atau sudah lewat) DAN belum ditandai selesai barusan di sesi ini - begitu ditandai selesai,
-  // hilang dari sini, baru muncul lagi kalau jadwal berikutnya (dari frekuensinya) jatuh tempo lagi.
-  const todayStr=getLocalDateStr()
-  const rutinDue=rutinList.filter((r:any)=>(r.jatuh_tempo&&r.jatuh_tempo<=todayStr&&!selesaiHariIniIds.has(r.id))||prosesSelesai[r.id])
-
-  return(
-    <div style={{minHeight:"100vh",background:"#f0f4f8",fontFamily:"Inter,sans-serif",paddingBottom:32}}>
-      {hasNewVersion&&(
-        <div style={{position:"sticky",top:0,zIndex:10000,background:"#1e293b",color:"#fff",
-          display:"flex",alignItems:"center",justifyContent:"center",gap:10,padding:"8px 14px",fontSize:11.5,flexWrap:"wrap" as const,textAlign:"center" as const}}>
-          <span>🔄 Ada versi baru halaman ini - muat ulang biar fitur terbaru (mis. upload dokumentasi) kepakai.</span>
-          <button onClick={()=>window.location.reload()}
-            style={{padding:"5px 12px",borderRadius:7,border:"none",background:"#fff",color:"#1e293b",fontWeight:700,fontSize:11,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
-            Muat Ulang
-          </button>
+  return (
+    <div style={{ minHeight: '100vh', background: '#f0f4f8', fontFamily: 'Inter,sans-serif', paddingBottom: 32 }}>
+      {hasNewVersion && (
+        <div style={{ background: '#1e293b', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10, padding: '8px 14px', fontSize: 11.5, flexWrap: 'wrap', textAlign: 'center' }}>
+          <span>🔄 Ada versi baru halaman ini - muat ulang.</span>
+          <button onClick={() => window.location.reload()} style={{ padding: '5px 12px', borderRadius: 7, border: 'none', background: '#fff', color: '#1e293b', fontWeight: 700, fontSize: 11, cursor: 'pointer' }}>Muat Ulang</button>
         </div>
       )}
-      {/* Header */}
-      <div style={{background:"#1e3a5f",padding:"14px 20px",display:"flex",alignItems:"center",gap:12}}>
-        <div style={{width:32,height:32,background:"#3b82f6",borderRadius:8,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700,color:"#fff",flexShrink:0}}>VT</div>
-        <div>
-          <div style={{fontSize:14,fontWeight:600,color:"#fff"}}>Vista Teknik</div>
-          <div style={{fontSize:11,color:"#93c5fd"}}>Info Mesin · Maintenance</div>
-        </div>
+      <div style={{ background: '#1e3a5f', padding: '14px 20px', display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ width: 32, height: 32, background: '#3b82f6', borderRadius: 8, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, fontWeight: 700, color: '#fff' }}>VT</div>
+        <div><div style={{ fontSize: 14, fontWeight: 600, color: '#fff' }}>Vista Teknik</div><div style={{ fontSize: 11, color: '#93c5fd' }}>Info Mesin · Maintenance</div></div>
       </div>
-
-      <div style={{maxWidth:480,margin:"0 auto",padding:"16px 16px 0"}}>
-
-        {/* Mesin Card */}
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",padding:"14px 16px",marginBottom:12,display:"flex",alignItems:"center",gap:12}}>
-          <div style={{width:44,height:44,background:"#EAF3DE",borderRadius:10,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>⚙️</div>
-          <div style={{flex:1}}>
-            <div style={{fontSize:16,fontWeight:700,color:"#1e293b"}}>{mesin.nama}</div>
-            <div style={{fontSize:12,color:"#64748b",marginTop:2,fontFamily:"monospace"}}>{mesin.kode}{mesin.lokasi?" · "+mesin.lokasi:""}</div>
-          </div>
-          <span style={{background:(STATUS_COLOR[mesin.status]||"#94a3b8")+"18",color:STATUS_COLOR[mesin.status]||"#94a3b8",border:`1px solid ${STATUS_COLOR[mesin.status]||"#94a3b8"}33`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>
-            {mesin.status||"—"}
-          </span>
+      <div style={{ maxWidth: 480, margin: '0 auto', padding: '16px 16px 0', display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #bfdbfe', padding: '18px 16px', textAlign: 'center' }}>
+          <div style={{ fontSize: 34, marginBottom: 6 }}>📱</div>
+          <div style={{ fontSize: 16, fontWeight: 800, color: '#1e293b', marginBottom: 6 }}>Maintenance kini lewat aplikasi Vista Pekerja</div>
+          <div style={{ fontSize: 13, color: '#475569', lineHeight: 1.5 }}>Buka aplikasi <b>Vista Pekerja</b> di HP, login divisi Anda, lalu pilih menu <b>Inventaris &amp; Maintenance</b> untuk melihat jadwal, menandai selesai (dengan foto/video), mengubah kondisi, dan melaporkan kerusakan.</div>
         </div>
-
-        {/* Stat row */}
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr 1fr",gap:8,marginBottom:12}}>
-          <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Status</div>
-            <div style={{fontSize:12,fontWeight:700,color:STATUS_COLOR[mesin.status]||"#94a3b8"}}>{mesin.status||"—"}</div>
+        {barang && (
+          <div style={{ background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0', padding: '14px 16px' }}>
+            <div style={{ fontSize: 11, color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase', letterSpacing: .4, marginBottom: 4 }}>Barang di QR ini</div>
+            <div style={{ fontSize: 16, fontWeight: 700, color: '#1e293b' }}>{barang.nama}</div>
+            <div style={{ fontSize: 12.5, color: '#64748b', marginTop: 2, fontFamily: 'monospace' }}>{barang.nomor_inventaris || 'tanpa nomor'} · {barang.lokasi}</div>
+            <div style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>Cari nomor <b>{barang.nomor_inventaris || barang.nama}</b> di menu Inventaris &amp; Maintenance.</div>
           </div>
-          <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Maintenance terakhir</div>
-            <div style={{fontSize:11,fontWeight:600,color:"#1e293b"}}>{lastLog?fmtDate(lastLog.tgl_perbaikan||lastLog.tgl_kendala):"—"}</div>
-          </div>
-          <div style={{background:"#fff",borderRadius:8,border:"1px solid #e2e8f0",padding:"10px 12px"}}>
-            <div style={{fontSize:9,color:"#94a3b8",fontWeight:600,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>Jatuh tempo</div>
-            <div style={{fontSize:12,fontWeight:700,color:daysBadge.color}}>{nearestRutin?daysBadge.label:"—"}</div>
-          </div>
-        </div>
-
-        {/* Jadwal Rutin */}
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",marginBottom:12,overflow:"hidden"}}>
-          <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:14}}>📅</span>
-            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Jadwal Maintenance Rutin</span>
-            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{rutinDue.length} jadwal aktif</span>
-          </div>
-          {rutinDue.length===0?(
-            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Tidak ada jadwal maintenance aktif saat ini</div>
-          ):rutinDue.map((r:any,i:number)=>{
-            const d=getDaysLeft(r.jatuh_tempo)
-            const b=getDaysBadge(d,r.jatuh_tempo)
-            const formTerbuka=selesaiFormId===r.id
-            return(
-              <div key={i} style={{padding:"10px 14px",borderBottom:i<rutinDue.length-1?"1px solid #f1f5f9":"none"}}>
-                <div style={{display:"flex",alignItems:"center",gap:10}}>
-                  <div style={{width:8,height:8,borderRadius:"50%",background:b.color,flexShrink:0}}/>
-                  <div style={{flex:1}}>
-                    <div style={{fontSize:12,fontWeight:600,color:"#1e293b"}}>{r.jenis_maintenance}</div>
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:2}}>
-                      {r.frekuensi&&<span>{r.frekuensi} · </span>}
-                      {r.teknisi&&<span>Teknisi: {r.teknisi}</span>}
-                    </div>
-                  </div>
-                  <span style={{background:b.bg,color:b.color,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>{b.label}</span>
-                </div>
-                {prosesSelesai[r.id]&&prosesSelesai[r.id].fase!=="menyimpan"?(()=>{
-                  const p=prosesSelesai[r.id]
-                  return(
-                    <div style={{marginTop:8,marginLeft:18,fontSize:11,lineHeight:1.5}}>
-                      {p.fase==="mengunggah"?(
-                        <div style={{color:"#1d4ed8",fontWeight:700}}>✓ Tersimpan · mengunggah foto {Math.min(p.terkirim+1,p.total)}/{p.total}… <span style={{fontWeight:500,color:"#64748b"}}>jangan tutup halaman dulu</span></div>
-                      ):(
-                        <div>
-                          <div style={{color:"#b45309",fontWeight:700}}>✓ Selesai tersimpan · {p.gagal.length} dari {p.total} foto gagal terkirim{p.terkirim>0?" ("+p.terkirim+" foto sudah tersimpan)":""}</div>
-                          <div style={{color:"#94a3b8",fontSize:10}}>{p.gagal.map(g=>g.file.name+": "+g.alasan).join(" · ")}</div>
-                          <div style={{display:"flex",gap:6,marginTop:6}}>
-                            <button onClick={()=>jalankanUnggah(r.id,p.logId!,p.gagal.map(g=>g.file),p.rutinBaru)}
-                              style={{background:"#1d4ed8",color:"#fff",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Coba lagi</button>
-                            <button onClick={()=>tuntaskan(r.id,p.rutinBaru)}
-                              style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>Lewati foto</button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )
-                })():formTerbuka?(
-                  <div style={{marginTop:8,marginLeft:18}}>
-                    <div style={{display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      <select value={pekerjaPilih} onChange={e=>setPekerjaPilih(e.target.value)}
-                        style={{flex:1,minWidth:140,padding:"7px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:11.5,background:"#fff",color:"#1e293b"}}>
-                        <option value="">-- Pilih nama pekerja --</option>
-                        {pekerjaList.map((p:any)=><option key={p.id} value={p.nama}>{p.nama}</option>)}
-                      </select>
-                      <button onClick={()=>tandaiSelesai(r)} disabled={!pekerjaPilih||menyimpan}
-                        style={{background:pekerjaPilih?"#16a34a":"#cbd5e1",color:"#fff",border:"none",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:pekerjaPilih?"pointer":"not-allowed"}}>
-                        {menyimpan?"Menyimpan...":"Konfirmasi"}
-                      </button>
-                      <button onClick={()=>{setSelesaiFormId(null);setPekerjaPilih("");resetStagedFoto()}} disabled={menyimpan}
-                        style={{background:"#f1f5f9",color:"#64748b",border:"none",borderRadius:8,padding:"7px 12px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Batal</button>
-                    </div>
-                    {/* Dokumentasi OPSIONAL - label bilang jelas biar gak dikira wajib. */}
-                    <div style={{marginTop:8,display:"flex",gap:6,flexWrap:"wrap",alignItems:"center"}}>
-                      {/* (8 Okt 2026) MediaPickerSheet (salinan identik vista-pekerja, dijaga npm run cek:kop) -
-                          dulu input tanpa capture: di HP cuma membuka galeri/pemilih file, tanpa pilihan kamera. */}
-                      <MediaPickerSheet allowVideo onFiles={(files)=>pilihFoto(files)} triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,color:"#475569",cursor:"pointer"}}>
-                        📎 Lampirkan foto/video (opsional)
-                      </MediaPickerSheet>
-                      {stagedFoto.length>0&&<span style={{fontSize:10.5,color:"#94a3b8"}}>{stagedFoto.length} file dipilih</span>}
-                    </div>
-                    {stagedFoto.length>0&&(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap",marginTop:6}}>
-                        {stagedFoto.map((s,si)=>(
-                          <div key={si} style={{position:"relative",width:52,height:52}}>
-                            {s.file.type.startsWith("video/")?(
-                              <video src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000"}}/>
-                            ):(
-                              <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0"}}/>
-                            )}
-                            <button onClick={()=>batalkanFotoStaged(si)}
-                              style={{position:"absolute",top:-5,right:-5,width:18,height:18,borderRadius:"50%",background:"#dc2626",color:"#fff",border:"2px solid #fff",fontSize:10,lineHeight:"14px",cursor:"pointer",padding:0}}>✕</button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ):(
-                  <div style={{marginTop:8,marginLeft:18}}>
-                    <button onClick={()=>{setSelesaiFormId(r.id);setPekerjaPilih("");resetStagedFoto()}}
-                      style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:8,padding:"6px 12px",fontSize:11,fontWeight:700,cursor:"pointer"}}>
-                      Tandai Selesai
-                    </button>
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Log Maintenance Rutin (18 Sep 2026, FITUR BARU + BUG FIX "hilang setelah Selesai") -
-            lihat komentar lengkap di deklarasi rutinLogList/fetchRutinLog di atas. Rolling 30
-            hari (query sudah di-scope, PLUS pg_cron harian yang beneran hapus fisik baris lama -
-            migration 20260918010000) - beda dari Log Kerusakan di bawah yang permanen. */}
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden",marginBottom:12}}>
-          <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:14}}>🧾</span>
-            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Log Maintenance Rutin</span>
-            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{rutinLogList.length} log (30 hari terakhir)</span>
-          </div>
-          {rutinLogList.length===0?(
-            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada maintenance rutin yang diselesaikan</div>
-          ):rutinLogList.map((rl:any,i:number)=>{
-            const jenisNama=rutinList.find((r:any)=>r.id===rl.rutin_id)?.jenis_maintenance||"Maintenance Rutin"
-            const foto=rl.foto||[]
-            return(
-              <div key={rl.id} style={{padding:"10px 14px",borderLeft:"3px solid #16a34a",borderBottom:i<rutinLogList.length-1?"1px solid #f1f5f9":"none"}}>
-                <div style={{display:"flex",gap:10,alignItems:"flex-start"}}>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{jenisNama}</div>
-                    <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{fmtDate(rl.dilakukan_pada)}{rl.teknisi?" · "+rl.teknisi:""}{rl.completed_via==="qr_worker"?" · via QR":""}</div>
-                  </div>
-                  <span style={{background:"#f0fdf4",color:"#16a34a",border:"1px solid #bbf7d0",borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>✅ Selesai</span>
-                </div>
-                {foto.length>0&&(
-                  <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:8}}>
-                    {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
-                      <a key={fi} href={f.url} target="_blank" rel="noreferrer" title={f.type==="video"?"Buka video":"Buka foto"}>
-                        {f.type==="video"?(
-                          <video src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",background:"#000",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
-                        ):(
-                          <img src={f.url} style={{width:52,height:52,borderRadius:8,objectFit:"cover",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}/>
-                        )}
-                      </a>
-                    );})}
-                  </div>
-                )}
-              </div>
-            )
-          })}
-        </div>
-
-        {/* Log Kerusakan - list semua histori, klik buat expand detail lengkap. Read-only,
-            gak ada tombol edit/tambah di sini (cuma bisa diinput/diedit dari Vista Teknik). */}
-        <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-          <div style={{padding:"10px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",alignItems:"center",gap:6}}>
-            <span style={{fontSize:14}}>📋</span>
-            <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>Log Kerusakan</span>
-            <span style={{marginLeft:"auto",fontSize:10,color:"#94a3b8"}}>{logList.length} log</span>
-          </div>
-          {logList.length===0?(
-            <div style={{padding:"20px",textAlign:"center",color:"#94a3b8",fontSize:12}}>Belum ada log kerusakan</div>
-          ):(<>
-            {logList.slice(0,logShowCount).map((l:any,i:number)=>{
-              const ls=LOG_STATUS[l.status]||{bg:"#f1f5f9",color:"#64748b",label:l.status}
-              const isOpen=expandedLogId===l.id
-              const kendalaLines=(l.kendala||"").split("\n")
-              const judulTampil=(l.judul||"").trim()||kendalaLines[0]||"(tanpa judul)"
-              const deskripsiTampil=(l.judul||"").trim()?(l.kendala||""):kendalaLines.slice(1).join(" ").trim()
-              const updateHarian=l.update_harian||[]
-              const foto=l.foto||[]
-              return(
-                <div key={l.id} style={{borderLeft:`3px solid ${ls.color}`,borderBottom:i<Math.min(logList.length,logShowCount)-1?"1px solid #f1f5f9":"none"}}>
-                  <div onClick={()=>setExpandedLogId(isOpen?null:l.id)} style={{padding:"10px 14px 10px 12px",cursor:"pointer",display:"flex",gap:10,alignItems:"flex-start"}}>
-                    <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontSize:12,color:"#1e293b",fontWeight:600}}>{judulTampil}</div>
-                      {deskripsiTampil&&<div style={{fontSize:10.5,color:"#64748b",whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis",marginTop:2}}>{deskripsiTampil}</div>}
-                      <div style={{fontSize:10,color:"#94a3b8",marginTop:3}}>{fmtDate(l.tgl_kendala||l.created_at?.slice(0,10))}</div>
-                    </div>
-                    <span style={{background:ls.bg,color:ls.color,borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700,flexShrink:0,whiteSpace:"nowrap"}}>{ls.label}</span>
-                    <span style={{fontSize:10,color:"#cbd5e1",flexShrink:0}}>{isOpen?"▴":"▾"}</span>
-                  </div>
-                  {isOpen&&(
-                    <div style={{padding:"0 14px 12px 14px",display:"flex",flexDirection:"column",gap:6}}>
-                      {l.teknisi&&<div style={{fontSize:11,color:"#64748b"}}>👤 PIC: <b>{l.teknisi}</b></div>}
-                      <div style={{fontSize:11,color:"#475569",background:"#f8fafc",borderRadius:6,padding:"6px 9px",lineHeight:1.4}}><b>Penyebab:</b> {deskripsiTampil||judulTampil}</div>
-                      {l.perbaikan&&<div style={{fontSize:11,color:"#16a34a",background:"#f0fdf4",borderRadius:6,padding:"6px 9px",lineHeight:1.4}}><b>Perbaikan:</b> {l.perbaikan}</div>}
-                      {l.catatan&&<div style={{fontSize:11,color:"#94a3b8",background:"#f8fafc",borderRadius:6,padding:"6px 9px",lineHeight:1.4,fontStyle:"italic"}}><b>Catatan lama:</b> {l.catatan}</div>}
-                      {updateHarian.map((u:any,ui:number)=>(
-                        <div key={ui} style={{fontSize:11,color:"#475569",background:"#eff6ff",borderRadius:6,padding:"6px 9px",lineHeight:1.4,borderLeft:"2px solid #93c5fd"}}>
-                          <b>Hari ke-{ui+1}</b> · {fmtDate(u.tanggal)}{u.oleh?" · "+u.oleh:""}<br/>{u.catatan}
-                        </div>
-                      ))}
-                      {foto.length>0&&(
-                        <div style={{display:"flex",flexWrap:"wrap",gap:6,marginTop:2}}>
-                          {foto.map((f:any,fi:number)=>{const fRot=rotasiMap[f.url]||0;return(
-                            <a key={fi} href={f.url} target="_blank" rel="noreferrer" style={{display:"block",width:56,height:56,borderRadius:8,overflow:"hidden",border:"1px solid #e2e8f0",transform:fRot?`rotate(${fRot}deg)`:undefined}}><ThumbMedia url={f.url} thumb={f.thumb} video={f.type==="video"||(f.mime||"").startsWith("video/")}/></a>
-                          );})}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )
-            })}
-            {logList.length>logShowCount&&(
-              <div style={{padding:"10px 14px",textAlign:"center"}}>
-                <button onClick={()=>setLogShowCount(c=>c+10)}
-                  style={{background:"#f8fafc",color:"#1d4ed8",border:"1px solid #e2e8f0",borderRadius:8,padding:"7px 14px",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>
-                  Lihat lebih banyak ({logList.length-logShowCount} lagi)
-                </button>
-              </div>
-            )}
-          </>)}
-        </div>
-
-        <div style={{textAlign:"center",marginTop:20,fontSize:10,color:"#cbd5e1"}}>Vista Teknik ERP · Data realtime</div>
+        )}
+        {barang === null && <div style={{ textAlign: 'center', fontSize: 12, color: '#94a3b8' }}>QR ini belum terhubung ke data inventaris baru.</div>}
+        <div style={{ textAlign: 'center', marginTop: 8, fontSize: 10, color: '#cbd5e1' }}>Vista Teknik ERP</div>
       </div>
     </div>
   )
