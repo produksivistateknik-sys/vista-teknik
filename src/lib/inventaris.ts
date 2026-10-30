@@ -77,7 +77,7 @@ export async function muatLogBarang(db: any, barangId: number): Promise<LogBaran
   return fetchAllPaged((from, to) => db.from('inv_log').select('*').eq('barang_id', barangId).order('id', { ascending: false }).range(from, to))
 }
 
-// Pesan galat RPC apa adanya (sudah berbahasa Indonesia di server); kode 40001 = versi basi -> pemanggil muat ulang.
+// Pesan galat RPC apa adanya (sudah berbahasa Indonesia di server); kode VTVER = versi basi -> pemanggil muat ulang (bukan 40001: PostgREST mengulang 40001 sampai timeout).
 async function rpc(db: any, nama: string, arg: Record<string, any>): Promise<any> {
   const { data, error } = await db.rpc(nama, arg)
   if (error) { console.error(`[inventaris] ${nama} gagal:`, error); throw Object.assign(new Error(error.message || String(error)), { code: error.code }) }

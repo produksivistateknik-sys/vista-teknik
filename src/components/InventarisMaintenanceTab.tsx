@@ -163,25 +163,30 @@ export function InventarisMaintenanceTab({ user }: any) {
   const mediaDari = (tujuan: string, ref: number, peran?: string) => (idx?.media.get(tujuan + ':' + ref) || []).filter(m => !peran || m.peran === peran)
 
   // kartu ringkasan (jadwal aktif & laporan aktif saja)
-  const cnt = useMemo(() => ({
-    terlambat: d?.jadwal.filter(j => j.aktif && j.status_jadwal === 'terlambat').length || 0,
-    segera: d?.jadwal.filter(j => j.aktif && j.status_jadwal === 'segera').length || 0,
-    rusak: d?.laporan.filter(laporanAktif).length || 0,
-  }), [d])
+  const cnt = useMemo(() => {
+    const aktif = (id: number) => idx?.barang.get(id)?.aktif !== false
+    return {
+      terlambat: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'terlambat').length || 0,
+      segera: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'segera').length || 0,
+      rusak: d?.laporan.filter(l => laporanAktif(l) && aktif(l.barang_id)).length || 0,
+    }
+  }, [d, idx])
 
   // ── baris per tab: {id, lokasi, kunciFilter, teksCari, data} ──
   const baris = useMemo(() => {
     if (!d || !idx) return { inventaris: [], laporan: [], maintenance: [], riwayat: [] } as Record<Tab, any[]>
     const b = (id: number) => idx.barang.get(id)!
     const teksBarang = (x: Barang) => [x.nama, x.nomor_inventaris, x.kode_lama, x.pengguna, x.detail_kondisi, x.merk_spesifikasi, x.nomor_seri, x.pelapor, namaLokasi(x.lokasi_kode)].join(' ')
-    const inventaris = d.barang.filter(x => nonaktif || x.aktif).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, cari: teksBarang(x), x }))
-    const laporan = [...d.laporan].sort((p, r) => r.dibuat_pada.localeCompare(p.dibuat_pada)).map(l => ({ id: 'l' + l.id, lok: b(l.barang_id).lokasi_kode,
+    // barang nonaktif (dan laporan/jadwal/riwayatnya) disembunyikan kecuali "termasuk nonaktif" dicentang (keputusan user 30 Okt)
+    const tampilB = (id: number) => nonaktif || b(id).aktif
+    const inventaris = d.barang.filter(x => tampilB(x.id)).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, cari: teksBarang(x), x }))
+    const laporan = d.laporan.filter(l => tampilB(l.barang_id)).sort((p, r) => r.dibuat_pada.localeCompare(p.dibuat_pada)).map(l => ({ id: 'l' + l.id, lok: b(l.barang_id).lokasi_kode,
       kunci: laporanAktif(l) ? 'aktif' : 'closed', cari: [l.judul, l.masalah, l.pelapor, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l }))
-    const maintenance = [...d.jadwal].sort((p, r) => (p.jatuh_tempo || '9').localeCompare(r.jatuh_tempo || '9')).map(j => ({ id: 'j' + j.id, lok: b(j.barang_id).lokasi_kode,
+    const maintenance = d.jadwal.filter(j => tampilB(j.barang_id)).sort((p, r) => (p.jatuh_tempo || '9').localeCompare(r.jatuh_tempo || '9')).map(j => ({ id: 'j' + j.id, lok: b(j.barang_id).lokasi_kode,
       kunci: j.aktif ? j.status_jadwal : 'nonaktif', cari: [j.jenis, j.teknisi, teksBarang(b(j.barang_id))].join(' '), x: j }))
     const riwayat = [
-      ...d.selesai.map(s => ({ id: 's' + s.id, lok: b(s.barang_id).lokasi_kode, kunci: 'rutin', tgl: s.tanggal, cari: [s.oleh, d.jadwal.find(j => j.id === s.jadwal_id)?.jenis, teksBarang(b(s.barang_id))].join(' '), x: s })),
-      ...d.laporan.map(l => ({ id: 'k' + l.id, lok: b(l.barang_id).lokasi_kode, kunci: 'kerusakan', tgl: l.dibuat_pada.slice(0, 10), cari: [l.judul, l.pelapor, teksBarang(b(l.barang_id))].join(' '), x: l })),
+      ...d.selesai.filter(s => tampilB(s.barang_id)).map(s => ({ id: 's' + s.id, lok: b(s.barang_id).lokasi_kode, kunci: 'rutin', tgl: s.tanggal, cari: [s.oleh, d.jadwal.find(j => j.id === s.jadwal_id)?.jenis, teksBarang(b(s.barang_id))].join(' '), x: s })),
+      ...d.laporan.filter(l => tampilB(l.barang_id)).map(l => ({ id: 'k' + l.id, lok: b(l.barang_id).lokasi_kode, kunci: 'kerusakan', tgl: l.dibuat_pada.slice(0, 10), cari: [l.judul, l.pelapor, teksBarang(b(l.barang_id))].join(' '), x: l })),
     ].sort((p, r) => r.tgl.localeCompare(p.tgl))
     return { inventaris, laporan, maintenance, riwayat } as Record<Tab, any[]>
   }, [d, idx, nonaktif, namaLokasi])
@@ -202,7 +207,7 @@ export function InventarisMaintenanceTab({ user }: any) {
   const jalankan = async (label: string, fn: () => Promise<any>) => {
     setSibuk(label)
     try { await fn(); await muat(); return true }
-    catch (e: any) { alert(pesanGalat(e)); if (e?.code === '40001') await muat(); return false }
+    catch (e: any) { alert(pesanGalat(e)); if (e?.code === 'VTVER') await muat(); return false }
     finally { setSibuk(null) }
   }
   const gantiLokasi = (x: Barang, kode: string) => {
@@ -239,7 +244,7 @@ export function InventarisMaintenanceTab({ user }: any) {
       <div className="iv-bar">
         <select value={fKon} onChange={e => { setFKon(e.target.value); setBuka(null) }} aria-label="Filter">{OPSI_FILTER[tab].map(([v, l]) => <option key={v} value={v}>{l}</option>)}</select>
         <input type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Cari nomor, nama, PIC…" />
-        {tab === 'inventaris' && <label className="iv-mute" style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={nonaktif} onChange={e => setNonaktif(e.target.checked)} />termasuk nonaktif</label>}
+        {<label className="iv-mute" style={{ display: 'flex', gap: 4, alignItems: 'center' }}><input type="checkbox" checked={nonaktif} onChange={e => setNonaktif(e.target.checked)} />termasuk nonaktif</label>}
         <button className="iv-btn" type="button" onClick={reset}>Reset</button>
         <span className="iv-cnt">{semuaBaris.length} baris{sibuk ? ' · menyimpan…' : ''}</span>
       </div>
