@@ -300,8 +300,18 @@ const [pekerja, setPekerja] = useState<any[]>([]);
   useEffect(() => pasangPemulihRealtime(supabase, {
     nama: 'realtime-maint-alert', tabel: 'inv_jadwal', label: 'badge Inventaris', jedaMs: 800,
     muat: async () => {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tabel inv_* belum ada di tipe hasil generate
-      const { count, error } = await (supabase as any).from('inv_jadwal_v').select('id', { count: 'exact', head: true }).eq('aktif', true).in('status_jadwal', ['terlambat', 'segera'])
+      // jadwal milik barang nonaktif tidak dihitung (sama dgn kartu ringkasan tab & HP operator)
+      let count = 0, error: unknown = null
+      try {
+        /* eslint-disable @typescript-eslint/no-explicit-any -- tabel inv_* belum ada di tipe hasil generate */
+        const [jadwal, nonaktifRows] = await Promise.all([
+          fetchAllPaged((from, to) => (supabase as any).from('inv_jadwal_v').select('id,barang_id').eq('aktif', true).in('status_jadwal', ['terlambat', 'segera']).order('id').range(from, to)),
+          fetchAllPaged((from, to) => (supabase as any).from('inv_barang').select('id').eq('aktif', false).order('id').range(from, to)),
+        ])
+        /* eslint-enable @typescript-eslint/no-explicit-any */
+        const nonaktif = new Set(nonaktifRows.map((x: { id: number }) => x.id))
+        count = jadwal.filter((x: { barang_id: number }) => !nonaktif.has(x.barang_id)).length
+      } catch (e) { error = e }
       if (error) {
         console.error('[App] gagal hitung badge Inventaris & Maintenance (inv_jadwal_v):', error)
         setMaintenanceAlertError(true)
