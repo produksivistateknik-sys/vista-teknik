@@ -84,6 +84,9 @@ self.addEventListener('push', (event) => {
       icon: '/icon-192.png',
       badge: '/icon-192.png',
       data: { url: payload.url },
+      // tag (31 Okt 2026, push Inventaris digabung per operator+jenis): push baru dgn tag sama MENGGANTIKAN yang lama
+      // (tidak menumpuk) & tetap berbunyi (renotify). Push lain tanpa tag = perilaku lama.
+      ...(payload.tag ? { tag: payload.tag, renotify: true } : {}),
     })
   );
 });
