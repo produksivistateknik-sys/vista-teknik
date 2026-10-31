@@ -38,6 +38,8 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
   const fokus = useRef<string | null>(null), terakhirSrv = useRef<{ h: HeaderLO; rows: BagianLO[] } | null>(null)
   const menyimpan = useRef(false), lagi = useRef(false), timer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const tanggalRef = useRef(tanggal), tertundaDipakai = useRef(false)
+  // hasil simpan kita yang belum terlihat di data server yang masuk (muatan lama yang datang belakangan): id -> 'ada' | 'hapus'
+  const tungguSrv = useRef<Map<string, { jenis: 'ada' | 'hapus'; sejak: number }>>(new Map())
 
   const setDraf = (d: DrafLaporan | null) => { drafRef.current = d; setDrafState(d) }
   const beritahu = (t: string) => setPemberitahuan((p) => [...p.slice(-4), t])
@@ -79,12 +81,22 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
     const hasil = new Map(srv), metaBaru = new Map<string, Meta>(rows.map((r) => [r.id, { versi: r.versi, oleh: r.diperbarui_oleh, waktu: r.diperbarui_pada }]))
     const lindungi = new Set([...diubah.current, ...(fokus.current ? [fokus.current] : [])])
     const per: Record<string, Peringatan> = {}
+    // muatan server LEBIH LAMA dari simpanan kita (diambil sebelum simpan selesai): versi lokal dipertahankan, tidak berkedip balik
+    const kini = Date.now()
+    for (const [id, t] of [...tungguSrv.current]) {
+      const m0 = meta.current.get(id), m1 = metaBaru.get(id)
+      const terlihat = t.jenis === 'hapus' ? !srv.has(id) : !!(m1 && m0 && m1.versi >= m0.versi)
+      if (terlihat || kini - t.sejak > 60000) { tungguSrv.current.delete(id); continue }
+      lindungi.add(id)
+    }
+    for (const [id, m1] of metaBaru) { const m0 = meta.current.get(id); if (m0 && m1.versi < m0.versi) lindungi.add(id) }
     for (const id of lindungi) {
       if (id.startsWith('__')) continue
+      if (tungguSrv.current.get(id)?.jenis === 'hapus') { hasil.delete(id); continue }
       const m0 = meta.current.get(id), m1 = metaBaru.get(id)
       if (m0 && m1 && m1.versi > m0.versi && m1.oleh && m1.oleh !== nama && !sama(srv.get(id), dasar.current.get(id))) per[id] = { oleh: m1.oleh, waktu: m1.waktu }
       if (lokal?.has(id)) hasil.set(id, lokal.get(id)!); else if (diubah.current.has(id)) hasil.delete(id)
-      if (m0) metaBaru.set(id, m0)   // versi dasar tetap yg dilihat saat mulai mengedit (server ikut memperingatkan)
+      if (m0 && (!m1 || m1.versi <= m0.versi || diubah.current.has(id) || fokus.current === id)) metaBaru.set(id, m0)   // versi dasar tetap yg dilihat saat mulai mengedit (server ikut memperingatkan)
     }
     dasar.current = srv; meta.current = metaBaru
     // header: kolom yang diubah lokal / teks WA yang sedang diketik dipertahankan
@@ -140,8 +152,8 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
         const r = await loSimpan(db, user, h.id, ops)
         const kini = datarkan(drafRef.current!)
         for (const o of ops) {
-          if (o.o === 'hapus') { dasar.current.delete(o.id); meta.current.delete(o.id) }
-          else { dasar.current.set(o.id, lok.get(o.id)!); meta.current.set(o.id, { versi: r.versi[o.id] ?? (meta.current.get(o.id)?.versi || 1), oleh: nama, waktu: new Date().toISOString() }) }
+          if (o.o === 'hapus') { dasar.current.delete(o.id); tungguSrv.current.set(o.id, { jenis: 'hapus', sejak: Date.now() }) }
+          else { dasar.current.set(o.id, lok.get(o.id)!); meta.current.set(o.id, { versi: r.versi[o.id] ?? (meta.current.get(o.id)?.versi || 1), oleh: nama, waktu: new Date().toISOString() }); tungguSrv.current.set(o.id, { jenis: 'ada', sejak: Date.now() }) }
           if (sama(kini.get(o.id), lok.get(o.id))) diubah.current.delete(o.id)
         }
         ids.forEach((id) => { if (!ops.some((o) => o.id === id) && sama(kini.get(id), dasar.current.get(id))) diubah.current.delete(id) })
@@ -212,7 +224,7 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
   // ── ganti tanggal / pasang realtime ──
   useEffect(() => {
     tanggalRef.current = tanggal; tertundaDipakai.current = false
-    dasar.current = new Map(); meta.current = new Map(); headerSrv.current = null; diubah.current = new Set(); headerDiubah.current = new Set()
+    dasar.current = new Map(); meta.current = new Map(); headerSrv.current = null; diubah.current = new Set(); headerDiubah.current = new Set(); tungguSrv.current = new Map()
     fokus.current = null; terakhirSrv.current = null; drafRef.current = null
     const t = setTimeout(() => { setMemuat(true); setPeringatan({}); setDrafState(null); setHeader(null); muat() }, 0)
     return () => clearTimeout(t)
