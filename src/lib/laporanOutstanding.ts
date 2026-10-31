@@ -31,6 +31,8 @@ export type Pekerjaan = { id: string; teks: string; selesai: boolean }
 export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: KendalaLap[]; pekerjaanSemua?: Pekerjaan[]; pekerjaanRingkas?: Pekerjaan[] }
 // ringkas = satu baris pendek pengganti daftar panel (mis. WO baru turun belum ada planning).
 export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: KendalaLap[]; panels: PanelLap[]; semua?: boolean }
+// catatan di luar proyek: ber-id (31 Okt 2026, laporan bersama - disimpan & dilindungi per bagian). Draf lama (string) dinormalisasi.
+export type CatatanLap = { id: string; teks: string }
 export type PrioritasLap = { id: string; nama: string; deadline: string; panels: string[] }
 export type DrafLaporan = {
   versi: 1
@@ -39,7 +41,7 @@ export type DrafLaporan = {
   jam: string // "16.00"
   dibuatPada: string // ISO saat tombol Buat laporan diklik
   proyek: ProyekLap[]
-  catatan: string[] // NOTE di luar proyek (urut)
+  catatan: CatatanLap[] // NOTE di luar proyek (urut)
   prioritas: PrioritasLap[]
   tampilTeratasi?: boolean // "Tampilkan kendala yang sudah teratasi" (bawaan true)
 }
@@ -355,7 +357,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   bawaDariDrafLama(proyek, lama?.proyek || [])
   return {
     versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
-    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
+    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? lama.catatan.map((c) => ({ ...c })) : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni, b.penandaMain),
   }
 }
@@ -439,7 +441,7 @@ export function formatTeksWhatsApp(d: DrafLaporan): string {
     }
     L.push('')
   })
-  const cat = d.catatan.map((c) => c.trim()).filter(Boolean)
+  const cat = d.catatan.map((c) => c.teks.trim()).filter(Boolean)
   if (cat.length) { L.push('NOTE :'); cat.forEach((c, i) => L.push(`${i + 1}. ${c}`)); L.push('') }
   const prio = d.prioritas.filter((p) => p.nama.trim() || p.panels.some((x) => x.trim()))
   if (prio.length) {
@@ -515,36 +517,41 @@ export const CSS_DOKUMEN_LAPORAN = `
 
 // garis kosong utk ditulis tangan setelah dicetak (~2 baris teks, garis bawah tipis, tanpa poin)
 const BARIS_TULIS = '<li class="tulis"></li>'
-function htmlKendala(k: KendalaLap, umum: boolean): string {
+// (S2, 31 Okt 2026) mode edit pratinjau: teks yang bisa diedit diberi data-b (id bagian) + data-f (kolom) + contenteditable.
+// Cetak/PDF memanggil TANPA edit -> HTML sama persis seperti sebelumnya.
+type Ed = (id: string, f: string) => string
+const tanpaEd: Ed = () => ''
+const denganEd: Ed = (id, f) => ` data-b="${escH(id)}" data-f="${f}" contenteditable="true" spellcheck="false"`
+function htmlKendala(k: KendalaLap, umum: boolean, ed: Ed = tanpaEd): string {
   const siapa = [k.divisi, k.oleh].filter(Boolean).map((x) => escH(String(x))).join(' · ')
   const meta = siapa || k.tanggal ? `<span class="kdm">${siapa}${k.tanggal ? `<span class="tg">${escH(tglKecil(k.tanggal))}</span>` : ''}</span>` : ''
-  return `<li class="kd${k.teratasi ? ' ok' : ''}"><div class="kdr"><span class="kdt"><span class="tag">${umum ? 'Kendala umum' : 'Kendala'}</span>${escH(k.teks.trim())}</span>${meta}</div>${k.teratasi ? `<div class="kdok">✓ Teratasi ${escH(tglKecil(k.teratasi))}</div>` : ''}</li>`
+  return `<li class="kd${k.teratasi ? ' ok' : ''}"><div class="kdr"><span class="kdt"><span class="tag">${umum ? 'Kendala umum' : 'Kendala'}</span>${ed === tanpaEd ? escH(k.teks.trim()) : `<span${ed(k.id, 'teks')}>${escH(k.teks.trim())}</span>`}</span>${meta}</div>${k.teratasi ? `<div class="kdok">✓ Teratasi ${escH(tglKecil(k.teratasi))}</div>` : ''}</li>`
 }
 
-export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string } = {}): string {
-  const tampilK = kendalaTampil(d)
+export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string; edit?: boolean } = {}): string {
+  const tampilK = kendalaTampil(d), ed = o.edit ? denganEd : tanpaEd
   let h = `<div class="lod"><div class="lod-title"><h1>OUTSTANDING PEKERJAAN</h1><div class="when">${escH(tglPanjangLaporan(d.tanggal))} · ${escH(d.jam)} WIB</div></div>`
   d.proyek.forEach((p) => {
-    h += `<div class="lod-proj"><div class="lod-ph"><span class="nm">${escH(p.nama.trim() || 'PROYEK')}</span><span class="dl">${p.deadline ? `Deadline <b>${escH(tglSedang(p.deadline))}</b>` : ''}</span></div>`
+    h += `<div class="lod-proj"><div class="lod-ph"><span class="nm"${ed(p.id, 'nama')}>${escH(p.nama.trim() || (o.edit ? '' : 'PROYEK'))}</span><span class="dl">${p.deadline ? `Deadline <b>${escH(tglSedang(p.deadline))}</b>` : ''}</span></div>`
     const umum = p.kendalaUmum.filter(tampilK)
-    if (umum.length) h += `<ul class="lod-umum">${umum.map((k) => (kosong(k) ? BARIS_TULIS : htmlKendala(k, true))).join('')}</ul>`
-    if (p.ringkas.trim()) h += `<div class="lod-belum">${escH(p.ringkas.trim())}</div>`
+    if (umum.length) h += `<ul class="lod-umum">${umum.map((k) => (kosong(k) ? BARIS_TULIS : htmlKendala(k, true, ed))).join('')}</ul>`
+    if (p.ringkas.trim()) h += `<div class="lod-belum"${ed(p.id, 'ringkas')}>${escH(p.ringkas.trim())}</div>`
     else {
       let no = 0
       p.panels.forEach((pn) => {
         const jobs = pn.pekerjaan, kd = pn.kendala.filter(tampilK)
         const bernama = !!pn.nama.trim()
         if (!bernama && !jobs.length && !kd.length) return
-        h += `<div class="lod-pn${bernama ? '' : ' nonum'}">${bernama ? `<div class="no">${++no}.</div>` : ''}<div>${bernama ? `<div class="pnm">${escH(pn.nama.trim())}</div>` : ''}<ul>`
-        jobs.forEach((j) => { h += kosong(j) ? BARIS_TULIS : `<li${j.selesai ? ' class="done"' : ''}>${escH(j.teks.trim())}</li>` })
-        kd.forEach((k) => { h += kosong(k) ? BARIS_TULIS : htmlKendala(k, false) })
+        h += `<div class="lod-pn${bernama ? '' : ' nonum'}">${bernama ? `<div class="no">${++no}.</div>` : ''}<div>${bernama ? `<div class="pnm"${ed(pn.id, 'nama')}>${escH(pn.nama.trim())}</div>` : ''}<ul>`
+        jobs.forEach((j) => { h += kosong(j) ? BARIS_TULIS : `<li${j.selesai ? ' class="done"' : ''}${ed(j.id, 'teks')}>${escH(j.teks.trim())}</li>` })
+        kd.forEach((k) => { h += kosong(k) ? BARIS_TULIS : htmlKendala(k, false, ed) })
         h += '</ul></div></div>'
       })
     }
     h += '</div>'
   })
-  const cat = d.catatan.map((c) => c.trim()).filter(Boolean)
-  if (cat.length) h += `<div class="lod-sec"><h3>Catatan</h3><ol>${cat.map((c, i) => `<li><span class="no">${i + 1}.</span><span>${escH(c)}</span></li>`).join('')}</ol></div>`
+  const cat = d.catatan.filter((c) => c.teks.trim())
+  if (cat.length) h += `<div class="lod-sec"><h3>Catatan</h3><ol>${cat.map((c, i) => `<li><span class="no">${i + 1}.</span><span${ed(c.id, 'teks')}>${escH(c.teks.trim())}</span></li>`).join('')}</ol></div>`
   const prio = d.prioritas.filter((p) => p.nama.trim() || p.panels.some((x) => x.trim()))
   if (prio.length) {
     h += '<div class="lod-sec"><h3>Prioritas Pengerjaan Minggu Ini</h3>'
@@ -556,6 +563,34 @@ export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string } = {
   }
   h += `<div class="lod-foot"><span>Dibuat dari data Vista Teknik ERP</span><span>${o.dibuatJam ? `Dicetak ${escH(o.dibuatJam)} WIB` : ''}</span></div></div>`
   return h
+}
+
+// (S2) ubah satu kolom teks bagian (proyek nama/ringkas, panel nama, pekerjaan/kendala/catatan teks) dari edit di berkop
+export function setKolomBagian(d: DrafLaporan, id: string, f: string, nilai: string): DrafLaporan {
+  const kd = (k: KendalaLap) => (k.id === id ? { ...k, [f]: nilai } : k)
+  return {
+    ...d,
+    proyek: d.proyek.map((p) => ({ ...(p.id === id ? { ...p, [f]: nilai } : p), kendalaUmum: p.kendalaUmum.map(kd),
+      panels: p.panels.map((n) => ({ ...(n.id === id ? { ...n, [f]: nilai } : n), pekerjaan: n.pekerjaan.map((j) => (j.id === id ? { ...j, [f]: nilai } : j)), kendala: n.kendala.map(kd) })) })),
+    catatan: d.catatan.map((c) => (c.id === id ? { ...c, [f]: nilai } : c)),
+  }
+}
+// (S2) kerangka dokumen = HTML edit dgn setiap teks diganti penanda (kosong tetap kosong): beda kerangka = struktur berubah
+// (bagian ditambah/dihapus/diurut, selesai/teratasi, kosong<->terisi, jam) -> pratinjau dimuat ulang; sama -> cukup tambal teks.
+export function kerangkaDokumen(d: DrafLaporan): string {
+  const x = (s: string) => (String(s ?? '').trim() ? 'x' : '')
+  const kd = (k: KendalaLap) => ({ ...k, teks: x(k.teks) })
+  return htmlDokumenLaporan({ ...d, proyek: d.proyek.map((p) => ({ ...p, nama: x(p.nama), ringkas: x(p.ringkas), kendalaUmum: p.kendalaUmum.map(kd),
+    panels: p.panels.map((n) => ({ ...n, nama: x(n.nama), pekerjaan: n.pekerjaan.map((j) => ({ ...j, teks: x(j.teks) })), kendala: n.kendala.map(kd) })) })),
+    catatan: d.catatan.map((c) => ({ ...c, teks: x(c.teks) })) }, { edit: true })
+}
+// (S2) nilai teks per "id|kolom" utk menambal pratinjau tanpa memuat ulang
+export function nilaiKolomBagian(d: DrafLaporan): Map<string, string> {
+  const m = new Map<string, string>()
+  d.proyek.forEach((p) => { m.set(p.id + '|nama', p.nama.trim()); m.set(p.id + '|ringkas', p.ringkas.trim()); p.kendalaUmum.forEach((k) => m.set(k.id + '|teks', k.teks.trim()))
+    p.panels.forEach((n) => { m.set(n.id + '|nama', n.nama.trim()); n.pekerjaan.forEach((j) => m.set(j.id + '|teks', j.teks.trim())); n.kendala.forEach((k) => m.set(k.id + '|teks', k.teks.trim())) }) })
+  d.catatan.forEach((c) => m.set(c.id + '|teks', c.teks.trim()))
+  return m
 }
 
 // ---------- muat data (baca saja; paginasi .range + urutan stabil, error dilempar) ----------
@@ -655,6 +690,8 @@ export function bacaSimpanan(user: string): SimpananLaporan | null {
     const j = JSON.parse(s)
     if (!(j?.draf?.versi === 1 && Array.isArray(j.draf.proyek))) return null
     // draf lama: kendala berupa teks -> KendalaLap
+    // catatan lama (string) -> {id, teks}; id tetap (berdasar tanggal + urutan) agar impor ulang tidak menggandakan
+    j.draf.catatan = (j.draf.catatan || []).map((c: any, i: number) => (typeof c === 'string' ? { id: `lokal-${j.draf.tanggal}-c${i}`, teks: c } : c))
     j.draf.proyek = j.draf.proyek.map((p: any) => ({ ...p, kendalaUmum: (p.kendalaUmum || []).map(normKendala), panels: (p.panels || []).map((n: any) => ({ ...n, kendala: (n.kendala || []).map(normKendala) })) }))
     return j
   } catch { return null }
