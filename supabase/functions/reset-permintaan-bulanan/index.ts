@@ -1,4 +1,12 @@
 /*
+=== DINONAKTIFKAN (31 Okt 2026, keputusan user) ===
+Permintaan barang TIDAK BOLEH direset / dibersihkan otomatis lagi - riwayat permintaan per panel harus utuh.
+Fungsi ini sekarang langsung mengembalikan { disabled: true } (status 200) TANPA membaca atau menghapus data apa pun.
+Alasan tetap di-deploy (bukan dihapus): versi yang dulu aktif di server (v8, 4 Sep 2026) = aturan LAMA "hapus semua
+permintaan bulan lalu", dan fungsi ini ber-verify_jwt=true sehingga siapa pun yang memegang anon key (ada di bundel
+aplikasi) bisa memanggilnya. Versi nonaktif ini menutup jalur itu. Jadwal pg_cron-nya (job 12) sudah dihapus user.
+Kode pembersihan di bawah DIBIARKAN sebagai catatan & tidak pernah dijalankan; jangan diaktifkan lagi tanpa keputusan user.
+
 Pembersihan Permintaan Lama - dipicu pg_cron sebulan sekali (nama function tetap "reset-permintaan-bulanan" supaya
 jadwal & URL yang sudah ada bisa dipakai ulang).
 
@@ -23,6 +31,8 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { S3Client, PutObjectCommand } from 'npm:@aws-sdk/client-s3@3'
 
 const UMUR_MINIMAL_HARI = 365
+// konstanta (bukan return polos) agar kode di bawahnya tetap terbaca kompilator tanpa peringatan "unreachable code"
+const FUNGSI_NONAKTIF = true
 
 const CORS_HEADERS = {
   'Access-Control-Allow-Origin': '*',
@@ -63,6 +73,8 @@ function getR2Client() {
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS_HEADERS })
+  // DINONAKTIFKAN (31 Okt 2026): kembali langsung, tidak menyentuh data (lihat komentar paling atas)
+  if (FUNGSI_NONAKTIF) return jsonResponse({ disabled: true, message: 'Reset permintaan bulanan dimatikan' }, 200)
   try {
     let dryRun = false
     try { dryRun = !!(await req.json())?.dryRun } catch { /* tanpa body */ }
