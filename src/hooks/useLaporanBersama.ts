@@ -206,20 +206,20 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
   const setTeksWa = useCallback((t: string | null) => { teksWaRef.current = t; setTeksWaState(t); headerDiubah.current.add('teks_wa'); cadangkan(); jadwalkan() }, [])
 
   // ── fokus: dipasang di pembungkus penyusun (onFocusCapture/onBlurCapture) ──
-  const onFokus = useCallback((e: React.FocusEvent) => {
-    const el = (e.target as HTMLElement).closest?.('[data-b]') as HTMLElement | null
-    fokus.current = el?.dataset.b || null
-  }, [])
-  const onLepas = useCallback((e: React.FocusEvent) => {
-    const ke = (e.relatedTarget as HTMLElement | null)?.closest?.('[data-b]') as HTMLElement | null
+  // fokusBagian/lepasBagian juga dipanggil langsung oleh pratinjau berkop (fokus di dalam iframe tidak merambat ke sini)
+  const fokusBagian = useCallback((id: string | null) => { fokus.current = id }, [])
+  const lepasBagian = useCallback((keId: string | null) => {
     const lama = fokus.current
-    if (ke && ke.dataset.b === lama) return       // pindah kolom di dalam bagian yang sama
-    fokus.current = ke?.dataset.b || null
+    if (keId && keId === lama) return            // pindah kolom di dalam bagian yang sama
+    fokus.current = keId
     if (!lama) return
     setPeringatan((p) => (lama in p ? tanpaKunci(p, lama) as Record<string, Peringatan> : p))
     if (diubah.current.size || headerDiubah.current.size) simpanRef.current()
     if (terakhirSrv.current) terapkan(terakhirSrv.current.h, terakhirSrv.current.rows)   // bagian yang tadi dilindungi ikut versi server
   }, [terapkan])
+  const idDari = (el: EventTarget | null) => ((el as HTMLElement | null)?.closest?.('[data-b]') as HTMLElement | null)?.dataset.b || null
+  const onFokus = useCallback((e: React.FocusEvent) => fokusBagian(idDari(e.target)), [fokusBagian])
+  const onLepas = useCallback((e: React.FocusEvent) => lepasBagian(idDari(e.relatedTarget)), [lepasBagian])
 
   // ── ganti tanggal / pasang realtime ──
   useEffect(() => {
@@ -240,5 +240,5 @@ export function useLaporanBersama(db: any, user: any, tanggal: string) {
   const tutupPemberitahuan = (i: number) => setPemberitahuan((p) => p.filter((_, k) => k !== i))
   const adaTertunda = () => diubah.current.size > 0 || headerDiubah.current.size > 0
   return { header, draf, teksWa, memuat, galatMuat, status, galatSimpan, peringatan, pemberitahuan, muat, simpan, ubah, setTeksWa,
-    onFokus, onLepas, tutupPeringatan, tutupPemberitahuan, beritahu, adaTertunda, drafRef }
+    onFokus, onLepas, fokusBagian, lepasBagian, tutupPeringatan, tutupPemberitahuan, beritahu, adaTertunda, drafRef }
 }

@@ -21,9 +21,10 @@ import { useLaporanBersama, ID_TEKS_WA, ID_HEADER, type StatusSimpan } from '../
 import { datarkan, susunDraf, ulangId, headerDariDraf, bagianImpor, loBuat, loGantiOtomatis, loImpor, muatDaftarTanggal, muatLaporanTanggal,
   barisKeDatar, sudahDiimpor, tandaiDiimpor, tanggalUji } from '../lib/laporanOutstandingBersama'
 import { KomponenMainPengaturan } from './KomponenMainPengaturan'
+import { RiwayatLaporan } from './LaporanOutstandingRiwayat'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
-  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
+  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, fmtTglLaporan, setKolomBagian, kerangkaDokumen, nilaiKolomBagian, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
   type DrafLaporan, type ProyekLap, type PanelLap, type GrupArsip, type PanelArsip, type Sumber, type Varian, type KendalaLap, type KendalaSumber,
 } from '../lib/laporanOutstanding'
 
@@ -98,7 +99,7 @@ const CSS = `
 @media (max-width:640px){.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}}
 `
 
-type Tab = 'susun' | 'berkop' | 'wa'
+type Tab = 'susun' | 'berkop' | 'wa' | 'riwayat'
 const LABEL_STATUS: Record<StatusSimpan, string> = { tersimpan: 'Tersimpan ✓', menunggu: 'Belum tersimpan…', menyimpan: 'Menyimpan…', gagal: 'Gagal tersimpan' }
 const LABEL_SRC: Record<Sumber, string> = { otomatis: 'Otomatis', arsip: 'Arsip', manual: 'Manual' }
 const Src = ({ s }: { s: Sumber }) => <span className={`lo-src ${s}`}>{LABEL_SRC[s]}</span>
@@ -281,6 +282,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'susun'} onClick={() => setTab('susun')}>Susun &amp; edit{jumlahNonOtomatis > 0 && <span className="lo-badge">{jumlahNonOtomatis} manual/arsip</span>}</button>
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'berkop'} onClick={() => setTab('berkop')}>Tampilan berkop</button>
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'wa'} onClick={() => setTab('wa')}>Teks WhatsApp{diedit && <span className="lo-badge">Diedit</span>}</button>
+          <button className="loBtn" role="tab" type="button" aria-selected={tab === 'riwayat'} onClick={() => setTab('riwayat')}>Riwayat</button>
         </div>
 
         {tab === 'susun' && <section>
@@ -407,7 +409,9 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
           <div className="lo-links"><button className="loBtn lnk" type="button" onClick={() => ubah((d) => ({ ...d, prioritas: [...d.prioritas, { id: idBaru(), nama: '', deadline: '', panels: [''] }] }))}>+ Tambah proyek prioritas</button></div>
         </section>}
 
-        {tab === 'berkop' && <PratinjauBerkop draf={draf} />}
+        {tab === 'berkop' && <PratinjauBerkop draf={draf} bentrok={Object.keys(lb.peringatan)} fokusBagian={lb.fokusBagian} lepasBagian={lb.lepasBagian}
+          onUbah={(id, f, v) => ubah((d) => setKolomBagian(d, id, f, v))} />}
+        {tab === 'riwayat' && header && <RiwayatLaporan db={db} user={user} laporanId={header.id} onBerubah={lb.muat} />}
 
         {tab === 'wa' && <section className="lo-wa">
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
@@ -493,8 +497,22 @@ function BarisKendala({ k, label, placeholder, tampilTeratasi, onTeks, onHapus }
 // Tab "Tampilan berkop" (Tahap B): pratinjau = HTML yang SAMA PERSIS dgn jendela cetak (lib/laporanOutstandingBerkop),
 // ditampilkan di iframe selebar A4 lalu diperkecil agar muat lebar layar (tanpa scroll ke samping).
 const LEBAR_A4_PX = 794 // 210 mm @96dpi
-function PratinjauBerkop({ draf }: { draf: DrafLaporan }) {
-  const html = useMemo(() => htmlHalamanBerkop(draf, { pratinjau: true }), [draf])
+// (S2, 31 Okt 2026) EDIT LANGSUNG di tampilan berkop: teks bertanda data-b/data-f (lib htmlDokumenLaporan edit) bisa diketik.
+// - iframe TIDAK dimuat ulang saat teks berubah (milik sendiri / admin lain): teks ditambal per elemen, elemen yang sedang
+//   difokus tidak disentuh (kursor tidak loncat). Dimuat ulang hanya bila KERANGKA berubah (bagian ditambah/dihapus/diurut,
+//   selesai/teratasi, kosong<->terisi), dan itu ditunda sampai tidak ada yang sedang diedit.
+// - fokus/lepas diteruskan ke perlindungan useLaporanBersama (fokus di iframe tidak merambat ke halaman).
+// - Enter = selesai mengedit; tempel = teks polos. Huruf besar diterapkan seperti di Susun & edit (kecuali nama panel).
+function PratinjauBerkop({ draf, bentrok, onUbah, fokusBagian, lepasBagian }: {
+  draf: DrafLaporan; bentrok: string[]; onUbah: (id: string, f: string, v: string) => void
+  fokusBagian: (id: string | null) => void; lepasBagian: (keId: string | null) => void
+}) {
+  const ifr = useRef<HTMLIFrameElement | null>(null)
+  const [html, setHtml] = useState(() => htmlHalamanBerkop(draf, { pratinjau: true, edit: true }))
+  const kerangka = useRef(kerangkaDokumen(draf))
+  const drafTerakhir = useRef(draf), tunda = useRef(false)
+  const cb = useRef({ onUbah, fokusBagian, lepasBagian })
+  useEffect(() => { cb.current = { onUbah, fokusBagian, lepasBagian } })
   const wadah = useRef<HTMLDivElement | null>(null)
   const [lebar, setLebar] = useState(LEBAR_A4_PX)
   const [tinggi, setTinggi] = useState(1123)
@@ -504,17 +522,56 @@ function PratinjauBerkop({ draf }: { draf: DrafLaporan }) {
     return () => ro.disconnect()
   }, [])
   const skala = Math.min(1, lebar / (LEBAR_A4_PX + 40))
-  const ukur = (e: React.SyntheticEvent<HTMLIFrameElement>) => {
-    try { const d = e.currentTarget.contentDocument; if (d) setTinggi(Math.max(d.documentElement.scrollHeight, d.body.scrollHeight) + 24) } catch { /* biarkan tinggi bawaan */ }
+  const dok = () => { try { return ifr.current?.contentDocument || null } catch { return null } }
+  const ukur = () => { const d = dok(); if (d?.body) setTinggi(Math.max(d.documentElement.scrollHeight, d.body.scrollHeight) + 24) }
+  // tambal teks semua elemen kecuali yang sedang difokus + tanda bentrok
+  const tambal = (dr: DrafLaporan) => {
+    const d = dok(); if (!d) return
+    const nilai = nilaiKolomBagian(dr), aktif = d.activeElement
+    d.querySelectorAll<HTMLElement>('[data-b][data-f]').forEach((el) => {
+      if (el === aktif) return
+      const v = nilai.get(el.dataset.b + '|' + el.dataset.f) ?? ''
+      if (el.textContent !== v) el.textContent = v
+    })
+    d.querySelectorAll('.lo-bentrok').forEach((x) => x.classList.remove('lo-bentrok'))
+    bentrok.forEach((id) => d.querySelectorAll(`[data-b="${id.replace(/"/g, '')}"]`).forEach((x) => x.classList.add('lo-bentrok')))
+  }
+  const muatUlangBilaPerlu = (dr: DrafLaporan) => {
+    const k = kerangkaDokumen(dr)
+    if (k === kerangka.current) { tambal(dr); return }
+    const d = dok()
+    if (d?.activeElement?.hasAttribute?.('data-b')) { tunda.current = true; tambal(dr); return }
+    kerangka.current = k; tunda.current = false; setHtml(htmlHalamanBerkop(dr, { pratinjau: true, edit: true }))
+  }
+  // tiap render (draf / bentrok berubah): tambal teks, atau muat ulang iframe bila kerangka berubah (sinkronisasi ke DOM iframe)
+  // eslint-disable-next-line react-hooks/set-state-in-effect
+  useEffect(() => { drafTerakhir.current = draf; muatUlangBilaPerlu(draf) })
+  const pasang = () => {
+    const d = dok(); if (!d) return
+    ukur(); tambal(drafTerakhir.current)
+    const idDari = (t: EventTarget | null) => ((t as HTMLElement | null)?.closest?.('[data-b]') as HTMLElement | null)
+    d.addEventListener('input', (e) => {
+      const el = idDari(e.target); if (!el?.dataset.b || !el.dataset.f) return
+      // spasi awal/akhir dipangkas di model (elemen yang sedang difokus tidak ditambal, jadi spasi yang baru diketik tetap di layar)
+      const teks = (el.textContent || '').replace(/\s+/g, ' ').trim()
+      cb.current.onUbah(el.dataset.b, el.dataset.f, el.classList.contains('pnm') ? teks : teks.toUpperCase())
+    })
+    d.addEventListener('focusin', (e) => cb.current.fokusBagian(idDari(e.target)?.dataset.b || null))
+    d.addEventListener('focusout', (e) => {
+      cb.current.lepasBagian(idDari((e as FocusEvent).relatedTarget)?.dataset.b || null)
+      setTimeout(() => { if (tunda.current) muatUlangBilaPerlu(drafTerakhir.current); else tambal(drafTerakhir.current); ukur() }, 0)
+    })
+    d.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); (e.target as HTMLElement).blur() } })
+    d.addEventListener('paste', (e) => { e.preventDefault(); const t = e.clipboardData?.getData('text/plain') || ''; d.execCommand('insertText', false, t.replace(/\s+/g, ' ')) })
   }
   return (
     <section>
       <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
-        <div className="lo-hint">Pratinjau dokumen berkop dari draf yang sama dengan teks WhatsApp. Kop penuh di halaman 1, kop ringkas di halaman berikutnya. Untuk PDF: klik “Cetak / Simpan PDF”, lalu pilih <b>Simpan sebagai PDF</b> di jendela cetak.</div>
+        <div className="lo-hint">Pratinjau dokumen berkop - <b>klik teks untuk mengedit langsung</b> (nama proyek/panel, pekerjaan, kendala, catatan; Enter = selesai). Tersimpan otomatis ke laporan bersama. Kop penuh di halaman 1, kop ringkas di halaman berikutnya. Untuk PDF: klik “Cetak / Simpan PDF”, lalu pilih <b>Simpan sebagai PDF</b>.</div>
         <div className="lo-act"><button className="loBtn pri" type="button" onClick={() => cetakLaporanBerkop(draf)}>Cetak / Simpan PDF</button></div>
       </div>
       <div ref={wadah} style={{ width: '100%', overflow: 'hidden', height: tinggi * skala }}>
-        <iframe title="Pratinjau laporan berkop" srcDoc={html} onLoad={ukur} scrolling="no"
+        <iframe ref={ifr} title="Pratinjau laporan berkop" srcDoc={html} onLoad={pasang} scrolling="no"
           style={{ width: LEBAR_A4_PX + 40, height: tinggi, border: 0, transform: `scale(${skala})`, transformOrigin: '0 0', display: 'block' }} />
       </div>
     </section>

@@ -159,3 +159,19 @@ export function bagianImpor(d: DrafLaporan, sudahAda: boolean): any[] {
 const kunciImpor = (nama: string) => `vt_laporan_outstanding_v1:${nama || 'admin'}:diimpor`
 export const sudahDiimpor = (nama: string) => { try { return !!localStorage.getItem(kunciImpor(nama)) } catch { return false } }
 export const tandaiDiimpor = (nama: string, ket: string) => { try { localStorage.setItem(kunciImpor(nama), ket) } catch { /* storage diblokir: tawaran muncul lagi, impor tetap tidak dobel */ } }
+
+// ── riwayat (S2): per laporan, terbaru dulu, per halaman (permanen & terus bertambah) ──
+export type RiwayatLO = { id: number; laporan_id: number; bagian_id: string | null; waktu: string; oleh: string; jenis: string; ringkasan: string | null; sebelum: any; sesudah: any }
+export const RIWAYAT_PER_HALAMAN = 100
+export async function muatRiwayat(db: any, laporanId: number, jumlahHalaman: number): Promise<{ baris: RiwayatLO[]; adaLagi: boolean }> {
+  const batas = jumlahHalaman * RIWAYAT_PER_HALAMAN
+  const baris = await fetchAllPaged((a, z) => db.from('laporan_outstanding_riwayat').select('*').eq('laporan_id', laporanId).order('id', { ascending: false }).range(a, Math.min(z, batas)))
+  return { baris: baris.slice(0, batas), adaLagi: baris.length > batas }
+}
+export const bisaDikembalikan = (r: RiwayatLO) => !['buat', 'buat_ulang', 'impor'].includes(r.jenis) && (r.bagian_id ? r.sebelum != null || r.jenis === 'tambah' : !!r.sebelum && Object.keys(r.sebelum).length > 0)
+// teks singkat isi sebelum/sesudah utk ditampilkan
+export function teksRiwayat(x: any, bagian: boolean): string {
+  if (x == null) return '—'
+  if (bagian) { const d = x.data || {}; return [d.teks ?? d.nama ?? '', d.selesai ? '✅' : '', d.ringkas ? `(${d.ringkas})` : ''].filter(Boolean).join(' ') || '(kosong)' }
+  return Object.entries(x).map(([k, v]) => `${k === 'teks_wa' ? 'teks WA' : k === 'tampil_teratasi' ? 'tampil teratasi' : k}: ${v == null ? '(ikut susunan)' : String(v).length > 120 ? String(v).slice(0, 120) + '…' : String(v)}`).join(' · ')
+}
