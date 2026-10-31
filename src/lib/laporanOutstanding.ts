@@ -31,6 +31,8 @@ export type Pekerjaan = { id: string; teks: string; selesai: boolean }
 export type PanelLap = { id: string; src: Sumber; nama: string; panelId: number | null; pekerjaan: Pekerjaan[]; kendala: KendalaLap[]; pekerjaanSemua?: Pekerjaan[]; pekerjaanRingkas?: Pekerjaan[] }
 // ringkas = satu baris pendek pengganti daftar panel (mis. WO baru turun belum ada planning).
 export type ProyekLap = { id: string; src: Sumber; nama: string; deadline: string; ringkas: string; kendalaUmum: KendalaLap[]; panels: PanelLap[]; semua?: boolean }
+// catatan di luar proyek: ber-id (31 Okt 2026, laporan bersama - disimpan & dilindungi per bagian). Draf lama (string) dinormalisasi.
+export type CatatanLap = { id: string; teks: string }
 export type PrioritasLap = { id: string; nama: string; deadline: string; panels: string[] }
 export type DrafLaporan = {
   versi: 1
@@ -39,7 +41,7 @@ export type DrafLaporan = {
   jam: string // "16.00"
   dibuatPada: string // ISO saat tombol Buat laporan diklik
   proyek: ProyekLap[]
-  catatan: string[] // NOTE di luar proyek (urut)
+  catatan: CatatanLap[] // NOTE di luar proyek (urut)
   prioritas: PrioritasLap[]
   tampilTeratasi?: boolean // "Tampilkan kendala yang sudah teratasi" (bawaan true)
 }
@@ -355,7 +357,7 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
   bawaDariDrafLama(proyek, lama?.proyek || [])
   return {
     versi: 1, varian: b.varian || 'V2', tanggal: hariIni, jam: b.jam || jamSekarangWib(), dibuatPada: new Date().toISOString(),
-    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? [...lama.catatan] : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
+    proyek: [...proyek, ...tetap], catatan: lama?.catatan ? lama.catatan.map((c) => ({ ...c })) : [], tampilTeratasi: lama?.tampilTeratasi ?? true,
     prioritas: buatPrioritasMingguIni(b.woAktif, b.raw, hariIni, b.penandaMain),
   }
 }
@@ -439,7 +441,7 @@ export function formatTeksWhatsApp(d: DrafLaporan): string {
     }
     L.push('')
   })
-  const cat = d.catatan.map((c) => c.trim()).filter(Boolean)
+  const cat = d.catatan.map((c) => c.teks.trim()).filter(Boolean)
   if (cat.length) { L.push('NOTE :'); cat.forEach((c, i) => L.push(`${i + 1}. ${c}`)); L.push('') }
   const prio = d.prioritas.filter((p) => p.nama.trim() || p.panels.some((x) => x.trim()))
   if (prio.length) {
@@ -543,7 +545,7 @@ export function htmlDokumenLaporan(d: DrafLaporan, o: { dibuatJam?: string } = {
     }
     h += '</div>'
   })
-  const cat = d.catatan.map((c) => c.trim()).filter(Boolean)
+  const cat = d.catatan.map((c) => c.teks.trim()).filter(Boolean)
   if (cat.length) h += `<div class="lod-sec"><h3>Catatan</h3><ol>${cat.map((c, i) => `<li><span class="no">${i + 1}.</span><span>${escH(c)}</span></li>`).join('')}</ol></div>`
   const prio = d.prioritas.filter((p) => p.nama.trim() || p.panels.some((x) => x.trim()))
   if (prio.length) {
@@ -655,6 +657,8 @@ export function bacaSimpanan(user: string): SimpananLaporan | null {
     const j = JSON.parse(s)
     if (!(j?.draf?.versi === 1 && Array.isArray(j.draf.proyek))) return null
     // draf lama: kendala berupa teks -> KendalaLap
+    // catatan lama (string) -> {id, teks}; id tetap (berdasar tanggal + urutan) agar impor ulang tidak menggandakan
+    j.draf.catatan = (j.draf.catatan || []).map((c: any, i: number) => (typeof c === 'string' ? { id: `lokal-${j.draf.tanggal}-c${i}`, teks: c } : c))
     j.draf.proyek = j.draf.proyek.map((p: any) => ({ ...p, kendalaUmum: (p.kendalaUmum || []).map(normKendala), panels: (p.panels || []).map((n: any) => ({ ...n, kendala: (n.kendala || []).map(normKendala) })) }))
     return j
   } catch { return null }

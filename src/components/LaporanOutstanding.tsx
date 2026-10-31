@@ -5,8 +5,11 @@
 //   entri Arsip, Manual, dan Catatan dipertahankan.
 // - Teks WhatsApp mengikuti draf selama belum diedit. Setelah diedit tangan (badge "Diedit"), perubahan di penyusun TIDAK
 //   menimpanya - hanya "Buat ulang teks" (dengan konfirmasi).
-// - Draf disimpan di localStorage perangkat ini (keputusan user, tanpa tabel); gagal simpan -> tetap jalan + peringatan.
-// - TIDAK menulis apa pun ke database (hanya select). Penanda sumber (Otomatis/Arsip/Manual) hanya di layar ini.
+// - (31 Okt 2026, S1) LAPORAN BERSAMA: satu laporan per hari kerja utk semua admin, disimpan per bagian di database
+//   (laporan_outstanding*, RPC lo_*) & realtime - lihat hooks/useLaporanBersama (terakhir menang per bagian, teks yang sedang
+//   diketik tidak ditimpa, peringatan "X baru mengubah bagian ini", riwayat permanen). Dulu draf per admin di localStorage:
+//   ditawarkan impor sekali. Data WO/panel/progres/kendala tetap hanya dibaca.
+// - Tiap pembungkus kolom ber-atribut data-b = id bagian (dipakai perlindungan fokus). Penanda sumber hanya di layar ini.
 // Tombol ber-class "loBtn": aturan global mode gelap `[data-theme=dark] button:not([class*="Btn"])` tidak menimpanya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
@@ -14,10 +17,13 @@ import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
 import { cetakLaporanBerkop, htmlHalamanBerkop } from '../lib/laporanOutstandingBerkop'
+import { useLaporanBersama, ID_TEKS_WA, ID_HEADER, type StatusSimpan } from '../hooks/useLaporanBersama'
+import { datarkan, susunDraf, ulangId, headerDariDraf, bagianImpor, loBuat, loGantiOtomatis, loImpor, muatDaftarTanggal, muatLaporanTanggal,
+  barisKeDatar, sudahDiimpor, tandaiDiimpor } from '../lib/laporanOutstandingBersama'
 import { KomponenMainPengaturan } from './KomponenMainPengaturan'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
-  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, tulisSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
+  proyekManualBaru, panelManualBaru, idBaru, bacaSimpanan, fmtTglLaporan, judulLaporan, HARI_TAMPIL_TERATASI, kosong,
   type DrafLaporan, type ProyekLap, type PanelLap, type GrupArsip, type PanelArsip, type Sumber, type Varian, type KendalaLap, type KendalaSumber,
 } from '../lib/laporanOutstanding'
 
@@ -40,6 +46,17 @@ const CSS = `
 .lo .loBtn.lnk:hover{text-decoration:underline}
 .lo-warn{font-size:12.5px;color:var(--lo-mute);background:var(--lo-soft);border:1px solid var(--lo-line);border-radius:8px;padding:7px 10px;margin-bottom:10px}
 .lo-warn.bad{color:var(--lo-bad)}
+.lo-lama{background:#fff4d6;color:#8a5a00;border:1px solid #f3c969;border-radius:8px;padding:8px 12px;font-weight:700;margin-bottom:8px}
+[data-theme="dark"] .lo-lama{background:#3a2d14;color:#f0c46b;border-color:#6b5320}
+.lo-st{font-size:12px;font-weight:600;padding:2px 9px;border-radius:99px;background:var(--lo-soft);color:var(--lo-mute);border:1px solid var(--lo-line)}
+.lo-st.gagal{color:var(--lo-bad);border-color:var(--lo-bad)}
+.lo-st.menyimpan,.lo-st.menunggu{color:var(--lo-acc)}
+.lo-bentrok{outline:2px solid #f59e0b !important;outline-offset:2px;border-radius:8px}
+.lo-per{position:sticky;top:6px;z-index:5;display:flex;flex-direction:column;gap:6px;margin-bottom:8px}
+.lo-per>div{display:flex;gap:10px;align-items:flex-start;background:#fff7e6;color:#7a4b00;border:1px solid #f5c26b;border-radius:8px;padding:7px 10px;font-size:12.5px;box-shadow:0 2px 8px rgba(0,0,0,.06)}
+[data-theme="dark"] .lo-per>div{background:#3a2d14;color:#f0c46b;border-color:#6b5320}
+.lo-per>div span{flex:1}
+.lo-imp{background:var(--lo-acc-soft);border:1px solid var(--lo-line);border-radius:8px;padding:9px 12px;font-size:13px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px}
 .lo-err{color:var(--lo-bad);font-size:13px;margin:8px 0}
 .lo-tabs{display:flex;gap:4px;border-bottom:1px solid var(--lo-line);margin-bottom:12px;flex-wrap:wrap}
 .lo .lo-tabs .loBtn{border:0;border-bottom:2px solid transparent;border-radius:0;background:none;height:38px;color:var(--lo-mute)}
@@ -82,6 +99,7 @@ const CSS = `
 `
 
 type Tab = 'susun' | 'berkop' | 'wa'
+const LABEL_STATUS: Record<StatusSimpan, string> = { tersimpan: 'Tersimpan ✓', menunggu: 'Belum tersimpan…', menyimpan: 'Menyimpan…', gagal: 'Gagal tersimpan' }
 const LABEL_SRC: Record<Sumber, string> = { otomatis: 'Otomatis', arsip: 'Arsip', manual: 'Manual' }
 const Src = ({ s }: { s: Sumber }) => <span className={`lo-src ${s}`}>{LABEL_SRC[s]}</span>
 const geser = <T,>(arr: T[], i: number, d: number): T[] => { const j = i + d; if (j < 0 || j >= arr.length) return arr; const a = [...arr]; [a[i], a[j]] = [a[j], a[i]]; return a }
@@ -93,57 +111,74 @@ const waktuWib = (iso: string) => { const d = new Date(new Date(iso).getTime() +
 
 export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   const nama = String(user?.nama || user?.name || 'admin').trim()
-  const awal = useMemo(() => bacaSimpanan(nama), [nama])
-  const [draf, setDraf] = useState<DrafLaporan | null>(awal?.draf || null)
-  const [teksWa, setTeksWa] = useState(awal?.teksWa || '')
-  const [teksSistem, setTeksSistem] = useState(awal?.teksSistem || '')
+  const hariIni = hariKerjaWib()
+  const [tanggal, setTanggal] = useState(hariIni)
+  const lb = useLaporanBersama(db, user, tanggal)
+  const { draf, header, ubah } = lb
+  const lama = tanggal !== hariIni
+  const teksWa = lb.teksWa ?? (draf ? formatTeksWhatsApp(draf) : '')
+  const diedit = lb.teksWa != null
   const [tab, setTab] = useState<Tab>('susun')
   const [sibuk, setSibuk] = useState(false)
   const [galat, setGalat] = useState<string | null>(null)
-  const [simpanGagal, setSimpanGagal] = useState(false)
   // semua kendala tidak terhapus (terbuka + teratasi) - penyaringan teratasi di lib (kendalaMasukLaporan)
   const [kendala, setKendala] = useState<KendalaSumber[] | null>(null)
   const [picker, setPicker] = useState<{ memuat: boolean; galat?: string; grup: GrupArsip[]; pilih: Set<number>; hanyaBelum: boolean } | null>(null)
   const [aturMain, setAturMain] = useState(false) // pengaturan komponen main/printilan (KomponenMainPengaturan)
   const [salin, setSalin] = useState('')
-  const diedit = teksWa !== teksSistem
+  const [daftarTgl, setDaftarTgl] = useState<{ tanggal: string; diperbarui_oleh: string | null }[]>([])
+  useEffect(() => { muatDaftarTanggal(db).then(setDaftarTgl).catch((e) => console.error('[Laporan Outstanding] daftar tanggal gagal:', e)) }, [db, header?.id])
+  const varian: Varian = (header?.varian as Varian) || 'V2'
 
-  // draf berubah -> teks WA ikut HANYA bila belum diedit tangan
-  const ubah = (f: (d: DrafLaporan) => DrafLaporan) => setDraf((d) => (d ? f(d) : d))
-  const terakhirDraf = useRef<DrafLaporan | null>(draf)
-  useEffect(() => {
-    if (!draf || terakhirDraf.current === draf) return
-    terakhirDraf.current = draf
-    const sys = formatTeksWhatsApp(draf)
-    if (!diedit) { setTeksWa(sys); setTeksSistem(sys) }
-  }, [draf, diedit])
-  useEffect(() => {
-    if (!draf) return
-    setSimpanGagal(!tulisSimpanan(nama, { draf, teksWa, teksSistem }))
-  }, [draf, teksWa, teksSistem, nama])
-
-  // Varian aturan pekerjaan (UJI, belum dikunci - lib/laporanOutstanding Varian). Bawaan V2 (keputusan sementara user 23 Okt).
-  const [varian, setVarian] = useState<Varian>(awal?.draf?.varian || 'V2')
+  // "Buat laporan" (belum ada utk hari ini): disusun dari data terbaru + entri manual/arsip/catatan laporan terakhir
+  // (perilaku lama: draf kemarin terbawa), id bagian dibuat ulang. "Buat ulang": hanya bagian otomatis yang diganti (RPC).
   const buat = async (v: Varian = varian) => {
-    if (draf && !window.confirm('Susun ulang bagian Otomatis dan Prioritas dari data terbaru?\nEdit pada entri Otomatis & Prioritas akan diganti. Entri Arsip, Manual, dan Catatan tetap.' + (diedit ? '\n\nTeks WhatsApp yang sudah Anda edit TIDAK diubah (pakai "Buat ulang teks").' : ''))) return
+    if (lama) return
+    if (header && !window.confirm('Susun ulang bagian Otomatis dan Prioritas dari data terbaru utk SEMUA admin?\nEdit pada entri Otomatis & Prioritas akan diganti. Entri Arsip, Manual, dan Catatan tetap.' + (diedit ? '\n\nTeks WhatsApp yang sudah diedit TIDAK diubah (pakai "Buat ulang teks").' : ''))) return
     setSibuk(true); setGalat(null)
     try {
+      if (header) await lb.simpan()
       const [bahan, kd] = await Promise.all([muatBahanOtomatis(db), muatKendala(db)])
       const k = kd as KendalaSumber[]
       setKendala(k)
-      const baru = buatLaporanOutstanding({ ...bahan, kendala: k, varian: v, jam: draf && draf.tanggal === hariKerjaWib() ? draf.jam : undefined }, draf)
-      setVarian(v)
-      if (!draf) { const sys = formatTeksWhatsApp(baru); setTeksWa(sys); setTeksSistem(sys); terakhirDraf.current = baru }
-      setDraf(baru)
+      if (header && lb.drafRef.current) {
+        const d0 = lb.drafRef.current
+        const baru = buatLaporanOutstanding({ ...bahan, kendala: k, varian: v, jam: d0.jam }, d0)
+        await loGantiOtomatis(db, user, header.id, { varian: v, jam: baru.jam, disusun_pada: baru.dibuatPada }, datarkan(baru))
+      } else {
+        const sebelum = (await muatDaftarTanggal(db, 5)).find((x) => x.tanggal < hariIni)
+        let dasarLama: DrafLaporan | null = null
+        if (sebelum) { const r = await muatLaporanTanggal(db, sebelum.tanggal); if (r.header) dasarLama = susunDraf(r.header, barisKeDatar(r.bagian)) }
+        const baru = ulangId(buatLaporanOutstanding({ ...bahan, kendala: k, varian: v }, dasarLama))
+        const r = await loBuat(db, user, hariIni, headerDariDraf(baru), datarkan(baru))
+        if (!r.dibuat) lb.beritahu(`Laporan hari ini sudah lebih dulu dibuat oleh ${r.laporan.dibuat_oleh} - itu yang ditampilkan.`)
+      }
+      await lb.muat()
     } catch (e: any) {
-      console.error('[Laporan Outstanding] gagal memuat data:', e); laporError('supabase_error', e, { aksi: 'buat laporan outstanding' })
-      setGalat('Gagal memuat data laporan: ' + (e?.message || e))
+      console.error('[Laporan Outstanding] gagal menyusun:', e); laporError('supabase_error', e, { aksi: 'buat laporan outstanding' })
+      setGalat('Gagal menyusun laporan: ' + (e?.message || e))
     } finally { setSibuk(false) }
   }
   const buatUlangTeks = () => {
     if (!draf) return
-    if (diedit && !window.confirm('Teks WhatsApp sudah Anda edit. Buat ulang dari penyusun? Edit teks akan hilang.')) return
-    const sys = formatTeksWhatsApp(draf); setTeksWa(sys); setTeksSistem(sys)
+    if (diedit && !window.confirm('Teks WhatsApp sudah diedit. Buat ulang dari penyusun? Edit teks diganti utk semua admin (versi lama tetap di riwayat).')) return
+    lb.setTeksWa(null)
+  }
+  // draf lama di browser ini (sebelum laporan bersama) - ditawarkan impor SEKALI
+  const lokal = useMemo(() => (sudahDiimpor(nama) ? null : bacaSimpanan(nama)), [nama])
+  const [lokalTutup, setLokalTutup] = useState(false)
+  const impor = async () => {
+    if (!lokal) return
+    setSibuk(true); setGalat(null)
+    try {
+      const ada = (await muatLaporanTanggal(db, lokal.draf.tanggal)).header
+      const r = await loImpor(db, user, lokal.draf.tanggal, headerDariDraf(lokal.draf, lokal.teksWa !== lokal.teksSistem ? lokal.teksWa : null), bagianImpor(lokal.draf, !!ada))
+      tandaiDiimpor(nama, new Date().toISOString()); setLokalTutup(true)
+      lb.beritahu(r.mode === 'baru' ? `Draf lama diimpor sebagai laporan ${tglPanjang(lokal.draf.tanggal)}.` : `Draf lama digabung ke laporan ${tglPanjang(lokal.draf.tanggal)}: ${r.bagian} bagian manual/arsip/catatan ditambahkan${r.dilewati ? `, ${r.dilewati} sudah ada` : ''}.`)
+      if (lokal.draf.tanggal === tanggal) await lb.muat(); else setTanggal(lokal.draf.tanggal)
+    } catch (e: any) {
+      console.error('[Laporan Outstanding] impor gagal:', e); setGalat('Impor draf lama gagal: ' + (e?.message || e) + ' - draf lama tetap di browser ini.')
+    } finally { setSibuk(false) }
   }
   const salinTeks = async () => {
     const ok = () => { setSalin('Tersalin ✓'); setTimeout(() => setSalin(''), 1600) }
@@ -189,36 +224,58 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
     setPicker(null)
   }
 
+  // bagian yang bentrok (admin lain mengubahnya) diberi garis kuning
+  const akar = useRef<HTMLDivElement | null>(null)
+  useEffect(() => {
+    const el = akar.current; if (!el) return
+    el.querySelectorAll('.lo-bentrok').forEach((x) => x.classList.remove('lo-bentrok'))
+    Object.keys(lb.peringatan).forEach((id) => el.querySelectorAll(`[data-b="${id.replace(/"/g, "")}"]`).forEach((x) => x.classList.add('lo-bentrok')))
+  })
   // ----- edit helper -----
   const setP = (pi: number, f: (p: ProyekLap) => ProyekLap) => ubah((d) => ({ ...d, proyek: d.proyek.map((p, i) => (i === pi ? f(p) : p)) }))
   const setN = (pi: number, ni: number, f: (n: PanelLap) => PanelLap) => setP(pi, (p) => ({ ...p, panels: p.panels.map((n, i) => (i === ni ? f(n) : n)) }))
   const jumlahNonOtomatis = (draf?.proyek || []).filter((p) => p.src !== 'otomatis').length
 
   return (
-    <div className="lo">
+    <div className="lo" ref={akar} onFocusCapture={lb.onFokus} onBlurCapture={lb.onLepas}>
       <style>{CSS}</style>
       <div className="lo-top">
         <div>
           <h1>Laporan Outstanding</h1>
-          <div className="lo-sub">{draf ? <>Laporan {tglPanjang(draf.tanggal)} · dibuat {waktuWib(draf.dibuatPada)}</> : 'Belum ada laporan. Klik “Buat laporan” untuk menyusun dari data terbaru.'}</div>
+          <div className="lo-sub">{header && draf ? <>Laporan bersama {tglPanjang(draf.tanggal)} · disusun {waktuWib(draf.dibuatPada)} · dibuat {header.dibuat_oleh}{header.diperbarui_oleh ? ` · terakhir diubah ${header.diperbarui_oleh}${header.diperbarui_pada ? ', ' + waktuWib(header.diperbarui_pada) : ''}` : ''}</> : lb.memuat ? 'Memuat laporan…' : lama ? `Tidak ada laporan untuk ${tglPanjang(tanggal)}.` : 'Belum ada laporan hari ini. Klik “Buat laporan” untuk menyusun dari data terbaru.'}</div>
         </div>
-        <div className="lo-act">
+        <div className="lo-act" data-b={ID_HEADER}>
+          <span className="lo-lbl">Tanggal</span>
+          <select className="inp" style={{ width: 'auto', height: 32 }} value={tanggal} aria-label="Tanggal laporan" onChange={(e) => { if (lb.adaTertunda()) lb.simpan(); setTanggal(e.target.value) }}>
+            {[...new Set([hariIni, ...daftarTgl.map((x) => x.tanggal)])].sort().reverse().map((t) => <option key={t} value={t}>{t === hariIni ? 'Hari ini · ' : ''}{tglPendek(t)}</option>)}
+          </select>
           {draf && <><span className="lo-lbl">Jam laporan</span><input className="inp jam" value={draf.jam} onChange={(e) => ubah((d) => ({ ...d, jam: e.target.value }))} aria-label="Jam laporan" /></>}
           <span className="lo-lbl">Aturan (uji)</span>
-          <select className="inp jam" style={{ width: 'auto', height: 32 }} value={varian} disabled={sibuk} aria-label="Varian aturan pekerjaan (uji)" title="V1: semua proses terjadwal s.d. hari ini · V2: hanya proses aktif + (+N proses menunggu) · V3: seperti V2, digabung per proses"
-            onChange={(e) => { const v = e.target.value as Varian; if (draf) buat(v); else setVarian(v) }}>
+          <select className="inp jam" style={{ width: 'auto', height: 32 }} value={varian} disabled={sibuk || lama || !header} aria-label="Varian aturan pekerjaan (uji)" title="V1: semua proses terjadwal s.d. hari ini · V2: hanya proses aktif + (+N proses menunggu) · V3: seperti V2, digabung per proses"
+            onChange={(e) => buat(e.target.value as Varian)}>
             <option value="V1">V1 semua terjadwal</option><option value="V2">V2 proses aktif (bawaan)</option><option value="V3">V3 aktif digabung</option>
           </select>
-          <button className="loBtn pri" type="button" onClick={() => buat()} disabled={sibuk}>{sibuk ? 'Memuat…' : draf ? 'Buat ulang laporan' : 'Buat laporan'}</button>
+          {!lama && <button className="loBtn pri" type="button" onClick={() => buat()} disabled={sibuk || lb.memuat}>{sibuk ? 'Memuat…' : header ? 'Buat ulang laporan' : 'Buat laporan'}</button>}
         </div>
       </div>
-      <div className={'lo-warn' + (simpanGagal ? ' bad' : '')}>
-        {simpanGagal ? 'Penyimpanan perangkat tidak tersedia: draf hilang bila halaman ditutup. Salin teks sebelum keluar.' : 'Draf laporan (termasuk entri manual, arsip, dan catatan) tersimpan di perangkat/browser ini saja, tidak di server. Fitur ini tidak mengubah data WO, panel, progres, atau kendala.'}
+      {lama && <div className="lo-lama">⚠ Laporan tanggal lama · {tglPanjang(tanggal)} - perubahan tetap tersimpan & tercatat di riwayat. <button className="loBtn lnk" type="button" onClick={() => setTanggal(hariIni)}>Buka laporan hari ini</button></div>}
+      <div className={'lo-warn' + (lb.status === 'gagal' ? ' bad' : '')} style={{ display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+        <span className={'lo-st ' + lb.status}>{LABEL_STATUS[lb.status]}</span>
+        <span style={{ flex: 1 }}>{lb.status === 'gagal' ? lb.galatSimpan : 'Laporan bersama: tersimpan otomatis di server dan langsung terlihat oleh semua admin. Tidak mengubah data WO, panel, progres, atau kendala.'}</span>
       </div>
-      {draf && draf.tanggal !== hariKerjaWib() && <div className="lo-warn bad">Draf ini untuk {tglPanjang(draf.tanggal)}. Klik “Buat ulang laporan” untuk data hari ini (entri Arsip, Manual, dan Catatan tetap).</div>}
-      {galat && <div className="lo-err">{galat} <button className="loBtn lnk" type="button" onClick={() => buat()}>Coba lagi</button></div>}
+      {lokal && !lokalTutup && <div className="lo-imp">
+        <span style={{ flex: 1 }}>Ada draf lama di browser ini ({tglPanjang(lokal.draf.tanggal)}, {lokal.draf.proyek.filter((x) => x.src !== 'otomatis').length} proyek manual/arsip, {lokal.draf.catatan.filter((c) => c.teks.trim()).length} catatan). Impor sekali ke laporan bersama agar tidak hilang.</span>
+        <button className="loBtn pri" type="button" disabled={sibuk} onClick={impor}>Impor draf lama</button>
+        <button className="loBtn" type="button" onClick={() => { tandaiDiimpor(nama, 'diabaikan ' + new Date().toISOString()); setLokalTutup(true) }}>Abaikan</button>
+      </div>}
+      {(Object.keys(lb.peringatan).length > 0 || lb.pemberitahuan.length > 0) && <div className="lo-per" role="status">
+        {Object.entries(lb.peringatan).map(([id, x]) => <div key={id}><span>⚠ <b>{x.oleh || 'Admin lain'}</b> baru mengubah {id === ID_TEKS_WA ? 'teks WhatsApp' : id === ID_HEADER ? 'pengaturan laporan' : 'bagian yang ' + (x.sudahTersimpan ? 'Anda ubah' : 'sedang Anda edit')}{x.waktu ? ` (${waktuWib(x.waktu)})` : ''}. {x.sudahTersimpan ? 'Versi Anda yang tersimpan; versinya ada di riwayat.' : 'Teks Anda tidak ditimpa - saat selesai mengedit, versi Anda yang disimpan.'}</span>
+          <button className="loBtn ib" type="button" title="Tutup" onClick={() => lb.tutupPeringatan(id)}>×</button></div>)}
+        {lb.pemberitahuan.map((t, i) => <div key={'p' + i}><span>{t}</span><button className="loBtn ib" type="button" title="Tutup" onClick={() => lb.tutupPemberitahuan(i)}>×</button></div>)}
+      </div>}
+      {(galat || lb.galatMuat) && <div className="lo-err">{galat || lb.galatMuat} <button className="loBtn lnk" type="button" onClick={() => (galat ? buat() : lb.muat())}>Coba lagi</button></div>}
 
-      {!draf ? <div className="lo-empty">Belum ada draf di perangkat ini.</div> : <>
+      {!draf ? <div className="lo-empty">{lb.memuat ? 'Memuat…' : lama ? 'Tidak ada laporan untuk tanggal ini.' : 'Belum ada laporan hari ini.'}</div> : <>
         <div className="lo-tabs" role="tablist">
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'susun'} onClick={() => setTab('susun')}>Susun &amp; edit{jumlahNonOtomatis > 0 && <span className="lo-badge">{jumlahNonOtomatis} manual/arsip</span>}</button>
           <button className="loBtn" role="tab" type="button" aria-selected={tab === 'berkop'} onClick={() => setTab('berkop')}>Tampilan berkop</button>
@@ -227,8 +284,8 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
 
         {tab === 'susun' && <section>
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
-            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Baris pekerjaan/kendala yang dibiarkan kosong menjadi garis tulis tangan di tampilan berkop/PDF (tidak ditulis di teks WhatsApp). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di draf ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.
-              <label className="lo-row" style={{ marginTop: 6, cursor: 'pointer', color: 'var(--lo-fg)' }}>
+            <div className="lo-hint">Edit teks, hapus, atau urutkan ulang. Centang = selesai hari ini (✅). Baris pekerjaan/kendala yang dibiarkan kosong menjadi garis tulis tangan di tampilan berkop/PDF (tidak ditulis di teks WhatsApp). Entri <b>Manual</b> dan <b>Arsip</b> hanya ada di laporan ini dan tidak mengubah data WO atau panel. Catatan di luar proyek dan Prioritas ada di bawah.
+              <label className="lo-row" data-b={ID_HEADER} style={{ marginTop: 6, cursor: 'pointer', color: 'var(--lo-fg)' }}>
                 <input className="chk" type="checkbox" checked={draf.tampilTeratasi !== false} onChange={(e) => ubah((d) => ({ ...d, tampilTeratasi: e.target.checked }))} />
                 Tampilkan kendala yang sudah teratasi <span className="lo-meta">(sampai {HARI_TAMPIL_TERATASI} hari kerja sesudah tanggal teratasi)</span>
               </label></div>
@@ -244,7 +301,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
 
           {draf.proyek.length === 0 && <div className="lo-empty">Belum ada proyek. Klik “+ Tambah proyek” atau “Ambil dari arsip”.</div>}
           {draf.proyek.map((p, pi) => (
-            <div className="lo-card" key={p.id}>
+            <div className="lo-card" key={p.id} data-b={p.id}>
               <div className="lo-row">
                 <Src s={p.src} />
                 <input className="inp nm" placeholder="NAMA PROYEK / WO" value={p.nama} onChange={(e) => setP(pi, (x) => ({ ...x, nama: e.target.value.toUpperCase() }))} />
@@ -268,7 +325,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                   onHapus={() => setP(pi, (x) => ({ ...x, kendalaUmum: x.kendalaUmum.filter((_, i) => i !== ki) }))} />
               ))}
               {p.ringkas === '' && p.panels.map((n, ni) => (
-                <div className="lo-pbox" key={n.id}>
+                <div className="lo-pbox" key={n.id} data-b={n.id}>
                   <div className="lo-row">
                     {n.src !== p.src && <Src s={n.src} />}
                     <input className="inp" style={{ fontWeight: 600 }} placeholder="Nama panel (kosongkan jika tidak ada)" value={n.nama} onChange={(e) => setN(pi, ni, (x) => ({ ...x, nama: e.target.value }))} />
@@ -277,7 +334,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
                     <button className="loBtn ib del" type="button" title="Hapus panel" onClick={() => setP(pi, (x) => ({ ...x, panels: x.panels.filter((_, i) => i !== ni) }))}>×</button>
                   </div>
                   {n.pekerjaan.map((j, ji) => (
-                    <div className="lo-row" key={j.id}>
+                    <div className="lo-row" key={j.id} data-b={j.id}>
                       <input className="chk" type="checkbox" title="Selesai hari ini (✅)" checked={j.selesai} onChange={(e) => setN(pi, ni, (x) => ({ ...x, pekerjaan: x.pekerjaan.map((v, i) => (i === ji ? { ...v, selesai: e.target.checked } : v)) }))} />
                       <input className="inp" value={j.teks} placeholder="Pekerjaan outstanding" onChange={(e) => setN(pi, ni, (x) => ({ ...x, pekerjaan: x.pekerjaan.map((v, i) => (i === ji ? { ...v, teks: e.target.value.toUpperCase() } : v)) }))} />
                       <button className="loBtn ib mv" type="button" title="Naik" onClick={() => setN(pi, ni, (x) => ({ ...x, pekerjaan: geser(x.pekerjaan, ji, -1) }))}>↑</button>
@@ -312,21 +369,21 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
           <div className="lo-card">
             <div className="lo-meta">Kebutuhan umum di luar WO (beli material, sewa alat, pengiriman). Tampil di bagian “NOTE :” teks WhatsApp.</div>
             {draf.catatan.map((c, ci) => (
-              <div className="lo-row" key={ci}>
+              <div className="lo-row" key={c.id} data-b={c.id}>
                 <span className="lo-lbl" style={{ width: 20, textAlign: 'right' }}>{ci + 1}.</span>
-                <input className="inp" value={c} placeholder="Tulis catatan" onChange={(e) => ubah((d) => ({ ...d, catatan: d.catatan.map((v, i) => (i === ci ? e.target.value.toUpperCase() : v)) }))} />
+                <input className="inp" value={c.teks} placeholder="Tulis catatan" onChange={(e) => ubah((d) => ({ ...d, catatan: d.catatan.map((v, i) => (i === ci ? { ...v, teks: e.target.value.toUpperCase() } : v)) }))} />
                 <button className="loBtn ib" type="button" title="Naik" onClick={() => ubah((d) => ({ ...d, catatan: geser(d.catatan, ci, -1) }))}>↑</button>
                 <button className="loBtn ib" type="button" title="Turun" onClick={() => ubah((d) => ({ ...d, catatan: geser(d.catatan, ci, 1) }))}>↓</button>
                 <button className="loBtn ib del" type="button" title="Hapus" onClick={() => ubah((d) => ({ ...d, catatan: d.catatan.filter((_, i) => i !== ci) }))}>×</button>
               </div>
             ))}
-            <div className="lo-links"><button className="loBtn lnk" type="button" onClick={() => ubah((d) => ({ ...d, catatan: [...d.catatan, ''] }))}>+ Tambah catatan</button></div>
+            <div className="lo-links"><button className="loBtn lnk" type="button" onClick={() => ubah((d) => ({ ...d, catatan: [...d.catatan, { id: idBaru(), teks: '' }] }))}>+ Tambah catatan</button></div>
           </div>
 
           <div className="lo-sec">Prioritas Pengerjaan Minggu Ini</div>
           <div className="lo-meta" style={{ marginBottom: 6 }}>Draf otomatis dari Raw Schedule Senin–Sabtu minggu ini (panel yang punya pekerjaan belum selesai), urut deadline terdekat. Bisa diedit.</div>
           {draf.prioritas.map((r, ri) => (
-            <div className="lo-card" key={r.id}>
+            <div className="lo-card" key={r.id} data-b={r.id}>
               <div className="lo-row">
                 <input className="inp nm" value={r.nama} placeholder="NAMA PROYEK" onChange={(e) => ubah((d) => ({ ...d, prioritas: d.prioritas.map((v, i) => (i === ri ? { ...v, nama: e.target.value.toUpperCase() } : v)) }))} />
                 <button className="loBtn ib" type="button" title="Naik" onClick={() => ubah((d) => ({ ...d, prioritas: geser(d.prioritas, ri, -1) }))}>↑</button>
@@ -353,13 +410,13 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
 
         {tab === 'wa' && <section className="lo-wa">
           <div className="lo-row wrap" style={{ marginBottom: 10, alignItems: 'flex-start' }}>
-            <div className="lo-hint">Bisa diedit langsung sebelum disalin. Selama belum diedit, teks ini mengikuti penyusun. Setelah diedit, perubahan di penyusun tidak menimpa teks ini; pakai “Buat ulang teks”. Tempel ke grup <b>Perencanaan Vista</b>.</div>
+            <div className="lo-hint">Bisa diedit langsung sebelum disalin - satu teks bersama utk semua admin (terakhir menang, versi sebelumnya di riwayat). Selama belum diedit, teks ini mengikuti penyusun. Setelah diedit, perubahan di penyusun tidak menimpa teks ini; pakai “Buat ulang teks”. Tempel ke grup <b>Perencanaan Vista</b>.</div>
             <div className="lo-act">
               <button className="loBtn" type="button" onClick={buatUlangTeks} disabled={!diedit && teksWa === formatTeksWhatsApp(draf)}>Buat ulang teks</button>
               <button className="loBtn pri" type="button" onClick={salinTeks}>{salin || 'Salin teks'}</button>
             </div>
           </div>
-          <KotakTeksWa label={`Teks ${judulLaporan(draf.tanggal, draf.jam)}`} value={teksWa} onChange={setTeksWa} />
+          <div data-b={ID_TEKS_WA}><KotakTeksWa label={`Teks ${judulLaporan(draf.tanggal, draf.jam)}`} value={teksWa} onChange={(t) => lb.setTeksWa(t)} /></div>
         </section>}
       </>}
     </div>
@@ -418,7 +475,7 @@ function BarisKendala({ k, label, placeholder, tampilTeratasi, onTeks, onHapus }
 }) {
   const siapa = [k.divisi, k.oleh].filter(Boolean).join(' · ')
   return (
-    <div className={'lo-kd' + (k.teratasi ? ' ok' : '') + (k.teratasi && !tampilTeratasi ? ' off' : '')}>
+    <div className={'lo-kd' + (k.teratasi ? ' ok' : '') + (k.teratasi && !tampilTeratasi ? ' off' : '')} data-b={k.id}>
       <div className="lo-row">
         <span className="lo-kt">{label}</span>
         <input className="inp" value={k.teks} placeholder={placeholder} onChange={(e) => onTeks(e.target.value.toUpperCase())} />
