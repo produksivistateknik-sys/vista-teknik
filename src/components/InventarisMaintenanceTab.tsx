@@ -227,7 +227,7 @@ export function InventarisMaintenanceTab({ user }: any) {
   useEffect(() => {
     if (!sorot || iSorot < 0 || sudahGulir.current === sorot) return
     sudahGulir.current = sorot
-    const t1 = setTimeout(() => document.querySelector(`.invm [data-row="${sorot}"]`)?.scrollIntoView({ block: 'center', behavior: 'smooth' }), 60)
+    const t1 = setTimeout(() => document.querySelector(`.invm [data-row="${sorot}"]`)?.scrollIntoView({ block: 'center' }), 60)   // tanpa smooth: gulir halus di wadah tabel bersarang bisa berhenti sebelum sampai
     const t2 = setTimeout(() => { setBatas(b => Math.max(b, batasTampil)); setSorot(null) }, 2800)
     return () => { clearTimeout(t1); clearTimeout(t2) }
   }, [sorot, iSorot, batasTampil])
