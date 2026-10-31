@@ -169,8 +169,11 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   // draf lama di browser ini (sebelum laporan bersama) - ditawarkan impor SEKALI
   const lokal = useMemo(() => (sudahDiimpor(nama) ? null : bacaSimpanan(nama)), [nama])
   const [lokalTutup, setLokalTutup] = useState(false)
+  // penjaga klik ganda: state `sibuk` baru berlaku sesudah render, klik kedua yang sangat cepat diabaikan lewat ref (server juga anti-dobel)
+  const imporBerjalan = useRef(false)
   const impor = async () => {
-    if (!lokal) return
+    if (!lokal || imporBerjalan.current) return
+    imporBerjalan.current = true
     setSibuk(true); setGalat(null)
     try {
       const ada = (await muatLaporanTanggal(db, lokal.draf.tanggal)).header
@@ -180,7 +183,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
       if (lokal.draf.tanggal === tanggal) await lb.muat(); else setTanggal(lokal.draf.tanggal)
     } catch (e: any) {
       console.error('[Laporan Outstanding] impor gagal:', e); setGalat('Impor draf lama gagal: ' + (e?.message || e) + ' - draf lama tetap di browser ini.')
-    } finally { setSibuk(false) }
+    } finally { setSibuk(false); imporBerjalan.current = false }
   }
   const salinTeks = async () => {
     const ok = () => { setSalin('Tersalin ✓'); setTimeout(() => setSalin(''), 1600) }
