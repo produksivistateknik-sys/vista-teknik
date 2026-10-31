@@ -69,6 +69,7 @@ const RawSchedule = lazyP(() => import('./components/RawSchedule').then(m => ({ 
 const RawScheduleAccordion = lazyP(() => import('./components/RawScheduleAccordion').then(m => ({ default: m.RawScheduleAccordion })))
 const OutstandingView = lazyP(() => import('./components/OutstandingView').then(m => ({ default: m.OutstandingView })))
 const ManajemenWO = lazyP(() => import('./components/ManajemenWO').then(m => ({ default: m.ManajemenWO })))
+import { titipTautanInv } from './lib/inventarisNotif'
 const InventarisMaintenanceTab = lazyP(() => import('./components/InventarisMaintenanceTab').then(m => ({ default: m.InventarisMaintenanceTab })))
 const StokMonitoringTab = lazyP(() => import('./components/StokMonitoringTab').then(m => ({ default: m.StokMonitoringTab })))
 const PermintaanAdminTab = lazyP(() => import('./components/PermintaanAdminTab').then(m => ({ default: m.PermintaanAdminTab })))
@@ -177,9 +178,12 @@ export default function App(){
     const params=new URLSearchParams(window.location.search);
     const tabParam=params.get("tab");
     const woIdParam=params.get("wo_id");
+    // ?inv=barang:12 / laporan:5 / jadwal:8 / notif (push tindakan operator, 31 Okt 2026) -> dititipkan ke tab Inventaris
+    const invParam=params.get("inv");
     if(tabParam)setTab(tabLama(tabParam));
     if(woIdParam)setHighlightWoId(Number(woIdParam));
-    if(tabParam||woIdParam)window.history.replaceState(null,"",window.location.pathname);
+    if(invParam){titipTautanInv(invParam);if(!tabParam)setTab("inventaris");}
+    if(tabParam||woIdParam||invParam)window.history.replaceState(null,"",window.location.pathname);
   },[]);
 
   useEffect(()=>{

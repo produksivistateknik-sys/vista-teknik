@@ -19,6 +19,8 @@ import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
 import { FotoZoomViewer, type FotoViewer } from './FotoZoomViewer'
 import { createPortal } from 'react-dom'
+import { useNotifInventaris, urai, ambilTautanInv, tautanNotif, notifDilihat, type Notifikasi, type TargetInv } from '../lib/inventarisNotif'
+import { LoncengNotif, LaciNotif, NotifKartu } from './InventarisNotifPanel'
 import { Modal, Inp, Sel, Lbl, Btn } from './ui/Primitives'
 
 const db: any = supabase
@@ -96,6 +98,9 @@ const CSS = `
 .invm .iv-hint{color:#b91c1c;font-size:12.5px;margin-top:4px}
 .invm .iv-sec{font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--iv-mute);margin:10px 0 4px}
 .invm .iv-upd{border-left:2px solid var(--iv-line);padding:2px 0 2px 8px;margin:4px 0;font-size:12.5px}
+.invm tr.iv-sorot>td{animation:ivSorot 2.6s ease-out}
+@keyframes ivSorot{0%,55%{background:#fde68a}100%{background:var(--iv-card)}}
+.invm .iv-notifb{display:flex;flex-direction:column;gap:6px;margin-bottom:10px}
 .invm .iv-empty{padding:26px;text-align:center;color:var(--iv-mute)}
 .invm .iv-err{background:#fde0e0;color:#b91c1c;border-radius:8px;padding:8px 12px;font-weight:600}
 `
@@ -142,6 +147,11 @@ export function InventarisMaintenanceTab({ user }: any) {
   const [modal, setModal] = useState<any>(null)
   const [sibuk, setSibuk] = useState<string | null>(null)
   const [batas, setBatas] = useState(BARIS_PER_HALAMAN)
+  // notifikasi tindakan operator (31 Okt 2026): lonceng + laci, tautan langsung (sorot = baris yang dituju, disorot sebentar)
+  const notif = useNotifInventaris(db)
+  const [laci, setLaci] = useState(false)
+  const [sorot, setSorot] = useState<string | null>(null)
+  const sudahGulir = useRef<string | null>(null)
 
   const muat = useCallback(async () => {
     try { setData(await muatInventaris(db)); setGalatMuat(null) }
@@ -211,10 +221,44 @@ export function InventarisMaintenanceTab({ user }: any) {
   // angka di judul sub-tab: tab aktif = hasil filter; tab lain = bawaan (jadwal nonaktif tidak dihitung)
   const tampil = (t: Tab) => (t === tab ? saring(t) : baris[t].filter(r => t !== 'maintenance' || r.kunci !== 'nonaktif'))
   const semuaBaris = saring(tab)
-  const daftar = semuaBaris.slice(0, batas)
+  const iSorot = sorot ? semuaBaris.findIndex(r => r.id === sorot) : -1
+  const batasTampil = iSorot >= batas ? Math.ceil((iSorot + 1) / BARIS_PER_HALAMAN) * BARIS_PER_HALAMAN : batas
+  const daftar = semuaBaris.slice(0, batasTampil)
+  useEffect(() => {
+    if (!sorot || iSorot < 0 || sudahGulir.current === sorot) return
+    sudahGulir.current = sorot
+    const t1 = setTimeout(() => document.querySelector(`.invm [data-row="${sorot}"]`)?.scrollIntoView({ block: 'center' }), 60)   // tanpa smooth: gulir halus di wadah tabel bersarang bisa berhenti sebelum sampai
+    const t2 = setTimeout(() => { setBatas(b => Math.max(b, batasTampil)); setSorot(null) }, 2800)
+    return () => { clearTimeout(t1); clearTimeout(t2) }
+  }, [sorot, iSorot, batasTampil])
 
   const gantiTab = (t: Tab, kon = 'semua', cari = '') => { setBatas(BARIS_PER_HALAMAN); setTab(t); setFKon(kon); setQ(cari); setBuka(null); setPop(null) }
   const reset = () => { setFLok([]); setFKon('semua'); setQ(''); setBuka(null) }
+  // Tautan langsung (panel notifikasi / URL push ?inv=): pindah tab, filter direset agar barisnya pasti tampil (barang nonaktif
+  // -> "termasuk nonaktif"), baris dibuka; efek di bawah memperpanjang "Tampilkan lebih banyak" bila perlu, menggulir & menyorot.
+  const bukaTarget = (t: TargetInv | null) => {
+    if (!t || !idx) return
+    if (t.tab === 'notif') { setLaci(true); return }
+    const bid = t.tab === 'inventaris' ? t.barangId : t.tab === 'laporan' ? d?.laporan.find(l => l.id === Number(t.rowId.slice(1)))?.barang_id
+      : d?.jadwal.find(j => j.id === Number(t.rowId.slice(1)))?.barang_id
+    const x = bid != null ? idx.barang.get(bid) : undefined
+    if (!x) { alert('Data yang dituju tidak ditemukan (mungkin sudah dihapus atau belum termuat - coba muat ulang).'); return }
+    if (!x.aktif) setNonaktif(true)
+    setTab(t.tab); setFKon('semua'); setFLok([]); setQ(''); setPop(null); setBatas(BARIS_PER_HALAMAN)
+    setBuka(t.rowId); setSorot(t.rowId); sudahGulir.current = null; setLaci(false)
+  }
+  const lihatNotif = (n: Notifikasi) => {
+    if (n.status === 'baru') notifDilihat(db, user, [n.id]).catch(e => console.error('[inventaris notif] dilihat gagal:', e)).finally(notif.muat)
+    bukaTarget(urai(tautanNotif(n)))
+  }
+  // tautan dari URL push (?inv=, dititipkan App.tsx): sekali saat data siap
+  const tautanDiambil = useRef(false)
+  useEffect(() => {
+    if (!data || !idx || tautanDiambil.current) return
+    tautanDiambil.current = true
+    const t = urai(ambilTautanInv())
+    if (t) setTimeout(() => bukaTarget(t), 0)
+  }, [data, idx]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── aksi ──
   const jalankan = async (label: string, fn: () => Promise<any>) => {
@@ -240,13 +284,16 @@ export function InventarisMaintenanceTab({ user }: any) {
   const thLokasi = <th key="lok">Lokasi<button type="button" className={'iv-fbtn' + (fLok.length ? ' on' : '')} aria-label="Filter lokasi"
     onClick={e => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setPop(pop ? null : { x: Math.min(r.left, window.innerWidth - 240), y: r.bottom + 4 }) }}>{fLok.length ? fLok.length + ' ' : ''}▾</button></th>
 
-  const ctx: Ctx = { idx, user, sibuk, jalankan, mediaDari, gantiTab, setModal, setBuka }
+  const ctx: Ctx = { idx, user, sibuk, jalankan, mediaDari, gantiTab, setModal, setBuka,
+    notifDari: pred => notif.perlu.filter(pred), muatNotif: () => { notif.muat(); muat() } }
 
   return (
     <div className="invm">
       <style>{CSS}</style>
       <div className="iv-top"><h1>Inventaris & Maintenance</h1>
-        <button className="iv-btn pri" type="button" onClick={() => setModal({ jenis: 'tambah' })}>+ Tambah inventaris</button></div>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LoncengNotif jumlah={notif.jumlahBaru} onBuka={() => setLaci(true)} />
+        <button className="iv-btn pri" type="button" onClick={() => setModal({ jenis: 'tambah' })}>+ Tambah inventaris</button></div></div>
+      {laci && <LaciNotif db={db} user={user} perlu={notif.perlu} galat={notif.galat} onTutup={() => setLaci(false)} onLihat={lihatNotif} onBerubah={() => { notif.muat(); muat() }} />}
       {galatMuat && <div className="iv-err">{galatMuat}</div>}
       <div className="iv-sum">
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'terlambat'} onClick={() => tab === 'maintenance' && fKon === 'terlambat' ? setFKon('semua') : gantiTab('maintenance', 'terlambat')}><b style={{ color: '#b91c1c' }}>{cnt.terlambat}</b><span>jadwal terlambat</span></button>
@@ -279,7 +326,7 @@ export function InventarisMaintenanceTab({ user }: any) {
             <tbody>{daftar.map(r => { const x: Barang = r.x; const ik = infoKondisi(x.kondisi)
               const aktifLap = (idx.laporanPerBarang.get(x.id) || []).filter(laporanAktif)
               return <Fragment key={r.id}>
-                <tr className="klik" onClick={e => { if (!(e.target as HTMLElement).closest('select,button,a,input')) setBuka(buka === r.id ? null : r.id) }} style={x.aktif ? undefined : { opacity: .55 }}>
+                <tr className={'klik' + (sorot === r.id ? ' iv-sorot' : '')} data-row={r.id} onClick={e => { if (!(e.target as HTMLElement).closest('select,button,a,input')) setBuka(buka === r.id ? null : r.id) }} style={x.aktif ? undefined : { opacity: .55 }}>
                   <td>{x.nama}{!x.aktif && <span className="iv-mute"> (nonaktif)</span>}{baruOperator(x) && <> {badge('#1d4ed8', '#dbeafe', 'Baru dari operator')}</>}</td>
                   <td>{kodeSel(x.id)}</td><td>{fmtTanggal(x.diperbarui_pada)}</td><td>{x.pelapor || ''}</td>
                   <td><select className="iv-cs" style={{ background: 'var(--iv-head)', color: 'var(--iv-fg)' }} value={x.lokasi_kode} disabled={!!sibuk} aria-label="Lokasi"
@@ -298,7 +345,7 @@ export function InventarisMaintenanceTab({ user }: any) {
           {tab === 'laporan' && <table><thead><tr><th>Tanggal</th><th>Kode</th><th>Barang</th>{thLokasi}<th>Masalah</th><th>Pelapor</th><th>Status</th><th>Update</th></tr></thead>
             <tbody>{daftar.map(r => { const l: Laporan = r.x; const x = idx.barang.get(l.barang_id)!
               return <Fragment key={r.id}>
-                <tr className="klik" onClick={() => setBuka(buka === r.id ? null : r.id)}>
+                <tr className={'klik' + (sorot === r.id ? ' iv-sorot' : '')} data-row={r.id} onClick={() => setBuka(buka === r.id ? null : r.id)}>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(l.dibuat_pada)}</td><td>{kodeSel(l.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
                   <td>{l.judul}</td><td>{l.pelapor}</td><td>{badgeLaporan(l.status)}</td><td>{(idx.updatePerLaporan.get(l.id) || []).length}</td>
                 </tr>
@@ -309,7 +356,7 @@ export function InventarisMaintenanceTab({ user }: any) {
           {tab === 'maintenance' && <table><thead><tr><th>Kode</th><th>Barang</th>{thLokasi}<th>Tugas</th><th>Frekuensi</th><th>PIC</th><th>Terakhir selesai</th><th>Jatuh tempo</th><th>Status</th></tr></thead>
             <tbody>{daftar.map(r => { const j: Jadwal = r.x; const x = idx.barang.get(j.barang_id)!; const akhir = idx.selesaiPerJadwal.get(j.id)?.[0]
               return <Fragment key={r.id}>
-                <tr className="klik" onClick={() => setBuka(buka === r.id ? null : r.id)}>
+                <tr className={'klik' + (sorot === r.id ? ' iv-sorot' : '')} data-row={r.id} onClick={() => setBuka(buka === r.id ? null : r.id)}>
                   <td>{kodeSel(j.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td><td>{j.jenis}</td><td>{labelFrekuensi(j.frekuensi)}</td><td>{j.teknisi || ''}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{j.terakhir_dilakukan ? fmtTanggal(j.terakhir_dilakukan) : '—'}{akhir && <span className="iv-mute"> {akhir.oleh}</span>}</td>
                   <td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(j.jatuh_tempo)}{j.jatuh_tempo && <span className="iv-mute"> ({teksSisaHari(j.jatuh_tempo)})</span>}</td>
@@ -331,7 +378,7 @@ export function InventarisMaintenanceTab({ user }: any) {
                 <td>{l.judul} <span className="iv-mute">{STATUS_LAPORAN[l.status].label}</span></td><td>{l.pelapor}</td>
                 <td>{seb || ses ? <span>{seb ? 'sebelum ' + seb : ''}{seb && ses ? ' · ' : ''}{ses ? <b>sesudah {ses}</b> : ''}</span> : <span className="iv-mute">—</span>}</td></tr>
             })}</tbody></table>}
-          {semuaBaris.length > batas && <div className="iv-empty" style={{ padding: 12 }}>Menampilkan {batas} dari {semuaBaris.length} baris. <button className="iv-btn" type="button" onClick={() => setBatas(batas + BARIS_PER_HALAMAN)}>Tampilkan lebih banyak</button></div>}
+          {semuaBaris.length > batasTampil && <div className="iv-empty" style={{ padding: 12 }}>Menampilkan {batasTampil} dari {semuaBaris.length} baris. <button className="iv-btn" type="button" onClick={() => setBatas(batasTampil + BARIS_PER_HALAMAN)}>Tampilkan lebih banyak</button></div>}
         </div>)}
 
       {modal?.jenis === 'tambah' && <ModalTambah lokasi={lokasiAktif} semuaLokasi={d.lokasi} barang={d.barang} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
@@ -347,7 +394,15 @@ export function InventarisMaintenanceTab({ user }: any) {
 // tiap induk render ulang (muat ulang realtime / polling 30 detik).
 type Ctx = { idx: any; user: any; sibuk: string | null; jalankan: (label: string, fn: () => Promise<any>) => Promise<boolean>
   mediaDari: (tujuan: string, ref: number, peran?: string) => Media[]; gantiTab: (t: Tab, kon?: string, cari?: string) => void
-  setModal: (m: any) => void; setBuka: (b: string | null) => void }
+  setModal: (m: any) => void; setBuka: (b: string | null) => void
+  notifDari: (pred: (n: Notifikasi) => boolean) => Notifikasi[]; muatNotif: () => void }
+
+// Tindakan operator yang belum diputuskan utk baris ini (sama dgn kartu di laci notifikasi)
+function NotifBlok({ daftar, c }: { daftar: Notifikasi[]; c: Ctx }) {
+  if (!daftar.length) return null
+  return <div className="iv-notifb"><div className="iv-sec" style={{ marginTop: 0 }}>Menunggu tinjauan admin</div>
+    {daftar.map(n => <NotifKartu key={n.id + ':' + n.versi + ':' + n.status} n={n} user={c.user} db={db} onBerubah={c.muatNotif} />)}</div>
+}
 
 function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
   const jd = c.idx.jadwalPerBarang.get(x.id) || [], lp = c.idx.laporanPerBarang.get(x.id) || [], ds = c.mediaDari('barang', x.id, 'datasheet'), foto = c.mediaDari('barang', x.id, 'foto')
@@ -359,6 +414,7 @@ function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
     await c.jalankan('ds' + x.id, async () => { const m = await unggahMediaInventaris([f], `inventaris/${x.id}/datasheet`); await tambahMedia(db, c.user, 'barang', x.id, 'datasheet', m) })
   }
   return <div className="iv-exp">
+    <NotifBlok c={c} daftar={c.notifDari(n => n.barang_id === x.id && ['kondisi', 'kondisi_detail', 'barang_baru'].includes(n.jenis))} />
     <dl className="iv-g">
       <div><dt>Datasheet PDF</dt><dd>{ds.length ? <><Thumbs media={ds} label="Datasheet" />{ds.map(m => <div key={m.id} className="iv-mute">PDF · {fmtTanggal(m.dibuat_pada)}{' '}
         <button className="iv-btn" style={{ padding: '0 6px' }} type="button" title="Hapus datasheet" onClick={() => confirm('Hapus datasheet ini?') && c.jalankan('hd', () => hapusMedia(db, c.user, m.id))}>✕</button></div>)}</> : 'belum ada'}</dd></div>
@@ -404,6 +460,7 @@ function DetailLaporan({ l, c }: { l: Laporan; c: Ctx }) {
     if (ok) c.setBuka(null)
   }
   return <div className="iv-exp">
+    <NotifBlok c={c} daftar={c.notifDari(n => n.jenis.startsWith('laporan_') && n.ref_id === l.id)} />
     <dl className="iv-g">
       <div><dt>Masalah</dt><dd style={{ whiteSpace: 'pre-wrap' }}>{l.masalah || l.judul}</dd></div>
       <div><dt>Dilaporkan</dt><dd>{l.pelapor} · {fmtWaktu(l.dibuat_pada)}</dd></div>
@@ -447,6 +504,7 @@ function DetailJadwal({ j, c }: { j: Jadwal; c: Ctx }) {
     if (ok) { setFiles([]); setCatatan('') }
   }
   return <div className="iv-exp">
+    <NotifBlok c={c} daftar={c.notifDari(n => n.jenis === 'maintenance_selesai' && n.ref_id === j.id)} />
     <div className="iv-mute">{j.terakhir_dilakukan ? `Terakhir selesai ${fmtTanggal(j.terakhir_dilakukan)}${riw[0] ? ' oleh ' + riw[0].oleh : ''}. ` : 'Belum pernah selesai. '}
       Jatuh tempo {fmtTanggal(j.jatuh_tempo) || '—'}.{j.catatan ? ' Catatan: ' + j.catatan : ''}</div>
     {j.aktif && <>
