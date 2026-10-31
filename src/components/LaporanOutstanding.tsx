@@ -19,7 +19,7 @@ import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
 import { cetakLaporanBerkop, htmlHalamanBerkop } from '../lib/laporanOutstandingBerkop'
 import { useLaporanBersama, ID_TEKS_WA, ID_HEADER, type StatusSimpan } from '../hooks/useLaporanBersama'
 import { datarkan, susunDraf, ulangId, headerDariDraf, bagianImpor, loBuat, loGantiOtomatis, loImpor, muatDaftarTanggal, muatLaporanTanggal,
-  barisKeDatar, sudahDiimpor, tandaiDiimpor } from '../lib/laporanOutstandingBersama'
+  barisKeDatar, sudahDiimpor, tandaiDiimpor, tanggalUji } from '../lib/laporanOutstandingBersama'
 import { KomponenMainPengaturan } from './KomponenMainPengaturan'
 import {
   buatLaporanOutstanding, formatTeksWhatsApp, muatBahanOtomatis, muatPilihanArsip, proyekDariArsip, panelIdsDalamDraf,
@@ -112,7 +112,8 @@ const waktuWib = (iso: string) => { const d = new Date(new Date(iso).getTime() +
 export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   const nama = String(user?.nama || user?.name || 'admin').trim()
   const hariIni = hariKerjaWib()
-  const [tanggal, setTanggal] = useState(hariIni)
+  // kait uji (HANYA mode pengembangan, tidak ada di build produksi): sessionStorage vt_lo_uji_tanggal membuka laporan uji tgl < 2020
+  const [tanggal, setTanggal] = useState(() => { try { const t = import.meta.env.DEV ? sessionStorage.getItem('vt_lo_uji_tanggal') : null; return t && tanggalUji(t) ? t : hariIni } catch { return hariIni } })
   const lb = useLaporanBersama(db, user, tanggal)
   const { draf, header, ubah } = lb
   const lama = tanggal !== hariIni
@@ -247,7 +248,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
         <div className="lo-act" data-b={ID_HEADER}>
           <span className="lo-lbl">Tanggal</span>
           <select className="inp" style={{ width: 'auto', height: 32 }} value={tanggal} aria-label="Tanggal laporan" onChange={(e) => { if (lb.adaTertunda()) lb.simpan(); setTanggal(e.target.value) }}>
-            {[...new Set([hariIni, ...daftarTgl.map((x) => x.tanggal)])].sort().reverse().map((t) => <option key={t} value={t}>{t === hariIni ? 'Hari ini · ' : ''}{tglPendek(t)}</option>)}
+            {[...new Set([hariIni, ...daftarTgl.map((x) => x.tanggal), ...(tanggalUji(tanggal) ? [tanggal] : [])])].sort().reverse().map((t) => <option key={t} value={t}>{t === hariIni ? 'Hari ini · ' : ''}{tglPendek(t)}</option>)}
           </select>
           {draf && <><span className="lo-lbl">Jam laporan</span><input className="inp jam" value={draf.jam} onChange={(e) => ubah((d) => ({ ...d, jam: e.target.value }))} aria-label="Jam laporan" /></>}
           <span className="lo-lbl">Aturan (uji)</span>

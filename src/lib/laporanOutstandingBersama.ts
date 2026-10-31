@@ -116,9 +116,13 @@ export async function muatLaporanTanggal(db: any, tanggal: string): Promise<{ he
     .eq('laporan_id', header.id).is('dihapus_pada', null).order('id').range(a, z))
   return { header, bagian }
 }
-// daftar tanggal laporan (terbaru dulu) utk pemilih tanggal
+// Laporan UJI (tanggal sebelum 2020, mis. uji dua-admin 3 Jan 2000) tidak pernah ditampilkan di pemilih/daftar admin dan tidak
+// pernah dipakai sbg dasar laporan hari baru (keputusan user 31 Okt 2026). Hanya bisa dibuka lewat kait uji mode pengembangan.
+export const TANGGAL_MIN_NYATA = '2020-01-01'
+export const tanggalUji = (t: string) => t < TANGGAL_MIN_NYATA
+// daftar tanggal laporan (terbaru dulu) utk pemilih tanggal - laporan uji disaring
 export async function muatDaftarTanggal(db: any, batas = 120): Promise<{ tanggal: string; diperbarui_oleh: string | null; diperbarui_pada: string | null }[]> {
-  const { data, error } = await db.from('laporan_outstanding').select('tanggal,diperbarui_oleh,diperbarui_pada').order('tanggal', { ascending: false }).range(0, batas - 1)
+  const { data, error } = await db.from('laporan_outstanding').select('tanggal,diperbarui_oleh,diperbarui_pada').gte('tanggal', TANGGAL_MIN_NYATA).order('tanggal', { ascending: false }).range(0, batas - 1)
   if (error) throw error
   return data || []
 }
