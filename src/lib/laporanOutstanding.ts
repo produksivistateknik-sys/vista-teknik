@@ -310,6 +310,11 @@ export type BahanLaporan = {
   penandaMain?: Map<string, boolean>
   varian?: Varian
 }
+// baris panel selesai (4 Nov 2026): tanggal = hari kerja WIB dari panels.packing_done_at (kosong pada data lama -> tanpa tanggal)
+export const barisSelesaiPacking = (p: any): Pekerjaan => {
+  const tgl = p?.packing_done_at ? fmtTglLaporan(hariKerjaDari(p.packing_done_at)) : ''
+  return { id: idBaru(), teks: `SELESAI 100% DAN SUDAH TERPACKING${tgl ? ` TGL ${tgl}` : ''}`, selesai: true }
+}
 export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | null): DrafLaporan {
   const hariIni = b.hariIni || hariKerjaWib()
   const rawPer = new Map<number, any[]>()
@@ -342,7 +347,14 @@ export function buatLaporanOutstanding(b: BahanLaporan, lama?: DrafLaporan | nul
       const pekerjaanSemua = turunkanPekerjaanPanel(p, rows, hariIni, { varian: 'V1', timerBerjalan: b.timerBerjalan, penandaMain: b.penandaMain })
       const pekerjaan = varian === 'V1' ? pekerjaanSemua : turunkanPekerjaanPanel(p, rows, hariIni, { varian, timerBerjalan: b.timerBerjalan, penandaMain: b.penandaMain })
       const kd = kendalaPanel.get(Number(p.id)) || []
-      if (pekerjaanSemua.length || kd.length) panels.push({ id: idBaru(), src: 'otomatis', nama: String(p.nama || '').trim(), panelId: Number(p.id), pekerjaan, kendala: kd, pekerjaanSemua, pekerjaanRingkas: pekerjaan })
+      // (4 Nov 2026, keputusan user) panel yang SUDAH SELESAI tetap ditulis sampai diarsipkan: packing sudah dicentang &
+      // tidak ada pekerjaan tersisa (termasuk yang selesai hari ini) -> satu baris ✅ "SELESAI 100% DAN SUDAH TERPACKING TGL x".
+      // Packing hari ini tetap tampil sbg daftar ✅ per proses (pekerjaanSemua tidak kosong). Panel/WO diarsipkan = tidak ikut.
+      const selesai = !pekerjaanSemua.length && statusPenandaPanel(p, 'PACKING') === 'DONE' ? [barisSelesaiPacking(p)] : []
+      if (pekerjaanSemua.length || kd.length || selesai.length) {
+        const pj = pekerjaan.length ? pekerjaan : selesai
+        panels.push({ id: idBaru(), src: 'otomatis', nama: String(p.nama || '').trim(), panelId: Number(p.id), pekerjaan: pj, kendala: kd, pekerjaanSemua: pekerjaanSemua.length ? pekerjaanSemua : selesai, pekerjaanRingkas: pj })
+      }
     })
     let ringkas = ''
     if (!panels.length) {
