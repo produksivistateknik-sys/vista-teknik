@@ -75,6 +75,38 @@ export function useOperatorPanel(panelId: number | null | undefined): DataOperat
 
 export const timerOperator = (d: DataOperatorPanel | null, panelId: any, kode: string, proses: string) => d?.timer.get(kunciTimer(panelId, kode, proses)) || []
 
+// RIWAYAT RINGKAS (4 Nov 2026, keputusan user; TAMPILAN saja - penulisan data tidak diubah). Tooltip riwayat hanya
+// menampilkan entri yang nilainya BERUBAH dari entri sebelumnya (naik/turun, termasuk koreksi); entri pertama selalu tampil.
+// Entri dgn nilai sama = "disimpan ulang" (dihitung, tidak jadi baris). Urutan = ts entri (cadangan: tanggal).
+export type EntriRiwayat = { pct?: number | string; ts?: string; tanggal?: string; shift?: string; koreksi?: boolean; updatedBy?: string; alasan?: string }
+export function ringkasRiwayat(history: EntriRiwayat[]): { baris: EntriRiwayat[]; ulang: number } {
+  const urut = [...(history || [])].sort((a, b) => String(a?.ts || a?.tanggal || '').localeCompare(String(b?.ts || b?.tanggal || '')))
+  const baris: EntriRiwayat[] = []; let ulang = 0, prev: number | null = null
+  for (const e of urut) {
+    const v = Number(e?.pct) || 0
+    if (prev !== null && v === prev) ulang++; else baris.push(e)
+    prev = v
+  }
+  return { baris, ulang }
+}
+export const SELISIH_CHECKPOINT_MS = 2 * 60000
+// Nama untuk SATU entri riwayat: koreksi admin -> nama admin (updatedBy); selain itu checkpoint (kode+proses) yang waktunya
+// paling dekat dgn ts entri, maksimal 2 menit. Tidak ada -> "tanpa catatan operator".
+export function namaOperatorEntri(d: DataOperatorPanel | null, panelId: number | string, kode: string, proses: string, e: EntriRiwayat): string {
+  if (!d || d.status === 'muat') return '…'
+  if (d.status === 'gagal') return '(gagal memuat)'
+  if (e?.koreksi) return `${e.updatedBy || 'admin'} (koreksi${e.alasan ? ': ' + e.alasan : ''})`
+  const t = Date.parse(e?.ts || '')
+  if (!Number.isFinite(t)) return 'tanpa catatan operator'
+  let terbaik: { pekerja_nama?: string } | null = null, selisih = Infinity
+  for (const c of d.checkpoint.get(kunciTimer(panelId, kode, proses)) || []) {
+    const s = Math.abs(Date.parse(c.ts) - t)
+    if (s <= SELISIH_CHECKPOINT_MS && s < selisih) { terbaik = c; selisih = s }
+  }
+  const nama = String(terbaik?.pekerja_nama || '').split(',').map((x) => x.trim()).filter(Boolean)
+  return nama.length ? [...new Set(nama)].join(', ') : 'tanpa catatan operator'
+}
+
 // Nama operator di 1 baris riwayat (tanggal + %) dari progress_checkpoint_log: checkpoint dgn tanggal & persen
 // yang sama; bila tak ada yang persis, semua checkpoint di tanggal itu; "—" bila tidak ada sama sekali.
 export function namaOperatorRiwayat(d: DataOperatorPanel | null, panelId: any, kode: string, proses: string, tanggal: string, pct: number): string {

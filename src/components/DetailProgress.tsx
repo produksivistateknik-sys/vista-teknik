@@ -4,7 +4,7 @@ import { getBestProgress, isKomponenRelevant, getPanelBusbarKomponen, getBusbarP
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { ringkasPerTanggal, formatOperator, fmtTanggalPendek } from '../lib/operatorProgres'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
-import { mintaMuatOperator, useOperatorPanel, timerOperator, namaOperatorRiwayat } from '../lib/operatorPanelLoader'
+import { mintaMuatOperator, useOperatorPanel, timerOperator, ringkasRiwayat, namaOperatorEntri } from '../lib/operatorPanelLoader'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { useKoreksiProgres, PROSES_BISA_DIKOREKSI } from './ModalKoreksiProgres'
 
@@ -26,9 +26,11 @@ const tdSL={...tdS,textAlign:"left" as const};
 // dibuat saat kursor masuk sel (hover); CSS .hist-cell:hover tetap yang menampilkan - tampilan sama.
 // Nama operator per baris riwayat (12 Okt 2026) - komponen terpisah supaya hook data operator hanya hidup
 // selama tooltip tampil (hover); datanya dimuat 1x per panel saat hover pertama, di-cache.
-const NamaRiwayat=({panelId,kode,proses,tanggal,pct}:{panelId:any,kode:string,proses:string,tanggal:string,pct:number})=>{
+// (4 Nov 2026) nama PER ENTRI: checkpoint terdekat <=2 menit dari ts entri (lib/operatorPanelLoader namaOperatorEntri).
+const NamaRiwayat=({panelId,kode,proses,entri}:{panelId:any,kode:string,proses:string,entri:any})=>{
   const d=useOperatorPanel(panelId);
-  return <span style={{color:"#e2e8f0"}}>{namaOperatorRiwayat(d,panelId,kode,proses,tanggal,pct)}</span>;
+  const nama=namaOperatorEntri(d,panelId,kode,proses,entri);
+  return <span style={{color:nama==="tanpa catatan operator"?"#94a3b8":"#e2e8f0",fontStyle:nama==="tanpa catatan operator"?"italic" as const:undefined}}>{nama}</span>;
 };
 // Riwayat pengerjaan BUSBAR per tanggal (WIB jam mulai, terbaru di atas, maks 6) + tahap + operator + menit,
 // lalu Total (12 Okt 2026) - helper bersama lib/operatorProgres (sama dgn tooltip Raw per WP/Rencana/Task Monitoring).
@@ -84,14 +86,15 @@ const ProsesPctCell=({pct,proses,cl,nama,panelId,kode,onKoreksi}:{pct:number|und
             minWidth:180,
           }}>
 
-            {[...history].sort((a:any,b:any)=>a.tanggal?.localeCompare(b.tanggal)).map((h:any,hi:number)=>(
-              <div key={hi} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"2px 0",borderBottom:hi<history.length-1?"1px solid #334155":"none"}}>
+            {/* (4 Nov 2026, keputusan user) hanya entri yang nilainya BERUBAH; simpan ulang tanpa perubahan = 1 keterangan */}
+            {(()=>{const r=ringkasRiwayat(history);return(<>{r.baris.map((h:any,hi:number)=>(
+              <div key={hi} style={{display:"flex",justifyContent:"space-between",gap:12,padding:"2px 0",borderBottom:hi<r.baris.length-1||r.ulang>0?"1px solid #334155":"none"}}>
                 <span style={{color:"#94a3b8"}}>📅 {new Date(h.tanggal).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})}</span>
-                <span style={{color:"#fbbf24"}}>Shift {h.shift}</span>
+                <span style={{color:"#fbbf24"}}>{h.shift!=null&&h.shift!==""?`Shift ${h.shift}`:""}</span>
                 <span style={{color:h.pct>=100?"#4ade80":h.pct>0?"#fb923c":"#94a3b8",fontWeight:700}}>{h.pct}%</span>
-                {panelId!=null&&kode&&<NamaRiwayat panelId={panelId} kode={kode} proses={proses} tanggal={h.tanggal} pct={h.pct}/>}
+                {panelId!=null&&kode&&<NamaRiwayat panelId={panelId} kode={kode} proses={proses} entri={h}/>}
               </div>
-            ))}
+            ))}{r.ulang>0&&<div style={{color:"#94a3b8",fontStyle:"italic" as const,paddingTop:3}}>disimpan ulang {r.ulang} kali tanpa perubahan</div>}</>);})()}
             <div style={{position:"absolute" as const,bottom:-5,left:"50%",transform:"translateX(-50%)",width:0,height:0,borderLeft:"5px solid transparent",borderRight:"5px solid transparent",borderTop:"5px solid #1e293b"}}/>
           </div>
         )}
