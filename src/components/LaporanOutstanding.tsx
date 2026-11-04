@@ -169,8 +169,11 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
   // draf lama di browser ini (sebelum laporan bersama) - ditawarkan impor SEKALI
   const lokal = useMemo(() => (sudahDiimpor(nama) ? null : bacaSimpanan(nama)), [nama])
   const [lokalTutup, setLokalTutup] = useState(false)
+  // penjaga klik ganda: state `sibuk` baru berlaku sesudah render, klik kedua yang sangat cepat diabaikan lewat ref (server juga anti-dobel)
+  const imporBerjalan = useRef(false)
   const impor = async () => {
-    if (!lokal) return
+    if (!lokal || imporBerjalan.current) return
+    imporBerjalan.current = true
     setSibuk(true); setGalat(null)
     try {
       const ada = (await muatLaporanTanggal(db, lokal.draf.tanggal)).header
@@ -180,7 +183,7 @@ export function LaporanOutstanding({ db, user }: { db: any; user: any }) {
       if (lokal.draf.tanggal === tanggal) await lb.muat(); else setTanggal(lokal.draf.tanggal)
     } catch (e: any) {
       console.error('[Laporan Outstanding] impor gagal:', e); setGalat('Impor draf lama gagal: ' + (e?.message || e) + ' - draf lama tetap di browser ini.')
-    } finally { setSibuk(false) }
+    } finally { setSibuk(false); imporBerjalan.current = false }
   }
   const salinTeks = async () => {
     const ok = () => { setSalin('Tersalin ✓'); setTimeout(() => setSalin(''), 1600) }
@@ -552,12 +555,19 @@ function PratinjauBerkop({ draf, bentrok, onUbah, fokusBagian, lepasBagian }: {
     const idDari = (t: EventTarget | null) => ((t as HTMLElement | null)?.closest?.('[data-b]') as HTMLElement | null)
     d.addEventListener('input', (e) => {
       const el = idDari(e.target); if (!el?.dataset.b || !el.dataset.f) return
-      // spasi awal/akhir dipangkas di model (elemen yang sedang difokus tidak ditambal, jadi spasi yang baru diketik tetap di layar)
-      const teks = (el.textContent || '').replace(/\s+/g, ' ').trim()
+      // saat mengetik teks dikirim APA ADANYA (hanya NBSP contenteditable -> spasi biasa, baris baru -> spasi); TIDAK dipangkas
+      // agar spasi di tengah/akhir yang sedang diketik tetap (keputusan user 31 Okt). Pemangkasan awal/akhir = saat fokus lepas.
+      const teks = (el.textContent || '').replace(/00a0/g, ' ').replace(/[\r\n]+/g, ' ')
       cb.current.onUbah(el.dataset.b, el.dataset.f, el.classList.contains('pnm') ? teks : teks.toUpperCase())
     })
     d.addEventListener('focusin', (e) => cb.current.fokusBagian(idDari(e.target)?.dataset.b || null))
     d.addEventListener('focusout', (e) => {
+      // pangkas spasi awal/akhir SEBELUM lepasBagian memicu simpan (kolom sudah tidak diketik)
+      const el = idDari(e.target)
+      if (el?.dataset.b && el.dataset.f) {
+        const v = (el.textContent || '').replace(/00a0/g, ' ').replace(/[\r\n]+/g, ' ')
+        if (v.trim() !== v) cb.current.onUbah(el.dataset.b, el.dataset.f, el.classList.contains('pnm') ? v.trim() : v.trim().toUpperCase())
+      }
       cb.current.lepasBagian(idDari((e as FocusEvent).relatedTarget)?.dataset.b || null)
       setTimeout(() => { if (tunda.current) muatUlangBilaPerlu(drafTerakhir.current); else tambal(drafTerakhir.current); ukur() }, 0)
     })
