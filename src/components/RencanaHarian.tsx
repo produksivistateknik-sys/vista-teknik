@@ -1385,6 +1385,13 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                               ):(()=>{
                                 const pendingKey=`${t.rawId}_${t.wp}_${t.tanggal}_${kode}`;
                                 const isPending=pendingRelease.has(pendingKey);
+                                // (4 Nov 2026, keputusan user) proses sudah Done -> tombol Tarik disembunyikan. Status = pipelineStatus
+                                // yang SAMA dgn label di sebelahnya. Tarik pada item Done hanya mengeluarkan kode dari renhar.komponen/
+                                // komponen_released (kartu hilang dari HP, progres/timer tidak berubah). Bila memang perlu ditarik:
+                                // koreksi progres dulu (koreksi_progres_admin) -> status bukan Done -> tombol Tarik muncul lagi.
+                                if(sudahRelease&&pipelineStatus==="DONE")return(
+                                  <span title="Proses sudah Done - tombol Tarik disembunyikan. Bila perlu ditarik, koreksi progres dulu." style={{fontSize:11,color:"#16a34a",fontWeight:600}}>✓ Selesai</span>
+                                );
                                 return(
                                   <Btn color={sudahRelease?"#dc2626":"#2563eb"} disabled={isPending}
                                     style={{fontSize:11,padding:"5px 14px",opacity:isPending?0.55:1,cursor:isPending?"default":"pointer"}}

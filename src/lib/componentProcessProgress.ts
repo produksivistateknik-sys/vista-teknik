@@ -4,93 +4,86 @@
 // SummaryProgress) butuh pola yang SAMA PERSIS (CLAUDE.md B.1, satu sumber logika). Cermin
 // nama file dari vista-pekerja/src/lib/componentProcessProgress.ts (beda isi - itu buat
 // upsert/tulis dari operator, ini buat baca/agregasi dari sisi admin).
-import { useState, useEffect, useMemo, useRef } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from './supabase';
+import { fetchAllPagedPerPotongan } from './fetchAllPaged';
+import { pasangPemulihRealtime } from './pemulihRealtime';
+import { laporError } from './laporError';
 import { hitungPctSetelahUbahQty, PROSES_TIDAK_DISKALA } from './progressQtyHelpers';
 
-// Counter modul-level buat channel realtime unik per HOOK INSTANCE (bukan cuma per panelIdsKey) -
-// AUDIT (21 Sep 2026): 6 consumer (Task Monitoring/Detail Progres/Rencana Harian/Dashboard/
-// Summary Progress/Manajemen WO) semuanya biasanya nampilin SET PANEL YANG SAMA (semua panel
-// aktif), jadi panelIdsKey-nya SAMA PERSIS lintas file - kalau nama channel cuma dari panelIdsKey,
-// beberapa consumer yang mounted BARENGAN (App.tsx `visitedTabs` nahan semua tab tetap mounted)
-// bakal bikin channel dengan NAMA SAMA PERSIS. Supabase JS behavior utk topic sama dari client
-// yang sama TIDAK didokumentasikan jelas cukup buat diandalkan (risiko: unsubscribe salah satu
-// consumer ikut motong langganan consumer lain) - lebih aman kasih suffix unik per instance,
-// hindari isu ini sama sekali daripada bergantung ke perilaku SDK yang gak dijamin.
+// PEMUAT CCP BERSAMA (4 Nov 2026, kasus PANEL CAP BANK FS.4: label "In Progress" basi di samping "Selesai 8/8").
+// Dulu tiap halaman (Dashboard/Detail Progres/Manajemen WO/Rencana Harian/Summary Progress/Task Monitoring) punya
+// langganan sendiri & HANYA realtime - kanal yang putus diam-diam (tab lama terbuka, laptop tidur, wifi) membuat angka
+// ccp beku, dan getCcpAwareValue mengutamakan ccp (aturan TIDAK diubah) -> status basi. Sekarang:
+// - SATU toko per set panel (kunci = daftar panel terurut), dipakai bersama semua halaman yang ter-mount (visitedTabs)
+//   -> 5 halaman dgn set panel sama = 1 muat, bukan 5. Toko dilepas saat pemakai terakhir unmount.
+// - muat penuh berhalaman (fetchAllPagedPerPotongan, urut id); gagal = peta terakhir DIPERTAHANKAN (tidak dikosongkan)
+//   + console.error + laporError.
+// - realtime per baris tetap (INSERT/UPDATE diterapkan langsung, murah - 199 perubahan/hari per 4 Nov).
+// - pasangPemulihRealtime sbg pemulih: muat penuh saat kanal tersambung ulang, tab kembali terlihat, perangkat online
+//   lagi, dan polling cadangan 120 dtk saat tab terlihat (bukan 30 dtk: 1 muat = ±2.848 baris/217 KB per 4 Nov).
+//   Kanal pemulih tanpa tabel (tabel: []) - event baris sudah ditangani kanal per baris; tidak muat penuh per event.
+export const POLLING_CCP_MS = 120000
+type TokoCcp = { map: Record<string, number>; pendengar: Set<(m: Record<string, number>) => void>; lepas: () => void }
+const tokoCcp = new Map<string, TokoCcp>()
 let ccpChannelCounter = 0;
-
-// WAJIB paginate (CLAUDE.md A.1) - tabel ini sudah >1000 baris non-not_applicable (2710 per
-// 21 Sep 2026), 1 query polos silently ke-cap. Insiden nyata: versi awal Detail Progres (Fase 7)
-// sempat kena ini sebelum ketahuan & diperbaiki.
-export async function fetchCcpMapForPanels(panelIds: number[]): Promise<Record<string, number>> {
-  if (panelIds.length === 0) return {};
-  let all: any[] = [], from = 0;
-  const PAGE = 1000;
-  for (;;) {
-    const { data, error } = await supabase.from('component_process_progress' as any)
-      .select('panel_id,kode_komponen,proses,progress_pct')
-      .in('panel_id', panelIds).neq('status', 'not_applicable')
-      .range(from, from + PAGE - 1);
-    if (error) { console.error('gagal ambil component_process_progress:', error); return {}; }
-    const rows = (data as any[]) || [];
-    all = all.concat(rows);
-    if (rows.length < PAGE) break;
-    from += PAGE;
-  }
+async function muatCcpPenuh(panelIds: number[]): Promise<Record<string, number>> {
+  const rows = await fetchAllPagedPerPotongan(panelIds, (bagian, from, to) => supabase.from('component_process_progress' as any)
+    .select('panel_id,kode_komponen,proses,progress_pct').in('panel_id', bagian).neq('status', 'not_applicable').order('id').range(from, to))
   const map: Record<string, number> = {};
-  all.forEach((r: any) => { map[`${r.panel_id}|${r.kode_komponen}|${r.proses}`] = Number(r.progress_pct); });
+  rows.forEach((r: any) => { map[`${r.panel_id}|${r.kode_komponen}|${r.proses}`] = Number(r.progress_pct); });
   return map;
 }
+// kontrak lama dipertahankan (pemanggil lain): gagal -> {} + console.error
+export async function fetchCcpMapForPanels(panelIds: number[]): Promise<Record<string, number>> {
+  if (panelIds.length === 0) return {};
+  try { return await muatCcpPenuh(panelIds) } catch (error) { console.error('gagal ambil component_process_progress:', error); return {} }
+}
+function bukaTokoCcp(kunci: string, ids: number[]): TokoCcp {
+  const ada = tokoCcp.get(kunci); if (ada) return ada
+  const toko: TokoCcp = { map: {}, pendengar: new Set(), lepas: () => {} }
+  const kabari = () => toko.pendengar.forEach((f) => f(toko.map))
+  let berjalan = false, lagi = false
+  const muat = async () => {
+    if (berjalan) { lagi = true; return }
+    berjalan = true
+    try { toko.map = await muatCcpPenuh(ids); kabari() }
+    catch (e) { console.error('[ccp] gagal memuat ulang component_process_progress (angka terakhir dipertahankan):', e); laporError('supabase_error', e, { aksi: 'muat component_process_progress', panel: ids.length }) }
+    finally { berjalan = false; if (lagi) { lagi = false; muat() } }
+  }
+  // Filter server-side (pola useWorkOrders.ts); >100 panel -> tanpa filter (lebih baik overfetch daripada tidak dapat update)
+  const filterClause = ids.length <= 100 ? `panel_id=in.(${kunci})` : undefined
+  const applyRow = (r: any) => {
+    const key = `${r.panel_id}|${r.kode_komponen}|${r.proses}`;
+    const next = { ...toko.map }
+    if (r.status === 'not_applicable') delete next[key]; else next[key] = Number(r.progress_pct);
+    toko.map = next; kabari()
+  };
+  const n = ++ccpChannelCounter
+  const ev = (event: 'INSERT' | 'UPDATE') => (filterClause ? { event, schema: 'public', table: 'component_process_progress', filter: filterClause } : { event, schema: 'public', table: 'component_process_progress' })
+  const channel = supabase.channel(`realtime-ccp-${n}-${kunci}`)
+    .on('postgres_changes' as any, ev('INSERT'), (payload: any) => applyRow(payload.new))
+    .on('postgres_changes' as any, ev('UPDATE'), (payload: any) => applyRow(payload.new))
+    .subscribe();
+  const lepasPemulih = pasangPemulihRealtime(supabase, { nama: `pemulih-ccp-${n}`, label: 'ccp', tabel: [], muat, pollingMs: POLLING_CCP_MS })
+  toko.lepas = () => { lepasPemulih(); supabase.removeChannel(channel) }
+  tokoCcp.set(kunci, toko)
+  muat()
+  return toko
+}
 
-// AUDIT (21 Sep 2026, ditemukan saat cek bug sesi ini) - 6 consumer (Task Monitoring/Detail
-// Progres/Rencana Harian/Dashboard/Summary Progress/Manajemen WO) semua fetch ccpMap SEKALI
-// per mount (dependency [woData.length] atau [selectedPanelId]), TIDAK pernah refresh lagi
-// selama komponen tetap mounted - App.tsx nyimpen tab yang sudah dikunjungi tetap mounted
-// (display:none, bukan unmount) via `visitedTabs`, jadi begitu admin buka 1 tab lalu operator
-// nulis progress baru, angka yang ketampil BASI sampai woData.length berubah (WO ditambah/
-// dihapus - bisa berjam-jam). Ini REGRESI nyata dari checklist lama (woData SENDIRI sudah live
-// via realtime postgres_changes di useWorkOrders.ts - checklist-derived number otomatis segar,
-// ccp-derived number TIDAK sebelum fix ini). Hook ini gantikan pola fetch-sekali di 6 consumer
-// itu - subscribe postgres_changes ke component_process_progress juga, pola SAMA PERSIS
-// useWorkOrders.ts (channel di-filter server-side ke panelIds yang lagi ditampilkan, dibuat
-// ULANG cuma kalau DAFTAR panel berubah - bukan tiap baris ccp berubah).
 export function useCcpMap(panelIds: number[]): Record<string, number> {
-  const [ccpMap, setCcpMap] = useState<Record<string, number>>({});
   const panelIdsKey = useMemo(() => [...new Set(panelIds)].sort((a, b) => a - b).join(','), [panelIds.join(',')]);
-  const instanceIdRef = useRef<number | undefined>(undefined);
-  if (instanceIdRef.current === undefined) instanceIdRef.current = ++ccpChannelCounter;
-
+  const [ccpMap, setCcpMap] = useState<Record<string, number>>(() => tokoCcp.get(panelIdsKey)?.map || {});
   useEffect(() => {
     if (!panelIdsKey) { setCcpMap({}); return; }
-    const ids = panelIdsKey.split(',').map(Number);
-    let cancelled = false;
-    fetchCcpMapForPanels(ids).then(map => { if (!cancelled) setCcpMap(map); });
-
-    // Filter server-side (audit egress, pola sama persis useWorkOrders.ts panels channel) -
-    // >100 panel jarang terjadi (26 panel live per 21 Sep 2026), fallback ke unfiltered kalau
-    // suatu saat terjadi (lebih baik overfetch daripada gak dapet update sama sekali).
-    const filterClause = ids.length <= 100 ? `panel_id=in.(${panelIdsKey})` : undefined;
-    const applyRow = (r: any) => {
-      const key = `${r.panel_id}|${r.kode_komponen}|${r.proses}`;
-      setCcpMap(prev => {
-        const next = { ...prev };
-        if (r.status === 'not_applicable') delete next[key]; else next[key] = Number(r.progress_pct);
-        return next;
-      });
+    const toko = bukaTokoCcp(panelIdsKey, panelIdsKey.split(',').map(Number))
+    toko.pendengar.add(setCcpMap); setCcpMap(toko.map)
+    return () => {
+      toko.pendengar.delete(setCcpMap)
+      if (!toko.pendengar.size) { toko.lepas(); tokoCcp.delete(panelIdsKey) }
     };
-    const channel = supabase.channel(`realtime-ccp-${instanceIdRef.current}-${panelIdsKey}`)
-      .on('postgres_changes', filterClause
-        ? { event: 'INSERT', schema: 'public', table: 'component_process_progress', filter: filterClause }
-        : { event: 'INSERT', schema: 'public', table: 'component_process_progress' },
-        (payload: any) => applyRow(payload.new))
-      .on('postgres_changes', filterClause
-        ? { event: 'UPDATE', schema: 'public', table: 'component_process_progress', filter: filterClause }
-        : { event: 'UPDATE', schema: 'public', table: 'component_process_progress' },
-        (payload: any) => applyRow(payload.new))
-      .subscribe();
-    return () => { cancelled = true; supabase.removeChannel(channel); };
   }, [panelIdsKey]);
-
   return ccpMap;
 }
 
