@@ -146,6 +146,7 @@ export function Login({onLogin,sessionMismatchNotice}:{onLogin:(u:any)=>void;ses
                 <select className="lg-sel" value={posisi} onChange={e=>{setPosisi(e.target.value);setErr("");}} style={{paddingRight:36}}>
                   <option value="admin">Admin</option>
                   <option value="engineering">Engineering</option>
+                  <option value="hrga">HRGA</option>
                 </select>
                 <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
               </div>

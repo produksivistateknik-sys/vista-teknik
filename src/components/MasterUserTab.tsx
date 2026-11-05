@@ -5,7 +5,7 @@ import { Card, Lbl, Inp, Sel, Btn, Modal } from './ui/Primitives'
 import { MasterPekerjaInline } from './MasterPekerjaInline'
 import { SubBagianPasswordCard } from './SubBagianPasswordCard'
 
-const ROLE_LABEL: Record<string,string> = { admin: "Admin", engineering: "Engineering" };
+const ROLE_LABEL: Record<string,string> = { admin: "Admin", engineering: "Engineering", hrga: "HRGA" };
 
 export function MasterUserTab({ admins, setAdmins, user, pekerja }){
   const [form, setForm] = useState({ nama: "", username: "", password: "", divisi: "admin", is_active: true });
@@ -103,6 +103,7 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
             <div><Lbl>Role</Lbl><Sel value={form.divisi} onChange={e => setForm({ ...form, divisi: e.target.value })}>
               <option value="admin">Admin</option>
               <option value="engineering">Engineering</option>
+              <option value="hrga">HRGA</option>
             </Sel></div>
             <div style={{ display: "flex", gap: 8, alignItems: "center", paddingBottom: 2 }}>
               <label style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, fontWeight: 600, color: "#475569", cursor: "pointer" }}>
@@ -148,8 +149,8 @@ export function MasterUserTab({ admins, setAdmins, user, pekerja }){
                     </td>
                     <td style={td}>
                       <span style={{ fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "2px 10px",
-                        background: a.divisi === "engineering" ? "#eef2ff" : "#f1f5f9",
-                        color: a.divisi === "engineering" ? "#4338ca" : "#64748b" }}>
+                        background: a.divisi === "engineering" ? "#eef2ff" : a.divisi === "hrga" ? "#ecfdf5" : "#f1f5f9",
+                        color: a.divisi === "engineering" ? "#4338ca" : a.divisi === "hrga" ? "#047857" : "#64748b" }}>
                         {ROLE_LABEL[a.divisi] || "Admin"}
                       </span>
                     </td>

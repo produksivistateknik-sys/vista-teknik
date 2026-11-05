@@ -109,6 +109,12 @@ const NAV_PARENT_OF_CHILD:Record<string,string>={
 // klik notifikasi) sekaligus - sidebar Engineering (SIDEBAR_MENUS cabang isEngineering) HARUS
 // tetap sinkron sama daftar ini kalau nambah/kurang menu Engineering di masa depan.
 const ENGINEERING_ALLOWED_TABS=new Set(["wodigital","arsip","tracking_report","momfat","proyekluar"]);
+// Role HRGA (6 Nov 2026, keputusan user) - pola sama dgn Engineering: hanya Inventaris & Maintenance. Hak di dalam tab sama
+// dgn admin (inv_aktor hanya memeriksa akun aktif). Pembatasan ini di aplikasi, bukan di database.
+const ROLE_TERBATAS:Record<string,{izin:Set<string>;awal:string}>={
+  engineering:{izin:ENGINEERING_ALLOWED_TABS,awal:"wodigital"},
+  hrga:{izin:new Set(["inventaris"]),awal:"inventaris"},
+};
 
 export default function App(){
   const hasNewVersion=useVersionCheck();
@@ -138,9 +144,9 @@ export default function App(){
     // Nge-block DI SINI (sebelum tab keinjeksi ke visitedTabs) nutup SEMUA jalur itu sekaligus,
     // gak peduli gimana `tab` state-nya keubah - dan aktif buang tab admin yang ke-seed duluan ke
     // visitedTabs (initial state dari localStorage, device bersama bekas sesi Admin).
-    const engineeringGuard=user?.divisi==="engineering";
-    if(engineeringGuard&&!ENGINEERING_ALLOWED_TABS.has(tab)){
-      setTab("wodigital");
+    const roleTerbatas=ROLE_TERBATAS[user?.divisi];
+    if(roleTerbatas&&!roleTerbatas.izin.has(tab)){
+      setTab(roleTerbatas.awal);
       return;
     }
     localStorage.setItem("vista_teknik_active_tab",tab);
@@ -150,7 +156,7 @@ export default function App(){
     if(hasNewVersion&&tabDibukaSesiIni.current.size>0&&!tabDibukaSesiIni.current.has(tab)){window.location.reload();return;}
     tabDibukaSesiIni.current.add(tab);
     setVisitedTabs(prev=>{
-      const allowed=engineeringGuard?prev.filter(t=>ENGINEERING_ALLOWED_TABS.has(t)):prev;
+      const allowed=roleTerbatas?prev.filter(t=>roleTerbatas.izin.has(t)):prev;
       const without=allowed.filter(t=>t!==tab);
       const next=[...without,tab];
       return next.length>MAX_MOUNTED_TABS?next.slice(next.length-MAX_MOUNTED_TABS):next;
@@ -656,7 +662,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
     setPage("app");
     // Engineering cuma punya 1 menu (WO Digital) - langsung arahkan ke situ, gak lewat
     // "redirect" (yang default-nya ke dashboard, menu yang gak ada di sidebar Engineering).
-    setTab(u.divisi==="engineering"?"wodigital":"redirect");
+    setTab(ROLE_TERBATAS[u.divisi]?.awal||"redirect");
   }}/>;
 
   const isOp=OPERATOR_ROLES.includes(user?.divisi);
@@ -692,6 +698,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   );
   const cfg=DIVISI_CONFIG[user.divisi];
   const isEngineering=user.divisi==="engineering";
+  const isHrga=user.divisi==="hrga";
   const canWO=["admin"].includes(user.divisi);
   const canRaw=["admin"].includes(user.divisi);
 
@@ -714,7 +721,11 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   // duplikat), toggle Aktif/Arsip lama di WoDigitalTab sendiri sudah dihapus, digantikan ini.
   // (2) Grup "Report Produksi" (Quality Center/MOM FAT/Proyek Luar) - Engineering sekarang dapat
   // akses sama persis kayak admin (request eksplisit, bukan cuma Quality Center).
-  const SIDEBAR_MENUS=isEngineering?[
+  const SIDEBAR_MENUS=isHrga?[
+    {group:"SYSTEM",items:[
+      {id:"inventaris",label:"Inventaris & Maintenance",icon:"ti ti-tool",badge:maintenanceAlertError?"!":maintenanceOverdueCount>0?maintenanceOverdueCount:null},
+    ]},
+  ]:isEngineering?[
     {group:"PRODUKSI",items:[
       {id:"wodigital",label:"Manajemen WO",icon:"ti ti-file-type-pdf",navigable:true,children:[
         {id:"arsip",label:"Arsip",icon:"ti ti-archive"},
@@ -819,7 +830,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           </button>
         </div>
       )}
-      <WoEngineeringBanner akun={user?.username?`teknik:${user.username}`:null} topOffset={(hasNewVersion||hasDateRolled)?40:0}/>
+      <WoEngineeringBanner akun={user?.username&&!isHrga?`teknik:${user.username}`:null} topOffset={(hasNewVersion||hasDateRolled)?40:0}/>
       {/* Toast sesi Produksi Stok baru (2 Okt 2026) - KHUSUS divisi admin (yg bisa buka Database >
           Stok), "Lihat" -> tab Database > Stok > Produksi Stok, panel sesi aktif di-scroll ke layar. */}
       {user?.divisi==="admin"&&<SesiProduksiStokToast onLihat={()=>{setTab("masteruser");mintaBukaSesiProduksiStok();}}/>}
@@ -978,14 +989,14 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             </div>
           </div>
           <div className="erp-main">
-            <GlobalSearch show={showSearch} onClose={()=>setShowSearch(false)}
+            {!isHrga&&<GlobalSearch show={showSearch} onClose={()=>setShowSearch(false)}
             query={searchQuery} setQuery={setSearchQuery}
-            woData={woData} pekerja={pekerja} setTab={setTab}/>
+            woData={woData} pekerja={pekerja} setTab={setTab}/>}
           <div className="erp-topbar">
               <button className="erp-toggle" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)}>
                 {sidebarCollapsed?"▶":"◀"}
               </button>
-              <input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>
+              {!isHrga&&<input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>}
               <div className="erp-topbar-right">
                 {/* Refresh global */}
                 <button onClick={()=>window.location.reload()}
@@ -1028,7 +1039,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   <i className={darkMode?"ti ti-sun":"ti ti-moon"} style={{fontSize:13}}/>
                 </button>
 
-                <div style={{position:"relative"}}>
+                {!isHrga&&<div style={{position:"relative"}}>
                   <div className="erp-bell" onClick={()=>setShowNotif(p=>!p)}
                     style={{cursor:"pointer",position:"relative"}}>
                     <i className="ti ti-bell" style={{fontSize:14}}/>
@@ -1146,13 +1157,13 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                       )}
                     </div>
                   )}
-                </div>
+                </div>}
                 <span style={{background:"#f1f5f9",color:"#475569",borderRadius:5,padding:"2px 9px",fontSize:10,fontWeight:600}}>{cfg?.label||"Admin"}</span>
                 <div className="erp-foot-av">{(user?.name||user?.nama||"A").slice(0,2).toUpperCase()}</div>
               </div>
             </div>
             <div className="erp-body">
-              {notifQcGagal.length>0&&(
+              {!isHrga&&notifQcGagal.length>0&&(
                 <div style={{position:"sticky" as const,top:0,zIndex:50,background:"#fef2f2",borderBottom:"1px solid #fecaca",padding:"10px 16px",marginBottom:12}}>
                   <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:160,overflowY:"auto" as const}}>
                     {notifQcGagal.map((n:any)=>(
