@@ -156,9 +156,11 @@ export function rencanakanPindahAccordion(kunciPilihan: string[], offset: number
         const pilihSemua = kodeAsli.filter((k: string) => dipilih.has(e.wp + '\u0000' + k))
         // Saringan relevansi (22 Okt 2026): kode yang tidak relevan utk proses baris ini / tidak ada di panel TIDAK ikut
         // (pindah: tertinggal di tanggal asal; salin: tidak disalin) & diberitahukan pemanggil.
-        const panelRow = opsi.tanpaSaring ? undefined : ctx.panelBaris?.(row)
+        // "Tambahkan juga" (tanpaSaring) hanya meloloskan yang tidak relevan; tidak ada di panel / qty 0 tetap tertahan.
+        const panelRow = ctx.panelBaris?.(row)
         const pilih = pilihSemua.filter((k: string) => {
-          const a = panelRow ? alasanKomponenDilewati(k, panelRow, row.proses) : null
+          let a = panelRow ? alasanKomponenDilewati(k, panelRow, row.proses) : null
+          if (a === 'tidak_relevan' && opsi.tanpaSaring) a = null
           if (a) dilewati.push({ rawId: row.id, panelId: Number(row.panel_id || row.panelId), proses: row.proses, wp: e.wp, kode: k, dari, alasan: a,
             grup: units.find(u => u.kode === k && u.wp === e.wp)?.grup || e.wp })
           return !a

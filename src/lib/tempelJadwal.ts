@@ -47,12 +47,9 @@ export function rencanakanTempel(sel: SelSalinan[], targetRawId: number, targetD
     const bersih = (cell.entries || []).map((e: any) => ({ wp: e.wp, komponen: (e.komponen || []).filter((k: string) => !e.digeserKe?.[k]) }))
       .filter((e: any) => e.komponen.some((k: string) => !k.startsWith('__')))
     const pid = Number(destRow.panel_id || destRow.panelId)
-    let entri = bersih
-    if (!opsi.tanpaSaring) {
-      const h = saringKomponenRelevan(bersih, ctx.panelById(pid), destRow.proses)
-      entri = h.entri
-      h.dilewati.forEach(d => dilewati.push({ ...d, proses: destRow.proses, panelId: pid }))
-    }
+    const h = saringKomponenRelevan(bersih, ctx.panelById(pid), destRow.proses, { izinkanTidakRelevan: opsi.tanpaSaring })
+    const entri = h.entri
+    h.dilewati.forEach(d => dilewati.push({ ...d, proses: destRow.proses, panelId: pid }))
     if (entri.length > 0) {
       batch[destRow.id].schedule = taruhDiTujuan(batch[destRow.id].schedule, destDate, entri, nowIso)
       ringkas.push(`${destRow.panel || ''} ${destRow.proses} ${destDate}: ${entri.map((e: any) => e.wp + ' ' + e.komponen.filter((k: string) => !k.startsWith('__')).join(',')).join('; ')}`)
