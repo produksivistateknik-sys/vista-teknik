@@ -59,6 +59,7 @@ const CSS = `
 .akp-pill.selesai{background:var(--akp-done-soft);color:var(--akp-done)}
 .akp-pill.progres{background:var(--akp-prog-soft);color:var(--akp-prog)}
 .akp-pill.lagi{background:var(--akp-lagi-soft);color:var(--akp-lagi)}
+.akp-pill.dimulai{background:var(--akp-soft);color:var(--akp-mute);border:1px solid var(--akp-line)}
 .akp-pill.nol{background:var(--akp-soft);color:var(--akp-mute);font-weight:500}
 .akp-chip{font-size:11.5px;border:1px solid var(--akp-line);background:var(--akp-soft);border-radius:6px;padding:2px 8px;color:var(--akp-mute);text-transform:uppercase;letter-spacing:.04em}
 .akp-body{border-top:1px solid var(--akp-line);padding:6px 20px 18px;display:flex;flex-direction:column;gap:4px}
@@ -73,6 +74,7 @@ const CSS = `
 .akp-t{font-variant-numeric:tabular-nums;font-weight:800;font-size:15px;color:var(--akp-run)}
 .akp-mini{width:84px;height:6px;background:var(--akp-bar);border-radius:99px;overflow:hidden}
 .akp-mini i{display:block;height:100%;background:var(--akp-prog)}
+.akpBtnSingkat{width:100%;text-align:left;border:1px dashed var(--akp-line);background:transparent;color:var(--akp-mute);border-radius:10px;padding:8px 12px;font-size:12.5px;margin-bottom:6px}
 .akp-kosong{padding:40px 16px;text-align:center;color:var(--akp-mute);border:1px dashed var(--akp-line);border-radius:14px}
 `
 
@@ -112,13 +114,28 @@ function Baris({ b }: { b: BarisAktivitas }) {
         {b.catatan.length > 0 && <div className="akp-m">{b.catatan.join(' · ')}</div>}
       </div>
       <div className="akp-r">
-        {b.jalan.length > 0 ? <JamBerjalan mulai={mulaiAwal} /> : <b>{LABEL[b.kategori]}</b>}
+        {b.jalan.length > 0 ? <JamBerjalan mulai={mulaiAwal} /> : b.kategori === 'dimulai' ? null : <b>{LABEL[b.kategori]}</b>}
         {b.qty ? <span>{b.qty} qty</span> : null}
         {b.pct != null && <span>{Math.round(b.pct)}%</span>}
         {b.kategori === 'progres' && b.pct != null && <span className="akp-mini"><i style={{ width: Math.min(100, b.pct) + '%' }} /></span>}
         {!b.jalan.length && b.menit > 0 && <span>{labelLama(b.menit)}</span>}
       </div>
     </div>
+  )
+}
+
+// Timer singkat (< 1 menit, tanpa progres) digabung per tahap supaya tidak memenuhi kartu; sumbernya sering salah pilih.
+const timerSingkat = (b: BarisAktivitas) => b.kategori === 'dimulai' && b.menit < 1
+function KelompokSingkat({ baris }: { baris: BarisAktivitas[] }) {
+  const [buka, setBuka] = useState(false)
+  if (!baris.length) return null
+  return (
+    <>
+      <button type="button" className="akpBtnSingkat" aria-expanded={buka} onClick={() => setBuka((x) => !x)}>
+        {buka ? '▾' : '▸'} {baris.length} timer singkat (&lt; 1 menit), belum ada progres
+      </button>
+      {buka && baris.map((b) => <Baris key={b.kunci} b={b} />)}
+    </>
   )
 }
 
@@ -137,6 +154,7 @@ function Kartu({ k, buka, onToggle, lampau }: { k: KartuAktivitas; buka: boolean
           {pil('selesai', k.jumlah.selesai, 'selesai')}
           {pil('progres', k.jumlah.progres, 'in progress')}
           {k.jumlah.lagi > 0 && pil('lagi', k.jumlah.lagi, 'dikerjakan lagi')}
+          {k.jumlah.dimulai > 0 && pil('dimulai', k.jumlah.dimulai, 'belum ada progres')}
         </div>
         <div className="akp-act">{k.tahap.map((t) => <span key={t.proses} className="akp-chip">{t.proses}</span>)}</div>
       </button>
@@ -145,7 +163,8 @@ function Kartu({ k, buka, onToggle, lampau }: { k: KartuAktivitas; buka: boolean
           {k.tahap.map((t) => (
             <div key={t.proses} className="akp-stg">
               <h4>{t.proses}</h4>
-              {t.baris.map((b) => <Baris key={b.kunci} b={b} />)}
+              {t.baris.filter((b) => !timerSingkat(b)).map((b) => <Baris key={b.kunci} b={b} />)}
+              <KelompokSingkat baris={t.baris.filter(timerSingkat)} />
             </div>
           ))}
         </div>
