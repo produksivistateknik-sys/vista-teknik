@@ -5,7 +5,7 @@ import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
 import { useTimerHariRencana } from '../hooks/useTimerHariRencana'
-import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, getCcpAwareValue, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
@@ -162,16 +162,6 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // nulis progress baru.
   const ccpPanelIds=[...new Set(woData.flatMap((wo:any)=>(wo.panels||[]).map((p:any)=>p.id)))] as number[];
   const ccpMap=useCcpMap(ccpPanelIds);
-  const getCcpAwarePipelineProgressMap=(panelId:number,kode:string,cl:any)=>{
-    const base=getBestProgressMap(cl);
-    // Aturan per sel lewat getCcpAwareValue (panelHelpers.ts) - penjelasan lengkap fix 22 Sep 2026
-    // (BUSBAR per-TAHAP di ccp, kasus WO CLS-FONTAINE/CAPACITOR BANK/H-BUS+INCOMING -> BUSBAR selalu
-    // baca checklist) & 23 Sep 2026 (ccp basi-tinggi LVMDP/F3B.7 gak dipercaya) ada di sana.
-    // Satu sumber logika dgn calcPanelProgressCcpAware/TaskMonitoring/DetailProgress (CLAUDE.md B.1).
-    const merged:Record<string,number>={};
-    ALL_PROSES.forEach((pr:string)=>{merged[pr]=getCcpAwareValue(ccpMap,panelId,kode,pr,base[pr]);});
-    return merged;
-  };
 
   useEffect(()=>{
     const fetchCap=async()=>{
@@ -1151,7 +1141,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).flatMap((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const relevantProsesKode=panelData?getRelevantProsesForKode(kode,panelData.tipe):undefined;
-                        const pipelineStatus=computeProsesStatus(getCcpAwarePipelineProgressMap(t.panelId,kode,panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
+                        const pipelineStatus=computeProsesStatus(getCcpAwarePipelineProgressMap(ccpMap,t.panelId,kode,panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
                         if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return[];
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";

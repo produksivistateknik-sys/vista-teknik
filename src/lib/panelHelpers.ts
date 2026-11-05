@@ -629,6 +629,16 @@ export function getCcpAwareValue(ccpMap:Record<string,number>, panelId:number|st
   return(ccpVal>=100&&truthVal<100)?truthVal:ccpVal;
 }
 
+// Peta progress per proses utk computeProsesStatus: getBestProgressMap + aturan ccp per sel lewat getCcpAwareValue.
+// Dipindah apa adanya dari RencanaHarian.tsx (5 Nov 2026) supaya tab Aktivitas Panel memakai perhitungan yang sama
+// (CLAUDE.md B.1). Penjelasan fix 22 & 23 Sep 2026 ada di komentar getCcpAwareValue.
+export function getCcpAwarePipelineProgressMap(ccpMap:Record<string,number>, panelId:number|string, kode:string, cl:any):Record<string,number>{
+  const base=getBestProgressMap(cl);
+  const merged:Record<string,number>={};
+  ALL_PROSES.forEach((pr:string)=>{merged[pr]=getCcpAwareValue(ccpMap,panelId,kode,pr,base[pr]);});
+  return merged;
+}
+
 export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, ccpMap:Record<string,number>): Record<string, number> {
   const cfg=getEffCfgGlobal(panel.tipe);
   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
