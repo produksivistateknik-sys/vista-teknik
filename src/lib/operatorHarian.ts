@@ -12,7 +12,7 @@
 // - Nama dari hari lain tidak pernah masuk daftar (info "terakhir dikerjakan" = urusan tooltip pemanggil).
 export type TimerSesi = { pekerja_id: number | string; mulai?: string | null; selesai?: string | null; durasi_menit?: number | string | null }
 export type StatusOperator = 'berjalan' | 'selesai' | 'checkpoint' | 'belum_mulai' | 'tidak_mulai'
-export type EntriOperator = { id: number | null; nama: string; status: StatusOperator; menit: number }
+export type EntriOperator = { id: number | null; nama: string; status: StatusOperator; menit: number; menitTepat?: number } // menit = dibulatkan, menitTepat = tanpa pembulatan (label detik timer berjalan)
 export type DaftarOperator = { entri: EntriOperator[]; pengerja: EntriOperator[]; sumber: 'timer' | 'checkpoint' | 'kosong' }
 
 const URUT: Record<StatusOperator, number> = { berjalan: 0, selesai: 1, checkpoint: 2, belum_mulai: 3, tidak_mulai: 4 }
@@ -45,7 +45,7 @@ export function daftarOperatorHarian(o: {
     per.set(id, a)
   }
   const entri: EntriOperator[] = []
-  for (const [id, a] of per) entri.push({ id, nama: o.namaById(id) || `#${id}`, status: a.berjalan ? 'berjalan' : 'selesai', menit: Math.round(a.menit) })
+  for (const [id, a] of per) entri.push({ id, nama: o.namaById(id) || `#${id}`, status: a.berjalan ? 'berjalan' : 'selesai', menit: Math.round(a.menit), menitTepat: a.menit })
   let sumber: DaftarOperator['sumber'] = per.size ? 'timer' : 'kosong'
   if (!per.size && (o.checkpointNama || []).length) {
     sumber = 'checkpoint'
