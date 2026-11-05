@@ -8,6 +8,9 @@
 //   tidak dikenal = relevan) -> tidak disaring.
 // - BUSBAR (busbar_schedule), QC TEST/PACKING/NAMEPLATE/YELLOWMARK (penanda panel) & token __wiring_ tidak disaring.
 // - Undo TIDAK memakai saringan (memulihkan persis keadaan sebelum aksi).
+// - "Tambahkan juga" (opsi izinkanTidakRelevan) hanya meloloskan alasan 'tidak_relevan'; kode yang tidak ada di panel / qty 0
+//   tetap tertahan (6 Nov 2026).
+// - Cermin utk Edge Function auto-geser-harian: supabase/functions/auto-geser-harian/aturanKode.ts - ubah keduanya bersamaan.
 import { isKomponenRelevant } from './panelHelpers'
 import { GLOBAL_PROSES_RELEVAN_TERMUAT } from './globalState'
 
@@ -27,11 +30,12 @@ export function alasanKomponenDilewati(kode: string, panel: { tipe?: string; che
 
 // Saring entri jadwal (bentuk {wp, komponen[], ...}) utk sel proses `proses` panel `panel`. Entri yang komponennya
 // habis disaring dibuang; token __wiring_ ikut entri yang masih punya komponen asli.
-export function saringKomponenRelevan(entries: any[], panel: { tipe?: string; checklist?: any } | undefined, proses: string): { entri: any[]; dilewati: KomponenDilewati[] } {
+export function saringKomponenRelevan(entries: any[], panel: { tipe?: string; checklist?: any } | undefined, proses: string, opsi: { izinkanTidakRelevan?: boolean } = {}): { entri: any[]; dilewati: KomponenDilewati[] } {
   const dilewati: KomponenDilewati[] = []
   const entri = (entries || []).map((e: any) => {
     const komponen = (e.komponen || []).filter((k: string) => {
-      const a = alasanKomponenDilewati(k, panel, proses)
+      let a = alasanKomponenDilewati(k, panel, proses)
+      if (a === 'tidak_relevan' && opsi.izinkanTidakRelevan) a = null
       if (a) dilewati.push({ kode: k, wp: e.wp, alasan: a })
       return !a
     })

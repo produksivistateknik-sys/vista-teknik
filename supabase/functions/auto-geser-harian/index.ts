@@ -114,6 +114,7 @@ tanpa nulis apapun).
 */
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { alasanKodeTakValid, bangunDataRelevan, type DataRelevan } from './aturanKode.ts'
 
 // NAMEPLATE/YELLOWMARK: proses penanda whole-panel (komponen:["MARKED"], bukan kode BOM asli) - kalau gak dikecualikan, tiap malam bakal dianggap "belum 100%" terus dan digeser tanpa henti.
 const PROSES_DIKECUALIKAN = ['QC TEST', 'PACKING', 'NAMEPLATE', 'YELLOWMARK']
@@ -255,6 +256,8 @@ type Ctx = {
   getCap: (tanggal: string, proses: string) => { tipe: string; unit: number } | null
   getMenitPcs: (tipe: string, kode: string, proses: string) => number
   hariKerjaMap: Record<string, string[]>
+  relevan: DataRelevan
+  buktiKerja: Set<string>
 }
 
 const fetchAll = async (supabase: any, table: string, select: string) => {
@@ -262,6 +265,22 @@ const fetchAll = async (supabase: any, table: string, select: string) => {
   let from = 0
   while (true) {
     const { data, error } = await supabase.from(table).select(select).range(from, from + 999)
+    if (error) throw error
+    all = all.concat(data ?? [])
+    if (!data || data.length < 1000) break
+    from += 1000
+  }
+  return all
+}
+
+// Sama seperti fetchAll dgn urutan tetap, utk tabel baca-penuh yang sedang ditulis operator (paginasi tanpa urutan bisa melompati baris).
+const fetchAllUrut = async (supabase: any, table: string, select: string, kolomUrut: string[]) => {
+  let all: any[] = []
+  let from = 0
+  while (true) {
+    let q = supabase.from(table).select(select)
+    kolomUrut.forEach((k) => { q = q.order(k) })
+    const { data, error } = await q.range(from, from + 999)
     if (error) throw error
     all = all.concat(data ?? [])
     if (!data || data.length < 1000) break
@@ -343,7 +362,14 @@ const buildCtx = async (supabase: any): Promise<Ctx> => {
     Object.entries(timerSet).forEach(([k, v]) => { hariKerjaMap[k] = [...v].sort() })
   }
 
-  return { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap }
+  // KODE TIDAK VALID (6 Nov 2026, keputusan user): dasar penilaian - relevansi BOM + bukti kerja (timer tanggal berapa pun,
+  // ccp berpersen). Gagal baca dilempar: lebih baik tarik gagal daripada membuang kode dgn data tidak lengkap.
+  const relevan = bangunDataRelevan(await fetchAllUrut(supabase, 'bom_proses_relevan', 'kode_komponen,tipe_panel,jenis_pekerjaan', ['kode_komponen', 'tipe_panel', 'jenis_pekerjaan']))
+  const buktiKerja = new Set<string>()
+  ;(await fetchAllUrut(supabase, 'fcs_timer_kerja', 'panel_id,kode_komponen,proses', ['id'])).forEach((t: any) => buktiKerja.add(`${t.panel_id}|${t.kode_komponen}|${t.proses}`))
+  ;(await fetchAllUrut(supabase, 'component_process_progress', 'panel_id,kode_komponen,proses,progress_pct', ['id'])).forEach((c: any) => { if (Number(c.progress_pct) > 0) buktiKerja.add(`${c.panel_id}|${c.kode_komponen}|${c.proses}`) })
+
+  return { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap, relevan, buktiKerja }
 }
 
 // Tanggal < `sebelum` yang masih punya kode AKTIF belum-100% (kriteria SAMA PERSIS kandidat Fase 1:
@@ -380,7 +406,8 @@ const cariTanggalTertinggal = async (supabase: any, sebelum: string, ctx: Ctx): 
 // Dipanggil sekali per pasangan (hariSumber,hariTarget) - baik dari loop catch-up multi-hari
 // maupun dari mode debug/backfill satu-hari-spesifik.
 const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: string, dryRun: boolean, ctx: Ctx) => {
-  const { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap } = ctx
+  const { panelMap, woTargetOfPanel, getCap, getMenitPcs, hariKerjaMap, relevan, buktiKerja } = ctx
+  const kodeTakValid: { panelId: number; panel: string; kode: string; proses: string; tanggal: string; wp: string; alasan: string; tindakan: 'dibuang' | 'ditahan' }[] = []
   const rawRows = await fetchAll(supabase, 'raw_schedule', '*')
   const rowById: Record<number, any> = {}
   rawRows.forEach((r: any) => { rowById[r.id] = r })
@@ -485,6 +512,16 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
         const cl = checklist[kode]
         const pct = cl?.progress?.[row.proses] || 0
         if (pct >= 100) return
+        // KODE TIDAK VALID (6 Nov 2026, keputusan user; insiden FS.10 UNP RENDAM panel 527: terbawa maju sejak 14 Okt) - tidak
+        // relevan / tidak ada di panel / qty 0 tidak pernah dibawa maju. Belum ada bukti kerja (progres, timer, ccp) = dibuang
+        // dari tanggal ini; sudah ada = dibiarkan di tempat (tidak digeser, tidak dihapus).
+        const alasanTakValid = alasanKodeTakValid(kode, panel, row.proses, relevan)
+        if (alasanTakValid) {
+          const adaBukti = pct > 0 || buktiKerja.has(`${row.panel_id}|${kode}|${row.proses}`)
+          if (!adaBukti) removeOp(row.id, hariSumber, e.wp, kode)
+          kodeTakValid.push({ panelId: row.panel_id, panel: panel.nama, kode, proses: row.proses, tanggal: hariSumber, wp: e.wp, alasan: alasanTakValid, tindakan: adaBukti ? 'ditahan' : 'dibuang' })
+          return
+        }
         // QTY 0 (1 Okt 2026) - komponen yang gak dibutuhkan lagi (qty di-0 admin) GAK PERNAH dibawa
         // maju. Dulu cuma dicek progress<100, jadi kode qty 0 di tanggal lampau ditarik lagi ke hari
         // ini tiap Tarik - "hidup lagi" di jadwal walau udah dihapus (sinkronJadwalSetelahUbahQty).
@@ -1079,7 +1116,7 @@ const prosesSatuHari = async (supabase: any, hariSumber: string, hariTarget: str
 
   if (overbookWarnings.length > 0) console.warn(overbookWarnings.join('\n'))
 
-  return { jumlahRowDiproses, komponenLangsung, komponenDidorong, overbookWarnings, overbookWiring, detail: detailDryRun }
+  return { jumlahRowDiproses, komponenLangsung, komponenDidorong, overbookWarnings, overbookWiring, detail: detailDryRun, kodeTakValid }
 }
 
 Deno.serve(async (req) => {
@@ -1129,6 +1166,7 @@ Deno.serve(async (req) => {
     // proses hariTarget yang sama (hari ini) berkali-kali, yang terakhir = isi akhir paling lengkap.
     type OverbookWiring = { tanggal: string; proses: string; terisi: number; kapasitas: number | null; jumlahKode: number }
     const overbookWiringMap: Record<string, OverbookWiring> = {}
+    const kodeTakValidTotal: any[] = []
     const catatOverbookWiring = (list: OverbookWiring[]) => list.forEach((o) => { overbookWiringMap[`${o.tanggal}|${o.proses}`] = o })
 
     while (cursor < hariIniWib && jumlahHariDiproses < MAX_CATCHUP_HARI) {
@@ -1143,6 +1181,7 @@ Deno.serve(async (req) => {
       jumlahRowDiprosesTotal += hasil.jumlahRowDiproses
       komponenLangsungTotal += hasil.komponenLangsung
       komponenDidorongTotal += hasil.komponenDidorong
+      kodeTakValidTotal.push(...hasil.kodeTakValid)
       overbookWarningsTotal.push(...hasil.overbookWarnings)
       catatOverbookWiring(hasil.overbookWiring)
       jumlahHariDiproses++
@@ -1166,6 +1205,7 @@ Deno.serve(async (req) => {
         jumlahRowDiprosesTotal += hasil.jumlahRowDiproses
         komponenLangsungTotal += hasil.komponenLangsung
         komponenDidorongTotal += hasil.komponenDidorong
+        kodeTakValidTotal.push(...hasil.kodeTakValid)
         overbookWarningsTotal.push(...hasil.overbookWarnings)
         catatOverbookWiring(hasil.overbookWiring)
         jumlahTanggalDisapu++
@@ -1195,6 +1235,15 @@ Deno.serve(async (req) => {
       })
     }
 
+    if (!dryRun && kodeTakValidTotal.length > 0) {
+      const teks = kodeTakValidTotal.map((k) => `${k.tindakan} ${k.panel} ${k.kode} ${k.proses} ${k.tanggal} ${k.wp} (${k.alasan})`).join(' | ')
+      const { error: logErr } = await supabase.from('activity_log').insert({
+        user_name: triggeredBy || 'System', action: 'AUTO-GESER: KODE TIDAK VALID', description: teks.slice(0, 4000),
+        module: 'rencana', halaman: 'Rencana Harian',
+      })
+      if (logErr) console.error('Gagal tulis log KODE TIDAK VALID:', logErr)
+    }
+
     // Log overbook WIRING (Opsi 1) - 1 baris activity_log per tanggal+proses, biar bisa ditelusuri
     // hari mana yang kelebihan beban orang sejak kapasitas gak lagi nahan penempatan WIRING.
     const overbookWiringList = Object.values(overbookWiringMap)
@@ -1215,7 +1264,7 @@ Deno.serve(async (req) => {
       hariMulai, hariTargetAkhir: hariIniWib,
       jumlahHariDiproses, jumlahTanggalDisapu, jumlahRowDiprosesTotal,
       jumlahKomponenTotal, komponenLangsungTotal, komponenDidorongTotal,
-      perHari, overbookWarnings: overbookWarningsTotal, overbookWiring: overbookWiringList,
+      perHari, overbookWarnings: overbookWarningsTotal, overbookWiring: overbookWiringList, kodeTakValid: kodeTakValidTotal,
     })
   } catch (err: any) {
     return jsonResponse({ success: false, error: err?.message || String(err) }, 500)
