@@ -29,7 +29,7 @@ type Tab = 'inventaris' | 'laporan' | 'maintenance' | 'riwayat'
 const TABS: [Tab, string][] = [['inventaris', 'Inventaris'], ['laporan', 'Laporan'], ['maintenance', 'Maintenance'], ['riwayat', 'Riwayat']]
 const OPSI_FILTER: Record<Tab, [string, string][]> = {
   inventaris: [['semua', 'Semua kondisi'], ...KONDISI.map(k => [k.kode, k.label] as [string, string]), ['baru_operator', 'Baru dari operator (belum diperiksa)']],
-  laporan: [['semua', 'Semua status'], ['aktif', 'Aktif (Open / In Progress)'], ['closed', 'Closed']],
+  laporan: [['semua', 'Semua status'], ['open', 'Open'], ['in_progress', 'In Progress']],
   maintenance: [['semua', 'Semua jadwal aktif'], ['terlambat', 'Terlambat'], ['segera', 'Jatuh tempo ≤ 2 hari'], ['normal', 'Normal'], ['nonaktif', 'Nonaktif']],
   riwayat: [['semua', 'Semua jenis'], ['rutin', 'Rutin'], ['kerusakan', 'Kerusakan']],
 }
@@ -110,6 +110,8 @@ const badge = (warna: string, latar: string, label: string) => <span className="
 const baruOperator = (x?: Barang) => !!x && !!x.ditambah_operator && !x.sudah_diperiksa
 const badgeJadwal = (j: Jadwal) => !j.aktif ? badge('#64748b', '#eef1f5', 'Nonaktif') : badge(STATUS_JADWAL[j.status_jadwal].warna, STATUS_JADWAL[j.status_jadwal].latar, STATUS_JADWAL[j.status_jadwal].label)
 const badgeLaporan = (s: Laporan['status']) => badge(STATUS_LAPORAN[s].warna, STATUS_LAPORAN[s].latar, STATUS_LAPORAN[s].label)
+// Baris laporan Closed di Riwayat diurutkan menurut tanggal ditutup (WIB). Tanggal lapor dipakai bila tanggal tutup kosong.
+const tglTutupLaporan = (l: Laporan) => new Date(l.ditutup_pada || l.dibuat_pada).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
 const pesanGalat = (e: any) => e?.message || String(e)
 
 // Media dibuka DI DALAM aplikasi (FotoZoomViewer, sama dgn Proyek Luar/QC/Kerusakan lama: geser antar berkas, zoom, putar,
@@ -203,13 +205,15 @@ export function InventarisMaintenanceTab({ user }: any) {
     // barang nonaktif (dan laporan/jadwal/riwayatnya) disembunyikan kecuali "termasuk nonaktif" dicentang (keputusan user 30 Okt)
     const tampilB = (id: number) => nonaktif || b(id).aktif
     const inventaris = d.barang.filter(x => tampilB(x.id)).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, baru: baruOperator(x), cari: teksBarang(x), x }))
-    const laporan = d.laporan.filter(l => tampilB(l.barang_id)).sort((p, r) => r.dibuat_pada.localeCompare(p.dibuat_pada)).map(l => ({ id: 'l' + l.id, lok: b(l.barang_id).lokasi_kode,
-      kunci: laporanAktif(l) ? 'aktif' : 'closed', cari: [l.judul, l.masalah, l.pelapor, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l }))
+    // Tab Laporan hanya yang belum Closed; yang Closed hanya di Riwayat (6 Nov 2026). Data mentah d.laporan/idx tidak difilter:
+    // kunci kondisi barang & jumlah di detail barang tetap membaca semua laporan.
+    const laporan = d.laporan.filter(l => laporanAktif(l) && tampilB(l.barang_id)).sort((p, r) => r.dibuat_pada.localeCompare(p.dibuat_pada)).map(l => ({ id: 'l' + l.id, lok: b(l.barang_id).lokasi_kode,
+      kunci: l.status, cari: [l.judul, l.masalah, l.pelapor, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l }))
     const maintenance = d.jadwal.filter(j => tampilB(j.barang_id)).sort((p, r) => (p.jatuh_tempo || '9').localeCompare(r.jatuh_tempo || '9')).map(j => ({ id: 'j' + j.id, lok: b(j.barang_id).lokasi_kode,
       kunci: j.aktif ? j.status_jadwal : 'nonaktif', cari: [j.jenis, j.teknisi, teksBarang(b(j.barang_id))].join(' '), x: j }))
     const riwayat = [
       ...d.selesai.filter(s => tampilB(s.barang_id)).map(s => ({ id: 's' + s.id, lok: b(s.barang_id).lokasi_kode, kunci: 'rutin', tgl: s.tanggal, cari: [s.oleh, d.jadwal.find(j => j.id === s.jadwal_id)?.jenis, teksBarang(b(s.barang_id))].join(' '), x: s })),
-      ...d.laporan.filter(l => tampilB(l.barang_id)).map(l => ({ id: 'k' + l.id, lok: b(l.barang_id).lokasi_kode, kunci: 'kerusakan', tgl: l.dibuat_pada.slice(0, 10), cari: [l.judul, l.pelapor, teksBarang(b(l.barang_id))].join(' '), x: l })),
+      ...d.laporan.filter(l => !laporanAktif(l) && tampilB(l.barang_id)).map(l => ({ id: 'k' + l.id, lok: b(l.barang_id).lokasi_kode, kunci: 'kerusakan', tgl: tglTutupLaporan(l), cari: [l.judul, l.masalah, l.pelapor, l.ditutup_oleh, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l })),
     ].sort((p, r) => r.tgl.localeCompare(p.tgl))
     return { inventaris, laporan, maintenance, riwayat } as Record<Tab, any[]>
   }, [d, idx, nonaktif, namaLokasi])
@@ -239,13 +243,16 @@ export function InventarisMaintenanceTab({ user }: any) {
   const bukaTarget = (t: TargetInv | null) => {
     if (!t || !idx) return
     if (t.tab === 'notif') { setLaci(true); return }
-    const bid = t.tab === 'inventaris' ? t.barangId : t.tab === 'laporan' ? d?.laporan.find(l => l.id === Number(t.rowId.slice(1)))?.barang_id
+    const lap = t.tab === 'laporan' ? d?.laporan.find(l => l.id === Number(t.rowId.slice(1))) : undefined
+    const bid = t.tab === 'inventaris' ? t.barangId : t.tab === 'laporan' ? lap?.barang_id
       : d?.jadwal.find(j => j.id === Number(t.rowId.slice(1)))?.barang_id
     const x = bid != null ? idx.barang.get(bid) : undefined
     if (!x) { alert('Data yang dituju tidak ditemukan (mungkin sudah dihapus atau belum termuat - coba muat ulang).'); return }
     if (!x.aktif) setNonaktif(true)
-    setTab(t.tab); setFKon('semua'); setFLok([]); setQ(''); setPop(null); setBatas(BARIS_PER_HALAMAN)
-    setBuka(t.rowId); setSorot(t.rowId); sudahGulir.current = null; setLaci(false)
+    const keRiwayat = !!lap && !laporanAktif(lap)   // laporan Closed hanya ada di Riwayat; tautan notifikasi/push tetap laporan:ID
+    const barisTuju = keRiwayat ? 'k' + lap!.id : t.rowId
+    setTab(keRiwayat ? 'riwayat' : t.tab); setFKon('semua'); setFLok([]); setQ(''); setPop(null); setBatas(BARIS_PER_HALAMAN)
+    setBuka(barisTuju); setSorot(barisTuju); sudahGulir.current = null; setLaci(false)
   }
   const lihatNotif = (n: Notifikasi) => {
     if (n.status === 'baru') notifDilihat(db, user, [n.id]).catch(e => console.error('[inventaris notif] dilihat gagal:', e)).finally(notif.muat)
@@ -284,6 +291,11 @@ export function InventarisMaintenanceTab({ user }: any) {
   const thLokasi = <th key="lok">Lokasi<button type="button" className={'iv-fbtn' + (fLok.length ? ' on' : '')} aria-label="Filter lokasi"
     onClick={e => { const r = (e.currentTarget as HTMLElement).getBoundingClientRect(); setPop(pop ? null : { x: Math.min(r.left, window.innerWidth - 240), y: r.bottom + 4 }) }}>{fLok.length ? fLok.length + ' ' : ''}▾</button></th>
 
+  // Baris yang sedang dibuka pindah tab karena statusnya diubah orang lain (operator menutup / admin lain membuka kembali).
+  const idBuka = buka && /^[lk]\d+$/.test(buka) ? Number(buka.slice(1)) : null
+  const lapBuka = idBuka != null ? d.laporan.find(l => l.id === idBuka) : undefined
+  const lapPindah = lapBuka && ((tab === 'laporan' && buka?.[0] === 'l' && !laporanAktif(lapBuka)) || (tab === 'riwayat' && buka?.[0] === 'k' && laporanAktif(lapBuka))) ? lapBuka : null
+
   const ctx: Ctx = { idx, user, sibuk, jalankan, mediaDari, gantiTab, setModal, setBuka,
     notifDari: pred => notif.perlu.filter(pred), muatNotif: () => { notif.muat(); muat() } }
 
@@ -298,7 +310,7 @@ export function InventarisMaintenanceTab({ user }: any) {
       <div className="iv-sum">
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'terlambat'} onClick={() => tab === 'maintenance' && fKon === 'terlambat' ? setFKon('semua') : gantiTab('maintenance', 'terlambat')}><b style={{ color: '#b91c1c' }}>{cnt.terlambat}</b><span>jadwal terlambat</span></button>
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'segera'} onClick={() => tab === 'maintenance' && fKon === 'segera' ? setFKon('semua') : gantiTab('maintenance', 'segera')}><b style={{ color: '#a15c07' }}>{cnt.segera}</b><span>jatuh tempo ≤ 2 hari</span></button>
-        <button type="button" aria-pressed={tab === 'laporan' && fKon === 'aktif'} onClick={() => tab === 'laporan' && fKon === 'aktif' ? setFKon('semua') : gantiTab('laporan', 'aktif')}><b style={{ color: '#6d28d9' }}>{cnt.rusak}</b><span>kerusakan aktif</span></button>
+        <button type="button" aria-pressed={tab === 'laporan' && fKon === 'semua'} onClick={() => gantiTab('laporan')}><b style={{ color: '#6d28d9' }}>{cnt.rusak}</b><span>kerusakan aktif</span></button>
         {cnt.baru > 0 && <button type="button" aria-pressed={tab === 'inventaris' && fKon === 'baru_operator'} onClick={() => tab === 'inventaris' && fKon === 'baru_operator' ? setFKon('semua') : gantiTab('inventaris', 'baru_operator')}><b style={{ color: '#1d4ed8' }}>{cnt.baru}</b><span>barang baru dari operator</span></button>}
       </div>
       <div className="iv-tabs" role="tablist">{TABS.map(([t, l]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}>{l}<i>{tampil(t).length}</i></button>)}</div>
@@ -317,6 +329,9 @@ export function InventarisMaintenanceTab({ user }: any) {
           <input type="checkbox" checked={fLok.includes(l.kode)} onChange={e => { setFLok(e.target.checked ? [...fLok, l.kode] : fLok.filter(k => k !== l.kode)); setBuka(null) }} />
           {l.nama}<span className="n">{hitungLokasi.get(l.kode) || 0}</span></label>)}
       </div>}
+
+      {lapPindah && <div className="iv-hint" style={{ marginBottom: 8 }}>Laporan "{lapPindah.judul}" {laporanAktif(lapPindah) ? 'dibuka kembali dan pindah ke tab Laporan' : 'sudah Closed dan pindah ke Riwayat'}. {' '}
+        <button className="iv-btn" type="button" onClick={() => bukaTarget({ tab: 'laporan', rowId: 'l' + lapPindah.id })}>Buka</button></div>}
 
       {!daftar.length ? <div className="iv-tw"><div className="iv-empty">Tidak ada data untuk filter ini. <button className="iv-btn" type="button" onClick={reset}>Reset filter</button></div></div> : (
         <div className="iv-tw">
@@ -374,9 +389,13 @@ export function InventarisMaintenanceTab({ user }: any) {
                   <td>{s.oleh}{s.sumber === 'qr_lama' && <span className="iv-mute"> (QR)</span>}</td>
                   <td>{m.length ? <Thumbs media={m} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} /> : <span className="iv-mute">{s.tanpa_dokumentasi ? 'tanpa dokumentasi' : '—'}</span>}</td></tr> }
               const l: Laporan = r.x; const seb = mediaDari('laporan', l.id, 'sebelum').length + mediaDari('laporan', l.id, 'lama').length, ses = mediaDari('laporan', l.id, 'sesudah').length
-              return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(l.dibuat_pada)}</td><td>{badge('#6d28d9', '#ece3ff', 'Kerusakan')}</td><td>{kodeSel(l.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
-                <td>{l.judul} <span className="iv-mute">{STATUS_LAPORAN[l.status].label}</span></td><td>{l.pelapor}</td>
+              const nUpd = (idx.updatePerLaporan.get(l.id) || []).length
+              return <Fragment key={r.id}><tr className={'klik' + (sorot === r.id ? ' iv-sorot' : '')} data-row={r.id} onClick={() => setBuka(buka === r.id ? null : r.id)}>
+                <td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(l.ditutup_pada || l.dibuat_pada)}</td><td>{badge('#6d28d9', '#ece3ff', 'Kerusakan')}</td><td>{kodeSel(l.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
+                <td>{l.judul} <span className="iv-mute">· {STATUS_LAPORAN[l.status].label} · dilaporkan {fmtTanggal(l.dibuat_pada)} oleh {l.pelapor}{nUpd ? ` · ${nUpd} update` : ''}</span></td><td>{l.ditutup_oleh || '—'}</td>
                 <td>{seb || ses ? <span>{seb ? 'sebelum ' + seb : ''}{seb && ses ? ' · ' : ''}{ses ? <b>sesudah {ses}</b> : ''}</span> : <span className="iv-mute">—</span>}</td></tr>
+                {buka === r.id && <tr className="iv-exp"><td colSpan={8}><DetailLaporan l={l} c={ctx} /></td></tr>}
+              </Fragment>
             })}</tbody></table>}
           {semuaBaris.length > batasTampil && <div className="iv-empty" style={{ padding: 12 }}>Menampilkan {batasTampil} dari {semuaBaris.length} baris. <button className="iv-btn" type="button" onClick={() => setBatas(batasTampil + BARIS_PER_HALAMAN)}>Tampilkan lebih banyak</button></div>}
         </div>)}
@@ -431,7 +450,7 @@ function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
         onClick={() => c.jalankan('dp' + x.id, () => tandaiDiperiksa(db, c.user, x))}>{c.sibuk === 'dp' + x.id ? 'Menyimpan…' : 'Tandai sudah diperiksa'}</button>}
       <button className="iv-btn pri" type="button" disabled={!!c.sibuk} onClick={() => fileRef.current?.click()}>{c.sibuk === 'ds' + x.id ? 'Mengunggah…' : 'Unggah datasheet PDF'}</button>
       <button className="iv-btn" type="button" onClick={() => c.gantiTab('maintenance', 'semua', x.nomor_inventaris || x.nama)}>Lihat jadwal</button>
-      <button className="iv-btn" type="button" onClick={() => c.gantiTab('laporan', 'semua', x.nomor_inventaris || x.nama)}>Lihat laporan</button>
+      <button className="iv-btn" type="button" onClick={() => lp.some(laporanAktif) ? c.gantiTab('laporan', 'semua', x.nomor_inventaris || x.nama) : c.gantiTab('riwayat', 'kerusakan', x.nomor_inventaris || x.nama)}>Lihat laporan</button>
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'jadwal', barangId: x.id })}>+ Jadwal rutin</button>
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'edit', x })}>Edit</button>
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'log', x })}>Riwayat perubahan</button>
