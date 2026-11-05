@@ -137,7 +137,12 @@ begin
   raise notice 'SEMUA LULUS, baseline % baris', n_base;
 end $$;
 
-alter publication supabase_realtime add table public.wiring_pengingat;
+-- Produksi: supabase_realtime = FOR ALL TABLES (tabel baru otomatis ikut; ADD TABLE ditolak dgn galat 55000).
+do $$ begin
+  if not (select puballtables from pg_publication where pubname = 'supabase_realtime') then
+    alter publication supabase_realtime add table public.wiring_pengingat;
+  end if;
+end $$;
 select cron.schedule('wiring-pengingat-pindai', '* * * * *', $c$select public.wiring_pengingat_pindai(false)$c$);
 commit;
 
@@ -146,7 +151,6 @@ select jobname, schedule, active from cron.job where jobname = 'wiring-pengingat
 -- ROLLBACK:
 -- select cron.unschedule('wiring-pengingat-pindai');
 -- begin;
--- alter publication supabase_realtime drop table public.wiring_pengingat;
 -- drop function public.wiring_pengingat_tandai(bigint[], jsonb);
 -- drop view public.wiring_pengingat_v;
 -- drop function public.wiring_pengingat_pindai(boolean);
