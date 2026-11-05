@@ -5,7 +5,7 @@ import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
 import { useTimerHariRencana } from '../hooks/useTimerHariRencana'
-import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, PROSES_QTY_GRANULAR, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
@@ -66,7 +66,6 @@ function pesanGagalRenhar(aksi:string,err:any):string{
 // persen (bakal salah/menyesatkan, gak match cara operator app beneran nyatet progress-nya).
 // Reuse getQtyProsesAsOfDate() - fungsi SAMA PERSIS yang dipakai RawSchedule.tsx (badge qty di
 // cell modal) buat kasus yang identik, satu sumber logika (CLAUDE.md B.1).
-const PROSES_QTY_GRANULAR=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"];
 
 // ── Filter kolom header (29 Sep 2026, view-only) - ikon filter di header Proyek/Nama Panel/
 // Komponen/Status, pola SAMA dgn DatabaseGudangTab.tsx (vista-pekerja): checklist nilai per kolom,

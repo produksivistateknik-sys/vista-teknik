@@ -24,7 +24,7 @@
 import { ALL_PROSES } from '../constants/panelTypes'
 import {
   computeProsesStatus, getCcpAwarePipelineProgressMap, type ProsesStatus, getEffCfgGlobal, getProgressAsOfDate, getQtyProsesAsOfDate, getRelevantProsesForKode,
-  panelOverallCcpAware, PROSES_TANPA_MAPPING_KOMPONEN, statusPenandaPanel,
+  panelOverallCcpAware, PROSES_QTY_GRANULAR, PROSES_TANPA_MAPPING_KOMPONEN, statusPenandaPanel,
 } from './panelHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint } from './operatorHarian'
 import { menitGabungan, type TimerJejak } from './jejakPengerjaan'
@@ -100,7 +100,7 @@ function barisSel(o: { panel: any; kode: string; proses: string; tanggal: string
   if (basi) catatan.push('timer lebih dari 12 jam')
   return {
     kunci: kunciSel(panel.id, kode, proses), proses, kode, namaKomponen: item?.nama || '', kategori: n.kategori, pct: n.pct,
-    qty: proses !== 'BUSBAR' && total > 0 ? `${Number(getQtyProsesAsOfDate(cl, proses, tanggal)) || 0}/${total}` : null,
+    qty: PROSES_QTY_GRANULAR.includes(proses) && total > 0 ? `${Number(getQtyProsesAsOfDate(cl, proses, tanggal)) || 0}/${total}` : null,
     operator: op.pengerja.map((e) => e.nama),
     jalan: berjalan.map((t) => ({ nama: namaById(t.pekerja_id) || `#${t.pekerja_id}`, mulai: t.mulai, tahap: t.tahap || null })),
     menit, tahapTimer: [...new Set(timer.map((t) => t.tahap).filter(Boolean))] as string[], catatan, basi, waktuTerakhir: null, satuPanel: false, statusPipeline: n.statusPipeline,
