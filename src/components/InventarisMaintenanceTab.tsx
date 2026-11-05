@@ -59,7 +59,7 @@ const CSS = `
 .invm .iv-btn.pri{background:var(--iv-acc);border-color:var(--iv-acc);color:#fff}
 .invm .iv-btn.ok{background:#dcf5e5;color:#15803d;border-color:transparent}
 .invm .iv-btn:disabled{opacity:.5;cursor:not-allowed}
-.invm .iv-tw{overflow:auto;max-height:600px;background:var(--iv-card);border:1px solid var(--iv-line);border-radius:10px}
+.invm .iv-tw{overflow:auto;max-height:max(600px,calc(100vh - 270px));background:var(--iv-card);border:1px solid var(--iv-line);border-radius:10px}
 .invm table{border-collapse:separate;border-spacing:0;width:100%}
 .invm th,.invm td{padding:7px 10px;border-bottom:1px solid var(--iv-line);border-right:1px solid var(--iv-line);text-align:left;vertical-align:top}
 .invm th:last-child,.invm td:last-child{border-right:0}
