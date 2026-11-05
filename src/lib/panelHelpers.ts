@@ -441,6 +441,10 @@ export function getProgressFromHistory(cl:any, proses:string):number{
 // TERAKHIR yang <= tanggal yang diminta (bukan langsung 0) - biar kartu di tanggal jejak (lama)
 // beku selamanya di angka waktu itu, sementara kartu di tanggal live ikut update begitu ada
 // checkpoint baru.
+// Proses yang progresnya dicatat per unit (qtyProses). Proses lain memakai persen langsung atau penanda satu panel, jadi
+// qty-nya TIDAK boleh ditampilkan. Dipindah dari RencanaHarian.tsx (5 Nov 2026) supaya tab Aktivitas Panel memakai daftar
+// yang sama (CLAUDE.md B.1); penjelasan & bukti data ada di komentar kolom QTY RencanaHarian.tsx.
+export const PROSES_QTY_GRANULAR=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"];
 export function getQtyProsesAsOfDate(cl:any, proses:string, tanggal:string):number{
   const byDate=cl?.qtyProsesByDate?.[proses];
   if(byDate&&byDate[tanggal]!==undefined) return byDate[tanggal];
@@ -627,6 +631,16 @@ export function getCcpAwareValue(ccpMap:Record<string,number>, panelId:number|st
   if(!(key in ccpMap))return truthVal;
   const ccpVal=ccpMap[key];
   return(ccpVal>=100&&truthVal<100)?truthVal:ccpVal;
+}
+
+// Peta progress per proses utk computeProsesStatus: getBestProgressMap + aturan ccp per sel lewat getCcpAwareValue.
+// Dipindah apa adanya dari RencanaHarian.tsx (5 Nov 2026) supaya tab Aktivitas Panel memakai perhitungan yang sama
+// (CLAUDE.md B.1). Penjelasan fix 22 & 23 Sep 2026 ada di komentar getCcpAwareValue.
+export function getCcpAwarePipelineProgressMap(ccpMap:Record<string,number>, panelId:number|string, kode:string, cl:any):Record<string,number>{
+  const base=getBestProgressMap(cl);
+  const merged:Record<string,number>={};
+  ALL_PROSES.forEach((pr:string)=>{merged[pr]=getCcpAwareValue(ccpMap,panelId,kode,pr,base[pr]);});
+  return merged;
 }
 
 export function calcPanelProgressCcpAware(panel:any, rawData:any[]|undefined, ccpMap:Record<string,number>): Record<string, number> {

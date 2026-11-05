@@ -4,8 +4,9 @@ import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
 import { Btn } from './ui/Primitives'
 import { KalenderTab } from './KalenderTab'
+import { AktivitasPanelTab } from './AktivitasPanelTab'
 
-export function Dashboard({woData}){
+export function Dashboard({woData,pekerja=[],aktif=true}:{woData:any[];pekerja?:any[];aktif?:boolean}){
   const [activeTab,setActiveTab]=useState("wo");
   const [woSearch,setWoSearch]=useState("");
   const [woStatus,setWoStatus]=useState("semua");
@@ -141,6 +142,7 @@ export function Dashboard({woData}){
             {id:"panel",label:"Panel List"},
             {id:"alert",label:"Peringatan"+(alerts.length>0?" ("+alerts.length+")":"")},
             {id:"kalender",label:"Kalender"},
+            {id:"aktivitas",label:"Aktivitas Panel"},
           ].map(t=>(
             <div key={t.id} onClick={()=>setActiveTab(t.id)}
               style={{padding:"9px 14px",fontSize:12,fontWeight:activeTab===t.id?600:500,
@@ -312,6 +314,9 @@ export function Dashboard({woData}){
 
         {/* TAB: KALENDER */}
         {activeTab==="kalender"&&<KalenderTab woData={woData}/>}
+
+        {/* TAB: AKTIVITAS PANEL - polling hanya saat tab ini & menu Dashboard sedang dilihat (Dashboard tetap ter-mount saat pindah menu) */}
+        {activeTab==="aktivitas"&&<AktivitasPanelTab woData={woData} pekerja={pekerja} ccpMap={ccpMap} aktif={aktif}/>}
       </div>
     </div>
   );

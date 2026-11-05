@@ -1171,7 +1171,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   </div>
                 </div>
               )}
-              {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData}/></Suspense></div>}
+              {visitedTabs.includes("dashboard")&&<div style={{display:tab==="dashboard"?"block":"none"}}><Suspense fallback={TabFallback}><Dashboard woData={woData} pekerja={pekerja} aktif={tab==="dashboard"}/></Suspense></div>}
               {visitedTabs.includes("ai_assistant")&&<div style={{display:tab==="ai_assistant"?"block":"none"}}><Suspense fallback={TabFallback}><AiAssistantChat/></Suspense></div>}
               {visitedTabs.includes("arsip")&&<div style={{display:tab==="arsip"?"block":"none"}}><Suspense fallback={TabFallback}><ArsipTab woData={woData} pekerja={pekerja} logActivity={logActivity} user={user} refetchWO={refetchWO}/></Suspense></div>}
               {visitedTabs.includes("stok")&&<div style={{display:tab==="stok"?"block":"none"}}><Suspense fallback={TabFallback}><StokMonitoringTab user={user} activityLog={activityLog}/></Suspense></div>}
