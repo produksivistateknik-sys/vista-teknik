@@ -665,7 +665,7 @@ function PanelImpor({ semuaLokasi, user, onSelesai, onClose }: any) {
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Hasil pemeriksaan</div>
       <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
         <li><b>{baca.baris.length}</b> baris terbaca{kunciAda ? <>; <b>{kunciAda}</b> sudah pernah diimpor, dilewati</> : null}</li>
-        {cocok && <li><b>{Math.max(0, r.jumlah - kunciAda)}</b> akan diimpor</li>}
+        {uji && !uji.galat && <li><b>{uji.dibuat}</b> akan diimpor</li>}
         {r.kondisiKosong.length > 0 && <li><b>{r.kondisiKosong.length}</b> tanpa kondisi, diisi "Belum dinilai"</li>}
         {r.lokasiKosong.length > 0 && <li><b>{r.lokasiKosong.length}</b> tanpa lokasi, diisi "Belum ditentukan" (nomor menyusul): {r.lokasiKosong.map(b => b.nama).join(', ')}</li>}
         {r.kembar.length > 0 && <li><b>{r.kembar.reduce((a, k) => a + k.length, 0)}</b> baris bernama kembar di lokasi sama, tetap diimpor sebagai barang terpisah</li>}
