@@ -1,22 +1,22 @@
 // TAB AKTIVITAS PANEL (5 Nov 2026, permintaan Pak Indra) - di Dashboard: satu kartu per panel yang aktif pada satu hari kerja.
 // Aturan isi: lib/aktivitasPanel. Data: hooks/useAktivitasPanel + woData & ccpMap dari Dashboard. Acuan tampilan: pratinjau
-// "Aktivitas Panel Hari Ini". Mode gelap ikut [data-theme="dark"]; tombol ber-class "akpBtn" supaya aturan global mode gelap
+// "Aktivitas Panel Hari Ini". Mode gelap ikut [data-theme="dark"]. Nama kelas kartu sengaja tanpa kata "card": aturan global gelap [class*="card"] memaksa latar & bingkai. Tombol ber-class "akpBtn" supaya aturan global mode gelap
 // `[data-theme=dark] button:not([class*="Btn"])` tidak menimpanya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAktivitasPanel } from '../hooks/useAktivitasPanel'
-import { susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas } from '../lib/aktivitasPanel'
+import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas } from '../lib/aktivitasPanel'
 import { hariKerjaWib } from '../lib/tanggalWib'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 
 const CSS = `
 .akp{--akp-card:var(--card-bg,#fff);--akp-fg:var(--text-primary,#141b2d);--akp-mute:#5d6679;--akp-line:var(--border-color,#e1e5ee);--akp-soft:var(--bg-secondary,#f7f8fb);
-  --akp-acc:#2147d8;--akp-acc-soft:#e8edff;--akp-run:#0b66d6;--akp-run-soft:#e3efff;--akp-done:#13803f;--akp-done-soft:#e2f5e9;--akp-prog:#a85d00;--akp-prog-soft:#fff1d9;
-  --akp-lagi:#5b3aa6;--akp-lagi-soft:#efe7ff;--akp-bar:#e6e9f1;color:var(--akp-fg);text-align:left;font-size:14px;line-height:1.45;padding:16px;display:flex;flex-direction:column;gap:14px}
+  --akp-acc:#2147d8;--akp-acc-soft:#e8edff;--akp-run:#0b66d6;--akp-run-soft:#e3efff;--akp-done:#117238;--akp-done-soft:#e2f5e9;--akp-prog:#9a5500;--akp-prog-soft:#fff1d9;
+  --akp-lagi:#5b3aa6;--akp-lagi-soft:#efe7ff;--akp-bar:#e6e9f1;--akp-nb-berjalan:#e9f2ff;--akp-nb-progres:#fff2e5;--akp-nb-selesai:#e7f7ee;--akp-nb-netral:#f1f3f7;--akp-a-netral:#8b94a7;color:var(--akp-fg);text-align:left;font-size:14px;line-height:1.45;padding:16px;display:flex;flex-direction:column;gap:14px}
 [data-theme="dark"] .akp{--akp-mute:#9aa5bf;--akp-acc:#7f9bff;--akp-acc-soft:#202c57;--akp-run:#6db0ff;--akp-run-soft:#18304f;--akp-done:#4cd07f;--akp-done-soft:#143323;--akp-prog:#f2b45a;--akp-prog-soft:#3a2a10;
-  --akp-lagi:#c3adff;--akp-lagi-soft:#2a2147;--akp-bar:#27304d}
+  --akp-lagi:#c3adff;--akp-lagi-soft:#2a2147;--akp-bar:#27304d;--akp-nb-berjalan:#1b3253;--akp-nb-progres:#39290f;--akp-nb-selesai:#17362a;--akp-nb-netral:#262b38;--akp-a-netral:#6b7690}
 .akp *{box-sizing:border-box}
 .akp-top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
 .akp h2{margin:0;font-size:20px;font-weight:700;color:var(--akp-fg);text-align:left}
@@ -40,15 +40,19 @@ const CSS = `
 .akp-galat{font-size:13px;color:var(--akp-prog);background:var(--akp-prog-soft);border-radius:10px;padding:8px 12px}
 .akp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
 @media (max-width:820px){.akp-grid{grid-template-columns:minmax(0,1fr)}}
-.akp-card{background:var(--akp-card);border:1px solid var(--akp-line);border-radius:16px;overflow:hidden;min-width:0}
-.akp-card.jalan{border-color:var(--akp-run)}
+.akp-kartu{background:var(--akp-card);border:1px solid var(--akp-line);border-radius:16px;overflow:hidden;min-width:0}
+.akp-kartu.jalan{border-color:var(--akp-run)}
+.akp-kartu.n-berjalan{background:var(--akp-nb-berjalan);box-shadow:inset 0 5px 0 var(--akp-run)}
+.akp-kartu.n-progres{background:var(--akp-nb-progres);box-shadow:inset 0 5px 0 var(--akp-prog)}
+.akp-kartu.n-selesai{background:var(--akp-nb-selesai);box-shadow:inset 0 5px 0 var(--akp-done)}
+.akp-kartu.n-netral{background:var(--akp-nb-netral);box-shadow:inset 0 5px 0 var(--akp-a-netral)}
 .akpBtnKartu{width:100%;text-align:left;background:transparent;border:0;padding:18px 20px;display:flex;flex-direction:column;gap:12px;color:inherit}
 .akpBtnKartu:focus-visible{outline:2px solid var(--akp-acc);outline-offset:-2px}
 .akp-r1{display:flex;gap:12px;justify-content:space-between;align-items:flex-start}
 .akp-nama{font-size:17px;font-weight:800;overflow-wrap:anywhere}
 .akp-pj{font-size:13px;color:var(--akp-mute);overflow-wrap:anywhere}
 .akp-chev{flex:none;width:30px;height:30px;border-radius:8px;border:1px solid var(--akp-line);display:grid;place-items:center;color:var(--akp-mute);transition:transform .15s}
-.akp-card[data-buka="1"] .akp-chev{transform:rotate(180deg)}
+.akp-kartu[data-buka="1"] .akp-chev{transform:rotate(180deg)}
 .akp-pg{display:flex;align-items:center;gap:10px;font-size:12.5px;color:var(--akp-mute)}
 .akp-tr{flex:1;height:8px;background:var(--akp-bar);border-radius:99px;overflow:hidden}
 .akp-tr i{display:block;height:100%;background:var(--akp-acc);border-radius:99px}
@@ -75,6 +79,8 @@ const CSS = `
 .akp-mini{width:84px;height:6px;background:var(--akp-bar);border-radius:99px;overflow:hidden}
 .akp-mini i{display:block;height:100%;background:var(--akp-prog)}
 .akpBtnSingkat{width:100%;text-align:left;border:1px dashed var(--akp-line);background:transparent;color:var(--akp-mute);border-radius:10px;padding:8px 12px;font-size:12.5px;margin-bottom:6px}
+/* isi kartu tetap permukaan terang di atas latar berwarna */
+.akp-kartu .akp-it,.akp-kartu .akp-chip,.akp-kartu .akp-pill.nol,.akp-kartu .akp-pill.dimulai{background:var(--akp-card)}
 .akp-kosong{padding:40px 16px;text-align:center;color:var(--akp-mute);border:1px dashed var(--akp-line);border-radius:14px}
 `
 
@@ -142,7 +148,7 @@ function KelompokSingkat({ baris }: { baris: BarisAktivitas[] }) {
 function Kartu({ k, buka, onToggle, lampau }: { k: KartuAktivitas; buka: boolean; onToggle: () => void; lampau: boolean }) {
   const pil = (kelas: string, n: number, teks: string) => <span className={`akp-pill ${n > 0 ? kelas : 'nol'}`}>{n} {teks}</span>
   return (
-    <div className={`akp-card${k.jumlah.berjalan > 0 ? ' jalan' : ''}`} data-buka={buka ? '1' : '0'}>
+    <div className={`akp-kartu n-${nadaKartu(k.jumlah)}${k.jumlah.berjalan > 0 ? ' jalan' : ''}`} data-buka={buka ? '1' : '0'}>
       <button type="button" className="akpBtnKartu" aria-expanded={buka} onClick={onToggle}>
         <div className="akp-r1">
           <div><div className="akp-nama">{k.nama}</div><div className="akp-pj">WO {k.wo} · {k.proyek}</div></div>
