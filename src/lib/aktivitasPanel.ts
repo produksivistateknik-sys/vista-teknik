@@ -41,6 +41,11 @@ export type TahapAktivitas = { proses: string; baris: BarisAktivitas[] }
 export type JumlahAktivitas = { berjalan: number; selesai: number; progres: number; lagi: number; dimulai: number }
 export type KartuAktivitas = { panelId: number; nama: string; wo: string; proyek: string; progres: number; jumlah: JumlahAktivitas; tahap: TahapAktivitas[] }
 export type HasilAktivitas = { kartu: KartuAktivitas[]; jumlah: JumlahAktivitas; timerDiLuar: number }
+// Warna kartu (hanya tampilan): status terpenting berjalan > in progress > selesai > belum ada progres.
+// 'Dikerjakan lagi' dihitung in progress: pekerjaan berlangsung tanpa hasil selesai baru hari itu.
+export type NadaKartu = 'berjalan' | 'progres' | 'selesai' | 'netral'
+export const nadaKartu = (j: JumlahAktivitas): NadaKartu =>
+  j.berjalan > 0 ? 'berjalan' : j.progres + j.lagi > 0 ? 'progres' : j.selesai > 0 ? 'selesai' : 'netral'
 
 const SELISIH_MIN = 0.001
 const BATAS_BASI_MS = 12 * 3600000 // sama dgn tutup_timer_kelewat_12jam
