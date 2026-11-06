@@ -245,6 +245,17 @@ export const PROSES_STATUS_GATE_PCT=25;
 // begitu progress masih 0, gak nunggu WIRING POWER/CONTROL nyampe 25% dulu kayak proses lain.
 // PACKING TETAP kena gating normal (gak diubah) - masih ngecek progress QC TEST via chain di
 // bawah, jadi PACKING baru TO DO kalau QC TEST komponen itu udah >=25%.
+// Proses relevan sebelum `proses` dalam rantai status (BUSBAR dilompati); null = tidak digating. Dipakai computeProsesStatus &
+// alasanNotYet supaya aturannya satu.
+export function prosesGerbangStatus(proses:string,relevantProses?:string[]):string|null{
+  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
+  const prosesIdx=chain.indexOf(proses);
+  if(prosesIdx<=0)return null;
+  let prevIdx=prosesIdx-1;
+  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
+  if(prevIdx<0)return null;
+  return chain[prevIdx];
+}
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
@@ -269,16 +280,21 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
       return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET";
     }
   }
-  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
-  const prosesIdx=chain.indexOf(proses);
-  if(prosesIdx<=0)return "TO DO";
-  let prevIdx=prosesIdx-1;
-  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
-  if(prevIdx<0)return "TO DO";
-  const prosesSebelumnya=chain[prevIdx];
+  const prosesSebelumnya=prosesGerbangStatus(proses,relevantProses);
+  if(!prosesSebelumnya)return "TO DO";
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return "TO DO";
+}
+
+// Alasan singkat status NOT YET utk ditampilkan (6 Nov 2026); status lain -> null. Admin & operator memakai fungsi yang sama
+// (dijaga npm run cek:cermin).
+export function alasanNotYet(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):string|null{
+  if(computeProsesStatus(progressMap,proses,relevantProses)!=="NOT YET")return null;
+  if((proses==="WIRING CONTROL"||proses==="WIRING POWER")&&(!relevantProses||relevantProses.includes("RAKIT")))return "Tunggu RAKIT mulai dikerjakan";
+  const sebelum=prosesGerbangStatus(proses,relevantProses);
+  if(!sebelum)return null;
+  return `Tunggu ${sebelum} minimal ${PROSES_STATUS_GATE_PCT}% (sekarang ${Math.round(progressMap?.[sebelum]||0)}%)`;
 }
 
 // QC TEST & PACKING = PENANDA PER PANEL (6 Okt 2026, bug Task Monitoring vs Detail Progres) -
