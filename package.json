@@ -4,7 +4,8 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "cek:kop": "node scripts/cek-kop-sinkron.mjs",
+    "cek:kop": "node scripts/cek-kop-sinkron.mjs",
+    "cek:cermin": "node scripts/cek-cermin-status.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",

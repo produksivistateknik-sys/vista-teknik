@@ -6,7 +6,8 @@ import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekaran
 import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
 import { useTimerHariRencana } from '../hooks/useTimerHariRencana'
 import { lengkapiPersenTerakhir } from "../lib/busbarHistori";
-import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, PROSES_QTY_GRANULAR, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
+import { tanggalWibDari } from "../lib/tanggalWib";
+import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, alasanNotYet, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, PROSES_QTY_GRANULAR, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
 import { markRenharDirty } from '../lib/globalState'
@@ -1141,7 +1142,8 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                       return(t.komponen||[]).filter(kode=>!kode.startsWith("__wiring_")).flatMap((kode,ki)=>{
                         const item=cfg2?.wps.flatMap(w=>w.items).find(it=>it.kode===kode);
                         const relevantProsesKode=panelData?getRelevantProsesForKode(kode,panelData.tipe):undefined;
-                        const pipelineStatus=computeProsesStatus(getCcpAwarePipelineProgressMap(ccpMap,t.panelId,kode,panelData?.checklist?.[kode]),t.proses,relevantProsesKode);
+                        const petaPipeline=getCcpAwarePipelineProgressMap(ccpMap,t.panelId,kode,panelData?.checklist?.[kode]);
+                        const pipelineStatus=computeProsesStatus(petaPipeline,t.proses,relevantProsesKode);
                         if(statusFilter!=="ALL"&&pipelineStatus!==statusFilter)return[];
                         const idxGlobal=ti*100+ki;
                         const rBg=idxGlobal%2===0?"#fff":"#f8fafc";
@@ -1247,10 +1249,10 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                                       :{background:"#f1f5f9",border:"1px solid #e2e8f0",color:"#94a3b8",textDecoration:"line-through"};
                                     const ikon=e.foto?"📷":e.status==="berjalan"?"●":e.status==="selesai"?"✓":e.status==="checkpoint"?"📝":"○";
                                     const ket=e.foto?"Perkiraan dari uploader foto pemasangan terakhir - bukan data operator yang pasti"
-                                      :LABEL_STATUS_OPERATOR[e.status as keyof typeof LABEL_STATUS_OPERATOR]+(e.menit>0?` · ${labelMenit(e.menit)}`:"");
+                                      :LABEL_STATUS_OPERATOR[e.status as keyof typeof LABEL_STATUS_OPERATOR]+(e.menit>0?` · ${labelMenit(e.menit)} (total semua sesi hari itu, per operator)`:"");
                                     return(<span key={e.nama+e.status} title={ket}
                                       style={{...gaya,borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:(gaya as any).fontWeight||700,whiteSpace:"nowrap" as const}}>
-                                      {ikon} {e.nama}{(e.status==="selesai"||e.status==="berjalan")&&e.id!=null&&lamaOp.has(Number(e.id))?` · ${labelLama(lamaOp.get(Number(e.id))||0)}`:""}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
+                                      {ikon} {e.nama}{(e.status==="selesai"||e.status==="berjalan")&&e.id!=null&&lamaOp.has(Number(e.id))?` · ${selDate===hariIniStr?"hari ini ":""}${labelLama(lamaOp.get(Number(e.id))||0)}`:""}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
                                     </span>);
                                   })}
                                 </div>
@@ -1334,8 +1336,11 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                                         const totalDetikAktif=Math.max(0,Math.floor((Date.now()-new Date(mulaiTerawal).getTime())/1000));
                                         const menitBerjalan=Math.floor(totalDetikAktif/60);
                                         const labelDurasiAktif=menitBerjalan>0?`${menitBerjalan} menit`:`${totalDetikAktif} detik`;
+                                        // Timer yang mulai di tanggal lain menampilkan tanggalnya; durasinya tetap dihitung penuh dari mulai.
+                                        const jamMulai=new Date(mulaiTerawal).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",timeZone:"Asia/Jakarta"});
+                                        const sejakLabel=tanggalWibDari(mulaiTerawal)===tanggalWibDari(Date.now())?jamMulai:`${fmtShort(tanggalWibDari(mulaiTerawal))} ${jamMulai}`;
                                         const labelTahapTimer=tahapKey!=="_"&&BUSBAR_TAHAP_LABEL[tahapKey]?`${BUSBAR_TAHAP_LABEL[tahapKey]} · `:"";
-                                        return <span key={tahapKey+"-"+tmi} style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>🟡 {labelTahapTimer}{labelDurasiAktif}</span>;
+                                        return <span key={tahapKey+"-"+tmi} title="Sesi yang sedang berjalan sekarang, bukan total hari ini" style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#ca8a04",borderRadius:14,padding:"3px 10px",fontSize:11,fontWeight:700,textAlign:"center" as const}}>🟡 {labelTahapTimer}berjalan sejak {sejakLabel} · {labelDurasiAktif}</span>;
                                       })}
                                     </div>
                                   );
@@ -1364,7 +1369,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                                 // Done di tanggal lain). Daripada bingungin, tampilin netral aja di sini.
                                 <span style={{fontSize:11,color:"#cbd5e1"}}>–</span>
                               ):(
-                                <span style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                                <span title={alasanNotYet(petaPipeline,t.proses,relevantProsesKode)||undefined} style={{background:STATUS_PIPELINE_STYLE[pipelineStatus].bg,color:STATUS_PIPELINE_STYLE[pipelineStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[pipelineStatus].border}`,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const}}>
                                   {STATUS_PIPELINE_LABEL[pipelineStatus]}
                                 </span>
                               )}
