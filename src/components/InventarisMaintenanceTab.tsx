@@ -10,9 +10,9 @@ import { supabase } from '../lib/supabase'
 import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import {
   muatInventaris, muatLogBarang, tambahBarang, ubahBarang, setKondisi, tandaiDiperiksa, ubahStatusLaporan, simpanJadwal, selesaiJadwal,
-  tambahMedia, hapusMedia, imporBarang, unggahMediaInventaris, KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, FREKUENSI,
+  tambahMedia, hapusMedia, imporBarang, unggahMediaInventaris, pratinjauHapus, hapusBarang, muatSampah, pulihkanBarang, hapusPermanen, bacaDetailLog, KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, FREKUENSI,
   labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf, BATAS_DATASHEET_MB,
-  type DataInventaris, type Barang, type Jadwal, type Laporan, type Media, type LogBarang,
+  type DataInventarisAdmin, type Barang, type Jadwal, type Laporan, type Media, type LogBarang, type PratinjauHapus, type BarangSampah, type TerkaitBarang,
 } from '../lib/inventaris'
 import { bacaBarisInventaris, ringkasImpor, barisUntukRpc, rapikanTeks, type BarisImpor } from '../lib/inventarisImpor'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
@@ -31,7 +31,7 @@ const OPSI_FILTER: Record<Tab, [string, string][]> = {
   inventaris: [['semua', 'Semua kondisi'], ...KONDISI.map(k => [k.kode, k.label] as [string, string]), ['baru_operator', 'Baru dari operator (belum diperiksa)']],
   laporan: [['semua', 'Semua status'], ['open', 'Open'], ['in_progress', 'In Progress']],
   maintenance: [['semua', 'Semua jadwal aktif'], ['terlambat', 'Terlambat'], ['segera', 'Jatuh tempo ≤ 2 hari'], ['normal', 'Normal'], ['nonaktif', 'Nonaktif']],
-  riwayat: [['semua', 'Semua jenis'], ['rutin', 'Rutin'], ['kerusakan', 'Kerusakan']],
+  riwayat: [['semua', 'Semua jenis'], ['rutin', 'Rutin'], ['kerusakan', 'Kerusakan'], ['penghapusan', 'Penghapusan']],
 }
 
 const CSS = `
@@ -137,7 +137,8 @@ function FilePilihan({ files, setFiles }: { files: File[]; setFiles: (f: File[])
 }
 
 export function InventarisMaintenanceTab({ user }: any) {
-  const [data, setData] = useState<DataInventaris | null>(null)
+  const [data, setData] = useState<DataInventarisAdmin | null>(null)
+  const [sampah, setSampah] = useState<BarangSampah[] | null>(null)   // null = belum termuat / fungsi server belum ada
   const [galatMuat, setGalatMuat] = useState<string | null>(null)
   const [tab, setTab] = useState<Tab>('inventaris')
   const [fLok, setFLok] = useState<string[]>([])
@@ -158,7 +159,10 @@ export function InventarisMaintenanceTab({ user }: any) {
   const muat = useCallback(async () => {
     try { setData(await muatInventaris(db)); setGalatMuat(null) }
     catch (e: any) { console.error('[InventarisMaintenanceTab] gagal memuat:', e); setGalatMuat('Gagal memuat data inventaris: ' + pesanGalat(e)) }
-  }, [])
+    // tempat sampah terpisah: rilis aplikasi bisa mendahului SQL, dan gagalnya tidak boleh menahan daftar utama
+    try { setSampah(await muatSampah(db, user)) }
+    catch (e: any) { console.error('[InventarisMaintenanceTab] gagal memuat tempat sampah:', e); setSampah(null) }
+  }, [user])
   useEffect(() => { const t = setTimeout(muat, 0); return () => clearTimeout(t) }, [muat])
   useEffect(() => pasangPemulihRealtime(db, {
     nama: 'inventaris-admin-' + Math.random().toString(36).slice(2), label: 'Inventaris admin', jedaMs: 800, muat,
@@ -202,8 +206,9 @@ export function InventarisMaintenanceTab({ user }: any) {
     if (!d || !idx) return { inventaris: [], laporan: [], maintenance: [], riwayat: [] } as Record<Tab, any[]>
     const b = (id: number) => idx.barang.get(id)!
     const teksBarang = (x: Barang) => [x.nama, x.nomor_inventaris, x.kode_lama, x.pengguna, x.detail_kondisi, x.merk_spesifikasi, x.nomor_seri, x.pelapor, namaLokasi(x.lokasi_kode)].join(' ')
-    // barang nonaktif (dan laporan/jadwal/riwayatnya) disembunyikan kecuali "termasuk nonaktif" dicentang (keputusan user 30 Okt)
-    const tampilB = (id: number) => nonaktif || b(id).aktif
+    // barang nonaktif (dan laporan/jadwal/riwayatnya) disembunyikan kecuali "termasuk nonaktif" dicentang (keputusan user 30 Okt).
+    // Barang bisa terhapus di antara beberapa baca yang berjalan bersamaan: baris anak tanpa barang dilewati, tab tidak galat.
+    const tampilB = (id: number) => { const x = idx.barang.get(id); return !!x && (nonaktif || x.aktif) }
     const inventaris = d.barang.filter(x => tampilB(x.id)).map(x => ({ id: 'b' + x.id, lok: x.lokasi_kode, kunci: x.kondisi, baru: baruOperator(x), cari: teksBarang(x), x }))
     // Tab Laporan hanya yang belum Closed; yang Closed hanya di Riwayat (6 Nov 2026). Data mentah d.laporan/idx tidak difilter:
     // kunci kondisi barang & jumlah di detail barang tetap membaca semua laporan.
@@ -214,6 +219,7 @@ export function InventarisMaintenanceTab({ user }: any) {
     const riwayat = [
       ...d.selesai.filter(s => tampilB(s.barang_id)).map(s => ({ id: 's' + s.id, lok: b(s.barang_id).lokasi_kode, kunci: 'rutin', tgl: s.tanggal, cari: [s.oleh, d.jadwal.find(j => j.id === s.jadwal_id)?.jenis, teksBarang(b(s.barang_id))].join(' '), x: s })),
       ...d.laporan.filter(l => !laporanAktif(l) && tampilB(l.barang_id)).map(l => ({ id: 'k' + l.id, lok: b(l.barang_id).lokasi_kode, kunci: 'kerusakan', tgl: tglTutupLaporan(l), cari: [l.judul, l.masalah, l.pelapor, l.ditutup_oleh, l.teknisi, teksBarang(b(l.barang_id))].join(' '), x: l })),
+      ...d.logSampah.map(g => { const r = bacaDetailLog(g); return { id: 'h' + g.id, lok: r.lokasi, kunci: 'penghapusan', tgl: g.waktu, cari: [r.nomor, r.nama, g.oleh, g.keterangan, r.username].join(' '), x: g, r } }),
     ].sort((p, r) => r.tgl.localeCompare(p.tgl))
     return { inventaris, laporan, maintenance, riwayat } as Record<Tab, any[]>
   }, [d, idx, nonaktif, namaLokasi])
@@ -304,6 +310,7 @@ export function InventarisMaintenanceTab({ user }: any) {
       <style>{CSS}</style>
       <div className="iv-top"><h1>Inventaris & Maintenance</h1>
         <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}><LoncengNotif jumlah={notif.jumlahBaru} onBuka={() => setLaci(true)} />
+        {sampah && <button className="iv-btn" type="button" onClick={() => setModal({ jenis: 'sampah' })}>Tempat sampah{sampah.length ? ` (${sampah.length})` : ''}</button>}
         <button className="iv-btn pri" type="button" onClick={() => setModal({ jenis: 'tambah' })}>+ Tambah inventaris</button></div></div>
       {laci && <LaciNotif db={db} user={user} perlu={notif.perlu} galat={notif.galat} onTutup={() => setLaci(false)} onLihat={lihatNotif} onBerubah={() => { notif.muat(); muat() }} />}
       {galatMuat && <div className="iv-err">{galatMuat}</div>}
@@ -383,6 +390,10 @@ export function InventarisMaintenanceTab({ user }: any) {
 
           {tab === 'riwayat' && <table><thead><tr><th>Tanggal</th><th>Jenis</th><th>Kode</th><th>Barang</th>{thLokasi}<th>Keterangan</th><th>Oleh</th><th>Foto/video</th></tr></thead>
             <tbody>{daftar.map(r => { const x = idx.barang.get(r.x.barang_id)!
+              if (r.kunci === 'penghapusan') { const g: LogBarang = r.x; const jml = r.r.terkait ? jumlahTerkait(r.r.terkait) : 0; const lb = LABEL_LOG_SAMPAH[g.jenis]
+                return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtWaktu(g.waktu)}</td><td>{badge(lb.warna, lb.latar, lb.label)}</td><td><div className="iv-kode">{r.r.nomor || '—'}</div></td><td>{r.r.nama || '—'}</td><td>{namaLokasi(r.r.lokasi)}</td>
+                  <td>{g.dari} → {g.ke}{g.keterangan && <span className="iv-mute"> · {g.keterangan}</span>}{jml > 0 && <span className="iv-mute"> · {jml} data terkait</span>}</td>
+                  <td>{g.oleh}{r.r.divisi === 'hrga' && <span className="iv-mute"> (HRGA)</span>}</td><td><span className="iv-mute">—</span></td></tr> }
               if (r.kunci === 'rutin') { const s = r.x; const m = mediaDari('jadwal_selesai', s.id)
                 return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(s.tanggal)}</td><td>{badge('#64748b', '#eef1f5', 'Rutin')}</td><td>{kodeSel(s.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
                   <td>{d.jadwal.find(j => j.id === s.jadwal_id)?.jenis}{s.catatan && <span className="iv-mute"> · {s.catatan}</span>}</td>
@@ -400,10 +411,12 @@ export function InventarisMaintenanceTab({ user }: any) {
           {semuaBaris.length > batasTampil && <div className="iv-empty" style={{ padding: 12 }}>Menampilkan {batasTampil} dari {semuaBaris.length} baris. <button className="iv-btn" type="button" onClick={() => setBatas(batasTampil + BARIS_PER_HALAMAN)}>Tampilkan lebih banyak</button></div>}
         </div>)}
 
-      {modal?.jenis === 'tambah' && <ModalTambah lokasi={lokasiAktif} semuaLokasi={d.lokasi} barang={d.barang} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
+      {modal?.jenis === 'tambah' && <ModalTambah lokasi={lokasiAktif} semuaLokasi={d.lokasi} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
       {modal?.jenis === 'edit' && <ModalEditBarang x={modal.x} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
-      {modal?.jenis === 'jadwal' && <ModalJadwal barang={idx.barang.get(modal.barangId)!} j={modal.j} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
+      {modal?.jenis === 'jadwal' && idx.barang.get(modal.barangId) && <ModalJadwal barang={idx.barang.get(modal.barangId)!} j={modal.j} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
       {modal?.jenis === 'log' && <ModalLog x={modal.x} namaLokasi={namaLokasi} onClose={() => setModal(null)} />}
+      {modal?.jenis === 'hapus' && <ModalHapus x={modal.x} user={user} onClose={() => setModal(null)} onSelesai={async () => { setBuka(null); await muat() }} />}
+      {modal?.jenis === 'sampah' && <ModalSampah daftar={sampah} namaLokasi={namaLokasi} user={user} onClose={() => setModal(null)} onSelesai={muat} />}
     </div>
   )
 
@@ -454,6 +467,7 @@ function DetailBarang({ x, c }: { x: Barang; c: Ctx }) {
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'jadwal', barangId: x.id })}>+ Jadwal rutin</button>
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'edit', x })}>Edit</button>
       <button className="iv-btn" type="button" onClick={() => c.setModal({ jenis: 'log', x })}>Riwayat perubahan</button>
+      <button className="iv-btn" type="button" style={{ color: '#b91c1c' }} onClick={() => c.setModal({ jenis: 'hapus', x })}>Hapus</button>
     </div>
   </div>
 }
@@ -545,7 +559,7 @@ function DetailJadwal({ j, c }: { j: Jadwal; c: Ctx }) {
 const fld = (label: string, isi: any, ket?: string) => <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}><Lbl>{label}</Lbl>{isi}{ket && <div style={{ fontSize: 11.5, color: '#64748b' }}>{ket}</div>}</div>
 const dua = { display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(200px,1fr))', gap: 10 }
 
-function ModalTambah({ lokasi, semuaLokasi, barang, user, onClose, onSelesai }: any) {
+function ModalTambah({ lokasi, semuaLokasi, user, onClose, onSelesai }: any) {
   const [mode, setMode] = useState<'satu' | 'impor'>('satu')
   const [f, setF] = useState<any>({ nama: '', lokasi_kode: 'BELUM', kondisi: 'belum_dinilai', pengguna: '', detail_kondisi: '', merk_spesifikasi: '', nomor_seri: '', tanggal_perolehan: '', jenis: '', frekuensi: 'mingguan', jatuh_tempo: '', teknisi: '' })
   const [ds, setDs] = useState<File | null>(null)
@@ -571,7 +585,7 @@ function ModalTambah({ lokasi, semuaLokasi, barang, user, onClose, onSelesai }: 
   return <Modal title="Tambah inventaris" onClose={onClose} width={620}>
     <div style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
       <Btn outline={mode !== 'satu'} onClick={() => setMode('satu')}>Satu barang</Btn><Btn outline={mode !== 'impor'} onClick={() => setMode('impor')}>Impor dari Excel</Btn></div>
-    {mode === 'impor' ? <PanelImpor semuaLokasi={semuaLokasi} barang={barang} user={user} onSelesai={onSelesai} onClose={onClose} /> :
+    {mode === 'impor' ? <PanelImpor semuaLokasi={semuaLokasi} user={user} onSelesai={onSelesai} onClose={onClose} /> :
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {fld('Nama barang *', <Inp value={f.nama} onChange={set('nama')} placeholder="Contoh: Mesin Bor Sedang 3" />)}
         {fld('Nomor inventaris', <Inp value="Dibuat otomatis" disabled />, 'VIT-kode lokasi-nomor urut. Dibuat sekali dan tidak berubah walau barang pindah lokasi. Lokasi "Belum ditentukan" = nomor menyusul.')}
@@ -595,15 +609,20 @@ function ModalTambah({ lokasi, semuaLokasi, barang, user, onClose, onSelesai }: 
   </Modal>
 }
 
-function PanelImpor({ semuaLokasi, barang, user, onSelesai, onClose }: any) {
+type CocokImpor = { baris: number; kunci: string; nama: string; status: 'dobel' | 'sampah'; lewat: string; barang: { id: number; nomor: string | null; nama: string; lokasi: string; permanen?: boolean } }
+function PanelImpor({ semuaLokasi, user, onSelesai, onClose }: any) {
   const [file, setFile] = useState<string>('')
-  const [baca, setBaca] = useState<{ baris: BarisImpor[]; galat: string[]; catatan: string[]; sudahAda: Set<string> } | null>(null)
-  const [ikutSudahAda, setIkutSudahAda] = useState(false)
+  const [baca, setBaca] = useState<{ baris: BarisImpor[]; galat: string[]; catatan: string[] } | null>(null)
+  // Pemeriksaan dobel oleh server (7 Nov 2026, nama tanpa lokasi + nama asli impor): baris cocok barang aktif = "kemungkinan dobel", bawaan
+  // tidak diimpor kecuali dicentang; cocok barang di tempat sampah selalu dilewati server.
+  const [cocok, setCocok] = useState<CocokImpor[] | null>(null)
+  const [kunciAda, setKunciAda] = useState(0)   // baris yang kuncinya sudah pernah diimpor (dilewati server)
+  const [ikut, setIkut] = useState<Set<string>>(new Set())
   const [uji, setUji] = useState<any>(null)
   const [pesan, setPesan] = useState('')
   const [sibuk, setSibuk] = useState(false)
   const pilih = async (fl: File | undefined) => {
-    setBaca(null); setUji(null); setPesan('')
+    setBaca(null); setUji(null); setCocok(null); setKunciAda(0); setIkut(new Set()); setPesan('')
     if (!fl) return
     setFile(fl.name)
     try {
@@ -611,25 +630,33 @@ function PanelImpor({ semuaLokasi, barang, user, onSelesai, onClose }: any) {
       const wb = XLSX.read(await fl.arrayBuffer(), { type: 'array', cellDates: false })
       const nama = wb.SheetNames.find(n => rapikanTeks(n).toUpperCase() === 'DATABASE INVENTARIS') || wb.SheetNames[0]
       const rows = XLSX.utils.sheet_to_json(wb.Sheets[nama], { header: 1, defval: '' }) as unknown[][]
-      const h = bacaBarisInventaris(rows, semuaLokasi, 'XL:' + fl.name)
-      // barang yang sudah ada (nama + lokasi sama, dihitung per jumlah supaya nama kembar tetap benar) dilewati bawaan
-      const ada = new Map<string, number>()
-      for (const b of barang as Barang[]) { const k = b.nama.toUpperCase() + '@' + b.lokasi_kode; ada.set(k, (ada.get(k) || 0) + 1) }
-      const sudahAda = new Set<string>()
-      for (const b of h.baris) { const k = b.nama.toUpperCase() + '@' + b.lokasi_kode; if ((ada.get(k) || 0) > 0) { sudahAda.add(b.kunci); ada.set(k, ada.get(k)! - 1) } }
-      setBaca({ ...h, sudahAda })
+      setBaca(bacaBarisInventaris(rows, semuaLokasi, 'XL:' + fl.name))
     } catch (e: any) { console.error('[impor inventaris] baca file gagal:', e); setPesan('File tidak terbaca: ' + pesanGalat(e)) }
   }
-  const dikirim = baca ? baca.baris.filter(b => ikutSudahAda || !baca.sudahAda.has(b.kunci)) : []
+  const dobel = (cocok || []).filter(c => c.status === 'dobel'), diSampah = (cocok || []).filter(c => c.status === 'sampah')
+  const saringKirim = (bs: BarisImpor[], c: CocokImpor[]) => bs.filter(b => { const m = c.find(x => x.kunci === b.kunci); return !m || (m.status === 'dobel' && ikut.has(b.kunci)) })
+  const dikirim = baca ? (cocok ? saringKirim(baca.baris, cocok) : baca.baris) : []
   const r = baca ? ringkasImpor(dikirim) : null
   const cek = async () => {
+    if (!baca) return
     setSibuk(true); setPesan('')
-    try { setUji(await imporBarang(db, user, dikirim.map(barisUntukRpc), true, file)) } catch (e: any) { setPesan(pesanGalat(e)) } finally { setSibuk(false) }
+    try {
+      const semua = await imporBarang(db, user, baca.baris.map(barisUntukRpc), true, file)
+      if (semua.galat) { setUji(semua); return }
+      const c: CocokImpor[] = semua.cocok || []
+      setCocok(c); setKunciAda(semua.dilewati || 0)
+      // uji kedua hanya baris yang benar-benar dikirim, supaya nomor pada hasil uji sesuai
+      const pilihan = saringKirim(baca.baris, c)
+      setUji(pilihan.length ? await imporBarang(db, user, pilihan.map(barisUntukRpc), true, file) : { dibuat: 0, dilewati: 0, per_lokasi: {} })
+    } catch (e: any) { setPesan(pesanGalat(e)) } finally { setSibuk(false) }
   }
   const impor = async () => {
     setSibuk(true); setPesan('')
-    try { const h = await imporBarang(db, user, dikirim.map(barisUntukRpc), false, file); await onSelesai(); alert(`${h.dibuat} barang diimpor${h.dilewati ? `, ${h.dilewati} dilewati (sudah pernah diimpor)` : ''}.`); onClose() }
-    catch (e: any) { setPesan(pesanGalat(e)) } finally { setSibuk(false) }
+    try {
+      const h = await imporBarang(db, user, dikirim.map(barisUntukRpc), false, file); await onSelesai()
+      const lewat = (baca?.baris.length || 0) - h.dibuat
+      alert(`${h.dibuat} barang diimpor${lewat ? `, ${lewat} baris dilewati` : ''}.`); onClose()
+    } catch (e: any) { setPesan(pesanGalat(e)) } finally { setSibuk(false) }
   }
   return <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
     <div style={{ color: '#64748b' }}>Format = sheet "DATABASE INVENTARIS" Google Sheet perusahaan: Nama barang, Tanggal terakhir update, Pelapor, Lokasi, Pengguna, Kondisi, Detail kondisi, Merk/spesifikasi, Nomor seri, Tanggal perolehan. Nomor inventaris dibuat otomatis, urut sesuai baris.</div>
@@ -637,8 +664,8 @@ function PanelImpor({ semuaLokasi, barang, user, onSelesai, onClose }: any) {
     {baca && r && <div style={{ borderTop: '1px solid #e2e8f0', paddingTop: 10 }}>
       <div style={{ fontWeight: 700, marginBottom: 6 }}>Hasil pemeriksaan</div>
       <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
-        <li><b>{baca.baris.length}</b> baris terbaca{baca.sudahAda.size ? <>; <b>{baca.sudahAda.size}</b> sudah ada (nama & lokasi sama) - {ikutSudahAda ? 'ikut diimpor' : 'dilewati'}</> : null}</li>
-        <li><b>{r.jumlah}</b> akan diimpor</li>
+        <li><b>{baca.baris.length}</b> baris terbaca{kunciAda ? <>; <b>{kunciAda}</b> sudah pernah diimpor, dilewati</> : null}</li>
+        {uji && !uji.galat && <li><b>{uji.dibuat}</b> akan diimpor</li>}
         {r.kondisiKosong.length > 0 && <li><b>{r.kondisiKosong.length}</b> tanpa kondisi, diisi "Belum dinilai"</li>}
         {r.lokasiKosong.length > 0 && <li><b>{r.lokasiKosong.length}</b> tanpa lokasi, diisi "Belum ditentukan" (nomor menyusul): {r.lokasiKosong.map(b => b.nama).join(', ')}</li>}
         {r.kembar.length > 0 && <li><b>{r.kembar.reduce((a, k) => a + k.length, 0)}</b> baris bernama kembar di lokasi sama, tetap diimpor sebagai barang terpisah</li>}
@@ -646,16 +673,115 @@ function PanelImpor({ semuaLokasi, barang, user, onSelesai, onClose }: any) {
         {baca.catatan.map((c, i) => <li key={i} style={{ color: '#a15c07' }}>{c}</li>)}
         {baca.galat.map((c, i) => <li key={i} style={{ color: '#b91c1c' }}>{c}</li>)}
       </ul>
-      {baca.sudahAda.size > 0 && <label style={{ display: 'flex', gap: 6, marginTop: 6 }}><input type="checkbox" checked={ikutSudahAda} onChange={e => { setIkutSudahAda(e.target.checked); setUji(null) }} />Impor juga baris yang sudah ada</label>}
+      {diSampah.length > 0 && <div style={{ marginTop: 8 }}><div style={{ fontWeight: 700 }}>{diSampah.length} baris dilewati: barangnya sudah dihapus</div>
+        <ul style={{ margin: '2px 0 0', paddingLeft: 18 }}>{diSampah.map(c => <li key={c.kunci}>{c.nama} <span style={{ color: '#64748b' }}>(baris {c.baris}) · {c.barang.nomor || 'tanpa nomor'} {c.barang.permanen ? 'dihapus permanen' : 'di tempat sampah'}</span></li>)}</ul></div>}
+      {dobel.length > 0 && <div style={{ marginTop: 8 }}><div style={{ fontWeight: 700 }}>{dobel.length} baris kemungkinan dobel, tidak diimpor kecuali dicentang</div>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 3, marginTop: 2 }}>{dobel.map(c => <label key={c.kunci} style={{ display: 'flex', gap: 6, alignItems: 'baseline' }}>
+          <input type="checkbox" checked={ikut.has(c.kunci)} onChange={e => { const s = new Set(ikut); if (e.target.checked) s.add(c.kunci); else s.delete(c.kunci); setIkut(s); setUji(null) }} />
+          <span><span className="iv-badge" style={{ color: '#a15c07', background: '#fdecc8' }}>kemungkinan dobel</span> {c.nama} <span style={{ color: '#64748b' }}>(baris {c.baris}) sama dengan {c.barang.nomor || 'tanpa nomor'} {c.barang.nama}{c.lewat === 'nama_asli' ? ' (nama asli saat impor)' : ''}</span></span></label>)}</div></div>}
       {uji && <div style={{ marginTop: 8, color: '#15803d' }}>Uji coba server: {uji.dibuat} dibuat, {uji.dilewati} dilewati. Nomor: {Object.entries(uji.per_lokasi || {}).map(([k, v]: any) => v.nomor_awal ? `${v.nomor_awal}…${v.nomor_akhir}` : `${k} ${v.jumlah} tanpa nomor`).join(', ')}</div>}
       {uji?.galat && <div style={{ color: '#b91c1c' }}>{uji.galat.join('; ')}</div>}
     </div>}
     {pesan && <div style={{ color: '#b91c1c' }}>{pesan}</div>}
     <div style={{ display: 'flex', gap: 8 }}>
-      {!uji ? <Btn disabled={!baca || !!baca.galat.length || !dikirim.length || sibuk} onClick={cek}>{sibuk ? 'Memeriksa…' : 'Periksa dulu'}</Btn>
-        : <Btn disabled={sibuk || !!uji.galat} onClick={impor}>{sibuk ? 'Mengimpor…' : `Impor ${dikirim.length} barang`}</Btn>}
+      {!uji ? <Btn disabled={!baca || !!baca.galat.length || sibuk} onClick={cek}>{sibuk ? 'Memeriksa…' : 'Periksa dulu'}</Btn>
+        : <Btn disabled={sibuk || !!uji.galat || !uji.dibuat} onClick={impor}>{sibuk ? 'Mengimpor…' : `Impor ${uji.dibuat} barang`}</Btn>}
       <Btn outline color="#64748b" onClick={onClose}>Batal</Btn></div>
   </div>
+}
+
+const LABEL_LOG_SAMPAH: Record<string, { label: string; warna: string; latar: string }> = {
+  hapus: { label: 'Dihapus', warna: '#b91c1c', latar: '#fde0e0' },
+  pulihkan: { label: 'Dipulihkan', warna: '#15803d', latar: '#dcf5e5' },
+  hapus_permanen: { label: 'Hapus permanen', warna: '#64748b', latar: '#eef1f5' },
+}
+const jumlahTerkait = (t: TerkaitBarang) => t.jadwal + t.riwayat_selesai + t.laporan + t.media
+const ringkasTerkait = (t: TerkaitBarang): string[] => [
+  t.jadwal ? `${t.jadwal} jadwal rutin${t.jadwal_aktif ? ` (${t.jadwal_aktif} aktif)` : ''}` : '',
+  t.laporan ? `${t.laporan} laporan kerusakan${t.laporan_aktif ? ` (${t.laporan_aktif} masih terbuka)` : ''}` : '',
+  t.riwayat_selesai ? `${t.riwayat_selesai} riwayat maintenance` : '',
+  t.datasheet ? `${t.datasheet} datasheet` : '',
+  t.media ? `${t.media} foto/video/berkas` : '',
+  t.notifikasi ? `${t.notifikasi} notifikasi` : '',
+].filter(Boolean)
+
+// Hapus ke tempat sampah. Jumlah data terkait & aturan konfirmasi dari server (inv_pratinjau_hapus); server memeriksanya lagi saat menghapus.
+function ModalHapus({ x, user, onClose, onSelesai }: { x: Barang; user: any; onClose: () => void; onSelesai: () => Promise<void> }) {
+  const [p, setP] = useState<PratinjauHapus | null>(null)
+  const [alasan, setAlasan] = useState(''); const [ketik, setKetik] = useState('')
+  const [galat, setGalat] = useState(''); const [sibuk, setSibuk] = useState(false)
+  useEffect(() => { pratinjauHapus(db, user, x.id).then(setP).catch(e => { console.error('[inventaris] pratinjau hapus gagal:', e); setGalat(pesanGalat(e)) }) }, [x.id, user])
+  const siap = !!p && alasan.trim().length >= 5 && (!p.ada_terkait || ketik.trim() === p.konfirmasi)
+  const hapus = async () => {
+    if (!p) return
+    setSibuk(true); setGalat('')
+    try { await hapusBarang(db, user, x.id, p.versi, alasan.trim(), p.ada_terkait ? ketik.trim() : null); await onSelesai(); onClose() }
+    catch (e: any) { setGalat(pesanGalat(e)) } finally { setSibuk(false) }
+  }
+  return <Modal title={`Hapus ${x.nomor_inventaris || x.nama}`} onClose={onClose} width={520}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+      <div><b>{x.nama}</b> pindah ke tempat sampah dan hilang dari semua daftar, kartu ringkasan, dan aplikasi operator. Bisa dipulihkan selama 30 hari. Nomor inventaris tidak dipakai ulang.</div>
+      {!p && !galat && <div style={{ color: '#64748b' }}>Memeriksa data terkait…</div>}
+      {p && (p.ada_terkait ? <div><div style={{ fontWeight: 700, marginBottom: 2 }}>Ikut tersembunyi:</div><ul style={{ margin: 0, paddingLeft: 18 }}>{ringkasTerkait(p.terkait).map(s => <li key={s}>{s}</li>)}</ul></div>
+        : <div style={{ color: '#64748b' }}>Barang ini tidak punya data terkait.</div>)}
+      {fld('Alasan *', <Inp value={alasan} onChange={(e: any) => setAlasan(e.target.value)} placeholder="Contoh: dobel dengan VIT-PT-02" />, 'Tercatat di Riwayat bersama nama akun Anda.')}
+      {p?.ada_terkait && fld(`Ketik ${p.konfirmasi} untuk mengonfirmasi *`, <Inp value={ketik} onChange={(e: any) => setKetik(e.target.value)} autoComplete="off" />)}
+      {galat && <div style={{ color: '#b91c1c' }}>{galat}</div>}
+      <div style={{ display: 'flex', gap: 8 }}><Btn color="#b91c1c" onClick={hapus} disabled={!siap || sibuk}>{sibuk ? 'Menghapus…' : 'Pindahkan ke tempat sampah'}</Btn><Btn outline color="#64748b" onClick={onClose}>Batal</Btn></div>
+    </div>
+  </Modal>
+}
+
+function ModalSampah({ daftar, namaLokasi, user, onClose, onSelesai }: { daftar: BarangSampah[] | null; namaLokasi: (k: string) => string; user: any; onClose: () => void; onSelesai: () => Promise<void> }) {
+  const [permanen, setPermanen] = useState<BarangSampah | null>(null)
+  const [sibuk, setSibuk] = useState<number | null>(null); const [galat, setGalat] = useState('')
+  const pulihkan = async (b: BarangSampah) => {
+    const peringatan = b.jadwal_lewat ? ` ${b.jadwal_lewat} jadwal rutin sudah lewat jatuh tempo dan akan langsung berstatus Terlambat.` : ''
+    if (!confirm(`Pulihkan ${b.nama}?${peringatan}`)) return
+    setSibuk(b.id); setGalat('')
+    try { await pulihkanBarang(db, user, b); await onSelesai() } catch (e: any) { setGalat(pesanGalat(e)); await onSelesai() } finally { setSibuk(null) }
+  }
+  if (permanen) return <ModalPermanen b={permanen} user={user} onKembali={() => setPermanen(null)} onSelesai={onSelesai} />
+  return <Modal title="Tempat sampah" onClose={onClose} width={720}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 8, fontSize: 13 }}>
+      <div style={{ color: '#64748b' }}>Barang bisa dipulihkan selama 30 hari. Sesudah itu terkunci dan hanya bisa dihapus permanen.</div>
+      {galat && <div style={{ color: '#b91c1c' }}>{galat}</div>}
+      {!daftar?.length && <div style={{ padding: 20, textAlign: 'center', color: '#64748b' }}>Tempat sampah kosong.</div>}
+      {daftar?.map(b => { const t = ringkasTerkait(b.terkait); const sisa = Math.max(0, Math.ceil((Date.parse(b.bisa_dipulihkan_sampai) - Date.now()) / 86400000))
+        return <div key={b.id} style={{ border: '1px solid #e2e8f0', borderRadius: 8, padding: 10, display: 'flex', flexDirection: 'column', gap: 4 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'baseline' }}><b>{b.nama}</b><span style={{ fontFamily: 'ui-monospace,Menlo,monospace', fontSize: 12 }}>{b.nomor_inventaris || 'tanpa nomor'}</span><span style={{ color: '#64748b', fontSize: 12 }}>{namaLokasi(b.lokasi_kode)}{!b.aktif && ' · nonaktif'}</span>
+            <span style={{ marginLeft: 'auto', fontSize: 12, fontWeight: 700, color: b.siap_permanen ? '#b91c1c' : '#a15c07' }}>{b.siap_permanen ? 'Siap dihapus permanen' : `Sisa ${sisa} hari`}</span></div>
+          <div style={{ fontSize: 12, color: '#64748b' }}>Dihapus {b.dihapus_oleh} · {fmtWaktu(b.dihapus_pada)} · {b.dihapus_alasan}</div>
+          {t.length > 0 && <div style={{ fontSize: 12, color: '#64748b' }}>{t.join(' · ')}</div>}
+          <div style={{ display: 'flex', gap: 8, marginTop: 2 }}>{b.siap_permanen
+            ? <Btn color="#b91c1c" onClick={() => setPermanen(b)}>Hapus permanen…</Btn>
+            : <Btn onClick={() => pulihkan(b)} disabled={sibuk === b.id}>{sibuk === b.id ? 'Memulihkan…' : 'Pulihkan'}</Btn>}</div>
+        </div> })}
+      <div><Btn outline color="#64748b" onClick={onClose}>Tutup</Btn></div>
+    </div>
+  </Modal>
+}
+
+// Tidak bisa dibatalkan. Sandi dikirim ke RPC & dicek bcrypt di server, tidak disimpan di mana pun.
+function ModalPermanen({ b, user, onKembali, onSelesai }: { b: BarangSampah; user: any; onKembali: () => void; onSelesai: () => Promise<void> }) {
+  const [ketik, setKetik] = useState(''); const [sandi, setSandi] = useState('')
+  const [galat, setGalat] = useState(''); const [sibuk, setSibuk] = useState(false)
+  const t = ringkasTerkait(b.terkait)
+  const hapus = async () => {
+    setSibuk(true); setGalat('')
+    try { await hapusPermanen(db, user, b, ketik.trim(), sandi); await onSelesai(); onKembali() }
+    catch (e: any) { setGalat(pesanGalat(e)); setSandi('') } finally { setSibuk(false) }
+  }
+  return <Modal title={`Hapus permanen ${b.nomor_inventaris || b.nama}`} onClose={onKembali} width={520}>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 10, fontSize: 13 }}>
+      <div style={{ color: '#b91c1c', fontWeight: 700 }}>Tidak bisa dibatalkan.</div>
+      <div><b>{b.nama}</b>{t.length ? <> beserta {t.join(', ')} dimusnahkan.</> : ' dimusnahkan.'} Nama, nomor inventaris, dan catatan Riwayat tetap tersimpan. File foto/PDF di penyimpanan tidak ikut dihapus.</div>
+      {fld(`Ketik ${b.konfirmasi} *`, <Inp value={ketik} onChange={(e: any) => setKetik(e.target.value)} autoComplete="off" />)}
+      {fld('Sandi akun Anda *', <Inp type="password" value={sandi} onChange={(e: any) => setSandi(e.target.value)} autoComplete="new-password" />)}
+      {galat && <div style={{ color: '#b91c1c' }}>{galat}</div>}
+      <div style={{ display: 'flex', gap: 8 }}><Btn color="#b91c1c" onClick={hapus} disabled={sibuk || ketik.trim() !== b.konfirmasi || !sandi}>{sibuk ? 'Menghapus…' : 'Hapus permanen'}</Btn><Btn outline color="#64748b" onClick={onKembali}>Batal</Btn></div>
+    </div>
+  </Modal>
 }
 
 function ModalEditBarang({ x, user, onClose, onSelesai }: { x: Barang; user: any; onClose: () => void; onSelesai: () => Promise<void> }) {
@@ -717,7 +843,7 @@ function ModalLog({ x, namaLokasi, onClose }: { x: Barang; namaLokasi: (k: strin
   return <Modal title={`Riwayat perubahan - ${x.nomor_inventaris || x.nama}`} onClose={onClose} width={620}>
     {galat ? <div style={{ color: '#b91c1c' }}>{galat}</div> : !log ? 'Memuat…' : <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 13 }}>
       {log.map(g => <div key={g.id} style={{ borderBottom: '1px solid #f1f5f9', paddingBottom: 6 }}>
-        <b style={{ textTransform: 'capitalize' }}>{g.jenis}</b>: {nilai(g, g.dari)} → <b>{nilai(g, g.ke)}</b>{g.detail ? <span style={{ color: '#64748b' }}> · {g.detail}</span> : null}
+        <b style={{ textTransform: 'capitalize' }}>{LABEL_LOG_SAMPAH[g.jenis]?.label || g.jenis}</b>: {nilai(g, g.dari)} → <b>{nilai(g, g.ke)}</b>{g.detail && !LABEL_LOG_SAMPAH[g.jenis] ? <span style={{ color: '#64748b' }}> · {g.detail}</span> : null}
         <div style={{ fontSize: 12, color: '#64748b' }}>{fmtWaktu(g.waktu)} · {g.oleh} · {g.sumber}{g.keterangan ? ' · ' + g.keterangan : ''}</div></div>)}
       {!log.length && 'Belum ada perubahan.'}</div>}
   </Modal>
