@@ -8,16 +8,25 @@ import { unggahMediaKeR2 } from './siapkanMedia'
 
 export * from './inventarisAturan'
 import type { Barang, LogBarang, DataInventaris } from './inventarisAturan'
-export async function muatInventaris(db: any): Promise<DataInventaris> {
+// Catatan hapus/pulihkan/hapus permanen (7 Nov 2026): tampil di Riwayat walau barangnya tersembunyi. Identitas barang dibaca dari detail.
+export const JENIS_LOG_SAMPAH = ['hapus', 'pulihkan', 'hapus_permanen'] as const
+export type DataInventarisAdmin = DataInventaris & { logSampah: LogBarang[] }
+export type TerkaitBarang = { jadwal: number; jadwal_aktif: number; riwayat_selesai: number; laporan: number; laporan_aktif: number; update_laporan: number; datasheet: number; media: number; notifikasi: number }
+export type PratinjauHapus = { terkait: TerkaitBarang; ada_terkait: boolean; konfirmasi: string; versi: number }
+export type BarangSampah = { id: number; versi: number; nama: string; nomor_inventaris: string | null; lokasi_kode: string; aktif: boolean; dihapus_pada: string; dihapus_oleh: string
+  dihapus_alasan: string; bisa_dipulihkan_sampai: string; siap_permanen: boolean; konfirmasi: string; terkait: TerkaitBarang; jadwal_lewat: number }
+export const bacaDetailLog = (g: LogBarang): Record<string, any> => { try { return JSON.parse(g.detail || '{}') } catch { return {} } }
+export async function muatInventaris(db: any): Promise<DataInventarisAdmin> {
   const semua = (tabel: string, kolom = '*', saring: (q: any) => any = q => q) =>
     fetchAllPaged((from, to) => saring(db.from(tabel).select(kolom)).order('id').range(from, to))
-  const [lokasiRes, barang, jadwal, selesai, laporan, update, media] = await Promise.all([
+  const [lokasiRes, barang, jadwal, selesai, laporan, update, media, logSampah] = await Promise.all([
     db.from('inv_lokasi').select('*').order('urut'),
     semua('inv_barang'), semua('inv_jadwal_v'), semua('inv_jadwal_selesai'), semua('inv_laporan'), semua('inv_laporan_update'),
     semua('inv_media', '*', q => q.is('dihapus_pada', null)),
+    semua('inv_log', '*', q => q.in('jenis', [...JENIS_LOG_SAMPAH])),
   ])
   if (lokasiRes.error) throw lokasiRes.error
-  return { lokasi: lokasiRes.data || [], barang, jadwal, selesai, laporan, update, media }
+  return { lokasi: lokasiRes.data || [], barang, jadwal, selesai, laporan, update, media, logSampah }
 }
 export async function muatLogBarang(db: any, barangId: number): Promise<LogBarang[]> {
   return fetchAllPaged((from, to) => db.from('inv_log').select('*').eq('barang_id', barangId).order('id', { ascending: false }).range(from, to))
@@ -52,6 +61,14 @@ export const selesaiJadwal = (db: any, user: any, jadwalId: number, catatan: str
 export const tambahMedia = (db: any, user: any, tujuan: string, refId: number, peran: string, media: any[]) =>
   rpc(db, 'inv_tambah_media', { p_tujuan: tujuan, p_ref_id: refId, p_peran: peran, p_media: media, p_aktor: aktorAdmin(user) })
 export const hapusMedia = (db: any, user: any, mediaId: number) => rpc(db, 'inv_hapus_media', { p_media_id: mediaId, p_aktor: aktorAdmin(user) })
+// Hapus lunak (7 Nov 2026, migrasi 20261107010000): semua aturan di server. Akun admin & HRGA; hapus permanen wajib sandi akun.
+export const pratinjauHapus = (db: any, user: any, id: number): Promise<PratinjauHapus> => rpc(db, 'inv_pratinjau_hapus', { p_id: id, p_aktor: aktorAdmin(user) })
+export const hapusBarang = (db: any, user: any, id: number, versi: number, alasan: string, konfirmasi: string | null) =>
+  rpc(db, 'inv_hapus_barang', { p_id: id, p_versi: versi, p_alasan: alasan, p_konfirmasi: konfirmasi, p_aktor: aktorAdmin(user) })
+export const muatSampah = (db: any, user: any): Promise<BarangSampah[]> => rpc(db, 'inv_sampah_daftar', { p_aktor: aktorAdmin(user) })
+export const pulihkanBarang = (db: any, user: any, b: BarangSampah) => rpc(db, 'inv_pulihkan_barang', { p_id: b.id, p_versi: b.versi, p_aktor: aktorAdmin(user) })
+export const hapusPermanen = (db: any, user: any, b: BarangSampah, konfirmasi: string, sandi: string) =>
+  rpc(db, 'inv_hapus_permanen', { p_id: b.id, p_versi: b.versi, p_konfirmasi: konfirmasi, p_sandi: sandi, p_aktor: aktorAdmin(user) })
 export const imporBarang = (db: any, user: any, baris: any[], dryRun: boolean, file: string) =>
   rpc(db, 'inv_impor', { p_baris: baris, p_dry_run: dryRun, p_file: file, p_aktor: aktorAdmin(user) })
 
