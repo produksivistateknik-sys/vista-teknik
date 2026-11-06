@@ -5,6 +5,7 @@ import { PANEL_TYPES, DIVISI_PROSES, DIVISI_CONFIG, ALL_PROSES, PROSES_COLOR, WP
 import { TODAY, addDays, fmtShort, getDayLabel, fmtDateFull, getHariKerjaSekarang } from '../lib/dateHelpers'
 import { daftarOperatorHarian, namaDariCheckpoint, LABEL_STATUS_OPERATOR, labelMenit } from '../lib/operatorHarian'
 import { useTimerHariRencana } from '../hooks/useTimerHariRencana'
+import { lengkapiPersenTerakhir } from "../lib/busbarHistori";
 import { getProgressAsOfDate, getQtyProsesAsOfDate, computeProsesStatus, getRelevantProsesForKode, getCcpAwarePipelineProgressMap, PROSES_QTY_GRANULAR, formatBusbarTahapTooltip, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_URUTAN, type ProsesStatus } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { fetchWiringHariKerjaMap, hitungProyeksiWiring } from '../services/fcsService'
@@ -308,7 +309,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
   // atas, urutan tahap keliatan acak (mis. Plating/Heat-Shrink/Pasang/Fabrikasi). Ascending
   // bikin urutan lebih match kronologi kerja beneran. Di tanggal yang sama, tahap tetap
   // diurutkan sesuai alur kerja (BUSBAR_TAHAP_URUTAN).
-  const getBusbarHistoriHarian=(panelId:any,kode:string):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number;persen:number|null}[]=>{
+  const getBusbarHistoriHarian=(panelId:any,kode:string,busbarTahap:any):{tanggal:string;tahapKey:string;tahapLabel:string;operator:string[];jam:number;persen:number|null}[]=>{
     const rows=busbarTahapOperatorData.filter((t:any)=>String(t.panel_id)===String(panelId)&&t.kode_komponen===kode);
     if(rows.length===0)return[];
     const groups:Record<string,{ids:Set<number>;menit:number;persen:number|null;persenMulai:string}>={};
@@ -323,7 +324,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
       }
     });
     const urutanTahap=(t:string)=>{const i=BUSBAR_TAHAP_URUTAN.indexOf(t);return i===-1?BUSBAR_TAHAP_URUTAN.length:i;};
-    return Object.entries(groups)
+    return lengkapiPersenTerakhir(Object.entries(groups)
       .map(([key,v])=>{
         const[tanggal,tahapKey]=key.split("|");
         return{
@@ -334,7 +335,7 @@ export function RencanaHarian({rawData,woData,renhar,setRenhar,pekerja,createRen
           persen:v.persen,
         };
       })
-      .sort((a,b)=>a.tanggal!==b.tanggal?a.tanggal.localeCompare(b.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey));
+      .sort((a,b)=>a.tanggal!==b.tanggal?a.tanggal.localeCompare(b.tanggal):urutanTahap(a.tahapKey)-urutanTahap(b.tahapKey)),busbarTahap);
   };
 
   // Operator yang BENERAN ngerjain di selDate (bisa beda dari pekerja_per_komponen renhar, yang
@@ -1155,7 +1156,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                         // (bukan di dalam IIFE kolom Proses) biar bisa dipakai lagi buat baris <tr>
                         // expand tambahan di bawah, gak dihitung dobel.
                         const busbarExpandKey=`${t.rawId}_${kode}`;
-                        const busbarHistori=t.proses==="BUSBAR"?getBusbarHistoriHarian(t.panelId,kode):[];
+                        const busbarHistori=t.proses==="BUSBAR"?getBusbarHistoriHarian(t.panelId,kode,panelData?.checklist?.[kode]?.busbarTahap):[];
                         const busbarIsExpanded=!!expandedBusbarHistori[busbarExpandKey];
                         // BUSBAR nyimpen pekerja_per_komponen[kode] sebagai OBJEK per-tahap
                         // ({FABRIKASI:[..],PLATING:[..],...}), bukan array datar kayak proses
@@ -1405,7 +1406,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
                                   <div key={hi} style={{fontSize:11,color:"#475569"}}>
                                     <span style={{fontWeight:700,color:"#1e293b"}}>{fmtShort(h.tanggal)}</span>
                                     {" — "}{h.tahapLabel}
-                                    {h.persen!=null&&<span style={{color:"#16a34a",fontWeight:700}}> ({h.persen}%)</span>}
+                                    {h.persen!=null&&<span style={{color:"#16a34a",fontWeight:700}}> ({h.persen}% tahap)</span>}
                                     {" — "}
                                     {h.operator.length>0?h.operator.join(", "):<span style={{fontStyle:"italic",color:"#94a3b8"}}>operator tidak diketahui</span>}
                                     {h.jam>0&&<span style={{color:"#94a3b8"}}> ({h.jam} jam)</span>}
