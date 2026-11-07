@@ -29,12 +29,16 @@ import {
 import { daftarOperatorHarian, namaDariCheckpoint } from './operatorHarian'
 import { menitGabungan, type TimerJejak } from './jejakPengerjaan'
 import { hariKerjaDari } from './tanggalWib'
+import { petaShiftHari, kelompokPerShift, type InfoShift, type Shift } from './shiftSesi'
 
 export type KategoriAktivitas = 'berjalan' | 'selesai' | 'progres' | 'lagi' | 'dimulai'
 export type TimerJalan = { nama: string; mulai: string; tahap: string | null }
+// Operator per shift (8 Nov 2026, estafet Shift 1/2; lib/shiftSesi). shift null = tidak diketahui ("Shift ?"). menit = gabungan
+// rentang sesi shift itu (tidak menjumlah orang). Kosong bila sel tanpa timer (nama dari checkpoint saja).
+export type OperatorShift = { shift: Shift | null; nama: string[]; menit: number; berjalan: boolean; dariSesiLain: boolean }
 export type BarisAktivitas = {
   kunci: string; proses: string; kode: string; namaKomponen: string; kategori: KategoriAktivitas
-  pct: number | null; qty: string | null; operator: string[]; jalan: TimerJalan[]; menit: number
+  pct: number | null; qty: string | null; operator: string[]; perShift: OperatorShift[]; jalan: TimerJalan[]; menit: number
   tahapTimer: string[]; catatan: string[]; basi: boolean; waktuTerakhir: string | null; satuPanel: boolean; statusPipeline: ProsesStatus | null
 }
 export type TahapAktivitas = { proses: string; baris: BarisAktivitas[] }
@@ -83,8 +87,8 @@ export function nilaiSel(o: { panel: any; kode: string; proses: string; tanggal:
   return { kategori, pct, statusPipeline, dikoreksiTurun: a < b - SELISIH_MIN }
 }
 
-function barisSel(o: { panel: any; kode: string; proses: string; tanggal: string; hariIni: string; timer: any[]; checkpoint: any[]; ccpMap: Record<string, number>; namaById: (id: any) => string | undefined; sekarangMs: number }): BarisAktivitas | null {
-  const { panel, kode, proses, tanggal, hariIni, timer, checkpoint, namaById, sekarangMs } = o
+function barisSel(o: { panel: any; kode: string; proses: string; tanggal: string; hariIni: string; timer: any[]; checkpoint: any[]; ccpMap: Record<string, number>; namaById: (id: any) => string | undefined; sekarangMs: number; petaShift: Map<string, InfoShift> }): BarisAktivitas | null {
+  const { panel, kode, proses, tanggal, hariIni, timer, checkpoint, namaById, sekarangMs, petaShift } = o
   const n = nilaiSel(o)
   if (!n) return null
   const cl = panel.checklist?.[kode]
@@ -107,6 +111,12 @@ function barisSel(o: { panel: any; kode: string; proses: string; tanggal: string
     kunci: kunciSel(panel.id, kode, proses), proses, kode, namaKomponen: item?.nama || '', kategori: n.kategori, pct: n.pct,
     qty: PROSES_QTY_GRANULAR.includes(proses) && total > 0 ? `${Number(getQtyProsesAsOfDate(cl, proses, tanggal)) || 0}/${total}` : null,
     operator: op.pengerja.map((e) => e.nama),
+    perShift: kelompokPerShift(timer, petaShift).map((g) => ({
+      shift: g.shift, dariSesiLain: g.dariSesiLain,
+      nama: [...new Set(g.sesi.map((t: any) => namaById(t.pekerja_id) || `#${t.pekerja_id}`))],
+      menit: menitGabungan((hariIniDilihat ? g.sesi : g.sesi.filter((t: any) => t.selesai)) as TimerJejak[], sekarangMs),
+      berjalan: hariIniDilihat && g.sesi.some((t: any) => !t.selesai),
+    })),
     jalan: berjalan.map((t) => ({ nama: namaById(t.pekerja_id) || `#${t.pekerja_id}`, mulai: t.mulai, tahap: t.tahap || null })),
     menit, tahapTimer: [...new Set(timer.map((t) => t.tahap).filter(Boolean))] as string[], catatan, basi, waktuTerakhir: null, satuPanel: false, statusPipeline: n.statusPipeline,
   }
@@ -118,7 +128,7 @@ export function barisPenandaPanel(panel: any, tanggal: string): BarisAktivitas[]
   const hasil: BarisAktivitas[] = []
   const tambah = (proses: string, kategori: KategoriAktivitas, pct: number | null, waktu: string, oleh: any) => hasil.push({
     kunci: kunciSel(panel.id, 'PANEL', proses), proses, kode: 'Satu panel', namaKomponen: '', kategori, pct, qty: null,
-    operator: oleh ? [String(oleh)] : [], jalan: [], menit: 0, tahapTimer: [], catatan: [KET_WAKTU_TERAKHIR], basi: false, waktuTerakhir: waktu, satuPanel: true, statusPipeline: null,
+    operator: oleh ? [String(oleh)] : [], perShift: [], jalan: [], menit: 0, tahapTimer: [], catatan: [KET_WAKTU_TERAKHIR], basi: false, waktuTerakhir: waktu, satuPanel: true, statusPipeline: null,
   })
   const g = panel?.qc_checklist?._global
   const statusQc = statusPenandaPanel(panel, 'QC TEST')
@@ -142,6 +152,11 @@ export function susunAktivitasHari(o: {
   const sekarangMs = o.sekarangMs ?? Date.now()
   const idxTimer = indeks((o.timer || []).filter((t) => !String(t.kode_komponen).startsWith('__wiring_')))
   const idxCp = indeks(o.checkpoint || [])
+  // Shift tiap sesi timer hari itu (lib/shiftSesi): history sel yang sama, lalu sesi lain operator itu hari itu.
+  const panelById = new Map<number, any>()
+  for (const w of o.woData || []) for (const p of w.panels || []) panelById.set(Number(p.id), p)
+  const timerHari = (o.timer || []).filter((t) => !String(t.kode_komponen).startsWith('__wiring_'))
+  const petaShift = petaShiftHari(timerHari, (t: any) => panelById.get(Number(t.panel_id))?.checklist?.[t.kode_komponen]?.history?.[t.proses], sekarangMs)
   const idDaftar = new Set<number>()
   const kartu: KartuAktivitas[] = []
   for (const w of o.woData || []) for (const panel of w.panels || []) {
@@ -159,7 +174,7 @@ export function susunAktivitasHari(o: {
     }
     const baris: BarisAktivitas[] = barisPenandaPanel(panel, tanggal)
     for (const [k, [kode, proses]] of sel) {
-      const b = barisSel({ panel, kode, proses, tanggal, hariIni, timer: idxTimer.get(k) || [], checkpoint: idxCp.get(k) || [], ccpMap, namaById, sekarangMs })
+      const b = barisSel({ panel, kode, proses, tanggal, hariIni, timer: idxTimer.get(k) || [], checkpoint: idxCp.get(k) || [], ccpMap, namaById, sekarangMs, petaShift })
       if (b) baris.push(b)
     }
     if (!baris.length) continue
