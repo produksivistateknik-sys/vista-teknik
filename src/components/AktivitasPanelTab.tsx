@@ -6,7 +6,7 @@
 import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAktivitasPanel } from '../hooks/useAktivitasPanel'
-import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas } from '../lib/aktivitasPanel'
+import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas, type OperatorShift } from '../lib/aktivitasPanel'
 import { hariKerjaWib } from '../lib/tanggalWib'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
@@ -75,6 +75,12 @@ const CSS = TOKEN_KARTU_STATUS + `
 .akp-it.berjalan{border-left-color:var(--akp-run)}.akp-it.selesai{border-left-color:var(--akp-done)}.akp-it.progres{border-left-color:var(--akp-prog)}.akp-it.lagi{border-left-color:var(--akp-lagi)}
 .akp-k{font-weight:700;font-size:14px;overflow-wrap:anywhere}
 .akp-k small{color:var(--akp-mute);font-weight:500;margin-left:6px}
+/* Lencana shift (8 Nov 2026): Shift 1 kuning lembut, Shift 2 biru lembut, tidak diketahui abu-abu putus-putus. */
+.akp-shr{display:flex;gap:6px;align-items:baseline;margin-top:2px}
+.akp-sh{flex:none;font-size:10.5px;font-weight:800;letter-spacing:.04em;border-radius:6px;padding:1px 6px;line-height:1.5}
+.akp-sh.s1{background:var(--ks-penting-soft);color:var(--ks-penting)}
+.akp-sh.s2{background:var(--akp-run-soft);color:var(--akp-run)}
+.akp-sh.sx{background:var(--akp-soft);color:var(--akp-mute);border:1px dashed var(--akp-line)}
 .akp-m{font-size:12.5px;color:var(--akp-mute);overflow-wrap:anywhere}
 .akp-r{text-align:right;font-size:12.5px;display:flex;flex-direction:column;align-items:flex-end;gap:2px}
 .akp-t{font-variant-numeric:tabular-nums;font-weight:800;font-size:15px;color:var(--akp-run)}
@@ -110,15 +116,34 @@ const namaHari = (t: string) => new Date(t + 'T00:00:00Z').toLocaleDateString('i
 const namaTahap = (t: string) => BUSBAR_TAHAP_LABEL[t] || t
 const LABEL: Record<string, string> = { berjalan: 'Berjalan', selesai: 'Selesai', progres: 'In progress', lagi: 'Dikerjakan lagi' }
 
+// Operator per shift (8 Nov 2026, lib/shiftSesi): satu baris per shift, lencana SHIFT 1/2/?, maksimal 4 nama lalu "+N" (nama
+// lengkap di tooltip), lalu "· berjalan" atau durasi gabungan rentang shift itu (bukan jumlah per orang).
+const MAKS_NAMA = 4
+function BarisShift({ s }: { s: OperatorShift }) {
+  const lebih = s.nama.length - MAKS_NAMA
+  const ket = s.shift ? `Shift ${s.shift}${s.dariSesiLain ? ' (dari sesi lain operator ini hari itu)' : ' (dari Simpan Progress)'}` : 'Shift tidak tercatat: data lama atau belum ada Simpan Progress pada sesi ini'
+  return (
+    <div className="akp-m akp-shr" title={`${ket}
+${s.nama.join(', ')}`}>
+      <span className={`akp-sh s${s.shift ?? 'x'}`}>SHIFT {s.shift ?? '?'}</span>
+      <span>{s.nama.slice(0, MAKS_NAMA).join(', ')}{lebih > 0 ? ` +${lebih}` : ''}{s.berjalan ? ' · berjalan' : s.menit > 0 ? ` · ${labelLama(s.menit)}` : ''}</span>
+    </div>
+  )
+}
+
 function Baris({ b }: { b: BarisAktivitas }) {
   const tahap = b.tahapTimer.length ? ` · ${b.tahapTimer.map(namaTahap).join(', ')}` : ''
   const nama = b.operator.length ? b.operator.join(', ') : 'tanpa catatan operator'
   const mulaiAwal = b.jalan.map((j) => j.mulai).sort()[0]
+  const info = `${tahap}${b.jalan.length ? ` · mulai ${jamWib(mulaiAwal)}` : ''}${b.waktuTerakhir ? ` · ${jamWib(b.waktuTerakhir)}` : ''}`
   return (
     <div className={`akp-it ${b.kategori}`}>
       <div>
         <div className="akp-k">{b.namaKomponen || b.kode}{b.namaKomponen && <small>{b.kode}</small>}</div>
-        <div className="akp-m">{nama}{tahap}{b.jalan.length ? ` · mulai ${jamWib(mulaiAwal)}` : ''}{b.waktuTerakhir ? ` · ${jamWib(b.waktuTerakhir)}` : ''}</div>
+        {b.perShift.length > 0 ? <>
+          {b.perShift.map((s) => <BarisShift key={s.shift ?? '?'} s={s} />)}
+          {info && <div className="akp-m">{info.replace(/^ · /, '')}</div>}
+        </> : <div className="akp-m">{nama}{info}</div>}
         {b.catatan.length > 0 && <div className="akp-m">{b.catatan.join(' · ')}</div>}
       </div>
       <div className="akp-r">
