@@ -58,7 +58,7 @@ const TrackingView = lazyP(() => import('./components/TrackingView').then(m => (
 const TrackingPekerja = lazyP(() => import('./components/TrackingPekerja').then(m => ({ default: m.TrackingPekerja })))
 const RencanaHarian = lazyP(() => import('./components/RencanaHarianHome').then(m => ({ default: m.RencanaHarianHome })))
 const ActivityLogView = lazyP(() => import('./components/ActivityLogView').then(m => ({ default: m.ActivityLogView })))
-const KendalaAdmin = lazyP(() => import('./components/KendalaAdmin').then(m => ({ default: m.KendalaAdmin })))
+const KendalaDanCatatan = lazyP(() => import('./components/KendalaDanCatatan').then(m => ({ default: m.KendalaDanCatatan })))
 const LaporanOutstanding = lazyP(() => import('./components/LaporanOutstanding').then(m => ({ default: m.LaporanOutstanding })))
 const Dashboard = lazyP(() => import('./components/Dashboard').then(m => ({ default: m.Dashboard })))
 const AiAssistantChat = lazyP(() => import('./components/AiAssistantChat').then(m => ({ default: m.AiAssistantChat })))
@@ -764,7 +764,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
       ...(canRaw?[{id:"outstanding",label:"Outstanding",icon:"ti ti-list-details"}]:[]),
       ...(canRencana?[{id:"rencana",label:"Rencana Harian",icon:"ti ti-clipboard-list"}]:[]),
       // Kendala produksi (23 Okt 2026) - dipindah dari grup SYSTEM ke dekat Rencana Harian/Outstanding; badge = belum teratasi.
-      ...(canKendala?[{id:"kendala",label:"Kendala",icon:"ti ti-alert-triangle",badge:galatKendala?"!":kendalaTerbuka.length>0?kendalaTerbuka.length:null}]:[]),
+      ...(canKendala?[{id:"kendala",label:"Kendala dan Catatan",icon:"ti ti-alert-triangle",badge:galatKendala?"!":kendalaTerbuka.length>0?kendalaTerbuka.length:null}]:[]),
       // Laporan Outstanding (23 Okt 2026) - teks WhatsApp harian planner; beda dari menu "Outstanding" (alat atur jadwal).
       ...(canKendala?[{id:"laporan_outstanding",label:"Laporan Outstanding",icon:"ti ti-report-analytics"}]:[]),
       // badge = WO aktif berstatus BARU/REVISI utk admin ini (23 Okt 2026, lib/woDilihat)
@@ -1198,7 +1198,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               {visitedTabs.includes("tracking")&&<div style={{display:tab==="tracking"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingPekerja pekerja={pekerja} renhar={renhar} setRenhar={setRenhar} removeRenhar={removeRenhar} woData={woData} livePanelTypes={livePanelTypes}/></Suspense></div>}
               {visitedTabs.includes("tracking_report")&&<div style={{display:tab==="tracking_report"?"block":"none"}}><Suspense fallback={TabFallback}><TrackingView woData={woData}/></Suspense></div>}
               {visitedTabs.includes("inventaris")&&<div style={{display:tab==="inventaris"?"block":"none"}}><Suspense fallback={TabFallback}><InventarisMaintenanceTab user={user}/></Suspense></div>}
-              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaAdmin db={supabase} user={user}/></Suspense></div>}
+              {visitedTabs.includes("kendala")&&<div style={{display:tab==="kendala"?"block":"none"}}><Suspense fallback={TabFallback}><KendalaDanCatatan db={supabase} user={user} jumlahKendala={kendalaTerbuka.length}/></Suspense></div>}
               {visitedTabs.includes("laporan_outstanding")&&<div style={{display:tab==="laporan_outstanding"?"block":"none"}}><Suspense fallback={TabFallback}><LaporanOutstanding db={supabase} user={user}/></Suspense></div>}
               {visitedTabs.includes("activity")&&<div style={{display:tab==="activity"?"block":"none"}}><Suspense fallback={TabFallback}><ActivityLogView activityLog={activityLog} user={user}/></Suspense></div>}
               {visitedTabs.includes("proyekluar")&&<div style={{display:tab==="proyekluar"?"block":"none"}}><Suspense fallback={TabFallback}><ProyekLuarTab pantau={pantauPL}/></Suspense></div>}
