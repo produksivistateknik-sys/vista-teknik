@@ -10,13 +10,15 @@ import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, typ
 import { hariKerjaWib } from '../lib/tanggalWib'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
+import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
 
-const CSS = `
+// Warna status kartu (done/prog/nb-*) dari styles/tokenKartuStatus (dipakai juga tab Kendala), 7 Nov 2026.
+const CSS = TOKEN_KARTU_STATUS + `
 .akp{--akp-card:var(--card-bg,#fff);--akp-fg:var(--text-primary,#141b2d);--akp-mute:#5d6679;--akp-line:var(--border-color,#e1e5ee);--akp-soft:var(--bg-secondary,#f7f8fb);
-  --akp-acc:#2147d8;--akp-acc-soft:#e8edff;--akp-run:#0b66d6;--akp-run-soft:#e3efff;--akp-done:#117238;--akp-done-soft:#e2f5e9;--akp-prog:#9a5500;--akp-prog-soft:#fff1d9;
-  --akp-lagi:#5b3aa6;--akp-lagi-soft:#efe7ff;--akp-bar:#e6e9f1;--akp-nb-berjalan:#e9f2ff;--akp-nb-progres:#fff2e5;--akp-nb-selesai:#e7f7ee;--akp-nb-netral:#f1f3f7;--akp-a-netral:#8b94a7;color:var(--akp-fg);text-align:left;font-size:14px;line-height:1.45;padding:16px;display:flex;flex-direction:column;gap:14px}
-[data-theme="dark"] .akp{--akp-mute:#9aa5bf;--akp-acc:#7f9bff;--akp-acc-soft:#202c57;--akp-run:#6db0ff;--akp-run-soft:#18304f;--akp-done:#4cd07f;--akp-done-soft:#143323;--akp-prog:#f2b45a;--akp-prog-soft:#3a2a10;
-  --akp-lagi:#c3adff;--akp-lagi-soft:#2a2147;--akp-bar:#27304d;--akp-nb-berjalan:#1b3253;--akp-nb-progres:#39290f;--akp-nb-selesai:#17362a;--akp-nb-netral:#262b38;--akp-a-netral:#6b7690}
+  --akp-acc:#2147d8;--akp-acc-soft:#e8edff;--akp-run:#0b66d6;--akp-run-soft:#e3efff;--akp-done:var(--ks-done);--akp-done-soft:var(--ks-done-soft);--akp-prog:var(--ks-prog);--akp-prog-soft:var(--ks-prog-soft);
+  --akp-lagi:#5b3aa6;--akp-lagi-soft:#efe7ff;--akp-bar:#e6e9f1;--akp-nb-berjalan:#e9f2ff;--akp-nb-progres:var(--ks-nb-progres);--akp-nb-selesai:var(--ks-nb-selesai);--akp-nb-netral:#f1f3f7;--akp-a-netral:#8b94a7;color:var(--akp-fg);text-align:left;font-size:14px;line-height:1.45;padding:16px;display:flex;flex-direction:column;gap:14px}
+[data-theme="dark"] .akp{--akp-mute:#9aa5bf;--akp-acc:#7f9bff;--akp-acc-soft:#202c57;--akp-run:#6db0ff;--akp-run-soft:#18304f;
+  --akp-lagi:#c3adff;--akp-lagi-soft:#2a2147;--akp-bar:#27304d;--akp-nb-berjalan:#1b3253;--akp-nb-netral:#262b38;--akp-a-netral:#6b7690}
 .akp *{box-sizing:border-box}
 .akp-top{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end;justify-content:space-between}
 .akp h2{margin:0;font-size:20px;font-weight:700;color:var(--akp-fg);text-align:left}
