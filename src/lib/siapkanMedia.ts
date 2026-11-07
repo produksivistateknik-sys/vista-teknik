@@ -10,6 +10,7 @@
 // - Lainnya (QC "Tambahkan File"): dikirim apa adanya.
 import { kompresFoto } from './kompresFoto'
 import { uploadToR2 } from './r2Client'
+import { laporError } from './laporError'
 
 export const BATAS_VIDEO_MB = 50
 // Batas file video MENTAH saat dipilih (sebelum kompres) - 1 menit video HP 1080p ~100-150 MB;
@@ -25,6 +26,28 @@ const EKSTENSI_VIDEO = /\.(mp4|m4v|mov|3gp|3g2|webm|mkv)$/i
 export type MediaSiapUpload = { blob: Blob; contentType: string; ext: string; mime: string }
 
 export const isFileVideo = (f: File) => f.type.startsWith('video/') || (!f.type && EKSTENSI_VIDEO.test(f.name))
+
+// FOTO HEIC/HEIF (8 Nov 2026, laporan QC: foto gagal diunggah). Browser selain Safari (Chrome Android, dsb.) tidak bisa
+// membaca HEIC -> kompres kanvas gagal "Gagal membaca foto" tanpa penjelasan. Sekarang dikenali LEBIH DULU (tipe image/heic
+// atau image/heif, ATAU ekstensi .heic/.heif/.hif huruf besar/kecil - Android bisa memberi type kosong) lalu ditolak dgn
+// panduan. Belum dikonversi (perbaikan penuh menyusul). Bagian ini SAMA di vista-pekerja/src/lib/siapkanMedia.ts.
+const TIPE_HEIC = /^image\/hei[cf](-sequence)?$/i
+const EKSTENSI_HEIC = /\.(heic|heif|hif)$/i
+export const isFileHeic = (f: File) => TIPE_HEIC.test(f.type || '') || EKSTENSI_HEIC.test(f.name || '')
+export const PESAN_FOTO_HEIC = 'Foto berformat HEIC/HEIF (mode hemat ruang kamera) belum bisa dibaca aplikasi. Foto BELUM tersimpan. '
+  + 'Ambil ulang lewat tombol Kamera di aplikasi, atau ubah pengaturan kamera HP lalu foto ulang: Samsung - Kamera > Pengaturan > '
+  + 'Format gambar lanjutan > matikan "Foto efisiensi tinggi"; iPhone - Pengaturan > Kamera > Format > "Paling Kompatibel".'
+export const PESAN_FOTO_TAK_TERBACA = 'Foto tidak bisa dibaca HP ini (format tidak dikenali). Foto BELUM tersimpan. Ambil ulang lewat tombol Kamera di aplikasi.'
+// Konteks log TANPA data pribadi (tanpa nama file / isi foto): tipe, ekstensi, ukuran, jenis browser & sistem.
+export function konteksFile(f: File): Record<string, string | number> {
+  const dot = (f.name || '').lastIndexOf('.')
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const browser = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'lain'
+  const sistem = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : 'lain'
+  return { tipe: f.type || '(kosong)', ekstensi: dot > 0 ? f.name.slice(dot + 1).toLowerCase().slice(0, 8) : '(tanpa)', ukuranKb: Math.round(f.size / 1024), browser, sistem }
+}
+type GalatSiap = Error & { kode?: string; asli?: unknown }
+const galatKode = (pesan: string, kode: string, asli?: unknown): GalatSiap => Object.assign(new Error(pesan), { kode, asli })
 
 const ekstensiNama = (f: File, cadangan: string) => {
   const dot = f.name.lastIndexOf('.')
@@ -72,6 +95,8 @@ export async function kompresVideo(file: File): Promise<Blob | null> {
 }
 
 export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
+  // (8 Nov 2026) HEIC ditolak dgn panduan; dulu gagal kompres -> HEIC mentah terkirim (tidak tampil di Chrome/PDF/Word).
+  if (isFileHeic(file)) throw galatKode(PESAN_FOTO_HEIC, 'heic')
   if (isFileVideo(file)) {
     const hasil = await kompresVideo(file)
     const blob: Blob = hasil || file
@@ -97,7 +122,16 @@ export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
 // pemanggil WAJIB menangkap & memberi tahu operator (jangan diam-diam dilewati). Hasil siap ditempel
 // ke array foto JSONB: {url, mime, name} - `mime` dipakai viewer/grid utk mengenali video.
 export async function unggahMediaKeR2(file: File, prefixKey: string): Promise<{ url: string; mime: string; name: string }> {
-  const m = await siapkanMediaUpload(file)
+  let m: MediaSiapUpload
+  try {
+    m = await siapkanMediaUpload(file)
+  } catch (galat) {
+    const err = galat as GalatSiap & { asli?: { stack?: string } }
+    // (8 Nov 2026) gagal SEBELUM unggah dicatat ke log_error_app (sama dgn vista-pekerja), tanpa nama file.
+    laporError('upload', { message: `Gagal menyiapkan file (${prefixKey.split('/')[0]}): ${err?.kode || err?.message || err}`, stack: err?.asli?.stack || err?.stack },
+      { folder: prefixKey, langkah: err?.kode === 'heic' ? 'format HEIC' : 'siapkan file', ...konteksFile(file) })
+    throw err
+  }
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
   const url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob) })
   // Nama ikut ekstensi file yang BENAR-BENAR tersimpan (foto HEIC/PNG dikompres jadi .jpg, video jadi .mp4)
