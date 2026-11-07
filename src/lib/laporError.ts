@@ -6,7 +6,7 @@
 import { supabase, supabaseUrl, supabaseAnonKey } from './supabase'
 import { buildIdAplikasi } from './buildId'
 
-export type JenisError = 'crash' | 'chunk' | 'unhandled' | 'window_error' | 'supabase_error' | 'gagal_simpan' | 'console_error'
+export type JenisError = 'crash' | 'chunk' | 'unhandled' | 'window_error' | 'supabase_error' | 'gagal_simpan' | 'console_error' | 'upload'
 type Item = { aplikasi: string; versi: string; jenis: string; sidik: string; pesan: string; halaman: string; pengguna: string; konteks: any; jumlah: number }
 
 const APLIKASI = 'vista-teknik'
