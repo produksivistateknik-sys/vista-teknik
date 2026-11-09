@@ -12,8 +12,7 @@ export function bangunPetaWo(woData: any[], pctWo: (w: any) => number): PetaWo {
   const perId = new Map<number, InfoWo>(), perPanel = new Map<number, InfoWo>(), perProyek = new Map<string, InfoWo[]>()
   for (const w of woData || []) {
     if (!w || w.deleted_at || w.is_archived) continue
-    let selesai = false
-    try { selesai = Number(pctWo(w)) >= 100 } catch { selesai = false }
+    const selesai = (() => { try { return Number(pctWo(w)) >= 100 } catch { return false } })()
     const info: InfoWo = { id: Number(w.id), nomor: String(w.wo ?? '').trim(), proyek: String(w.proyek ?? '').trim(), target: w.target || null, selesai }
     perId.set(info.id, info)
     for (const p of w.panels || []) if (!p?.deleted_at) perPanel.set(Number(p.id), info)
