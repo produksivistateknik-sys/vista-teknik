@@ -17,6 +17,8 @@ import {
   type Kendala, type ProyekAktif,
 } from '../lib/kendalaProduksi'
 import { CSS_KARTU_PANEL } from '../styles/kartuPanelCss'
+import { BarisWoProyek } from './ui/ChipDeadline'
+import { PETA_KOSONG, type PetaWo } from '../lib/petaWo'
 
 const CSS = CSS_KARTU_PANEL
 
@@ -31,7 +33,8 @@ const TANPA_PROYEK = '(tanpa proyek)'
 type KartuPanel = { kunci: string; proyek: string; id: number | null; nama: string; wo: string | null; rows: Kendala[]; belum: number }
 
 // tertanam = dipakai di dalam KendalaDanCatatan (judul halaman & pilihan subtab ada di pembungkus).
-export function KendalaAdmin({ db, user, tertanam = false }: { db: any; user: any; tertanam?: boolean }) {
+// petaWo (9 Nov 2026): nomor WO + chip deadline di kartu (lib/petaWo, components/ui/ChipDeadline BarisWoProyek).
+export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG }: { db: any; user: any; tertanam?: boolean; petaWo?: PetaWo }) {
   const nama = String(user?.nama || user?.name || '').trim()
   const [proyekAktif, setProyekAktif] = useState<ProyekAktif[]>([])
   const [daftar, setDaftar] = useState<Kendala[]>([])
@@ -95,9 +98,6 @@ export function KendalaAdmin({ db, user, tertanam = false }: { db: any; user: an
         const pn = pa?.panels.find(p => p.id === id)
         sub.push({ kunci: pr + '|' + (id ?? 'umum'), proyek: pr, id, nama: id == null ? 'Umum' : (pn?.nama || rk[0].panel_nama || `Panel #${id}`), wo: pn?.wo || rk[0].wo_number || null, rows: rk, belum: rk.filter(k => !k.teratasi_pada).length })
       }
-      // Nama panel kembar dalam satu proyek -> tampilkan nomor WO supaya kartu bisa dibedakan.
-      const n = new Map<string, number>(); sub.forEach(s => n.set(s.nama.trim().toUpperCase(), (n.get(s.nama.trim().toUpperCase()) || 0) + 1))
-      sub.forEach(s => { if ((n.get(s.nama.trim().toUpperCase()) || 0) < 2) s.wo = null })
       out.push(...sub)
     }
     return out
@@ -250,7 +250,7 @@ export function KendalaAdmin({ db, user, tertanam = false }: { db: any; user: an
                 <div className="kda-kh">
                   <div className="kda-kn">
                     <div className="kda-nm">{judulPanel(c.nama, c.id)}</div>
-                    <div className="kda-pj">{c.proyek}{c.wo && <small> · WO {c.wo}</small>}</div>
+                    <div className="kda-pj"><BarisWoProyek peta={petaWo} proyek={c.proyek} panelId={c.id} snapshot={{ woId: c.rows[0]?.wo_id, nomor: c.rows[0]?.wo_number }} /></div>
                   </div>
                   <span className={'kda-pill ' + (c.belum > 0 ? 'w' : 'o')}>{c.belum > 0 ? `${c.belum} belum selesai` : 'Semua selesai'}</span>
                 </div>

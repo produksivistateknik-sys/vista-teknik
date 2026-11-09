@@ -3,7 +3,9 @@
 // Subtab yang sudah dibuka tetap terpasang (state & langganan realtime tidak hilang saat berpindah). Subtab terakhir diingat per
 // perangkat (localStorage, hanya kenyamanan - gagal dibaca/ditulis = bawaan Kendala).
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
+import { bangunPetaWo } from '../lib/petaWo'
+import { woOverall } from '../lib/panelHelpers'
 import { KendalaAdmin } from './KendalaAdmin'
 import { CatatanAdmin } from './CatatanAdmin'
 
@@ -22,7 +24,9 @@ const CSS = `
 .kdc-badge{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;text-align:center}
 `
 
-export function KendalaDanCatatan({ db, user, jumlahKendala }: { db: any; user: any; jumlahKendala?: number }) {
+// woData (9 Nov 2026): WO aktif App (realtime) -> peta nomor WO & deadline utk kartu (persen WO = woOverall, sama dgn notifikasi App).
+export function KendalaDanCatatan({ db, user, jumlahKendala, woData }: { db: any; user: any; jumlahKendala?: number; woData?: any[] }) {
+  const petaWo = useMemo(() => bangunPetaWo(woData || [], woOverall), [woData])
   const [sub, setSub] = useState<Sub>(bacaSub)
   const [pernah, setPernah] = useState<Sub[]>(() => [bacaSub()])
   const pilih = (s: Sub) => {
@@ -39,8 +43,8 @@ export function KendalaDanCatatan({ db, user, jumlahKendala }: { db: any; user: 
           <button className="kdcBtn" role="tab" aria-selected={sub === 'catatan'} onClick={() => pilih('catatan')}>Catatan</button>
         </div>
       </div>
-      {pernah.includes('kendala') && <div style={{ display: sub === 'kendala' ? 'block' : 'none' }}><KendalaAdmin db={db} user={user} tertanam /></div>}
-      {pernah.includes('catatan') && <div style={{ display: sub === 'catatan' ? 'block' : 'none' }}><CatatanAdmin db={db} user={user} /></div>}
+      {pernah.includes('kendala') && <div style={{ display: sub === 'kendala' ? 'block' : 'none' }}><KendalaAdmin db={db} user={user} tertanam petaWo={petaWo} /></div>}
+      {pernah.includes('catatan') && <div style={{ display: sub === 'catatan' ? 'block' : 'none' }}><CatatanAdmin db={db} user={user} petaWo={petaWo} /></div>}
     </div>
   )
 }

@@ -11,6 +11,9 @@ import { hariKerjaWib } from '../lib/tanggalWib'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
+import { ChipDeadline } from './ui/ChipDeadline'
+import { bangunPetaWo, type PetaWo } from '../lib/petaWo'
+import { woOverallCcpAware } from '../lib/panelHelpers'
 
 // Warna status kartu (done/prog/nb-*) dari styles/tokenKartuStatus (dipakai juga tab Kendala), 7 Nov 2026.
 const CSS = TOKEN_KARTU_STATUS + `
@@ -172,13 +175,14 @@ function KelompokSingkat({ baris }: { baris: BarisAktivitas[] }) {
   )
 }
 
-function Kartu({ k, buka, onToggle, lampau }: { k: KartuAktivitas; buka: boolean; onToggle: () => void; lampau: boolean }) {
+// petaWo (9 Nov 2026): deadline record WO tempat panel berada (lib/petaWo) - chip di baris "WO · proyek".
+function Kartu({ k, buka, onToggle, lampau, petaWo }: { k: KartuAktivitas; buka: boolean; onToggle: () => void; lampau: boolean; petaWo: PetaWo }) {
   const pil = (kelas: string, n: number, teks: string) => <span className={`akp-pill ${n > 0 ? kelas : 'nol'}`}>{n} {teks}</span>
   return (
     <div className={`akp-kartu n-${nadaKartu(k.jumlah)}${k.jumlah.berjalan > 0 ? ' jalan' : ''}`} data-buka={buka ? '1' : '0'}>
       <button type="button" className="akpBtnKartu" aria-expanded={buka} onClick={onToggle}>
         <div className="akp-r1">
-          <div><div className="akp-nama">{k.nama}</div><div className="akp-pj">WO {k.wo} · {k.proyek}</div></div>
+          <div><div className="akp-nama">{k.nama}</div><div className="akp-pj">WO {k.wo} · {k.proyek}{(() => { const w = petaWo.perPanel.get(Number(k.panelId)); return w ? <> <ChipDeadline target={w.target} selesai={w.selesai} /></> : null })()}</div></div>
           <span className="akp-chev" aria-hidden="true">▾</span>
         </div>
         <div className="akp-pg"><span>{lampau ? 'Progres saat ini' : 'Progres panel'}</span><span className="akp-tr"><i style={{ width: k.progres + '%' }} /></span><b>{k.progres}%</b></div>
@@ -222,6 +226,7 @@ export function AktivitasPanelTab({ woData, pekerja, ccpMap, aktif }: { woData: 
   const { timer, checkpoint, termuat, diperbaruiPada, galat } = useAktivitasPanel(supabase, tanggal, aktif)
   const petaNama = useMemo(() => new Map((pekerja || []).map((p: any) => [Number(p.id), p.nama as string])), [pekerja])
   const namaById = useCallback((id: any) => petaNama.get(Number(id)) as string | undefined, [petaNama])
+  const petaWo = useMemo(() => bangunPetaWo(woData, (w) => woOverallCcpAware(w, ccpMap)), [woData, ccpMap]) // persen WO sama dgn Manajemen WO
   const hasil = useMemo(() => susunAktivitasHari({ woData, timer, checkpoint, tanggal, hariIni, ccpMap, namaById }), [woData, timer, checkpoint, tanggal, hariIni, ccpMap, namaById])
   const kartu = hasil.kartu.filter((k) => filter === 'semua' || k.jumlah[filter] > 0)
   const lampau = tanggal < hariIni
@@ -266,7 +271,7 @@ export function AktivitasPanelTab({ woData, pekerja, ccpMap, aktif }: { woData: 
       </div>
       {!termuat ? <div className="akp-kosong">Memuat aktivitas...</div>
         : kartu.length === 0 ? <div className="akp-kosong">{hasil.kartu.length === 0 ? 'Tidak ada panel aktif pada hari ini.' : 'Tidak ada panel yang cocok dengan filter.'}</div>
-          : <div className="akp-grid">{kartu.map((k) => <Kartu key={k.panelId} k={k} lampau={lampau} buka={terbuka.has(k.panelId)} onToggle={() => toggle(k.panelId)} />)}</div>}
+          : <div className="akp-grid">{kartu.map((k) => <Kartu key={k.panelId} k={k} lampau={lampau} petaWo={petaWo} buka={terbuka.has(k.panelId)} onToggle={() => toggle(k.panelId)} />)}</div>}
     </div>
   )
 }
