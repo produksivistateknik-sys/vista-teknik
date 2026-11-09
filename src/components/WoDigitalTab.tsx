@@ -14,7 +14,7 @@ import { initChecklist, woOverall } from "../lib/panelHelpers";
 import { getStatus, daysUntil, isDelayed } from "../lib/dateHelpers";
 import { Card, Badge, Modal, Lbl, Btn, Inp, Sel } from "./ui/Primitives";
 import { fetchAllPaged } from "../lib/fetchAllPaged";
-import { catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, amankan } from "../lib/woDilihat";
+import { catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, rincianRevisiEdit, amankan } from "../lib/woDilihat";
 
 const PdfViewer=lazyP(()=>import("./PdfViewer").then(m=>({default:m.PdfViewer})));
 
@@ -205,8 +205,9 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
         // Form ini TIDAK menyimpan header WO (saveWOWithSplit tidak update work_orders; target beda = split) - perilaku lama,
         // jadi hanya perubahan PANEL (qty/tambah/hapus) yang dihitung revisi di sini.
         if(origWo&&!panelLamaErr){
-          const ringkas=ringkasRevisiEdit({lama:{proyek:form.proyek,target:form.target,panels:panelLama||[]},baru:{proyek:form.proyek,target:form.target,panels:formPanels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}});
-          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[formEditId],uname,ringkas));
+          const ubah={lama:{proyek:form.proyek,target:form.target,panels:panelLama||[]},baru:{proyek:form.proyek,target:form.target,panels:formPanels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}};
+          const ringkas=ringkasRevisiEdit(ubah);
+          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[formEditId],uname,ringkas,rincianRevisiEdit(ubah))); // (9 Nov 2026) + rincian terstruktur
         }
         // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
         try{

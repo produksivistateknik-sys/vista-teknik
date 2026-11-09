@@ -24,7 +24,10 @@ import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { teksHasilTemplate } from '../lib/templateJadwalWp'
 import { ModalTemplateWp } from './ModalTemplateWp'
 import { cariPelanggaranUrutan, teksPelanggaran } from '../lib/urutanProses'
-import { statusWo, catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, amankan } from '../lib/woDilihat'
+import { statusWo, catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, rincianRevisiEdit, amankan } from '../lib/woDilihat'
+import { useWoRevisiLog } from '../hooks/useWoRevisiLog'
+import { tagRevisi, logBelumDilihat, teksLangkah, fmtWaktuWib, MAKS_TAG, type TagRevisi } from '../lib/woRevisiTag'
+import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
@@ -41,6 +44,14 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
   const penandaAktif=user?.divisi==="admin"&&!!woDilihat;
   const statusKartu=(wo:any)=>penandaAktif?statusWo(wo,woDilihat.get(Number(wo.id))):null;
   const bukaKartu=(wo:any)=>{if(penandaAktif&&statusKartu(wo))bukaWo?.(Number(wo.id));};
+  // Tag jenis revisi (9 Nov 2026, lib/woRevisiTag): perubahan yang BELUM dilihat admin ini (ditumpuk), hilang begitu kartu dibuka.
+  // Log kosong (mis. gagal dimuat) -> dari revisi_ringkas terakhir supaya lencana tidak tampil tanpa keterangan.
+  const woRevisiLog=useWoRevisiLog(penandaAktif);
+  const [rincianWo,setRincianWo]=useState<number|null>(null);
+  const tagKartu=(wo:any):TagRevisi[]=>{
+    const t=tagRevisi(logBelumDilihat(woRevisiLog.get(Number(wo.id))||[],woDilihat?.get(Number(wo.id))));
+    return t.length?t:tagRevisi([{id:0,wo_id:Number(wo.id),oleh:wo.revisi_oleh||"-",ringkas:wo.revisi_ringkas||null,waktu:wo.revisi_pada}]);
+  };
   // livePanelTypes (audit egress Agu 2026) - dulu component ini fetch+build ulang bom_master/
   // panel_type_meta/panel_wp_meta sendiri (duplikat App.tsx yang udah nge-compute livePanelTypes
   // persis sama dan nge-pass ke TaskMonitoring/DetailProgress/RawSchedule/dll), sekarang reuse
@@ -406,9 +417,11 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
         // Penanda REVISI (23 Okt 2026): deadline/proyek/qty panel/tambah-hapus panel - pelaku otomatis dianggap sudah melihat.
         // Gagal mencatat penanda TIDAK menggagalkan simpan (lib/woDilihat amankan).
         if(origWo){
-          const ringkas=ringkasRevisiEdit({lama:{proyek:origWo.proyek,target:origWo.target,panels:(origWo.panels||[]).map((p:any)=>({id:p.id,nama:p.nama,qty:p.qty}))},
-            baru:{proyek:form.proyek,target:form.target,panels:panels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}});
-          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[editId],uname,ringkas));
+          // (9 Nov 2026) rincian terstruktur ikut dikirim (tag jenis revisi); teks ringkas tetap sama.
+          const ubah={lama:{proyek:origWo.proyek,target:origWo.target,panels:(origWo.panels||[]).map((p:any)=>({id:p.id,nama:p.nama,qty:p.qty}))},
+            baru:{proyek:form.proyek,target:form.target,panels:panels.map((p:any)=>({id:p.id,nama:p.nama,qty:Number(p.qty)||0}))}};
+          const ringkas=ringkasRevisiEdit(ubah);
+          if(ringkas)await amankan(()=>catatRevisiWo(supabase,[editId],uname,ringkas,rincianRevisiEdit(ubah)));
         }
         // Push notif "revisi WO"/"tambah panel" (REVISI 5 Sep 2026) - fitur tambahan, GAGAL DI
         // SINI TIDAK BOLEH gagalin proses simpan yang udah beres di atas, try/catch sendiri.
@@ -469,6 +482,17 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
 
   return(
     <div className="fi">
+      {/* Tag jenis revisi (9 Nov 2026): kuning lembut dari token bersama, terang & gelap; tombol ber-kelas "...Btn" krn globalCss gelap. */}
+      <style>{TOKEN_KARTU_STATUS+`
+.woTagBtn{font-size:10.5px;font-weight:700;border:1px solid var(--ks-penting);background:var(--ks-penting-soft);color:var(--ks-penting);border-radius:20px;padding:1px 8px;cursor:pointer;line-height:1.6;white-space:normal;text-align:left;font-family:inherit}
+.woTagBtn:focus-visible{outline:2px solid var(--ks-penting);outline-offset:1px}
+.woRincian{padding:10px 16px 12px 40px;background:var(--ks-nb-penting);border-bottom:1px dashed var(--ks-penting);font-size:12.5px;color:var(--text-primary,#1e293b);overflow-wrap:anywhere;text-align:left}
+.woRincianJudul{font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--ks-penting);margin-bottom:4px}
+.woRincianJudul span{text-transform:none;font-weight:500;letter-spacing:0;color:var(--text-secondary,#64748b)}
+.woRincianBaris{padding:2px 0}
+.woRincianBaris span{color:var(--text-secondary,#64748b)}
+@media (max-width:640px){.woRincian{padding-left:16px}}
+`}</style>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <STitle style={{marginBottom:0}}>Manajemen Work Order</STitle>
         <Btn color="#1d4ed8" onClick={()=>{setForm(blank);setPanels([{...blankPanel}]);setEditId(null);setOpen(true);}}>+ Tambah WO</Btn>
@@ -499,6 +523,13 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
                     {sKartu&&<span title={sKartu==="revisi"?`Direvisi ${wo.revisi_oleh?"oleh "+wo.revisi_oleh:""}${wo.revisi_ringkas?": "+wo.revisi_ringkas:""}`:`WO baru${wo.dibuat_oleh?" dari "+wo.dibuat_oleh:""} - belum Anda buka`}
                       style={{fontSize:10,fontWeight:800,letterSpacing:".05em",borderRadius:20,padding:"2px 8px",
                         background:sKartu==="baru"?"#16a34a":"#ca8a04",color:"#fff"}}>{sKartu==="baru"?"BARU":"REVISI"}</span>}
+                    {sKartu==="revisi"&&(()=>{const tags=tagKartu(wo);const lebih=tags.length-MAKS_TAG;return(<>
+                      {tags.slice(0,MAKS_TAG).map(tg=>(
+                        <button key={tg.jenis} type="button" className="woTagBtn" title="Lihat yang diubah (WO belum ditandai dibuka)" aria-expanded={rincianWo===wo.id}
+                          onClick={e=>{e.stopPropagation();setRincianWo(v=>v===wo.id?null:wo.id);}}>● {tg.label}</button>
+                      ))}
+                      {lebih>0&&<button type="button" className="woTagBtn" onClick={e=>{e.stopPropagation();setRincianWo(v=>v===wo.id?null:wo.id);}}>+{lebih} lagi</button>}
+                    </>);})()}
                     <span style={{color:"#94a3b8",fontSize:12}}>📅 {wo.target}</span>
                     {pct<100&&<span style={{fontSize:11,color:st.color,fontWeight:600}}>
                       {isDelayed(wo.target)?`⚠️ -${Math.abs(d)}hr`:`H-${d}`}
@@ -522,6 +553,14 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #fecaca",background:"#fef2f2",color:"#dc2626",cursor:"pointer",fontSize:12,fontWeight:600}}>🗑</button>
               </div>
             </div>
+            {sKartu==="revisi"&&rincianWo===wo.id&&(
+              <div className="woRincian" role="region" aria-label={`Yang diubah WO ${wo.wo}`}>
+                <div className="woRincianJudul">Yang diubah <span>(belum Anda buka - hilang setelah kartu dibuka)</span></div>
+                {tagKartu(wo).flatMap(tg=>tg.langkah).sort((a,b)=>Date.parse(a.waktu)-Date.parse(b.waktu)).map((l,i)=>(
+                  <div key={i} className="woRincianBaris"><b>{teksLangkah(l.r)}</b> <span>· oleh {l.oleh} · {fmtWaktuWib(l.waktu)}</span></div>
+                ))}
+              </div>
+            )}
             {isExp&&[...(wo.panels||[])].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map(p=>{
               const pp=panelOverallCcpAware(p,undefined,ccpMap);const isPExp=expandedPanel[p.id];const cfg=getEffectiveCfg(p.tipe);
               // Gambar WO (REVISI 5 Sep 2026) - dulu CUMA ada di form Edit WO (klik "✏️ Edit"),
