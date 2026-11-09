@@ -144,7 +144,9 @@ export function useWoDigitalDocs() {
     }catch{/* notifikasi gagal - diabaikan */}
     // Penanda REVISI Manajemen WO (23 Okt 2026, keputusan user: "tambah WO revisi" = Engineering mengunggah revisi gambar WO,
     // revisi ke-2 dst). Ditandai pada WO ini + record AKTIF bernomor & berproyek sama. Gagal = hanya log (upload tetap sukses).
-    if(!isFirstDoc)await amankan(async()=>catatRevisiWo(supabase,await woAktifSeNomor(supabase,woId),uname,`revisi gambar ${panelLabel} rev ${maxRev+1}${revMark.trim()?": "+revMark.trim():""}`))
+    // (9 Nov 2026) + rincian terstruktur (tag "WO revisi"); teks ringkas tetap sama.
+    if(!isFirstDoc)await amankan(async()=>catatRevisiWo(supabase,await woAktifSeNomor(supabase,woId),uname,`revisi gambar ${panelLabel} rev ${maxRev+1}${revMark.trim()?": "+revMark.trim():""}`,
+      [{jenis:'gambar',panel:String(panelLabel).trim(),baru:`rev ${maxRev+1}`,catatan:revMark.trim()}]))
 
     // Banner broadcast "WO diubah Engineering" (17 Sep 2026, BUG FIX sore) - upload/revisi gambar
     // teknik dulu TIDAK memicu banner in-app sama sekali (cuma push notif OS di atas), jalur kode

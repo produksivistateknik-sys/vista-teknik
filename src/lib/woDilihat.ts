@@ -12,6 +12,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { fetchAllPaged } from './fetchAllPaged'
 import { laporError } from './laporError'
+import { teksRingkas, type RincianRevisi } from './woRevisiTag'
 
 export type StatusWo = 'baru' | 'revisi' | null
 export function statusWo(wo: any, dilihatPada: string | undefined): StatusWo {
@@ -32,30 +33,48 @@ const rpc = async (db: any, fn: string, args: any, apa: string) => {
 }
 export const tandaiWoDilihat = (db: any, woId: number, admin: string) => rpc(db, 'tandai_wo_dilihat', { p_wo_id: woId, p_admin: admin }, 'tandai WO dilihat')
 export const catatWoDibuat = (db: any, woId: number, oleh: string, split = false) => rpc(db, 'catat_wo_dibuat', { p_wo_id: woId, p_oleh: oleh, p_split: split }, 'catat WO dibuat')
-export async function catatRevisiWo(db: any, woIds: number[], oleh: string, ringkas: string) {
-  for (const id of [...new Set(woIds)]) await rpc(db, 'catat_revisi_wo', { p_wo_id: id, p_oleh: oleh, p_ringkas: ringkas }, 'catat revisi WO')
+// (9 Nov 2026, tag jenis revisi) p_rincian = daftar terstruktur (lib/woRevisiTag RincianRevisi), butuh migration
+// 20261109010000_wo_revisi_rincian.sql. Sebelum SQL itu dijalankan fungsi server masih 3 parameter -> PostgREST menolak
+// (PGRST202) -> diulang TANPA rincian supaya revisi tetap tercatat (teks ringkas tetap terbaca layar).
+export async function catatRevisiWo(db: any, woIds: number[], oleh: string, ringkas: string, rincian?: RincianRevisi[] | null) {
+  for (const id of [...new Set(woIds)]) {
+    const args = { p_wo_id: id, p_oleh: oleh, p_ringkas: ringkas }
+    if (rincian?.length) {
+      const { error } = await db.rpc('catat_revisi_wo', { ...args, p_rincian: rincian })
+      if (!error) continue
+      if (error.code !== 'PGRST202') { console.error('[Penanda WO] catat revisi WO gagal:', error); laporError('supabase_error', error, { aksi: 'catat revisi WO', ...args }); throw error }
+    }
+    await rpc(db, 'catat_revisi_wo', args, 'catat revisi WO')
+  }
 }
 // Versi "tidak menggagalkan": dipakai SETELAH simpan WO berhasil - gagal = hanya log.
 export async function amankan(f: () => Promise<any>) { try { await f() } catch { /* sudah di-log di rpc() */ } }
 
-// Ringkasan revisi dari Edit WO (sebelum vs sesudah). null = tidak ada perubahan yang dihitung revisi.
-export function ringkasRevisiEdit(o: {
+// Rincian revisi dari Edit WO (sebelum vs sesudah) - [] = tidak ada perubahan yang dihitung revisi. ringkasRevisiEdit = teks
+// dari rincian yang sama (format teks TIDAK berubah sejak 23 Okt: dibaca lib/woRevisiTag utk log lama tanpa kolom rincian).
+type EditWo = {
   lama: { proyek: string; target: string; panels: { id: number; nama: string; qty: number }[] }
   baru: { proyek: string; target: string; panels: { id?: number; nama: string; qty: number }[] }
-}): string | null {
-  const r: string[] = []
-  if ((o.lama.target || '') !== (o.baru.target || '')) r.push(`deadline ${o.lama.target || '-'} -> ${o.baru.target || '-'}`)
-  if ((o.lama.proyek || '').trim() !== (o.baru.proyek || '').trim()) r.push(`proyek "${o.lama.proyek}" -> "${o.baru.proyek}"`)
+}
+export function rincianRevisiEdit(o: EditWo): RincianRevisi[] {
+  const r: RincianRevisi[] = []
+  if ((o.lama.target || '') !== (o.baru.target || '')) r.push({ jenis: 'deadline', lama: o.lama.target || '-', baru: o.baru.target || '-' })
+  if ((o.lama.proyek || '').trim() !== (o.baru.proyek || '').trim()) r.push({ jenis: 'proyek', lama: o.lama.proyek, baru: o.baru.proyek })
   const baruAda = o.baru.panels.filter((p) => (p.nama || '').trim())
   const idBaru = new Set(baruAda.filter((p) => p.id).map((p) => Number(p.id)))
   const tambah = baruAda.filter((p) => !p.id).map((p) => p.nama.trim())
   const hapus = o.lama.panels.filter((p) => !idBaru.has(Number(p.id))).map((p) => p.nama.trim())
-  const qty = baruAda.filter((p) => p.id).map((p) => ({ p, l: o.lama.panels.find((x) => Number(x.id) === Number(p.id)) }))
-    .filter(({ p, l }) => l && Number(l.qty) !== Number(p.qty)).map(({ p, l }) => `qty ${p.nama.trim()} ${l!.qty} -> ${p.qty}`)
-  if (tambah.length) r.push(`+${tambah.length} panel (${tambah.join(', ')})`)
-  if (hapus.length) r.push(`-${hapus.length} panel (${hapus.join(', ')})`)
-  r.push(...qty)
-  return r.length ? r.join('; ') : null
+  if (tambah.length) r.push({ jenis: 'panel_tambah', jumlah: tambah.length, panel: tambah.join(', ') })
+  if (hapus.length) r.push({ jenis: 'panel_hapus', jumlah: hapus.length, panel: hapus.join(', ') })
+  baruAda.filter((p) => p.id).forEach((p) => {
+    const l = o.lama.panels.find((x) => Number(x.id) === Number(p.id))
+    if (l && Number(l.qty) !== Number(p.qty)) r.push({ jenis: 'qty', panel: p.nama.trim(), lama: String(l.qty), baru: String(p.qty) })
+  })
+  return r
+}
+export function ringkasRevisiEdit(o: EditWo): string | null {
+  const t = rincianRevisiEdit(o).map(teksRingkas)
+  return t.length ? t.join('; ') : null
 }
 
 // Record AKTIF (tidak diarsip/dihapus) bernomor & berproyek sama - utk revisi gambar WO (keputusan user: hanya yang aktif).
