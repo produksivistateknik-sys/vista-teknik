@@ -13,6 +13,8 @@ import {
   BATAS_INTI, BATAS_ISI, BATAS_SUMBER, UMUR_BASI_HARI, TABEL_SINYAL, type Catatan, type IsiCatatan,
 } from '../lib/panelCatatan'
 import { CSS_KARTU_PANEL } from '../styles/kartuPanelCss'
+import { BarisWoProyek } from './ui/ChipDeadline'
+import { PETA_KOSONG, type PetaWo } from '../lib/petaWo'
 
 const CSS = CSS_KARTU_PANEL + `
 .kda-kt.n-penting{background:var(--ks-nb-penting);box-shadow:inset 0 5px 0 var(--ks-penting)}
@@ -81,7 +83,8 @@ function FormCatatan({ awal, proyekAktif, saran, panelLama, sibuk, judulSimpan, 
   )
 }
 
-export function CatatanAdmin({ db, user }: { db: any; user: any }) {
+// petaWo (9 Nov 2026): nomor WO + chip deadline di kartu (lib/petaWo, components/ui/ChipDeadline BarisWoProyek).
+export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user: any; petaWo?: PetaWo }) {
   const [proyekAktif, setProyekAktif] = useState<ProyekAktif[]>([])
   const [daftar, setDaftar] = useState<Catatan[]>([])
   const [memuat, setMemuat] = useState(true)
@@ -142,8 +145,6 @@ export function CatatanAdmin({ db, user }: { db: any; user: any }) {
           rows: rc, aktif: rc.filter(c => c.status === 'aktif').length, penting: rc.filter(c => c.penting && c.status === 'aktif').length,
           panelNonaktif: id != null && !pn, proyekNonaktif: !pa })
       }
-      const n = new Map<string, number>(); sub.forEach(s => { const k = s.nama.trim().toUpperCase(); n.set(k, (n.get(k) || 0) + 1) })
-      sub.forEach(s => { if (s.id == null || (n.get(s.nama.trim().toUpperCase()) || 0) < 2) s.wo = null })
       out.push(...sub)
     }
     // Kartu dgn catatan penting aktif naik ke atas (urutan proyek/panel dipertahankan di dalam kelompoknya).
@@ -229,7 +230,7 @@ export function CatatanAdmin({ db, user }: { db: any; user: any }) {
                 <div className="kda-kh">
                   <div className="kda-kn">
                     <div className="kda-nm">{k.id == null || /^panel\b/i.test(k.nama) ? k.nama : 'Panel ' + k.nama}</div>
-                    <div className="kda-pj">{k.proyek}{k.wo && <small> · WO {k.wo}</small>}{k.proyekNonaktif ? <small> · proyek diarsipkan</small> : k.panelNonaktif ? <small> · panel tidak aktif</small> : null}</div>
+                    <div className="kda-pj"><BarisWoProyek peta={petaWo} proyek={k.proyek} panelId={k.id} snapshot={{ woId: k.rows[0]?.wo_id }}>{k.proyekNonaktif ? <small> · proyek diarsipkan</small> : k.panelNonaktif ? <small> · panel tidak aktif</small> : null}</BarisWoProyek></div>
                   </div>
                   <span className={'kda-pill ' + (k.penting > 0 ? 'p' : k.aktif > 0 ? 'n' : 'o')}>{k.penting > 0 ? `★ ${k.penting} penting` : k.aktif > 0 ? `${k.aktif} aktif` : 'Ditindaklanjuti'}</span>
                 </div>
