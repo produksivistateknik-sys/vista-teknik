@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 
 import { supabase } from '../lib/supabase'
 import { useAktivitasPanel } from '../hooks/useAktivitasPanel'
 import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas, type OperatorShift } from '../lib/aktivitasPanel'
+import type { SumberShift } from '../lib/shiftSesi'
 import { hariKerjaWib } from '../lib/tanggalWib'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
@@ -122,13 +123,17 @@ const LABEL: Record<string, string> = { berjalan: 'Berjalan', selesai: 'Selesai'
 // Operator per shift (8 Nov 2026, lib/shiftSesi): satu baris per shift, lencana SHIFT 1/2/?, maksimal 4 nama lalu "+N" (nama
 // lengkap di tooltip), lalu "· berjalan" atau durasi gabungan rentang shift itu (bukan jumlah per orang).
 const MAKS_NAMA = 4
+const KET_SUMBER_SHIFT: Record<SumberShift, string> = { login: 'dari pilihan shift saat login', simpan: 'dari Simpan Progress', sesiLain: 'perkiraan: mayoritas durasi sesi lain operator hari itu' }
 function BarisShift({ s }: { s: OperatorShift }) {
   const lebih = s.nama.length - MAKS_NAMA
-  const ket = s.shift ? `Shift ${s.shift}${s.dariSesiLain ? ' (dari sesi lain operator ini hari itu)' : ' (dari Simpan Progress)'}` : 'Shift tidak tercatat: data lama atau belum ada Simpan Progress pada sesi ini'
+  const ket = s.shift ? `Shift ${s.shift} (${s.sumber.map((x) => KET_SUMBER_SHIFT[x]).join('; ')})` : 'Shift tidak tercatat: timer dibuat sebelum shift login disimpan, belum ada Simpan Progress, dan tidak ada sesi lain operator ini hari itu'
+  const perkiraan = !!s.shift && s.namaPerkiraan.length > 0
+  const ketPerkiraan = perkiraan ? `
+* Perkiraan untuk ${s.namaPerkiraan.join(', ')}: shift diambil dari mayoritas durasi sesi lain operator itu hari itu` : ''
   return (
-    <div className="akp-m akp-shr" title={`${ket}
+    <div className="akp-m akp-shr" title={`${ket}${ketPerkiraan}
 ${s.nama.join(', ')}`}>
-      <span className={`akp-sh s${s.shift ?? 'x'}`}>SHIFT {s.shift ?? '?'}</span>
+      <span className={`akp-sh s${s.shift ?? 'x'}`}>SHIFT {s.shift ?? '?'}{perkiraan ? '*' : ''}</span>
       <span>{s.nama.slice(0, MAKS_NAMA).join(', ')}{lebih > 0 ? ` +${lebih}` : ''}{s.berjalan ? ' · berjalan' : s.menit > 0 ? ` · ${labelLama(s.menit)}` : ''}</span>
     </div>
   )
