@@ -29,8 +29,10 @@ export function useTimerHariRencana(db: any, selDate: string, opsi: { namaKanal?
     const fetchTimerHari = async () => {
       let all: any[] = [], from = 0
       while (true) {
+        // select('*') (12 Nov 2026): kolom shift (pilihan shift saat login HP, Aktivitas Panel lib/shiftSesi) ikut terbaca
+        // begitu SQL tahap D dijalankan, tanpa galat "column does not exist" sebelum itu.
         const { data, error }: any = await db.from('fcs_timer_kerja')
-          .select('id,panel_id,kode_komponen,proses,tahap,pekerja_id,tanggal,mulai,selesai,durasi_menit')
+          .select('*')
           .or(`selesai.is.null,tanggal.eq.${selDate}`).order('id').range(from, from + 999)
         if (error) { console.error('[Rencana Harian] gagal muat timer:', error); if (!cancelled) setGalat(error.message || 'gagal memuat timer'); return } // data lama dibiarkan, dicoba lagi di siklus berikut
         all = all.concat(data ?? [])
