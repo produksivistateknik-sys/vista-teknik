@@ -15,7 +15,7 @@ type KomponenChecklist = { qty?: number; progress?: Record<string, number>; qtyP
 type PanelJadwal = { tipe?: string; checklist?: Record<string, KomponenChecklist> } | null | undefined
 
 export type StatusTambah =
-  | { jenis: 'terjadwal'; x: number; y: number } // sudah di sel ini; x = qty proses s/d tanggal itu, y = qty entri (qtyPerKomponen) / qty panel
+  | { jenis: 'terjadwal'; x: number; y: number; porsi?: number } // sudah di sel ini; x = qty proses s/d tanggal itu, y = qty komponen di panel, porsi = qtyPerKomponen sel ini (bila ada)
   | { jenis: 'selesai' }
   | { jenis: 'tanggalLain'; tanggal: string } // tanggal terdekat >= hari ini
   | { jenis: 'qty0' }
@@ -29,7 +29,10 @@ export function statusTambahKomponen(row: BarisJadwal, panel: PanelJadwal, tangg
   const sch = row?.schedule || {}
   const entri = (sch[tanggal] || []).find(e => e.wp === wp)
   if ((entri?.komponen || []).includes(kode)) {
-    return { jenis: 'terjadwal', x: getQtyProsesAsOfDate(cl, proses, tanggal), y: entri?.qtyPerKomponen?.[kode] ?? qty }
+    // y = qty komponen (11 Nov 2026, temuan bug-detector #2): dulu porsi sel -> "progres 12/11" terbaca seolah progres > qty.
+    const porsi = entri?.qtyPerKomponen?.[kode]
+    const porsiAngka = porsi == null ? NaN : Number(porsi)
+    return { jenis: 'terjadwal', x: getQtyProsesAsOfDate(cl, proses, tanggal), y: qty, ...(Number.isFinite(porsiAngka) ? { porsi: porsiAngka } : {}) }
   }
   if (qty <= 0) return { jenis: 'qty0' }
   const alasan = alasanKomponenDilewati(kode, panel || undefined, proses)
@@ -47,6 +50,19 @@ export function statusTambahKomponen(row: BarisJadwal, panel: PanelJadwal, tangg
   if (selesai) return { jenis: 'selesai' }
   if (lain) return { jenis: 'tanggalLain', tanggal: lain }
   return { jenis: 'bisa' }
+}
+
+// LABEL QTY KOMPONEN DI SEL JADWAL (11 Nov 2026, temuan bug-detector #2) - SATU sumber utk chip modal sel
+// (ModalJadwalSel), daftar "di sel ini" modal, dan popup Raw Schedule per WP (RawScheduleAccordion).
+// x = dikerjakan s/d tanggal sel, dibanding qty KOMPONEN (bukan porsi sel). Porsi sel disebut terpisah bila beda.
+// qty komponen 0/tidak ada (panel arsip, kode dihapus dari checklist) -> dibanding porsi sel (perilaku lama).
+// Porsi tidak valid (bukan angka, mis. data rusak) diperlakukan seperti tidak ada porsi -> tidak pernah tampil "NaN".
+export function labelQtySel(x: number, qty: number, porsi?: number | string | null): string {
+  const n = porsi == null || porsi === '' ? NaN : Number(porsi)
+  const p = Number.isFinite(n) ? n : null
+  const xx = Number.isFinite(Number(x)) ? Number(x) : 0
+  if (!(qty > 0)) return p != null ? `${xx}/${p}` : `${xx}/0`
+  return `${xx}/${qty}${p != null && p !== qty ? ` · porsi sel ${p}` : ''}`
 }
 
 // BUANG KODE DARI 1 SEL (B3, 29 Okt 2026) - SATU sumber utk "Batalkan" tambah langsung (ModalJadwalSel.hapusKodeDariSel) &
