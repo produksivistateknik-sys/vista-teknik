@@ -1287,7 +1287,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       {popProses && (
         <>
           <div onClick={() => setPopProses(null)} onContextMenu={e => { e.preventDefault(); setPopProses(null) }} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
-          <div role="menu" aria-label="Pilih proses" style={{ position: 'fixed', left: Math.max(8, Math.min(popProses.x, window.innerWidth - lebarMaksPopProses() - 8)), maxWidth: lebarMaksPopProses(), top: Math.min(popProses.y, window.innerHeight - 60 - popProses.opsi.length * 30), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '6px 0', minWidth: 230, fontSize: 12 }}>
+          <div role="menu" aria-label="Pilih proses" style={{ position: 'fixed', left: Math.max(8, Math.min(popProses.x, window.innerWidth - lebarMaksPopProses() - 8)), maxWidth: lebarMaksPopProses(), top: Math.min(popProses.y, window.innerHeight - 60 - popProses.opsi.length * 30), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '6px 0', minWidth: Math.min(230, lebarMaksPopProses()), fontSize: 12 }}>
             <div style={{ padding: '2px 14px 6px', fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>
               {popProses.r.t !== 'penanda' && `${popProses.r.blok.panel} · ${popProses.r.t === 'komp' ? popProses.r.k.kode : popProses.r.g.key} · ${getDayLabel(popProses.d)}`}
             </div>
