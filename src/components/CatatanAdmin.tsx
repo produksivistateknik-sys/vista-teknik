@@ -13,6 +13,8 @@ import {
   BATAS_INTI, BATAS_ISI, BATAS_SUMBER, UMUR_BASI_HARI, TABEL_SINYAL, type Catatan, type IsiCatatan,
 } from '../lib/panelCatatan'
 import { CSS_KARTU_PANEL } from '../styles/kartuPanelCss'
+import { useAdminDilihat } from '../hooks/useAdminDilihat'
+import { statusDilihat } from '../lib/adminDilihat'
 import { BarisWoProyek } from './ui/ChipDeadline'
 import { PETA_KOSONG, type PetaWo } from '../lib/petaWo'
 
@@ -84,7 +86,11 @@ function FormCatatan({ awal, proyekAktif, saran, panelLama, sibuk, judulSimpan, 
 }
 
 // petaWo (9 Nov 2026): nomor WO + chip deadline di kartu (lib/petaWo, components/ui/ChipDeadline BarisWoProyek).
-export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user: any; petaWo?: PetaWo }) {
+// onBaru (11 Nov 2026): jumlah catatan BARU / DIUBAH utk admin ini -> hitungan di tab (KendalaDanCatatan).
+export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG, onBaru }: { db: any; user: any; petaWo?: PetaWo; onBaru?: (baru: number, diubah: number) => void }) {
+  // Penanda BARU/DIUBAH per admin (lib/adminDilihat): buatan sendiri = dibuat_username akun ini; DIUBAH = diubah orang lain.
+  const namaSaya = String(user?.nama || user?.name || '').trim()
+  const { dilihat, tandai, tandaiSemua } = useAdminDilihat(db, 'catatan', namaSaya)
   const [proyekAktif, setProyekAktif] = useState<ProyekAktif[]>([])
   const [daftar, setDaftar] = useState<Catatan[]>([])
   const [memuat, setMemuat] = useState(true)
@@ -156,12 +162,18 @@ export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user
     panel: new Set(aktifDasar.filter(c => c.panel_id != null).map(c => c.proyek + '|' + c.panel_id)).size, proyek: new Set(aktifDasar.map(c => c.proyek)).size,
   }
 
+  const statusC = (c: Catatan) => statusDilihat({ d: dilihat, id: c.id, dibuat: c.dibuat_pada,
+    milikSaya: user?.username ? c.dibuat_username === user.username : c.dibuat_oleh === namaSaya,
+    diubah: c.diubah_pada, diubahOlehSaya: c.diubah_oleh === namaSaya })
+  const jmlTanda = useMemo(() => { let b = 0, u = 0; for (const c of daftar) { const s = statusC(c); if (s === 'baru') b++; else if (s === 'diubah') u++ } return { b, u } }, [daftar, dilihat, namaSaya]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBaru?.(jmlTanda.b, jmlTanda.u) }, [jmlTanda.b, jmlTanda.u, onBaru])
   const item = (c: Catatan) => {
     const done = c.status !== 'aktif'
     const umur = umurHari(c)
     const panjang = c.isi.length > 280 || c.isi.split('\n').length > 4
     return (
-      <div key={c.id} className={'kda-it' + (done ? ' done' : '') + (c.penting && !done ? ' pin' : '')}>
+      <div key={c.id} className={'kda-it' + (done ? ' done' : '') + (c.penting && !done ? ' pin' : '') + (statusC(c) ? ' ' + statusC(c) : '')}
+        onClickCapture={(e) => { if (statusC(c) && (e.target as HTMLElement).closest('button')) tandai([c.id]) }}>
         {edit === c.id ? (
           <FormCatatan awal={{ proyek: c.proyek, panelId: c.panel_id, inti: c.inti, isi: c.isi, sumberInfo: c.sumber_info || '', penting: c.penting }}
             proyekAktif={proyekAktif} saran={saran} panelLama={c.panel_id != null ? { id: c.panel_id, nama: c.panel_nama || `Panel #${c.panel_id}` } : null}
@@ -169,7 +181,7 @@ export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user
             onSimpan={async x => { const ok = await jalankan('mengubah catatan', () => ubahCatatan(db, user, c, x)); if (ok) setEdit(null) }} />
         ) : <>
           <div className="kda-ih">
-            <div className="kct-inti">{c.penting && <span className="bt" aria-label="Penting">★</span>}{c.inti}</div>
+            <div className="kct-inti">{statusC(c) === 'baru' && <span className="kda-lbl baru">BARU</span>}{statusC(c) === 'diubah' && <span className="kda-lbl diubah" title={`Diubah ${c.diubah_oleh || ''} sesudah terakhir Anda lihat`}>DIUBAH</span>}{c.penting && <span className="bt" aria-label="Penting">★</span>}{c.inti}</div>
             <span className={'kda-pill ' + (done ? 'o' : c.penting ? 'p' : 'n')}>{done ? 'Ditindaklanjuti' : c.penting ? 'Penting' : 'Aktif'}</span>
           </div>
           <div className={'kct-isi' + (panjang && !isiPenuh[c.id] ? ' lipat' : '')}>{c.isi}</div>
@@ -218,6 +230,7 @@ export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user
           ))}
         </div>
         <input className="kct-cari" type="search" placeholder="Cari inti, isi, panel, proyek, nama…" aria-label="Cari catatan" value={cari} onChange={e => setCari(e.target.value)} />
+        {jmlTanda.b + jmlTanda.u > 0 && <button className="kda-semua kdaBtn" onClick={() => tandaiSemua()}>Tandai semua sudah dilihat ({jmlTanda.b + jmlTanda.u})</button>}
         <span className="kda-cnt">{jumlahTampil} catatan · {kartu.length} kartu</span>
       </div>
       {galat && <div className="kda-err">{galat} <button className="kda-ghost kdaBtn" onClick={() => { setMemuat(true); muat() }}>Coba lagi</button></div>}
@@ -226,13 +239,14 @@ export function CatatanAdmin({ db, user, petaWo = PETA_KOSONG }: { db: any; user
           {kartu.map(k => {
             const buka = !!penuh[k.kunci]
             return (
-              <section key={k.kunci} className={'kda-kt ' + (k.penting > 0 ? 'n-penting' : 'n-netral')} aria-label={k.nama + ' - ' + k.proyek}>
+              <section key={k.kunci} className={'kda-kt ' + (k.penting > 0 ? 'n-penting' : 'n-netral') + (k.rows.some(statusC) ? ' ada-baru' : '')} aria-label={k.nama + ' - ' + k.proyek}
+                onClick={(e) => { const ids = k.rows.filter(statusC).map((c) => c.id); if (ids.length && !(e.target as HTMLElement).closest('button,input,textarea,select,a,label')) tandai(ids) }}>
                 <div className="kda-kh">
                   <div className="kda-kn">
                     <div className="kda-nm">{k.id == null || /^panel\b/i.test(k.nama) ? k.nama : 'Panel ' + k.nama}</div>
                     <div className="kda-pj"><BarisWoProyek peta={petaWo} proyek={k.proyek} panelId={k.id} snapshot={{ woId: k.rows[0]?.wo_id }}>{k.proyekNonaktif ? <small> · proyek diarsipkan</small> : k.panelNonaktif ? <small> · panel tidak aktif</small> : null}</BarisWoProyek></div>
                   </div>
-                  <span className={'kda-pill ' + (k.penting > 0 ? 'p' : k.aktif > 0 ? 'n' : 'o')}>{k.penting > 0 ? `★ ${k.penting} penting` : k.aktif > 0 ? `${k.aktif} aktif` : 'Ditindaklanjuti'}</span>
+                  {k.rows.some(statusC) && <span className="kda-pill baru" style={{ marginRight: 4 }}>{k.rows.filter(statusC).length} baru</span>}<span className={'kda-pill ' + (k.penting > 0 ? 'p' : k.aktif > 0 ? 'n' : 'o')}>{k.penting > 0 ? `★ ${k.penting} penting` : k.aktif > 0 ? `${k.aktif} aktif` : 'Ditindaklanjuti'}</span>
                 </div>
                 {(buka ? k.rows : k.rows.slice(0, MAKS_ITEM)).map(item)}
                 {k.rows.length > MAKS_ITEM && <button className="kda-lagi kdaBtn" onClick={() => setPenuh(s => ({ ...s, [k.kunci]: !buka }))}>{buka ? 'Lipat' : `Lihat ${k.rows.length - MAKS_ITEM} lagi`}</button>}
