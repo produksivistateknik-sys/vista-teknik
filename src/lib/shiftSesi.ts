@@ -4,9 +4,10 @@
 // 1. kolom t.shift bila suatu saat ada (draf kolom fcs_timer_kerja.shift, belum dijalankan);
 // 2. entri history ber-shift di sel yang sama (panel+kode+proses) antara jam mulai dan selesai+10 mnt (berjalan: sampai
 //    sekarang+10 mnt); tepat satu shift -> itu, dua shift (sesi melintasi pergantian) -> tidak diketahui;
-// 3. masih kosong: sesi lain operator itu pada hari kerja yang sama (yang shift-nya dari langkah 1/2): shift MAYORITAS;
-//    seri -> shift sesi yang paling dekat waktunya (12 Nov 2026, keputusan user; dulu hanya bila semua sesi satu shift,
-//    sehingga satu simpan Shift 2 milik rekan setim di sel bersama membuat 17 sesi ANGGUN 9 Nov tampil "?").
+// 3. masih kosong: sesi lain operator itu pada hari kerja yang sama (yang shift-nya dari langkah 1/2): shift MAYORITAS
+//    menurut DURASI sesi; seri -> shift sesi yang paling dekat waktunya (12 Nov 2026, keputusan user; dulu hanya bila
+//    semua sesi satu shift, sehingga satu simpan Shift 2 milik rekan setim di sel bersama membuat 17 sesi ANGGUN 9 Nov
+//    tampil "?"). Hasil langkah 3 = PERKIRAAN: layar memberi tanda "*" + tooltip; sumber langsung tidak pernah ditimpa.
 // SUMBER UTAMA (12 Nov 2026, keputusan user): pilihan shift operator saat login HP ("Pilih shift kerja Anda hari ini")
 // disimpan ke kolom fcs_timer_kerja.shift saat timer dimulai (tahap D, butuh SQL + rilis vista-pekerja). TIDAK ada
 // aturan jam - batas jam shift tidak dipakai sama sekali.
@@ -46,11 +47,17 @@ function jarakSesi(x: SesiShift, y: SesiShift, sekarangMs: number): number {
   return Math.max(0, a1 - b2, a2 - b1)
 }
 
-// Shift mayoritas sesi lain operator hari itu; seri -> sesi terdekat waktunya; masih seri (jarak sama, shift beda) -> null.
+// Durasi sesi (ms); berjalan = sampai sekarang; tidak valid / negatif -> 0.
+function durasiSesi(x: SesiShift, sekarangMs: number): number {
+  const a = Date.parse(x.mulai), b = x.selesai ? Date.parse(x.selesai) : sekarangMs
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : 0
+}
+
+// Shift mayoritas (menurut DURASI) sesi lain operator hari itu; seri -> sesi terdekat waktunya; masih seri -> null.
 export function shiftDariSesiLain(t: SesiShift, sesiLain: { t: SesiShift; shift: Shift }[], sekarangMs = Date.now()): Shift | null {
   if (!sesiLain.length) return null
   const n = { '1': 0, '2': 0 } as Record<Shift, number>
-  for (const s of sesiLain) n[s.shift]++
+  for (const s of sesiLain) n[s.shift] += durasiSesi(s.t, sekarangMs)
   if (n['1'] !== n['2']) return n['1'] > n['2'] ? '1' : '2'
   let terbaik = Infinity; const dekat = new Set<Shift>()
   for (const s of sesiLain) {
@@ -80,14 +87,14 @@ export function petaShiftHari(timers: SesiShift[], historyUntuk: (t: SesiShift) 
 }
 
 // Kelompokkan sesi satu sel per shift, urut menurut mulai paling awal. menit dihitung pemanggil (gabungan rentang).
-export function kelompokPerShift<T extends SesiShift>(timers: T[], peta: Map<string, InfoShift>): { shift: Shift | null; sesi: T[]; dariSesiLain: boolean; sumber: SumberShift[] }[] {
-  const g = new Map<string, { shift: Shift | null; sesi: T[]; dariSesiLain: boolean; sumber: SumberShift[] }>()
+export function kelompokPerShift<T extends SesiShift>(timers: T[], peta: Map<string, InfoShift>): { shift: Shift | null; sesi: T[]; dariSesiLain: boolean; sumber: SumberShift[]; sesiPerkiraan: T[] }[] {
+  const g = new Map<string, { shift: Shift | null; sesi: T[]; dariSesiLain: boolean; sumber: SumberShift[]; sesiPerkiraan: T[] }>()
   for (const t of [...(timers || [])].sort((x, y) => String(x.mulai).localeCompare(String(y.mulai)))) {
     const info = peta.get(String(t.id)) || { shift: null, dariSesiLain: false, sumber: null }
     const k = info.shift ?? '?'
-    const r = g.get(k) || g.set(k, { shift: info.shift, sesi: [], dariSesiLain: false, sumber: [] }).get(k)!
+    const r = g.get(k) || g.set(k, { shift: info.shift, sesi: [], dariSesiLain: false, sumber: [], sesiPerkiraan: [] }).get(k)!
     r.sesi.push(t)
-    if (info.dariSesiLain) r.dariSesiLain = true
+    if (info.dariSesiLain) { r.dariSesiLain = true; r.sesiPerkiraan.push(t) }
     if (info.sumber && !r.sumber.includes(info.sumber)) r.sumber.push(info.sumber)
   }
   return [...g.values()]

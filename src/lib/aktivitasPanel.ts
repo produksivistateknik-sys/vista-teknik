@@ -35,7 +35,8 @@ export type KategoriAktivitas = 'berjalan' | 'selesai' | 'progres' | 'lagi' | 'd
 export type TimerJalan = { nama: string; mulai: string; tahap: string | null }
 // Operator per shift (8 Nov 2026, estafet Shift 1/2; lib/shiftSesi). shift null = tidak diketahui ("Shift ?"). menit = gabungan
 // rentang sesi shift itu (tidak menjumlah orang). Kosong bila sel tanpa timer (nama dari checkpoint saja).
-export type OperatorShift = { shift: Shift | null; nama: string[]; menit: number; berjalan: boolean; dariSesiLain: boolean; sumber: SumberShift[] }
+// namaPerkiraan = operator yang shift-nya PERKIRAAN (mayoritas durasi sesi lain hari itu) -> lencana bertanda "*".
+export type OperatorShift = { shift: Shift | null; nama: string[]; menit: number; berjalan: boolean; dariSesiLain: boolean; sumber: SumberShift[]; namaPerkiraan: string[] }
 export type BarisAktivitas = {
   kunci: string; proses: string; kode: string; namaKomponen: string; kategori: KategoriAktivitas
   pct: number | null; qty: string | null; operator: string[]; perShift: OperatorShift[]; jalan: TimerJalan[]; menit: number
@@ -113,6 +114,7 @@ function barisSel(o: { panel: any; kode: string; proses: string; tanggal: string
     operator: op.pengerja.map((e) => e.nama),
     perShift: kelompokPerShift(timer, petaShift).map((g) => ({
       shift: g.shift, dariSesiLain: g.dariSesiLain, sumber: g.sumber,
+      namaPerkiraan: [...new Set(g.sesiPerkiraan.map((t: any) => namaById(t.pekerja_id) || `#${t.pekerja_id}`))],
       nama: [...new Set(g.sesi.map((t: any) => namaById(t.pekerja_id) || `#${t.pekerja_id}`))],
       menit: menitGabungan((hariIniDilihat ? g.sesi : g.sesi.filter((t: any) => t.selesai)) as TimerJejak[], sekarangMs),
       berjalan: hariIniDilihat && g.sesi.some((t: any) => !t.selesai),
