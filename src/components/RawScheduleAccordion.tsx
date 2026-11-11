@@ -33,6 +33,11 @@ import { supabase } from '../lib/supabase'
 import { statusDariPersen } from '../lib/statusProgres'
 import { susunPivot, type BlokPanel, type GrupKomponen, type BarisKomponen, type Penanda, type ChipProses, type RingkasanProses } from '../lib/rawPivot'
 
+// Lebar maksimum popup pilih proses (11 Nov 2026, temuan ui-reviewer): label "progres x/qty · porsi sel N · edit" lebih
+// panjang - dulu hanya minWidth 230 + left <= lebar layar - 250, popup lebih lebar bisa menjorok keluar layar di tepi kanan.
+// Kini lebar dibatasi (maks 340px, atau lebar layar - 16px) dan posisi kiri dijaga agar seluruh popup tetap di layar.
+const lebarMaksPopProses = () => Math.min(340, window.innerWidth - 16)
+
 // ─────────────────────────────────────────────────────────────────────────────────────────────────
 // RAW SCHEDULE ACCORDION PER WP (Tahap 1 migrasi, 9 Okt 2026) - tampilan per WP dari data produksi.
 // Tahap 2 (9 Okt 2026): pilih & PINDAH (Ctrl/Alt/Shift+klik, lasso, drag grup, Ctrl+X/V, Ctrl+Z) lewat jalur
@@ -1282,15 +1287,15 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
       {popProses && (
         <>
           <div onClick={() => setPopProses(null)} onContextMenu={e => { e.preventDefault(); setPopProses(null) }} style={{ position: 'fixed', inset: 0, zIndex: 10030 }} />
-          <div role="menu" aria-label="Pilih proses" style={{ position: 'fixed', left: Math.min(popProses.x, window.innerWidth - 250), top: Math.min(popProses.y, window.innerHeight - 60 - popProses.opsi.length * 30), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '6px 0', minWidth: 230, fontSize: 12 }}>
+          <div role="menu" aria-label="Pilih proses" style={{ position: 'fixed', left: Math.max(8, Math.min(popProses.x, window.innerWidth - lebarMaksPopProses() - 8)), maxWidth: lebarMaksPopProses(), top: Math.min(popProses.y, window.innerHeight - 60 - popProses.opsi.length * 30), zIndex: 10031, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, boxShadow: '0 8px 24px rgba(0,0,0,.15)', padding: '6px 0', minWidth: 230, fontSize: 12 }}>
             <div style={{ padding: '2px 14px 6px', fontSize: 10.5, color: '#64748b', fontWeight: 700 }}>
               {popProses.r.t !== 'penanda' && `${popProses.r.blok.panel} · ${popProses.r.t === 'komp' ? popProses.r.k.kode : popProses.r.g.key} · ${getDayLabel(popProses.d)}`}
             </div>
             {popProses.opsi.map(o => { const w = (PROSES_COLOR as any)[o.proses] || '#64748b'; const lb = labelOpsi(o); return (
               <button key={o.rawId} role="menuitem" disabled={!lb.aktif} onClick={() => pilihOpsi(o, popProses.r, popProses.d, popProses.semuaWp)} style={{ display: 'flex', width: '100%', alignItems: 'center', gap: 8, padding: '6px 14px', border: 'none', background: 'none', cursor: lb.aktif ? 'pointer' : 'default', fontSize: 12, textAlign: 'left', fontFamily: 'inherit', color: lb.aktif ? '#1e293b' : '#94a3b8' }}>
                 <span style={{ width: 9, height: 9, borderRadius: 99, background: w, flex: '0 0 auto', opacity: lb.aktif ? 1 : .45 }} />
-                <span style={{ fontWeight: 700 }}>{o.proses}</span>
-                <span style={{ marginLeft: 'auto', fontSize: 10.5, color: lb.warna, fontWeight: lb.teks.startsWith('+') ? 700 : 500 }}>{lb.teks}</span>
+                <span style={{ fontWeight: 700, flex: '0 0 auto' }}>{o.proses}</span>
+                <span style={{ marginLeft: 'auto', minWidth: 0, textAlign: 'right', whiteSpace: 'normal', fontSize: 10.5, color: lb.warna, fontWeight: lb.teks.startsWith('+') ? 700 : 500 }}>{lb.teks}</span>
               </button>) })}
           </div>
         </>
