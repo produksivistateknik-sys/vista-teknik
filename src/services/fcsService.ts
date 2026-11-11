@@ -1113,6 +1113,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
     const scheduleUtkCek = existing?.schedule || {}
     let komponenFinal = [...komponenList]
     let qtyFinal: Record<string, number> | undefined = qtyPerKomponen ? { ...qtyPerKomponen } : undefined
+    const sisaBolehKode: Record<string, number> = {} // batas porsi sel ini = qty - porsi kode itu di tanggal lain (WP sama)
     if (qtyFinal) {
       for (const kode of komponenList) {
         const totalQtyKode = checklist[kode]?.qty || 0
@@ -1128,6 +1129,7 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
           })
         })
         const sisaBoleh = totalQtyKode - sudahAda
+        sisaBolehKode[kode] = sisaBoleh
         if (sisaBoleh <= 0) {
           komponenFinal = komponenFinal.filter((k) => k !== kode)
           delete qtyFinal[kode]
@@ -1143,10 +1145,25 @@ export function buatFcsService(supabase: typeof supabaseAsli = supabaseAsli, act
       if (!schedule[tanggal]) schedule[tanggal] = []
       const existingEntry = schedule[tanggal].find((e: any) => e.wp === wp)
       if (existingEntry) {
+        const kompSebelum: string[] = [...(existingEntry.komponen || [])]
         const setKomp = new Set([...existingEntry.komponen, ...komponenFinal])
         existingEntry.komponen = Array.from(setKomp)
         if (qtyFinal) {
-          existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...qtyFinal }
+          // QTY NAIK -> JADWALKAN SISA (11 Nov 2026, insiden PANEL LVMDP WO 097 "(12/11)"): sisa yang jatuh ke sel yang SAMA
+          // dgn porsi lama dulu MENIMPA porsi itu (1 -> 11, harusnya 12). Hanya di mode kodeFilter (hitungMulai terisi =
+          // jalur sinkron qty naik / dari 0): bila sel ini sudah punya porsi EKSPLISIT utk kode itu, porsi baru DIJUMLAH,
+          // dibatasi qty - porsi kode itu di tanggal lain (sisaBolehKode). Batas itu membuat panggilan ganda/retry tidak
+          // menggandakan porsi (idempoten). Kode di sel ini tanpa porsi eksplisit = qty penuh -> dibiarkan penuh.
+          // FCS biasa / template (tanpa hitungMulai) tetap menimpa seperti sebelumnya.
+          const gabung: Record<string, number> = { ...qtyFinal }
+          if (hitungMulai) {
+            for (const kode of Object.keys(gabung)) {
+              const lama = existingEntry.qtyPerKomponen?.[kode]
+              if (lama != null) gabung[kode] = Math.min(Number(lama) + Number(gabung[kode]), sisaBolehKode[kode] ?? Infinity)
+              else if (kompSebelum.includes(kode)) delete gabung[kode]
+            }
+          }
+          existingEntry.qtyPerKomponen = { ...(existingEntry.qtyPerKomponen || {}), ...gabung }
         }
       } else {
         schedule[tanggal].push({ wp, komponen: komponenFinal, ...(qtyFinal ? { qtyPerKomponen: qtyFinal } : {}), ...(generatedBy ? { createdBy: generatedBy, createdAt: new Date().toISOString() } : {}) })

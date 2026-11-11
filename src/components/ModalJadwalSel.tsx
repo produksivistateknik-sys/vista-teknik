@@ -650,8 +650,11 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                         // qtyPerKomponen (qty dipecah ke tanggal ini doang, lihat fitur pecah qty
                         // kapasitas) diutamakan drpd qty total panel - kalau gak ada override,
                         // baru fallback ke qty total (kartu emang nunjuk semua qty di tanggal itu).
-                        const qtyTotalKomp=e.qtyPerKomponen?.[k]??(Number(clForCell?.qty)||0);
-                        const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(${qtyDoneKomp}/${qtyTotalKomp})`;
+                        // Label (11 Nov 2026, insiden LVMDP "(12/11)"): dulu "dikerjakan s/d tanggal sel / porsi sel" - dua lingkup
+                        // beda, terbaca seolah progres > qty. Kini dikerjakan dibanding qty komponen; porsi sel hanya disebut bila beda.
+                        const qtyKompFull=Number(clForCell?.qty)||0;
+                        const porsiSelKomp=e.qtyPerKomponen?.[k];
+                        const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(dikerjakan ${qtyDoneKomp}/${qtyKompFull}${porsiSelKomp!=null&&Number(porsiSelKomp)!==qtyKompFull?` · porsi sel ini ${porsiSelKomp}`:""})`;
                         const isKompDone=progressKomp>=100;
                         // Warna chip SELALU ikut warna proses (gak berubah karena status) - status
                         // ditandai ikon terpisah aja (✓ selesai, • berprogres, kosong kalau belum).
