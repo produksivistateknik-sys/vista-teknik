@@ -1,8 +1,9 @@
 -- TAHAP D langkah a: CEK LIVE SEBELUM SQL kolom shift (12 Nov 2026). HANYA SELECT - tidak mengubah apa pun.
 -- Jalankan sekali di SQL Editor (satu query, semua hasil dalam satu tabel), kirim hasilnya.
 -- Yang dicari:
---   grant_kolom  : grant per kolom anon/authenticated di fcs_timer_kerja (bila ADA, kolom baru shift TIDAK otomatis bisa
---                  di-insert HP -> perlu grant tambahan). Kosong = grant tingkat tabel (aman).
+--   grant_kolom  : grant PER KOLOM di fcs_timer_kerja (pg_attribute.attacl). 0 baris = tidak ada grant per kolom (aman:
+--                  kolom baru shift ikut grant tingkat tabel). Ada baris = perlu grant INSERT/SELECT shift tambahan.
+--                  (information_schema.column_privileges TIDAK dipakai: ia juga menampilkan grant tingkat tabel per kolom.)
 --   grant_tabel  : hak anon/authenticated di tingkat tabel fcs_timer_kerja (INSERT/SELECT/UPDATE diharapkan ada).
 --   rls          : status RLS kedua tabel + policy yang ada (WITH CHECK yang menyebut kolom tertentu perlu dicek).
 --   trigger      : trigger buatan (bukan internal) di fcs_timer_kerja / _archived yang mungkin menyalin kolom.
@@ -10,10 +11,9 @@
 --                  'notify pgrst, reload schema' di SQL tahap D yang memuat ulang.
 --   kolom_shift  : apakah kolom shift SUDAH ada (diharapkan 0 baris sebelum tahap D).
 --   jumlah_baris : ukuran kedua tabel (perkiraan lama kunci ALTER).
-select 'grant_kolom' as cek, grantee || ' ' || privilege_type || ' (' || count(*) || ' kolom)' as detail
-  from information_schema.column_privileges
- where table_schema = 'public' and table_name = 'fcs_timer_kerja' and grantee in ('anon', 'authenticated')
- group by grantee, privilege_type
+select 'grant_kolom' as cek, attname || ' acl=' || attacl::text as detail
+  from pg_attribute
+ where attrelid = 'public.fcs_timer_kerja'::regclass and attnum > 0 and not attisdropped and attacl is not null
 union all
 select 'grant_tabel', grantee || ' ' || string_agg(privilege_type, ',' order by privilege_type)
   from information_schema.role_table_grants

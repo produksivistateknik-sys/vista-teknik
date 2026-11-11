@@ -59,15 +59,15 @@ select table_name, column_name, data_type, is_nullable, column_default
   from information_schema.columns where table_schema = 'public' and column_name = 'shift'
    and table_name in ('fcs_timer_kerja', 'fcs_timer_kerja_archived') order by table_name;
 -- 2) Drift arsip -> 0 baris untuk fcs_timer_kerja:
-select * from public.cek_sync_skema_arsip() where tabel_sumber ilike 'fcs_timer_kerja%';
+select * from public.cek_sync_skema_arsip() where tabel_sumber = 'fcs_timer_kerja';
 -- 3) Data lama tidak berubah -> semua NULL sebelum rilis vista-pekerja:
 select count(*) total, count(shift) berisi_shift from public.fcs_timer_kerja;
 -- 4) Constraint terpasang -> 2 baris CHECK (shift IS NULL OR shift = ANY (ARRAY['1','2'])):
 select conrelid::regclass, conname, pg_get_constraintdef(oid) from pg_constraint
  where conname in ('fcs_timer_kerja_shift_valid', 'fcs_timer_kerja_archived_shift_valid');
 -- ── CEK LIVE SEBELUM RUN (SELECT saja) ──
--- grant per kolom (kosong/tingkat tabel = kolom baru ikut bisa di-insert anon):
---   select grantee, privilege_type from information_schema.column_privileges where table_name = 'fcs_timer_kerja' and grantee in ('anon','authenticated') group by 1, 2;
+-- grant per kolom (0 baris = tidak ada; kolom baru ikut grant tingkat tabel) - lengkapnya di 20261112_timer_shift_cek_live.sql:
+--   select attname, attacl from pg_attribute where attrelid = 'public.fcs_timer_kerja'::regclass and attnum > 0 and not attisdropped and attacl is not null;
 -- trigger di luar migrations:  select tgname from pg_trigger where tgrelid in ('public.fcs_timer_kerja'::regclass, 'public.fcs_timer_kerja_archived'::regclass) and not tgisinternal;
 -- event trigger reload PostgREST:  select evtname from pg_event_trigger;
 

@@ -129,7 +129,7 @@ function BarisShift({ s }: { s: OperatorShift }) {
   const ket = s.shift ? `Shift ${s.shift} (${s.sumber.map((x) => KET_SUMBER_SHIFT[x]).join('; ')})` : 'Shift tidak tercatat: timer dibuat sebelum shift login disimpan, belum ada Simpan Progress, dan tidak ada sesi lain operator ini hari itu'
   const perkiraan = !!s.shift && s.namaPerkiraan.length > 0
   const ketPerkiraan = perkiraan ? `
-* Perkiraan untuk ${s.namaPerkiraan.join(', ')}: shift diambil dari mayoritas durasi sesi lain operator itu hari ini` : ''
+* Perkiraan untuk ${s.namaPerkiraan.join(', ')}: shift diambil dari mayoritas durasi sesi lain operator itu hari itu` : ''
   return (
     <div className="akp-m akp-shr" title={`${ket}${ketPerkiraan}
 ${s.nama.join(', ')}`}>
