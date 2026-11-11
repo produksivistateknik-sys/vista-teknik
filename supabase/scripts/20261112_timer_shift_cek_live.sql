@@ -33,7 +33,7 @@ select 'trigger', tgrelid::regclass::text || ': ' || tgname || ' -> ' || tgfoid:
   from pg_trigger
  where tgrelid in ('public.fcs_timer_kerja'::regclass, 'public.fcs_timer_kerja_archived'::regclass) and not tgisinternal
 union all
-select 'event_trigger', evtname || ' (' || evtevent || ', enabled=' || evtenabled || ')'
+select 'event_trigger', evtname || ' (' || evtevent || ', enabled=' || evtenabled::text || ')'
   from pg_event_trigger
 union all
 select 'kolom_shift', table_name || '.' || column_name || ' ' || data_type
