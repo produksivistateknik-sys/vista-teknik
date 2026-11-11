@@ -47,10 +47,13 @@ function jarakSesi(x: SesiShift, y: SesiShift, sekarangMs: number): number {
   return Math.max(0, a1 - b2, a2 - b1)
 }
 
-// Durasi sesi (ms); berjalan = sampai sekarang; tidak valid / negatif -> 0.
+// Durasi sesi (ms) utk mayoritas; berjalan = sampai sekarang; tidak valid / negatif -> 0. Dibatasi 12 jam (sama dgn
+// BATAS_BASI_MS aktivitasPanel / tutup_timer_kelewat_12jam): timer yang tertinggal jalan berhari-hari tidak boleh
+// mendominasi mayoritas (tinjauan bug-detector 12 Nov).
+export const BATAS_DURASI_MAYORITAS_MS = 12 * 3600000
 function durasiSesi(x: SesiShift, sekarangMs: number): number {
   const a = Date.parse(x.mulai), b = x.selesai ? Date.parse(x.selesai) : sekarangMs
-  return Number.isFinite(a) && Number.isFinite(b) ? Math.max(0, b - a) : 0
+  return Number.isFinite(a) && Number.isFinite(b) ? Math.min(BATAS_DURASI_MAYORITAS_MS, Math.max(0, b - a)) : 0
 }
 
 // Shift mayoritas (menurut DURASI) sesi lain operator hari itu; seri -> sesi terdekat waktunya; masih seri -> null.
