@@ -190,6 +190,30 @@ hasil tiap poin **secara eksplisit** ke user:
 
 ---
 
+## H. AGENT PENINJAU (HANYA MEMBACA)
+
+File di `.claude/agents/` (5 agent, semuanya `tools: Read, Grep, Glob` - tanpa Bash, tanpa tulis).
+Agent hanya melapor; perbaikan menunggu konfirmasi user. Agent **tidak boleh** dipakai untuk
+mengubah data atau mengeksekusi perubahan.
+
+1. Setelah **mengubah kode**: jalankan `bug-detector` sebelum melapor selesai.
+2. Bila **tampilan** berubah: `ui-reviewer`.
+3. Bila menyentuh **Supabase/RPC/Edge Function/R2/login/upload**: `security-reviewer`.
+4. Bila menyusun **SQL/migrasi** untuk dijalankan user: `data-migrasi-reviewer` sebelum menyerahkannya.
+5. Bila menyentuh **timer/progres/jadwal/qty/status**: `regresi-penguji`. Agent utama menjalankan
+   dulu `npm run build`, `npm run lint` (sebut baseline), dan `npm run cek:cermin` bila fungsi
+   status/progres berubah, lalu menyerahkan output-nya ke agent (agent tidak punya Bash).
+6. Ringkas hasil tiap agent di laporan: temuan, bukti, dan apa yang **tidak** diperiksa. Temuan
+   DUGAAN dibuktikan agent utama (SELECT/uji) sebelum dianggap fakta.
+7. **Tidak perlu dipanggil** untuk perubahan sepele: teks/label saja, komentar, file dokumentasi,
+   perubahan 1-3 baris tanpa logika data. Sebutkan di laporan bahwa agent dilewati dan alasannya.
+8. Bila beberapa agent relevan, jalankan bersamaan (paralel), bukan berurutan.
+9. **Sumber utama** agent & bagian H ini: `vista-teknik`. Salinan di `vista-pekerja/.claude/agents/`
+   wajib identik; setiap mengubah agent di sini, salin juga ke sana pada commit yang sama, lalu cek
+   tidak ada beda (`git diff --no-index` kedua folder harus kosong).
+
+---
+
 ## Catatan build & data
 
 - Direct DB access untuk query/cleanup live: pakai Node script dengan anon key
