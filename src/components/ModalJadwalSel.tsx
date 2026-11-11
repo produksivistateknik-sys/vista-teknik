@@ -10,7 +10,7 @@ import * as fcsAsli from '../services/fcsService'
 import { hariKeNFromMap } from '../services/fcsService'
 import type { IoJadwalRaw } from '../lib/ioJadwalRaw'
 import { WP_LIST, PROSES_COLOR, WP_COLOR, BUSBAR_COLORS } from '../constants/panelTypes'
-import { statusTambahKomponen, buangKodeDariSel, samaIsiJadwal } from '../lib/tambahKomponen'
+import { statusTambahKomponen, buangKodeDariSel, samaIsiJadwal, labelQtySel } from '../lib/tambahKomponen'
 import { kodeJadwalAktif } from '../lib/kodeJadwalAktif'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { isiRenharDirilis } from '../services/renharService'
@@ -651,10 +651,10 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
                         // kapasitas) diutamakan drpd qty total panel - kalau gak ada override,
                         // baru fallback ke qty total (kartu emang nunjuk semua qty di tanggal itu).
                         // Label (11 Nov 2026, insiden LVMDP "(12/11)"): dulu "dikerjakan s/d tanggal sel / porsi sel" - dua lingkup
-                        // beda, terbaca seolah progres > qty. Kini dikerjakan dibanding qty komponen; porsi sel hanya disebut bila beda.
+                        // beda, terbaca seolah progres > qty. Kini dikerjakan dibanding qty komponen; porsi sel hanya disebut bila beda (lib/tambahKomponen.labelQtySel).
                         const qtyKompFull=Number(clForCell?.qty)||0;
                         const porsiSelKomp=e.qtyPerKomponen?.[k];
-                        const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(dikerjakan ${qtyDoneKomp}/${qtyKompFull}${porsiSelKomp!=null&&Number(porsiSelKomp)!==qtyKompFull?` · porsi sel ini ${porsiSelKomp}`:""})`;
+                        const labelQtyPct=isWiringProsesLabel?`(${progressKomp}%)`:`(progres ${labelQtySel(qtyDoneKomp,qtyKompFull,porsiSelKomp)})`;
                         const isKompDone=progressKomp>=100;
                         // Warna chip SELALU ikut warna proses (gak berubah karena status) - status
                         // ditandai ikon terpisah aja (✓ selesai, • berprogres, kosong kalau belum).
@@ -683,7 +683,7 @@ export function useModalJadwalSel(deps:DepsModalJadwalSel){
             {kunciWp&&(()=>{
               // Semua komponen BOM WP ini + status (satu sumber dgn daftar pilih: statusTambahKomponen). 'bisa' dipilih di bawah.
               const lain=wpItemsAll.map((it:{kode:string;nama:string})=>({it,st:statusTambahKomponen(rawRow,livePanelForCell,cellModal.date,kunciWp,it.kode,TODAY)})).filter(x=>x.st.jenis!=="bisa");
-              const teks=(st:ReturnType<typeof statusTambahKomponen>)=>st.jenis==="terjadwal"?(st.x>0?`di sel ini · progres ${st.x}/${st.y}`:"di sel ini"):st.jenis==="tanggalLain"?`terjadwal ${getDayLabel(st.tanggal)}`:st.jenis==="selesai"?"selesai":st.jenis==="qty0"?"qty 0 di panel":st.jenis==="dilewati"?(st.alasan==="tidak_relevan"?"tidak relevan":"tidak ada di panel"):"";
+              const teks=(st:ReturnType<typeof statusTambahKomponen>)=>st.jenis==="terjadwal"?(st.x>0?`di sel ini · progres ${labelQtySel(st.x,st.y,st.porsi)}`:"di sel ini"):st.jenis==="tanggalLain"?`terjadwal ${getDayLabel(st.tanggal)}`:st.jenis==="selesai"?"selesai":st.jenis==="qty0"?"qty 0 di panel":st.jenis==="dilewati"?(st.alasan==="tidak_relevan"?"tidak relevan":"tidak ada di panel"):"";
               return(<>
                 <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
                   <Lbl>Komponen {kunciWp} — {rawRow.proses}</Lbl>

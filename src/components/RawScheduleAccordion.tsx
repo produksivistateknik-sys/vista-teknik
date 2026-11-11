@@ -14,7 +14,7 @@ import type { OpRenharUbah } from '../lib/pindahMulti'
 import { withRetry } from '../lib/withRetry'
 import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, type HasilPindahAcc } from '../lib/pindahAccordion'
 import { teksDilewati } from '../lib/relevansiJadwal'
-import { statusTambahKomponen, buangKodeDariSel, type StatusTambah } from '../lib/tambahKomponen'
+import { statusTambahKomponen, buangKodeDariSel, labelQtySel, type StatusTambah } from '../lib/tambahKomponen'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
@@ -735,7 +735,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
     }
     if (!st) return { teks: o.terisi ? 'terjadwal · edit' : '+ tambah', aktif: true, warna: o.terisi ? '#1d4ed8' : '#94a3b8' }
     switch (st.jenis) {
-      case 'terjadwal': return { teks: st.x > 0 ? `progres ${st.x}/${st.y} · edit` : 'terjadwal · edit', aktif: true, warna: '#1d4ed8' }
+      case 'terjadwal': return { teks: st.x > 0 ? `progres ${labelQtySel(st.x, st.y, st.porsi)} · edit` : 'terjadwal · edit', aktif: true, warna: '#1d4ed8' }
       case 'tanggalLain': return { teks: `terjadwal ${fmtTglPendek(st.tanggal)} · edit`, aktif: true, warna: '#b45309' }
       case 'selesai': return { teks: 'selesai', aktif: false, warna: '#16a34a' }
       case 'qty0': return { teks: 'qty 0 di panel', aktif: false, warna: '#cbd5e1' }
