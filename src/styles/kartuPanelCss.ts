@@ -44,6 +44,16 @@ export const CSS_KARTU_PANEL = TOKEN_KARTU_STATUS + `
 .kda-pill{display:inline-flex;align-items:center;min-height:22px;padding:2px 10px;border-radius:11px;font-size:12px;font-weight:700;white-space:nowrap;flex:none}
 .kda-pill.w{background:var(--kd-warn-bg);color:var(--kd-warn)}
 .kda-pill.o{background:var(--kd-ok-bg);color:var(--kd-ok)}
+/* Penanda BARU / DIUBAH per admin (11 Nov 2026, lib/adminDilihat): lencana teks + garis tepi tegas, beda dgn latar hijau
+   "semua selesai". Item baru hijau lembut; DIUBAH (catatan) oranye bergaris. */
+.kda-kt.ada-baru{outline:2px solid var(--ks-done);outline-offset:-2px;cursor:pointer}
+.kda-it.baru{background:var(--ks-done-soft);border-color:var(--ks-done)}
+.kda-it.diubah{border-color:var(--ks-prog)}
+.kda-lbl{display:inline-block;font-size:10px;font-weight:800;letter-spacing:.06em;border-radius:5px;padding:1px 6px;margin-right:6px;vertical-align:1px;white-space:nowrap}
+.kda-lbl.baru{background:var(--ks-done);color:var(--kd-card)}
+.kda-lbl.diubah{background:var(--ks-prog-soft);color:var(--ks-prog);border:1px solid var(--ks-prog)}
+.kda-pill.baru{background:var(--ks-done);color:var(--kd-card)}
+.kda .kda-semua{height:30px;padding:0 10px;border:1px solid var(--ks-done);border-radius:8px;background:var(--ks-done-soft);color:var(--ks-done);font:inherit;font-size:12.5px;font-weight:700;cursor:pointer}
 .kda-it{background:var(--kd-card);border:1px solid var(--kd-line);border-radius:10px;padding:10px 12px;margin-bottom:8px}
 .kda-ih{display:flex;gap:10px;justify-content:space-between;align-items:flex-start}
 .kda-tx{font-weight:700;overflow-wrap:anywhere;white-space:pre-wrap;min-width:0}

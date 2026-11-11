@@ -17,6 +17,8 @@ import {
   type Kendala, type ProyekAktif,
 } from '../lib/kendalaProduksi'
 import { CSS_KARTU_PANEL } from '../styles/kartuPanelCss'
+import { useAdminDilihat } from '../hooks/useAdminDilihat'
+import { statusDilihat } from '../lib/adminDilihat'
 import { BarisWoProyek } from './ui/ChipDeadline'
 import { PETA_KOSONG, type PetaWo } from '../lib/petaWo'
 
@@ -34,8 +36,11 @@ type KartuPanel = { kunci: string; proyek: string; id: number | null; nama: stri
 
 // tertanam = dipakai di dalam KendalaDanCatatan (judul halaman & pilihan subtab ada di pembungkus).
 // petaWo (9 Nov 2026): nomor WO + chip deadline di kartu (lib/petaWo, components/ui/ChipDeadline BarisWoProyek).
-export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG }: { db: any; user: any; tertanam?: boolean; petaWo?: PetaWo }) {
+// onBaru (11 Nov 2026): jumlah kendala BARU utk admin ini -> hitungan "N baru" di tab (KendalaDanCatatan).
+export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG, onBaru }: { db: any; user: any; tertanam?: boolean; petaWo?: PetaWo; onBaru?: (n: number) => void }) {
   const nama = String(user?.nama || user?.name || '').trim()
+  // Penanda BARU per admin (lib/adminDilihat): kendala buatan admin ini sendiri tidak pernah BARU baginya.
+  const { dilihat, tandai, tandaiSemua } = useAdminDilihat(db, 'kendala', nama)
   const [proyekAktif, setProyekAktif] = useState<ProyekAktif[]>([])
   const [daftar, setDaftar] = useState<Kendala[]>([])
   const [memuat, setMemuat] = useState(true)
@@ -132,10 +137,14 @@ export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG 
   }
   const panelForm = proyekAktif.find(p => p.proyek === form?.proyek)?.panels || []
 
+  const statusK = (k: Kendala) => statusDilihat({ d: dilihat, id: k.id, dibuat: k.dicatat_pada, milikSaya: k.sumber === 'admin' && k.pencatat === nama })
+  const idBaru = useMemo(() => daftar.filter((k) => statusK(k)).map((k) => k.id), [daftar, dilihat, nama]) // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => { onBaru?.(idBaru.length) }, [idBaru.length, onBaru])
   const item = (k: Kendala) => {
     const done = !!k.teratasi_pada
     return (
-      <div key={k.id} className={'kda-it' + (done ? ' done' : '')}>
+      <div key={k.id} className={'kda-it' + (done ? ' done' : '') + (statusK(k) ? ' baru' : '')}
+        onClickCapture={(e) => { if (statusK(k) && (e.target as HTMLElement).closest('button')) tandai([k.id]) }}>
         <div className="kda-ih">
           {edit?.id === k.id ? (
             <div className="kda-ed">
@@ -143,7 +152,7 @@ export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG 
               <button className="kda-btn kdaBtn" disabled={!!sibuk || edit.teks.trim().length < 3} onClick={async () => { const ok = await jalankan('mengubah kendala', () => ubahKendala(db, k.id, edit.teks.trim(), nama, true)); if (ok) setEdit(null) }}>Simpan</button>
               <button className="kda-ghost kdaBtn" onClick={() => setEdit(null)}>Batal</button>
             </div>
-          ) : <div className="kda-tx">{k.teks}</div>}
+          ) : <div className="kda-tx">{statusK(k) && <span className="kda-lbl baru">BARU</span>}{k.teks}</div>}
           <span className={'kda-pill ' + (done ? 'o' : 'w')}>{done ? 'Selesai' : 'Belum selesai'}</span>
         </div>
         <div className="kda-mt">
@@ -237,6 +246,7 @@ export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG 
           <option value="">Semua divisi</option>
           {pilihanDivisi.map(d => <option key={d} value={d}>{labelDivisi(d)}</option>)}
         </select>
+        {idBaru.length > 0 && <button className="kda-semua kdaBtn" onClick={() => tandaiSemua()}>Tandai semua sudah dilihat ({idBaru.length})</button>}
         <span className="kda-cnt">{jumlahTampil} kendala · {kartu.length} kartu</span>
       </div>
       {galat && <div className="kda-err">{galat} <button className="kda-ghost kdaBtn" onClick={() => { setMemuat(true); muat() }}>Coba lagi</button></div>}
@@ -246,13 +256,14 @@ export function KendalaAdmin({ db, user, tertanam = false, petaWo = PETA_KOSONG 
             const penuh = !!terbukaPenuh[c.kunci]
             const tampil = penuh ? c.rows : c.rows.slice(0, MAKS_ITEM)
             return (
-              <section key={c.kunci} className={'kda-kt ' + (c.belum > 0 ? 'n-progres' : 'n-selesai')} aria-label={judulPanel(c.nama, c.id) + ' - ' + c.proyek}>
+              <section key={c.kunci} className={'kda-kt ' + (c.belum > 0 ? 'n-progres' : 'n-selesai') + (c.rows.some(statusK) ? ' ada-baru' : '')} aria-label={judulPanel(c.nama, c.id) + ' - ' + c.proyek}
+                onClick={(e) => { const ids = c.rows.filter(statusK).map((k) => k.id); if (ids.length && !(e.target as HTMLElement).closest('button,input,textarea,select,a,label')) tandai(ids) }}>
                 <div className="kda-kh">
                   <div className="kda-kn">
                     <div className="kda-nm">{judulPanel(c.nama, c.id)}</div>
                     <div className="kda-pj"><BarisWoProyek peta={petaWo} proyek={c.proyek} panelId={c.id} snapshot={{ woId: c.rows[0]?.wo_id, nomor: c.rows[0]?.wo_number }} /></div>
                   </div>
-                  <span className={'kda-pill ' + (c.belum > 0 ? 'w' : 'o')}>{c.belum > 0 ? `${c.belum} belum selesai` : 'Semua selesai'}</span>
+                  <span style={{ display: 'inline-flex', gap: 4, flexWrap: 'wrap', justifyContent: 'flex-end' }}>{c.rows.some(statusK) && <span className="kda-pill baru">{c.rows.filter(statusK).length} baru</span>}<span className={'kda-pill ' + (c.belum > 0 ? 'w' : 'o')}>{c.belum > 0 ? `${c.belum} belum selesai` : 'Semua selesai'}</span></span>
                 </div>
                 {tampil.map(item)}
                 {c.rows.length > MAKS_ITEM && (
