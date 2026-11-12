@@ -53,6 +53,8 @@ export const LEGENDA_GANTT={selesai:"Selesai (progres 100%)",belum:"Belum 100% /
   dihitungUlang:"* Panel 100% saat diarsipkan; proses ini dihitung ulang dengan aturan sekarang"};
 // Label hari pada bar (modal & PDF): bar penuh "dihitungUlang" diberi tanda * (dijelaskan LEGENDA_GANTT.dihitungUlang).
 export const labelHariBar=(b:{hari:number;keadaan:KeadaanBar})=>`${b.hari} hr${b.keadaan==="dihitungUlang"?"*":""}`;
+// Singkatan tahap Busbar (FAB/PLT/HS/PSG) - ikut diberi * bila bar dihitung ulang (temuan regresi-penguji 12 Nov 2026).
+export const labelSingkatanBar=(b:{singkatan?:string;keadaan:KeadaanBar})=>`${b.singkatan||""}${b.keadaan==="dihitungUlang"?"*":""}`;
 // Teks kolom "Selesai" (tooltip modal, tabel PDF & Excel) - satu sumber.
 // Bar bergaris = belum punya tanggal selesai (b.selesai null). "dihitungUlang" (1b) punya tanggal selesai -> bar penuh.
 export const teksSelesaiBar=(b:BarGantt,fmt:(iso:string)=>string)=>
