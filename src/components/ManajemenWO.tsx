@@ -11,6 +11,7 @@ import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevan
 import { sesuaikanProgressKeQtyBaru } from '../lib/progressQtyHelpers'
 import { sinkronCcpSetelahUbahQty } from '../lib/componentProcessProgress'
 import { getBusbarKomponen } from '../lib/panelHelpers'
+import { cekSebelumArsip, ringkasTimer, type CekPanelArsip } from '../lib/cekSebelumArsip'
 import { komponenBusbarPunyaProgress } from '../lib/progressQtyHelpers'
 import { PenyesuaianBusbarModal } from './PenyesuaianBusbarModal'
 import { useCcpMap } from '../lib/componentProcessProgress'
@@ -202,6 +203,21 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
       next.has(id)?next.delete(id):next.add(id);
       return next;
     });
+  };
+
+  // CEK SEBELUM ARSIP (12 Nov 2026, lapis 3 - NONBLOKIR): proses relevan < 100% atau timer menyala -> dialog
+  // "Tetap arsipkan" / "Batal" (lib/cekSebelumArsip). Tanpa temuan -> langsung arsip seperti dulu. RPC tidak berubah.
+  const [cekArsip,setCekArsip]=useState<{temuan:CekPanelArsip[];galat:string|null}|null>(null);
+  const [cekArsipLoading,setCekArsipLoading]=useState(false);
+  const mulaiArsipPanel=async()=>{
+    if(selArsipPanelIds.size===0||cekArsipLoading||arsipPanelLoading)return;
+    setCekArsipLoading(true);
+    let hasil:{temuan:CekPanelArsip[];galat:string|null};
+    try{hasil=await cekSebelumArsip(supabase,(arsipPanelModal.panels||[]).filter((p)=>selArsipPanelIds.has(p.id)),ccpMap);}
+    catch(err){console.error('[Arsip panel] cek sebelum arsip gagal:',err);hasil={temuan:[],galat:err instanceof Error?err.message:String(err)};}
+    setCekArsipLoading(false);
+    if(hasil.temuan.length>0||hasil.galat){setCekArsip(hasil);return;}
+    await prosesArsipPanel();
   };
 
   const prosesArsipPanel=async()=>{
@@ -788,9 +804,28 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
           </div>
           <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
             <Btn outline color="#64748b" onClick={()=>{setArsipPanelModal(null);setSelArsipPanelIds(new Set());}} disabled={arsipPanelLoading}>Batal</Btn>
-            <Btn color="#1d4ed8" onClick={prosesArsipPanel} disabled={arsipPanelLoading||selArsipPanelIds.size===0}>
-              {arsipPanelLoading?"⏳ Mengarsipkan...":`📦 Arsipkan ${selArsipPanelIds.size} Panel`}
+            <Btn color="#1d4ed8" onClick={mulaiArsipPanel} disabled={arsipPanelLoading||cekArsipLoading||selArsipPanelIds.size===0}>
+              {arsipPanelLoading?"⏳ Mengarsipkan...":cekArsipLoading?"⏳ Memeriksa...":`📦 Arsipkan ${selArsipPanelIds.size} Panel`}
             </Btn>
+          </div>
+        </Modal>
+      )}
+      {cekArsip&&(
+        <Modal title="Ada pekerjaan yang belum selesai" onClose={()=>setCekArsip(null)} width={520}>
+          <div style={{fontSize:12.5,color:"#475569",marginBottom:10}}>Panel berikut masih punya proses di bawah 100% atau timer yang menyala. Panel tetap bisa diarsipkan.</div>
+          {cekArsip.galat&&<div style={{fontSize:12,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"6px 10px",marginBottom:10}}>Pemeriksaan timer gagal: {cekArsip.galat}</div>}
+          <div style={{maxHeight:320,overflowY:"auto" as const,display:"flex",flexDirection:"column" as const,gap:8,marginBottom:14}}>
+            {cekArsip.temuan.map(t=>(
+              <div key={t.id} style={{border:"1px solid #e2e8f0",borderRadius:8,padding:"8px 10px",fontSize:12.5}}>
+                <div style={{fontWeight:700,color:"#1e293b",marginBottom:3}}>{t.nama}</div>
+                {t.prosesBelum.length>0&&<div style={{color:"#475569"}}>Proses belum 100%: {t.prosesBelum.map(x=>`${x.proses} ${x.pct}%`).join(", ")}</div>}
+                {t.timer.length>0&&<div style={{color:"#b45309",marginTop:2}}>Timer masih menyala: {ringkasTimer(t.timer).join("; ")}</div>}
+              </div>
+            ))}
+          </div>
+          <div style={{display:"flex",gap:10,justifyContent:"flex-end"}}>
+            <Btn outline color="#64748b" onClick={()=>setCekArsip(null)}>Batal</Btn>
+            <Btn color="#1d4ed8" onClick={()=>{setCekArsip(null);prosesArsipPanel();}}>Tetap arsipkan</Btn>
           </div>
         </Modal>
       )}
