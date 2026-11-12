@@ -41,15 +41,18 @@ const PROSES_PER_KOMPONEN=["POTONG","PAINTING","RAKIT","PASANG KOMPONEN","WIRING
 // - timerBerjalan : ada timer arsip proses itu (tahap itu utk Busbar) tanpa waktu selesai -> "berjalan".
 // - belum100      : progress_snapshot panel < 100 -> "Belum 100% saat diarsipkan".
 // - dihitungUlang : progress_snapshot >= 100 tetapi hitungan sekarang < 100 (aturan proses/relevansi berubah
-//                   setelah diarsipkan) -> "100% saat diarsipkan; dihitung ulang dengan aturan proses sekarang".
+//                   setelah diarsipkan) -> "Panel 100% saat diarsipkan; proses ini dihitung ulang dengan aturan sekarang".
 // Teks SATU sumber utk modal, PDF, dan Excel (TEKS_KEADAAN & LEGENDA_GANTT di bawah).
 export type KeadaanBar="selesai"|"timerBerjalan"|"belum100"|"dihitungUlang";
 export const TEKS_KEADAAN:Record<Exclude<KeadaanBar,"selesai">,{pendek:string;panjang:string}>={
   timerBerjalan:{pendek:"berjalan",panjang:"Timer masih berjalan"},
   belum100:{pendek:"belum 100%",panjang:"Belum 100% saat diarsipkan"},
-  dihitungUlang:{pendek:"dihitung ulang",panjang:"100% saat diarsipkan; dihitung ulang dengan aturan proses sekarang"},
+  dihitungUlang:{pendek:"dihitung ulang",panjang:"Panel 100% saat diarsipkan; proses ini dihitung ulang dengan aturan sekarang"},
 };
-export const LEGENDA_GANTT={selesai:"Selesai (progres 100%)",belum:"Belum 100% / timer berjalan (s/d tanggal diarsipkan)",hariIni:"Hari ini"};
+export const LEGENDA_GANTT={selesai:"Selesai (progres 100%)",belum:"Belum 100% / timer berjalan (s/d tanggal diarsipkan)",hariIni:"Hari ini",
+  dihitungUlang:"* Panel 100% saat diarsipkan; proses ini dihitung ulang dengan aturan sekarang"};
+// Label hari pada bar (modal & PDF): bar penuh "dihitungUlang" diberi tanda * (dijelaskan LEGENDA_GANTT.dihitungUlang).
+export const labelHariBar=(b:{hari:number;keadaan:KeadaanBar})=>`${b.hari} hr${b.keadaan==="dihitungUlang"?"*":""}`;
 // Teks kolom "Selesai" (tooltip modal, tabel PDF & Excel) - satu sumber.
 // Bar bergaris = belum punya tanggal selesai (b.selesai null). "dihitungUlang" (1b) punya tanggal selesai -> bar penuh.
 export const teksSelesaiBar=(b:BarGantt,fmt:(iso:string)=>string)=>

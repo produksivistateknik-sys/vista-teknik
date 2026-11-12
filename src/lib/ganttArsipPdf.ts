@@ -106,7 +106,10 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
   const xHari=xBelum+10.5+doc.getTextWidth(LEGENDA_GANTT.belum)+5;
   doc.setDrawColor(...ORANYE);doc.setLineWidth(.6);doc.line(xHari,ly-.3,xHari,ly+3.5);
   doc.text(LEGENDA_GANTT.hariIni,xHari+1.5,ly+2.5);
-  y+=13;
+  // Baris kedua legenda hanya bila ada bar "dihitung ulang" (label diakhiri * - lihat labelHariBar).
+  const adaHitungUlang=rows.some(r=>r.label.endsWith("*"));
+  if(adaHitungUlang)doc.text(LEGENDA_GANTT.dihitungUlang,kiri,ly+7);
+  y+=adaHitungUlang?17:13;
   const lebarHari=(lebarIsi-LEBAR_LABEL)/HARI_PER_BLOK;
   const idxHariIni=colIndexForDate(cols,hariIniIso);
   const tinggiBlok=11+rows.length*6.5+(blok.length>1?5:0);
