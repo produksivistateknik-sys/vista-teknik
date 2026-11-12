@@ -9,7 +9,7 @@ import { useAktivitasPanel } from '../hooks/useAktivitasPanel'
 import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas, type OperatorShift } from '../lib/aktivitasPanel'
 import type { SumberShift } from '../lib/shiftSesi'
 import { hariKerjaWib } from '../lib/tanggalWib'
-import { aturanHp } from '../styles/responsif'
+import { aturanHp, ATRIBUT_MOBILE as M } from '../styles/responsif'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
@@ -95,6 +95,27 @@ ${aturanHp(820, `.akp-grid{grid-template-columns:minmax(0,1fr)}`)}
 /* isi kartu tetap permukaan terang di atas latar berwarna */
 .akp-kartu .akp-it,.akp-kartu .akp-chip,.akp-kartu .akp-pill.nol,.akp-kartu .akp-pill.dimulai{background:var(--akp-card)}
 .akp-kosong{padding:40px 16px;text-align:center;color:var(--akp-mute);border:1px dashed var(--akp-line);border-radius:14px}
+/* MODE MOBILE (12 Nov 2026, T1 - keputusan user): HANYA di bawah html[data-mobile="1"] (desktop tidak berubah). Ringkasan satu
+   baris, filter digeser ke samping (ujung memudar), tombol min 44px, kartu & item lebih ringkas. Aksi tidak disembunyikan. */
+${M} .akp{gap:12px}
+${M} .akp h2{font-size:18px}
+${M} .akp-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding-bottom:2px;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+${M} .akp-bar::-webkit-scrollbar{display:none}
+${M} .akp-bar>*{flex:none}
+${M} .akp-seg{flex-wrap:nowrap}
+${M} .akpBtnSeg{min-height:44px;padding:0 14px;white-space:nowrap}
+${M} .akpBtn{min-height:44px;white-space:nowrap}
+${M} .akp-tgl{height:44px}
+${M} .akp-sum{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+${M} .akp-sum>div{padding:8px 6px;text-align:center;min-width:0}
+${M} .akp-sum b{font-size:18px}
+${M} .akp-sum span{font-size:10px;letter-spacing:0;line-height:1.2;display:block}
+${M} .akpBtnKartu{padding:14px;gap:10px}
+${M} .akp-nama{font-size:16px}
+${M} .akp-body{padding:4px 12px 12px}
+${M} .akp-it{padding:8px 10px;gap:4px 8px}
+${M} .akp-mini{width:64px}
+${M} .akpBtnSingkat{min-height:44px}
 `
 
 // Satu interval detik utk semua timer di layar; berhenti sendiri bila tidak ada yang mendengar (kartu ditutup / tab lain).
