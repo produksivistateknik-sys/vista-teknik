@@ -10,8 +10,9 @@ export const ATRIBUT_MOBILE = 'html[data-mobile="1"]'
 
 type Aturan = { selektor: string[]; isi: string }
 
-// Uraikan CSS datar menjadi daftar aturan (komentar /* */ diabaikan).
-export function uraikanCssDatar(css: string): Aturan[] {
+// Uraikan CSS datar menjadi daftar aturan (komentar /* */ diabaikan). ketat=true (bawaan, utk MASUKAN aturanHp): selektor
+// dgn ()/[]/kutip ditolak krn koma di dalamnya tak bisa dipecah aman. ketat=false hanya utk membaca keluaran (uji).
+export function uraikanCssDatar(css: string, ketat = true): Aturan[] {
   const bersih = css.replace(/\/\*[\s\S]*?\*\//g, '')
   const hasil: Aturan[] = []
   let i = 0
@@ -23,6 +24,8 @@ export function uraikanCssDatar(css: string): Aturan[] {
     const selektorTeks = bersih.slice(i, buka).trim()
     const isi = bersih.slice(buka + 1, tutup)
     if (selektorTeks.startsWith('@') || isi.includes('{')) throw new Error(`aturanHp: aturan bersarang tidak didukung: "${selektorTeks.slice(0, 40)}"`)
+    if (ketat && /[()[\]"']/.test(selektorTeks)) throw new Error(`aturanHp: selektor dgn ()/[]/kutip tidak didukung (koma di dalamnya tak bisa dipecah aman): "${selektorTeks.slice(0, 40)}"`)
+    if ((isi.match(/"/g) || []).length % 2 || (isi.match(/'/g) || []).length % 2) throw new Error(`aturanHp: kutip tidak berpasangan (string berisi { } tidak didukung): "${selektorTeks.slice(0, 40)}"`)
     hasil.push({ selektor: selektorTeks.split(',').map((s) => s.trim()).filter(Boolean), isi: isi.trim() })
     i = tutup + 1
   }
@@ -35,6 +38,9 @@ export function awaliMobile(css: string): string {
 }
 
 // Satu sumber -> @media (teks asli) + padanan data-mobile.
+// Tidak pernah melempar: bila padanan mobile tidak bisa dibuat, @media asli tetap keluar (desktop & HP tidak rusak) dan
+// galatnya dicatat di konsol utk pengembang.
 export function aturanHp(maxPx: number, css: string): string {
-  return `@media (max-width:${maxPx}px){${css}}\n${awaliMobile(css)}`
+  const media = `@media (max-width:${maxPx}px){${css}}`
+  try { return `${media}\n${awaliMobile(css)}` } catch (e) { console.error('[aturanHp] padanan data-mobile dilewati:', e); return media }
 }

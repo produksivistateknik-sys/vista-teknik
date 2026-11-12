@@ -133,6 +133,10 @@ export default function App(){
   const tabLama=(t:string)=>t==="raw_sandbox"?"raw":t==="maintenance"?"inventaris":t;
   const tabAwal=()=>tabLama(localStorage.getItem("vista_teknik_active_tab")||"dashboard");
   const [tab,setTab]=useState(tabAwal);
+  // TAMPILAN MOBILE (12 Nov 2026, T0 - lib/modeMobile) - dideklarasikan sebelum efek tab (laci ditutup di efek itu).
+  const modeTampilan=useModeMobile();
+  const modeMobile=modeTampilan.mobile;
+  const [laciUntukTab,setLaciUntukTab]=useState<string|null>(null);
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[tabAwal()]);
   const tabDibukaSesiIni=useRef<Set<string>>(new Set());
@@ -160,6 +164,8 @@ export default function App(){
     // Menu yang sudah pernah dibuka tidak memicu reload (isian yang belum disimpan di menu lain tidak hilang).
     if(hasNewVersion&&tabDibukaSesiIni.current.size>0&&!tabDibukaSesiIni.current.has(tab)){window.location.reload();return;}
     tabDibukaSesiIni.current.add(tab);
+    // (12 Nov 2026, T0 mobile) laci ditutup di setiap pindah tab (sidebar, GlobalSearch, notifikasi, menu induk).
+    setLaciUntukTab(null);
     setVisitedTabs(prev=>{
       const allowed=roleTerbatas?prev.filter(t=>roleTerbatas.izin.has(t)):prev;
       const without=allowed.filter(t=>t!==tab);
@@ -179,13 +185,10 @@ export default function App(){
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
   // TAMPILAN MOBILE (12 Nov 2026, T0 - lib/modeMobile): sidebar jadi laci (state terpisah, sidebarCollapsed desktop tidak
   // disentuh); sbCiut = tampilan ciut hanya berlaku di desktop. Laci ditutup otomatis setiap pindah tab.
-  const modeTampilan=useModeMobile();
-  const modeMobile=modeTampilan.mobile;
-  // laciUntukTab = tab tempat laci dibuka; pindah tab / keluar mode mobile -> otomatis tertutup (tanpa efek).
-  const [laciUntukTab,setLaciUntukTab]=useState<string|null>(null);
+  // laciUntukTab = tab tempat laci dibuka (dideklarasikan di atas efek tab); pindah tab / keluar mode mobile -> tertutup.
   const laciBuka=modeMobile&&laciUntukTab===tab;
   const sbCiut=sidebarCollapsed&&!modeMobile;
-  const [bannerDesktopTutup,setBannerDesktopTutup]=useState<string[]>(()=>{try{return JSON.parse(localStorage.getItem("vista_teknik_banner_desktop_tutup")||"[]");}catch{return [];}});
+  const [bannerDesktopTutup,setBannerDesktopTutup]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem("vista_teknik_banner_desktop_tutup")||"[]");return Array.isArray(v)?v.filter((x:unknown)=>typeof x==="string"):[];}catch{return [];}});
   const tutupBannerDesktop=(id:string)=>setBannerDesktopTutup(prev=>{const b=[...new Set([...prev,id])];try{localStorage.setItem("vista_teknik_banner_desktop_tutup",JSON.stringify(b));}catch{/* mode privat */}return b;});
   // Accordion sidebar (30 Agu 2026, "Report Produksi") - key=id parent, value=expanded/tidak.
   const [expandedNav,setExpandedNav]=useState<Record<string,boolean>>({});
@@ -1049,14 +1052,14 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
 
                 {/* Dark mode toggle */}
                 {/* Tombol tampilan mobile (12 Nov 2026, T0): Otomatis -> Mobile -> Desktop, disimpan per perangkat. */}
-                <button onClick={modeTampilan.gantiPilihan}
+                <button onClick={()=>{setLaciUntukTab(null);modeTampilan.gantiPilihan();}}
                   title={teksTombolTampilan(modeTampilan.pilihan,modeMobile)} aria-label={teksTombolTampilan(modeTampilan.pilihan,modeMobile)}
                   aria-pressed={modeTampilan.pilihan==="otomatis"?"mixed":modeMobile}
                   style={{width:26,height:26,border:`1px solid ${modeTampilan.pilihan==="otomatis"?"var(--border-color,#e5e8ed)":"#2563eb"}`,borderRadius:5,
                     background:modeTampilan.pilihan==="otomatis"?"var(--bg-tertiary,#f8f9fb)":"#eff6ff",color:modeTampilan.pilihan==="otomatis"?"var(--text-secondary,#6b7280)":"#2563eb",
                     display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",padding:0}}>
                   <i className={modeTampilan.pilihan==="desktop"?"ti ti-device-desktop":"ti ti-device-mobile"} style={{fontSize:13}}/>
-                  {modeTampilan.pilihan==="otomatis"&&<span style={{position:"absolute",bottom:-1,right:0,fontSize:7,fontWeight:800,lineHeight:1}}>A</span>}
+                  {modeTampilan.pilihan==="otomatis"&&<span style={{position:"absolute",bottom:-2,right:-1,fontSize:9,fontWeight:800,lineHeight:1}}>A</span>}
                 </button>
                 <button onClick={()=>setDarkMode(p=>!p)}
                   title={darkMode?"Light Mode":"Dark Mode"}
