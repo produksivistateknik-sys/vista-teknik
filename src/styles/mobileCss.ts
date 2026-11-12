@@ -31,6 +31,7 @@ ${M} .erp-notif-pop{position:fixed!important;top:56px!important;left:8px!importa
 ${M} .erp-body{padding:8px}
 ${M} .vt-tabbar{overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
 ${M} .vt-tabbar::-webkit-scrollbar{display:none}
+${M} .vt-tabbar::after{content:"";flex:none;width:18%}
 ${M} .vt-tabbar>*{flex:none;white-space:nowrap;min-height:44px;display:flex;align-items:center}
 ${M} .vt-dlg{display:flex;flex-direction:column;justify-content:flex-end}
 ${M} .vt-dlg-panel{width:100%!important;margin:auto 0 0!important;border-radius:16px 16px 0 0!important;max-height:92%;overflow:auto}

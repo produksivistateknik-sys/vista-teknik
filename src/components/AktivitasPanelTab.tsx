@@ -99,7 +99,8 @@ ${aturanHp(820, `.akp-grid{grid-template-columns:minmax(0,1fr)}`)}
    baris, filter digeser ke samping (ujung memudar), tombol min 44px, kartu & item lebih ringkas. Aksi tidak disembunyikan. */
 ${M} .akp{gap:12px}
 ${M} .akp h2{font-size:18px}
-${M} .akp-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding-bottom:2px;-webkit-mask-image:linear-gradient(to right,#000 85%,transparent);mask-image:linear-gradient(to right,#000 85%,transparent)}
+${M} .akp-bar{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding:4px 2px;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+${M} .akp-bar::after{content:"";flex:none;width:18%}
 ${M} .akp-bar::-webkit-scrollbar{display:none}
 ${M} .akp-bar>*{flex:none}
 ${M} .akp-seg{flex-wrap:nowrap}
@@ -109,7 +110,7 @@ ${M} .akp-tgl{height:44px}
 ${M} .akp-sum{grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
 ${M} .akp-sum>div{padding:8px 6px;text-align:center;min-width:0}
 ${M} .akp-sum b{font-size:18px}
-${M} .akp-sum span{font-size:10px;letter-spacing:0;line-height:1.2;display:block}
+${M} .akp-sum span{font-size:11px;letter-spacing:0;line-height:1.2;display:block}
 ${M} .akpBtnKartu{padding:14px;gap:10px}
 ${M} .akp-nama{font-size:16px}
 ${M} .akp-body{padding:4px 12px 12px}
