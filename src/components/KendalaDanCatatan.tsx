@@ -5,6 +5,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useMemo, useState } from 'react'
 import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
+import { ATRIBUT_MOBILE as M } from '../styles/responsif'
 import { bangunPetaWo } from '../lib/petaWo'
 import { woOverall } from '../lib/panelHelpers'
 import { KendalaAdmin } from './KendalaAdmin'
@@ -26,6 +27,9 @@ const CSS = TOKEN_KARTU_STATUS + `
 .kdc-baru{display:inline-block;margin-left:6px;padding:0 6px;border-radius:9px;background:var(--ks-done);color:var(--card-bg,#fff);font-size:11px;line-height:18px;font-weight:700}
 .kdc-baru.ub{background:var(--ks-prog-soft);color:var(--ks-prog);border:1px solid var(--ks-prog);line-height:16px}
 .kdc-badge{display:inline-block;min-width:18px;margin-left:6px;padding:0 5px;border-radius:9px;background:#dc2626;color:#fff;font-size:11px;line-height:18px;text-align:center}
+/* MODE MOBILE (12 Nov 2026, T2): hanya di bawah html[data-mobile="1"] - subtab 44px & judul ringkas. */
+${M} .kdc h1{font-size:18px}
+${M} .kdc .kdc-sub button{height:44px}
 `
 
 // woData (9 Nov 2026): WO aktif App (realtime) -> peta nomor WO & deadline utk kartu (persen WO = woOverall, sama dgn notifikasi App).

@@ -44,6 +44,8 @@ import { muatProsesRelevanGlobal } from './lib/prosesRelevan'
 import { muatAturanUrutan } from './lib/urutanProses'
 import { fetchAllPaged } from './lib/fetchAllPaged'
 import { GCss } from './styles/globalCss'
+import { CSS_MOBILE } from './styles/mobileCss'
+import { useModeMobile, teksTombolTampilan } from './lib/modeMobile'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
 import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
@@ -111,6 +113,9 @@ const NAV_PARENT_OF_CHILD:Record<string,string>={
 const ENGINEERING_ALLOWED_TABS=new Set(["wodigital","arsip","tracking_report","momfat","proyekluar"]);
 // Role HRGA (6 Nov 2026, keputusan user) - pola sama dgn Engineering: hanya Inventaris & Maintenance. Hak di dalam tab sama
 // dgn admin (inv_aktor hanya memeriksa akun aktif). Pembatasan ini di aplikasi, bukan di database.
+// Tab kelompok C (kerja berat di meja - audit mobile 12 Nov 2026): di mode mobile tampil apa adanya + banner kecil yang
+// bisa ditutup. Aksi TIDAK disembunyikan (keputusan user butir 5).
+const TAB_KELOMPOK_C=new Set(["raw","raw_lama","outstanding","wo","tracking_report","momfat","wodigital","masteruser"]);
 const ROLE_TERBATAS:Record<string,{izin:Set<string>;awal:string}>={
   engineering:{izin:ENGINEERING_ALLOWED_TABS,awal:"wodigital"},
   hrga:{izin:new Set(["inventaris"]),awal:"inventaris"},
@@ -128,6 +133,10 @@ export default function App(){
   const tabLama=(t:string)=>t==="raw_sandbox"?"raw":t==="maintenance"?"inventaris":t;
   const tabAwal=()=>tabLama(localStorage.getItem("vista_teknik_active_tab")||"dashboard");
   const [tab,setTab]=useState(tabAwal);
+  // TAMPILAN MOBILE (12 Nov 2026, T0 - lib/modeMobile) - dideklarasikan sebelum efek tab (laci ditutup di efek itu).
+  const modeTampilan=useModeMobile();
+  const modeMobile=modeTampilan.mobile;
+  const [laciUntukTab,setLaciUntukTab]=useState<string|null>(null);
   const MAX_MOUNTED_TABS=4;
   const [visitedTabs,setVisitedTabs]=useState<string[]>(()=>[tabAwal()]);
   const tabDibukaSesiIni=useRef<Set<string>>(new Set());
@@ -155,6 +164,8 @@ export default function App(){
     // Menu yang sudah pernah dibuka tidak memicu reload (isian yang belum disimpan di menu lain tidak hilang).
     if(hasNewVersion&&tabDibukaSesiIni.current.size>0&&!tabDibukaSesiIni.current.has(tab)){window.location.reload();return;}
     tabDibukaSesiIni.current.add(tab);
+    // (12 Nov 2026, T0 mobile) laci ditutup di setiap pindah tab (sidebar, GlobalSearch, notifikasi, menu induk).
+    setLaciUntukTab(null);
     setVisitedTabs(prev=>{
       const allowed=roleTerbatas?prev.filter(t=>roleTerbatas.izin.has(t)):prev;
       const without=allowed.filter(t=>t!==tab);
@@ -172,6 +183,13 @@ export default function App(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tab,user?.divisi]);
   const [sidebarCollapsed,setSidebarCollapsed]=useState(false);
+  // TAMPILAN MOBILE (12 Nov 2026, T0 - lib/modeMobile): sidebar jadi laci (state terpisah, sidebarCollapsed desktop tidak
+  // disentuh); sbCiut = tampilan ciut hanya berlaku di desktop. Laci ditutup otomatis setiap pindah tab.
+  // laciUntukTab = tab tempat laci dibuka (dideklarasikan di atas efek tab); pindah tab / keluar mode mobile -> tertutup.
+  const laciBuka=modeMobile&&laciUntukTab===tab;
+  const sbCiut=sidebarCollapsed&&!modeMobile;
+  const [bannerDesktopTutup,setBannerDesktopTutup]=useState<string[]>(()=>{try{const v=JSON.parse(localStorage.getItem("vista_teknik_banner_desktop_tutup")||"[]");return Array.isArray(v)?v.filter((x:unknown)=>typeof x==="string"):[];}catch{return [];}});
+  const tutupBannerDesktop=(id:string)=>setBannerDesktopTutup(prev=>{const b=[...new Set([...prev,id])];try{localStorage.setItem("vista_teknik_banner_desktop_tutup",JSON.stringify(b));}catch{/* mode privat */}return b;});
   // Accordion sidebar (30 Agu 2026, "Report Produksi") - key=id parent, value=expanded/tidak.
   const [expandedNav,setExpandedNav]=useState<Record<string,boolean>>({});
   const [showNotif,setShowNotif]=useState(false);
@@ -808,7 +826,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   const activeLabel=allNavItemsFlat.find((i:any)=>i.id===tab)?.label||"Dashboard";
 
   const showTooltip=(e:any,label:string)=>{
-    if(!sidebarCollapsed)return;
+    if(!sbCiut)return;
     let tip=document.getElementById("erp-tip") as HTMLElement;
     if(!tip){tip=document.createElement("div");tip.id="erp-tip";tip.className="erp-tooltip-el";document.body.appendChild(tip);}
     const r=e.currentTarget.getBoundingClientRect();
@@ -820,6 +838,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   return(
     <>
       <style>{GCss}</style>
+      <style>{CSS_MOBILE}</style>
       {(hasNewVersion||hasDateRolled)&&(
         <div style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#1e293b",color:"#fff",
           display:"flex",alignItems:"center",justifyContent:"center",gap:12,padding:"8px 16px",fontSize:12.5}}>
@@ -919,9 +938,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
         </div>
       )}
         <div className="erp-wrap">
-          <div className={"erp-sb"+(sidebarCollapsed?" col":"")}>
+          {laciBuka&&<div className="erp-laci-latar" onClick={()=>setLaciUntukTab(null)}/>}
+          <div className={"erp-sb"+(sbCiut?" col":"")+(laciBuka?" buka":"")}>
             <div className="erp-sb-head">
-              {sidebarCollapsed?(
+              {sbCiut?(
                 <div className="erp-logo">V</div>
               ):(
                 <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
@@ -953,10 +973,10 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                         {!expandedNav[item.id]&&(()=>{const n=item.children.reduce((t:number,c:any)=>t+(typeof c.badge==="number"?c.badge:0),0);return n>0?<span className="erp-nav-badge">{n}</span>:null;})()}
                         <i className={"ti "+(expandedNav[item.id]?"ti-chevron-up":"ti-chevron-down")} style={{fontSize:13,flexShrink:0,marginLeft:"auto"}}/>
                       </button>
-                      {expandedNav[item.id]&&!sidebarCollapsed&&item.children.map((child:any)=>(
+                      {expandedNav[item.id]&&!sbCiut&&item.children.map((child:any)=>(
                         <button key={child.id}
                           className={"erp-nav-item erp-nav-sub"+(tab===child.id?" active":"")}
-                          onClick={()=>setTab(child.id)}
+                          onClick={()=>{setTab(child.id);setLaciUntukTab(null);}}
                           onMouseEnter={(e:any)=>showTooltip(e,child.label)}
                           onMouseLeave={hideTooltip}>
                           <i className={child.icon} style={{fontSize:16,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
@@ -968,7 +988,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                   ):(
                     <button key={item.id}
                       className={"erp-nav-item"+(tab===item.id?" active":"")}
-                      onClick={()=>setTab(item.id)}
+                      onClick={()=>{setTab(item.id);setLaciUntukTab(null);}}
                       onMouseEnter={(e:any)=>showTooltip(e,item.label)}
                       onMouseLeave={hideTooltip}>
                       <i className={item.icon} style={{fontSize:18,flexShrink:0,width:20,display:"flex",alignItems:"center",justifyContent:"center",lineHeight:1}}/>
@@ -985,7 +1005,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 <div className="erp-foot-name">{user?.name||user?.nama}</div>
                 <div className="erp-foot-role">{cfg?.label||"Admin"}</div>
               </div>
-              {!sidebarCollapsed&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");sessionStorage.removeItem("vista_admin_tab_session_id");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
+              {!sbCiut&&<button onClick={()=>{setUser(null);setPage("landing");localStorage.removeItem("vista_admin_session");sessionStorage.removeItem("vista_admin_tab_session_id");}} style={{background:"none",border:"none",cursor:"pointer",color:"#94a3b8",flexShrink:0,padding:2,display:"flex",alignItems:"center",justifyContent:"center"}} title="Keluar"><i className="ti ti-logout" style={{fontSize:16}}/></button>}
             </div>
           </div>
           <div className="erp-main">
@@ -993,8 +1013,9 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
             query={searchQuery} setQuery={setSearchQuery}
             woData={woData} pekerja={pekerja} setTab={setTab}/>}
           <div className="erp-topbar">
-              <button className="erp-toggle" onClick={()=>setSidebarCollapsed((p:boolean)=>!p)}>
-                {sidebarCollapsed?"▶":"◀"}
+              <button className="erp-toggle" onClick={()=>modeMobile?setLaciUntukTab(laciBuka?null:tab):setSidebarCollapsed((p:boolean)=>!p)}
+                aria-label={modeMobile?(laciBuka?"Tutup menu":"Buka menu"):undefined}>
+                {modeMobile?"☰":sidebarCollapsed?"▶":"◀"}
               </button>
               {!isHrga&&<input className="erp-search" placeholder="Cari work order, panel..." readOnly onClick={()=>setShowSearch(true)} style={{cursor:"pointer"}} onFocus={()=>setShowSearch(true)}/>}
               <div className="erp-topbar-right">
@@ -1030,6 +1051,16 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                 )}
 
                 {/* Dark mode toggle */}
+                {/* Tombol tampilan mobile (12 Nov 2026, T0): Otomatis -> Mobile -> Desktop, disimpan per perangkat. */}
+                <button onClick={()=>{setLaciUntukTab(null);modeTampilan.gantiPilihan();}}
+                  title={teksTombolTampilan(modeTampilan.pilihan,modeMobile)} aria-label={teksTombolTampilan(modeTampilan.pilihan,modeMobile)}
+                  aria-pressed={modeTampilan.pilihan==="otomatis"?"mixed":modeMobile}
+                  style={{width:26,height:26,border:`1px solid ${modeTampilan.pilihan==="otomatis"?"var(--border-color,#e5e8ed)":"#2563eb"}`,borderRadius:5,
+                    background:modeTampilan.pilihan==="otomatis"?"var(--bg-tertiary,#f8f9fb)":"#eff6ff",color:modeTampilan.pilihan==="otomatis"?"var(--text-secondary,#6b7280)":"#2563eb",
+                    display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",position:"relative",padding:0}}>
+                  <i className={modeTampilan.pilihan==="desktop"?"ti ti-device-desktop":"ti ti-device-mobile"} style={{fontSize:13}}/>
+                  {modeTampilan.pilihan==="otomatis"&&<span style={{position:"absolute",bottom:-2,right:-1,fontSize:9,fontWeight:800,lineHeight:1}}>A</span>}
+                </button>
                 <button onClick={()=>setDarkMode(p=>!p)}
                   title={darkMode?"Light Mode":"Dark Mode"}
                   style={{width:26,height:26,border:"1px solid var(--border-color,#e5e8ed)",
@@ -1048,7 +1079,7 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
                     )}
                   </div>
                   {showNotif&&(
-                    <div style={{position:"absolute",top:34,right:0,width:320,background:"#fff",
+                    <div className="erp-notif-pop" style={{position:"absolute",top:34,right:0,width:320,background:"#fff",
                       borderRadius:12,boxShadow:"0 8px 32px #00000018",border:"1px solid #e2e8f0",
                       zIndex:999,overflow:"hidden"}}>
                       {/* Header */}
@@ -1163,6 +1194,12 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
               </div>
             </div>
             <div className="erp-body">
+              {modeMobile&&TAB_KELOMPOK_C.has(tab)&&!bannerDesktopTutup.includes(tab)&&(
+                <div className="vt-banner-desktop" role="note">
+                  <i className="ti ti-device-desktop"/>Tab ini paling nyaman dibuka di desktop.
+                  <button onClick={()=>tutupBannerDesktop(tab)} aria-label="Tutup pemberitahuan">✕</button>
+                </div>
+              )}
               {!isHrga&&notifQcGagal.length>0&&(
                 <div style={{position:"sticky" as const,top:0,zIndex:50,background:"#fef2f2",borderBottom:"1px solid #fecaca",padding:"10px 16px",marginBottom:12}}>
                   <div style={{display:"flex",flexDirection:"column" as const,gap:6,maxHeight:160,overflowY:"auto" as const}}>

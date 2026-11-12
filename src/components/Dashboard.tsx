@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
 import { useCcpMap } from '../lib/componentProcessProgress'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
@@ -8,6 +8,14 @@ import { AktivitasPanelTab } from './AktivitasPanelTab'
 
 export function Dashboard({woData,pekerja=[],aktif=true}:{woData:any[];pekerja?:any[];aktif?:boolean}){
   const [activeTab,setActiveTab]=useState("wo");
+  // Mode mobile (T0): tab aktif digulir ke dalam pandangan pada baris tab yang bisa digeser. Hanya bila html[data-mobile].
+  const barisTabRef=useRef<HTMLDivElement|null>(null);
+  useEffect(()=>{
+    if(document.documentElement.getAttribute("data-mobile")!=="1")return;
+    const el=barisTabRef.current?.querySelector('[data-tab-aktif="1"]') as HTMLElement|null;
+    const bar=barisTabRef.current;
+    if(el&&bar)bar.scrollTo({left:Math.max(0,el.offsetLeft-bar.clientWidth/2+el.clientWidth/2),behavior:"smooth"});
+  },[activeTab]);
   const [woSearch,setWoSearch]=useState("");
   const [woStatus,setWoStatus]=useState("semua");
   const [panelSearch,setPanelSearch]=useState("");
@@ -136,15 +144,17 @@ export function Dashboard({woData,pekerja=[],aktif=true}:{woData:any[];pekerja?:
       <div style={{background:"var(--card-bg,#fff)",border:"1px solid var(--border-color,#eaecf0)",borderRadius:8,overflow:"hidden"}}>
 
         {/* Tabs */}
-        <div style={{display:"flex",borderBottom:"1px solid var(--border-color,#eaecf0)",padding:"0 5px",background:"var(--card-bg,#fff)"}}>
+        {/* (12 Nov 2026, T0 mobile) Aktivitas Panel di urutan PERTAMA - hanya urutan; tab awal tetap "wo" (useState di atas).
+            vt-tabbar: di mode mobile baris ini bisa digeser + tab aktif digulir agar terlihat (styles/mobileCss). */}
+        <div className="vt-tabbar" ref={barisTabRef} style={{display:"flex",borderBottom:"1px solid var(--border-color,#eaecf0)",padding:"0 5px",background:"var(--card-bg,#fff)"}}>
           {[
+            {id:"aktivitas",label:"Aktivitas Panel"},
             {id:"wo",label:"Work Order"},
             {id:"panel",label:"Panel List"},
             {id:"alert",label:"Peringatan"+(alerts.length>0?" ("+alerts.length+")":"")},
             {id:"kalender",label:"Kalender"},
-            {id:"aktivitas",label:"Aktivitas Panel"},
           ].map(t=>(
-            <div key={t.id} onClick={()=>setActiveTab(t.id)}
+            <div key={t.id} data-tab-aktif={activeTab===t.id?"1":undefined} onClick={()=>setActiveTab(t.id)}
               style={{padding:"9px 14px",fontSize:12,fontWeight:activeTab===t.id?600:500,
                 color:activeTab===t.id?"#2563eb":"#64748b",cursor:"pointer",
                 borderBottom:activeTab===t.id?"2px solid #2563eb":"2px solid transparent",
