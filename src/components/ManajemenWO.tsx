@@ -28,6 +28,7 @@ import { statusWo, catatRevisiWo, catatWoDibuat, ringkasRevisiEdit, rincianRevis
 import { useWoRevisiLog } from '../hooks/useWoRevisiLog'
 import { tagRevisi, logBelumDilihat, teksLangkah, fmtWaktuWib, MAKS_TAG, type TagRevisi } from '../lib/woRevisiTag'
 import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
+import { aturanHp } from '../styles/responsif'
 
 const PdfViewer=lazyP(()=>import('./PdfViewer').then(m=>({default:m.PdfViewer})));
 
@@ -491,7 +492,7 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
 .woRincianJudul span{text-transform:none;font-weight:500;letter-spacing:0;color:var(--text-secondary,#64748b)}
 .woRincianBaris{padding:2px 0}
 .woRincianBaris span{color:var(--text-secondary,#64748b)}
-@media (max-width:640px){.woRincian{padding-left:16px}}
+${aturanHp(640, `.woRincian{padding-left:16px}`)}
 `}</style>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
         <STitle style={{marginBottom:0}}>Manajemen Work Order</STitle>

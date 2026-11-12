@@ -9,6 +9,7 @@ import { useAktivitasPanel } from '../hooks/useAktivitasPanel'
 import { nadaKartu, susunAktivitasHari, tanggalSebelum, type BarisAktivitas, type KartuAktivitas, type OperatorShift } from '../lib/aktivitasPanel'
 import type { SumberShift } from '../lib/shiftSesi'
 import { hariKerjaWib } from '../lib/tanggalWib'
+import { aturanHp } from '../styles/responsif'
 import { labelLama } from '../lib/jejakPengerjaan'
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { TOKEN_KARTU_STATUS } from '../styles/tokenKartuStatus'
@@ -45,7 +46,7 @@ const CSS = TOKEN_KARTU_STATUS + `
 .akp-note{font-size:12.5px;color:var(--akp-mute);background:var(--akp-soft);border:1px dashed var(--akp-line);border-radius:10px;padding:8px 12px}
 .akp-galat{font-size:13px;color:var(--akp-prog);background:var(--akp-prog-soft);border-radius:10px;padding:8px 12px}
 .akp-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:16px;align-items:start}
-@media (max-width:820px){.akp-grid{grid-template-columns:minmax(0,1fr)}}
+${aturanHp(820, `.akp-grid{grid-template-columns:minmax(0,1fr)}`)}
 .akp-kartu{background:var(--akp-card);border:1px solid var(--akp-line);border-radius:16px;overflow:hidden;min-width:0}
 .akp-kartu.jalan{border-color:var(--akp-run)}
 .akp-kartu.n-berjalan{background:var(--akp-nb-berjalan);box-shadow:inset 0 5px 0 var(--akp-run)}

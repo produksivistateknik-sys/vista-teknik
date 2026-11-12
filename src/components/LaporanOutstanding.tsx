@@ -13,6 +13,7 @@
 // Tombol ber-class "loBtn": aturan global mode gelap `[data-theme=dark] button:not([class*="Btn"])` tidak menimpanya.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { aturanHp, ATRIBUT_MOBILE } from '../styles/responsif'
 import { muatKendala } from '../lib/kendalaProduksi'
 import { laporError } from '../lib/laporError'
 import { hariKerjaWib, tanggalWibDari } from '../lib/tanggalWib'
@@ -96,7 +97,8 @@ const CSS = `
 .lo-kd-m .tg{margin-left:10px;font-variant-numeric:tabular-nums}
 .lo-kd-m .ter{color:var(--lo-ok);font-weight:600}
 .lo-kd.off{opacity:.5}
-@media (max-width:640px){.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}}
+${aturanHp(640, `.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}`)}
+${ATRIBUT_MOBILE} .lo .loBtn.ib{width:44px;height:44px}${ATRIBUT_MOBILE} .lo .loBtn.ib.mv{display:inline-block}
 `
 
 type Tab = 'susun' | 'berkop' | 'wa' | 'riwayat'

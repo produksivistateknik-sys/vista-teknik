@@ -3,6 +3,7 @@
 // Jebakan mode gelap (globalCss): kelas ber-kata "card" dipaksa latar --card-bg & tombol tanpa "Btn" di kelasnya ditimpa ->
 // kartu = "kda-kt", semua tombol ber-class "kdaBtn". Warna status: styles/tokenKartuStatus (sama dgn Aktivitas Panel).
 import { TOKEN_KARTU_STATUS } from './tokenKartuStatus'
+import { aturanHp } from './responsif'
 
 export const CSS_KARTU_PANEL = TOKEN_KARTU_STATUS + `
 .kda{--kd-card:var(--card-bg,#fff);--kd-fg:var(--text-primary,#1b1f2a);--kd-mute:var(--text-secondary,#5d6679);--kd-line:var(--border-color,#e6e8ed);
@@ -32,7 +33,7 @@ export const CSS_KARTU_PANEL = TOKEN_KARTU_STATUS + `
 .kda select:focus,.kda textarea:focus,.kda input:focus{outline:2px solid var(--kd-focus);outline-offset:-1px}
 .kda-cnt{margin-left:auto;color:var(--kd-mute);font-size:13px;white-space:nowrap}
 .kda-kol{columns:2;column-gap:16px}
-@media (max-width:820px){.kda-kol{columns:1}.kda-cnt{margin-left:0}}
+${aturanHp(820, `.kda-kol{columns:1}.kda-cnt{margin-left:0}`)}
 .kda-kt{break-inside:avoid;-webkit-column-break-inside:avoid;display:block;width:100%;margin:0 0 16px;border:1px solid var(--kd-line);border-radius:16px;padding:16px 16px 12px;min-width:0}
 .kda-kt.n-progres{background:var(--ks-nb-progres);box-shadow:inset 0 5px 0 var(--kd-warn)}
 .kda-kt.n-selesai{background:var(--ks-nb-selesai);box-shadow:inset 0 5px 0 var(--kd-ok)}

@@ -36,14 +36,14 @@ export function STitle({children,style={}}){
 }
 export function Modal({children,onClose,title,width=480}){
   return(
-    <div style={{position:"fixed",inset:0,background:"#00000060",
+    <div className="vt-modal" style={{position:"fixed",inset:0,background:"#00000060",
       zIndex:10500,overflowY:"auto"}}>
-      <div style={{background:"#fff",borderRadius:16,width:`min(${width}px,96%)`,
+      <div className="vt-modal-panel" style={{background:"#fff",borderRadius:16,width:`min(${width}px,96%)`,
         boxShadow:"0 20px 60px #00000030",margin:"80px auto 40px"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",
           padding:"16px 20px",borderBottom:"1px solid #f1f5f9",borderRadius:"16px 16px 0 0",background:"#fff",zIndex:1}}>
           <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{title}</div>
-          <button onClick={onClose} style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
+          <button className="vt-modal-tutup" onClick={onClose} aria-label="Tutup" style={{background:"none",border:"none",cursor:"pointer",fontSize:20,color:"#94a3b8"}}>✕</button>
         </div>
         <div style={{padding:20}}>{children}</div>
       </div>

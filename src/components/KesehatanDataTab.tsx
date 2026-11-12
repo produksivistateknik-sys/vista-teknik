@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
+import { aturanHp } from '../styles/responsif'
 
 type Cek = {
   kode: string; nama: string; kategori: string; penjelasan: string | null; frekuensi: string; urutan: number; aktif: boolean
@@ -149,12 +150,12 @@ const CSS = `
 .kd-how{margin-top:28px;padding:14px 16px;background:${C.surface};border:1px solid ${C.line};border-radius:8px}
 .kd-how h3{margin:0 0 6px;font-size:14px;font-weight:700}
 .kd-how ol{margin:0;padding-left:18px;color:${C.fg2};font-size:13.5px;font-weight:400}
-@media (max-width:760px){
+${aturanHp(760, `
   .kd-row{grid-template-columns:minmax(0,1fr) auto 20px;grid-template-areas:"a c d" "b b b" "t t t";gap:8px 10px}
   .kd-row .kd-code{display:none}.kd-row .kd-pill{grid-area:b;justify-self:start}
   .kd-row .kd-main{grid-area:a}.kd-row .kd-count{grid-area:c}.kd-row .kd-chev{grid-area:d}.kd-row .kd-tren{grid-area:t}
   .kd-grid,.kd-extra,.kd-resolved{margin-left:0}.kd-grid{grid-template-columns:1fr}
-}`
+`)}`
 
 function Pill({ status }: { status: Status }) {
   const w = WARNA[status] || WARNA.belum
