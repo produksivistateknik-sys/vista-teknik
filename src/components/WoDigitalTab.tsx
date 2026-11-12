@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { activityLogService } from "../services/activityLogService";
 import { workOrderService } from "../services/workOrderService";
 import { konfirmasiHapusPanel } from "../lib/konfirmasiHapusPanel";
-import { rawScheduleService, pesanPanelBaruTerjadwal } from "../services/rawScheduleService";
+import { rawScheduleService, pesanPanelBelumFcs } from "../services/rawScheduleService";
 import { PANEL_TYPES } from "../constants/panelTypes";
 import { usePanelQtyEditor } from "../lib/usePanelQtyEditor";
 import { QtyKomponenInput } from "./ui/QtyKomponenInput";
@@ -209,13 +209,14 @@ export function WoDigitalTab({user,livePanelTypes}:{user?:any;livePanelTypes?:an
           const ringkas=ringkasRevisiEdit(ubah);
           if(ringkas)await amankan(()=>catatRevisiWo(supabase,[formEditId],uname,ringkas,rincianRevisiEdit(ubah))); // (9 Nov 2026) + rincian terstruktur
         }
-        // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
+        // Panel BARU di WO yang sudah di-FCS TIDAK lagi dijadwalkan otomatis (12 Nov 2026, keputusan user) - hanya
+        // diberi tahu; planner menjalankan ⏱ FCS di Manajemen WO.
         try{
-          const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
-          if(panelBaruTerjadwal.nama.length>0)alert(pesanPanelBaruTerjadwal(panelBaruTerjadwal));
+          const belumFcs=await rawScheduleService.panelBaruBelumFcsSetelahEditWo(form.wo,form.proyek);
+          if(belumFcs.length>0)alert(pesanPanelBelumFcs(belumFcs));
         }catch(err:any){
-          console.error('[WO Digital Edit WO] WO tersimpan, penjadwalan panel baru gagal:',err);
-          alert('WO BERHASIL disimpan, tapi penjadwalan otomatis panel baru GAGAL: '+(err?.message||err)+'\n\nJalankan FCS untuk panel baru tersebut.');
+          console.error('[WO Digital Edit WO] WO tersimpan, cek panel belum FCS gagal:',err);
+          alert('WO BERHASIL disimpan, tapi cek panel yang belum dijadwalkan GAGAL: '+(err?.message||err)+'\n\nCek tombol ⏱ FCS di Manajemen WO.');
         }
         if(user?.divisi==="engineering"){
           try{
