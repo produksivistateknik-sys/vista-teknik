@@ -13,8 +13,8 @@ ${B} body{background:#d9dee7}
 ${B} .erp-wrap{left:calc(50% - 215px);right:auto;width:430px;box-shadow:0 0 0 1px #c7cfdc,0 12px 40px rgba(15,23,42,.18)}
 ${B} .erp-sb,${B} .erp-laci-latar{left:calc(50% - 215px)}
 ${B} .erp-laci-latar{right:calc(50% - 215px)}
-${B} .erp-sb{visibility:hidden}
-${B} .erp-sb.buka{visibility:visible}
+${B} .erp-sb{visibility:hidden;transition:transform .2s ease,visibility 0s linear .2s}
+${B} .erp-sb.buka{visibility:visible;transition:transform .2s ease,visibility 0s}
 ${B} .erp-notif-pop{left:calc(50% - 207px)!important;right:calc(50% - 207px)!important}
 ${B} .vt-dlg-panel{max-width:430px;margin-left:auto!important;margin-right:auto!important}
 ${M} .erp-sb{position:fixed;top:0;left:0;bottom:0;height:auto;width:264px;min-width:264px;z-index:10600;transform:translateX(-105%);transition:transform .2s ease;box-shadow:4px 0 24px rgba(0,0,0,.25)}
