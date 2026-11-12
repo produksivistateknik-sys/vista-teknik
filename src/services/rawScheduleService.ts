@@ -2,15 +2,18 @@
 import { getLocalDateStr } from '../lib/dateHelpers'
 import { hapusKodeDariScheduleMulai, hapusKodeDariRenhar } from '../lib/jadwalQtyHelpers'
 import { generateAndSaveToRawSchedule } from './fcsService'
-import { teksHasilTemplate, type HasilTemplatePanel } from '../lib/templateJadwalWp'
+import { fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
 
-// Hasil penjadwalan panel baru (template WP, 22 Okt 2026) + pesan alert bersama Manajemen WO & WO Digital.
-export type HasilPanelBaru = { nama: string[]; template: HasilTemplatePanel[] }
-export function pesanPanelBaruTerjadwal(h: HasilPanelBaru): string {
-  const catatan = h.template.filter(t => t.tanpaTemplate || t.diLuarTemplate.length || t.peringatan.length).map(teksHasilTemplate)
-  return 'Panel baru otomatis dijadwalkan di Raw Schedule (template WP, Day 1 = hari ini): ' + h.nama.join(', ')
-    + (catatan.length ? '\n\nCatatan:\n- ' + catatan.join('\n- ') : '')
-    + '\n\nJangan lupa Distribusi ke Rencana Harian.'
+// STATUS FCS PER RECORD WO (12 Nov 2026, keputusan user - opsi 2): panel yang ditambahkan ke WO yang sudah di-FCS
+// TIDAK lagi dijadwalkan otomatis saat Simpan Edit WO (Manajemen WO & WO Digital); panel itu menunggu planner
+// menjalankan ⏱ FCS. Satu sumber deteksi untuk pesan simpan, penanda kartu WO, dan centang bawaan modal FCS:
+// panel "sudah di-FCS" = punya minimal 1 baris raw_schedule (aktif MAUPUN terhapus - sama dgn panelSudahDiFcs).
+// sudahFcs = record WO itu sudah punya minimal 1 panel ber-jadwal; belum = panel aktif yang belum punya baris.
+export type PanelBelumFcs = { id: number; nama: string }
+export type StatusFcsWo = { sudahFcs: boolean; belum: PanelBelumFcs[] }
+export function pesanPanelBelumFcs(nama: string[]): string {
+  return 'Panel BELUM dijadwalkan di Raw Schedule (WO ini sudah pernah di-FCS): ' + nama.join(', ')
+    + '\n\nPlanner perlu menjalankan ⏱ FCS untuk panel ini di Manajemen WO (panel yang belum di-FCS sudah dicentang otomatis).'
 }
 
 const logActivity = async (user_name: string, action: string, description: string, extra?: any) => {
@@ -257,39 +260,30 @@ export const rawScheduleService = {
     return hasil.count
   },
 
-  // PANEL BARU di WO yang SUDAH di-FCS (3 Okt 2026) - dipanggil setelah Simpan Edit WO (Manajemen WO
-  // & WO Digital). Dicek PER RECORD WO (wo_id), BUKAN per nomor WO: batch pengiriman baru dgn nomor
-  // sama (Tambah WO / split tanggal ke WO baru) tetap butuh FCS sekali. Kalau record WO itu sudah
-  // punya jadwal (minimal 1 panel ber-baris raw_schedule), panelnya yang belum punya baris langsung
-  // dijadwalkan lengkap mulai hari ini (generator FCS biasa). WO yang belum pernah di-FCS tidak disentuh.
-  // TEMPLATE WP (22 Okt 2026, tahap 2 - keputusan user): panel baru ditata per Day ke-n template jenis panel (Day 1 =
-  // hari ini), bukan ditumpuk di hari ini. Jenis tanpa template = cara lama. Ringkasan template ikut activity_log.
-  async jadwalkanPanelBaruSetelahEditWo(woNumber: string, proyek: string, uname: string): Promise<HasilPanelBaru> {
-    const { data: wos, error: wErr } = await supabase.from('work_orders').select('id').eq('wo', woNumber).eq('proyek', proyek)
-    if (wErr) throw new Error('baca WO: ' + wErr.message)
-    const woIds = (wos || []).map((w: any) => w.id)
-    const kosong: HasilPanelBaru = { nama: [], template: [] }
-    if (!woIds.length) return kosong
-    const { data: panels, error: pErr } = await supabase.from('panels').select('id,nama,wo_id').in('wo_id', woIds).is('deleted_at', null).range(0, 4999)
-    if (pErr) throw new Error('baca panel: ' + pErr.message)
-    if (!(panels || []).length) return kosong
-    const { data: rows, error: rErr } = await supabase.from('raw_schedule').select('panel_id').in('panel_id', panels!.map((p: any) => p.id)).range(0, 9999)
-    if (rErr) throw new Error('baca raw_schedule: ' + rErr.message)
-    const punyaBaris = new Set((rows || []).map((r: any) => r.panel_id))
-    const woSudahFcs = new Set(panels!.filter((p: any) => punyaBaris.has(p.id)).map((p: any) => p.wo_id))
-    const baru = panels!.filter((p: any) => !punyaBaris.has(p.id) && woSudahFcs.has(p.wo_id))
-    if (!baru.length) return kosong
-    const hariIni = getLocalDateStr()
-    const dijadwalkan: string[] = []
-    const template: HasilTemplatePanel[] = []
-    for (const woId of [...new Set(baru.map((p: any) => p.wo_id))]) {
-      const ids = baru.filter((p: any) => p.wo_id === woId).map((p: any) => p.id)
-      const hasil = await generateAndSaveToRawSchedule(woId, hariIni, '__force__' + uname, ids, undefined, { template: {} })
-      if (!hasil.success) throw new Error('jadwalkan panel baru: ' + (hasil.error || 'gagal'))
-      dijadwalkan.push(...baru.filter((p: any) => ids.includes(p.id)).map((p: any) => p.nama))
-      template.push(...(hasil.template || []))
+  // Status FCS per record WO (lihat StatusFcsWo di atas). Hanya membaca; paginasi + potongan id (data bisa > 1000 baris).
+  async statusFcsPerWo(woIds: number[]): Promise<Map<number, StatusFcsWo>> {
+    const hasil = new Map<number, StatusFcsWo>()
+    const ids = [...new Set(woIds.map(Number).filter(Number.isFinite))]
+    if (!ids.length) return hasil
+    const panels = await fetchAllPagedPerPotongan(ids, (b, f, t) => supabase.from('panels').select('id,nama,wo_id').in('wo_id', b).is('deleted_at', null).order('id').range(f, t))
+    const rows = panels.length ? await fetchAllPagedPerPotongan(panels.map((p: any) => p.id), (b, f, t) => supabase.from('raw_schedule').select('id,panel_id').in('panel_id', b).order('id').range(f, t)) : []
+    const punyaBaris = new Set(rows.map((r: any) => Number(r.panel_id)))
+    for (const id of ids) hasil.set(id, { sudahFcs: false, belum: [] })
+    for (const p of panels) {
+      const st = hasil.get(Number(p.wo_id)); if (!st) continue
+      if (punyaBaris.has(Number(p.id))) st.sudahFcs = true
+      else st.belum.push({ id: Number(p.id), nama: p.nama })
     }
-    await logActivity(uname, 'PANEL BARU: TAMBAH KE JADWAL', `WO ${woNumber} - ${proyek}: panel baru dijadwalkan otomatis dgn template WP (Day 1 ${hariIni}) - ${dijadwalkan.join(', ')}${template.length ? ' | ' + template.map(teksHasilTemplate).join(' | ') : ''}`, { proyek })
-    return { nama: dijadwalkan, template }
+    return hasil
+  },
+
+  // Dipanggil setelah Simpan Edit WO (Manajemen WO & WO Digital): nama panel di record WO bernomor & proyek sama yang
+  // SUDAH di-FCS tetapi belum punya jadwal. TIDAK menjadwalkan apa pun (12 Nov 2026, opsi 2) - hanya utk pesan.
+  // Dulu (3 Okt, template WP 22 Okt) fungsi jadwalkanPanelBaruSetelahEditWo langsung menjadwalkan panel ini.
+  async panelBaruBelumFcsSetelahEditWo(woNumber: string, proyek: string): Promise<string[]> {
+    const { data: wos, error: wErr } = await supabase.from('work_orders').select('id').eq('wo', woNumber).eq('proyek', proyek).order('id').range(0, 999)
+    if (wErr) throw new Error('baca WO: ' + wErr.message)
+    const status = await this.statusFcsPerWo((wos || []).map((w: any) => w.id))
+    return [...status.values()].filter(st => st.sudahFcs).flatMap(st => st.belum.map(p => p.nama))
   },
 }

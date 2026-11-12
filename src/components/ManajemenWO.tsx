@@ -4,7 +4,7 @@ import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { workOrderService } from '../services/workOrderService'
 import { konfirmasiHapusPanel } from '../lib/konfirmasiHapusPanel'
-import { rawScheduleService, pesanPanelBaruTerjadwal } from '../services/rawScheduleService'
+import { rawScheduleService, pesanPanelBelumFcs, type StatusFcsWo } from '../services/rawScheduleService'
 import { generateAndSaveToRawSchedule } from '../services/fcsService'
 import { PANEL_TYPES } from '../constants/panelTypes'
 import { initChecklist, checklistEntryPunyaKerja, isKomponenRelevant, getRelevantProsesForKode, woOverallCcpAware, panelOverallCcpAware } from '../lib/panelHelpers'
@@ -112,6 +112,40 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
       .catch(err=>{console.error('[FCS] baca template_jadwal_wp gagal:',err);if(!batal){setTipeBerTemplate([]);alert('Gagal membaca template WP: '+(err?.message||err)+'\nFCS tetap bisa dijalankan tanpa template.');}});
     return()=>{batal=true};
   },[quickGenModal,muatTemplateKe]);
+  // STATUS FCS per WO (12 Nov 2026, keputusan user): panel tambahan tidak lagi dijadwalkan otomatis -> kartu WO memberi
+  // penanda "N panel belum FCS" & modal FCS mencentang panel itu. Satu sumber: rawScheduleService.statusFcsPerWo.
+  // Dimuat ulang saat daftar WO/panel berubah, setelah Simpan Edit WO, dan setelah FCS. Gagal baca = penanda tidak tampil
+  // + console.error (tidak menghalangi kerja; modal FCS tetap mencentang semua panel seperti dulu).
+  const [statusFcs,setStatusFcs]=useState<Map<number,StatusFcsWo>>(new Map());
+  const [muatStatusFcs,setMuatStatusFcs]=useState(0);
+  const kunciPanelWo=woData.map((w)=>w.id+':'+(w.panels||[]).map((p)=>p.id).join('.')).join(',');
+  useEffect(()=>{
+    let batal=false;
+    const ids=woData.map((w)=>Number(w.id));
+    rawScheduleService.statusFcsPerWo(ids)
+      .then(m=>{if(!batal)setStatusFcs(m);})
+      .catch(err=>{console.error('[Manajemen WO] baca status FCS gagal:',err);if(!batal)setStatusFcs(new Map());});
+    return()=>{batal=true};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[kunciPanelWo,muatStatusFcs]);
+  // Centang bawaan modal FCS: WO yang sudah di-FCS -> hanya panel yang belum punya jadwal; WO baru -> semua panel.
+  // Penjaga balapan: hasil baca diabaikan bila modal sudah dibuka utk WO lain / ditutup, atau centang sudah diubah user
+  // (setiap perubahan centang manual menaikkan fcsCentangKe).
+  const fcsCentangKe=useRef(0);
+  const bukaFcs=async(wo)=>{
+    const ke=++fcsCentangKe.current;
+    setQuickGenModal(wo);setQuickGenTanggal(getLocalDateStr());setQuickGenResult(null);setQuickGenPola({});setQuickGenPakaiTemplate(true);setTipeBerTemplate(null);
+    setQuickGenSelectedPanelIds((wo.panels||[]).map((p)=>p.id));
+    try{
+      const st=(await rawScheduleService.statusFcsPerWo([Number(wo.id)])).get(Number(wo.id));
+      if(st)setStatusFcs(prev=>{const m=new Map(prev);m.set(Number(wo.id),st);return m;});
+      if(fcsCentangKe.current!==ke)return;
+      if(st?.sudahFcs&&st.belum.length>0)setQuickGenSelectedPanelIds(st.belum.map(p=>p.id));
+    }catch(err){
+      console.error('[FCS] baca status FCS gagal - semua panel dicentang:',err);
+      if(fcsCentangKe.current===ke)alert('Gagal membaca panel mana yang belum di-FCS: '+(err instanceof Error?err.message:String(err))+'\n\nSemua panel dicentang - periksa pilihan panel sebelum Generate.');
+    }
+  };
   const [form,setForm]=useState(blank);
   const [panels,setPanels]=useState([{...blankPanel}]);
   const [editId,setEditId]=useState(null);
@@ -405,14 +439,16 @@ export function ManajemenWO({woDilihat,bukaWo,woData,setWoData,createWO,updateWO
         }
         if(gagalSinkron.length>0)alert('WO BERHASIL disimpan, tapi sinkron qty ke jadwal GAGAL untuk:\n'+gagalSinkron.join('\n')+'\n\nCek Raw Schedule panel tersebut.');
         Object.keys(qtyChangeSinkPanel).forEach(pid=>tanyaBusbar(Number(pid),'qty panel diubah lewat Edit WO'));
-        // Panel BARU di WO yang sudah di-FCS langsung dijadwalkan (3 Okt 2026, "FCS cukup sekali").
+        // Panel BARU di WO yang sudah di-FCS TIDAK lagi dijadwalkan otomatis (12 Nov 2026, keputusan user) - hanya
+        // diberi tahu; planner menjalankan ⏱ FCS (panel yang belum di-FCS sudah dicentang otomatis di modal FCS).
         try{
-          const panelBaruTerjadwal=await rawScheduleService.jadwalkanPanelBaruSetelahEditWo(form.wo,form.proyek,uname);
-          if(panelBaruTerjadwal.nama.length>0)alert(pesanPanelBaruTerjadwal(panelBaruTerjadwal));
+          const belumFcs=await rawScheduleService.panelBaruBelumFcsSetelahEditWo(form.wo,form.proyek);
+          if(belumFcs.length>0)alert(pesanPanelBelumFcs(belumFcs));
         }catch(err:any){
-          console.error('[Edit WO] WO tersimpan, penjadwalan panel baru gagal:',err);
-          alert('WO BERHASIL disimpan, tapi penjadwalan otomatis panel baru GAGAL: '+(err?.message||err)+'\n\nJalankan FCS untuk panel baru tersebut.');
+          console.error('[Edit WO] WO tersimpan, cek panel belum FCS gagal:',err);
+          alert('WO BERHASIL disimpan, tapi cek panel yang belum dijadwalkan GAGAL: '+(err?.message||err)+'\n\nCek tombol ⏱ FCS di Manajemen WO.');
         }
+        setMuatStatusFcs(n=>n+1);
         if(refetchWO)await refetchWO();
         if(log) await log("EDIT WO","Edit WO "+form.wo+" - "+form.proyek,"work_orders",{module:"wo",action_type:"update",proyek:form.proyek,wo_number:form.wo,halaman:"Manajemen WO"});
         // Penanda REVISI (23 Okt 2026): deadline/proyek/qty panel/tambah-hapus panel - pelaku otomatis dianggap sudah melihat.
@@ -540,13 +576,18 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
                     <Badge label={st.label} color={st.color} bg={st.bg}/>
                     <span style={{fontWeight:800,color:pColor(pct),fontFamily:"'DM Mono',monospace"}}>{pct}%</span>
                     <span style={{fontSize:11,color:"#94a3b8"}}>{(wo.panels??[]).length} panel</span>
+                    {(()=>{const sf=statusFcs.get(Number(wo.id));if(!sf?.sudahFcs||!sf.belum.length)return null;return(
+                      <span title={"Belum dijadwalkan (jalankan ⏱ FCS): "+sf.belum.map(p=>p.nama).join(", ")}
+                        style={{fontSize:10.5,fontWeight:800,borderRadius:20,padding:"2px 8px",background:"#fff7ed",color:"#c2410c",border:"1px solid #fdba74"}}>
+                        {sf.belum.length} panel belum FCS
+                      </span>);})()}
                   </div>
                 </div>
               </div>
               <div style={{display:"flex",gap:7}} onClick={e=>e.stopPropagation()}>
                 <button onClick={()=>{bukaKartu(wo);setForm({wo:wo.wo,proyek:wo.proyek,target:wo.target});setPanels((wo.panels||[]).map(p=>({id:p.id,noPnl:(p as any).no_pnl??p.noPnl,nama:p.nama,tipe:p.tipe,qty:p.qty,checklist:p.checklist,catatan:p.catatan,jumlahCell:(p as any).jumlahCell??(p as any).jumlah_cell??0,tanggal:wo.target,_origQty:p.qty} as any)));setEditId(wo.id);setOpen(true);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>✏️ Edit</button>
-                <button onClick={()=>{setQuickGenModal(wo);setQuickGenTanggal(getLocalDateStr());setQuickGenResult(null);setQuickGenPola({});setQuickGenPakaiTemplate(true);setTipeBerTemplate(null);setQuickGenSelectedPanelIds((wo.panels||[]).map((p:any)=>p.id));}}
+                <button onClick={()=>{bukaFcs(wo);}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #bbf7d0",background:"#f0fdf4",color:"#16a34a",cursor:"pointer",fontSize:12,fontWeight:600}}>⏱ FCS</button>
                 <button onClick={()=>{setArsipPanelModal(wo);setSelArsipPanelIds(new Set());}}
                   style={{padding:"5px 14px",borderRadius:7,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#475569",cursor:"pointer",fontSize:12,fontWeight:600}}>📦 Arsip</button>
@@ -897,7 +938,7 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
       )}
       {editTemplateWp&&<ModalTemplateWp user={user} onTutup={berubah=>{setEditTemplateWp(false);if(berubah){setTipeBerTemplate(null);setMuatTemplateKe(n=>n+1);}}}/>}
       {quickGenModal&&(
-        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{setQuickGenModal(null);setQuickGenResult(null);}} width={quickGenPakaiTemplate?520:420}>
+        <Modal title={"⏱ Generate ke Raw Schedule — WO "+quickGenModal.wo} onClose={()=>{fcsCentangKe.current++;setQuickGenModal(null);setQuickGenResult(null);}} width={quickGenPakaiTemplate?520:420}>
           {!quickGenResult?(
             <div>
               <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>{quickGenPakaiTemplate
@@ -907,9 +948,9 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
                   <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Pilih Panel ({quickGenSelectedPanelIds.length}/{(quickGenModal.panels||[]).length})</div>
                   <div style={{display:"flex",gap:6}}>
-                    <button onClick={()=>setQuickGenSelectedPanelIds((quickGenModal.panels||[]).map((p:any)=>p.id))}
+                    <button onClick={()=>{fcsCentangKe.current++;setQuickGenSelectedPanelIds((quickGenModal.panels||[]).map((p:any)=>p.id));}}
                       style={{fontSize:10,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
-                    <button onClick={()=>setQuickGenSelectedPanelIds([])}
+                    <button onClick={()=>{fcsCentangKe.current++;setQuickGenSelectedPanelIds([]);}}
                       style={{fontSize:10,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
                   </div>
                 </div>
@@ -920,9 +961,11 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
                       <div key={p.id} style={{display:"flex",alignItems:"center",gap:8,padding:"5px 6px",borderRadius:6,background:checked?"#eff6ff":"transparent",flexWrap:"wrap" as const}}>
                         <label style={{display:"flex",alignItems:"center",gap:8,cursor:"pointer",flex:"1 1 150px"}}>
                           <input type="checkbox" checked={checked}
-                            onChange={()=>setQuickGenSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
+                            onChange={()=>{fcsCentangKe.current++;setQuickGenSelectedPanelIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id]);}}/>
                           <span style={{fontSize:12,color:"#1e293b"}}>{p.nama}</span>
                           <span style={{fontSize:10,color:"#94a3b8"}}>({p.tipe})</span>
+                          {(()=>{const sf=statusFcs.get(Number(quickGenModal.id));return sf?.sudahFcs&&sf.belum.some(b=>b.id===Number(p.id))
+                            ?<span style={{fontSize:9.5,fontWeight:800,borderRadius:20,padding:"1px 7px",background:"#fff7ed",color:"#c2410c",border:"1px solid #fdba74"}}>belum FCS</span>:null;})()}
                         </label>
                         {quickGenPakaiTemplate&&(
                           <select aria-label={"Template "+p.nama} value={quickGenPola[p.id]||''} onChange={e=>setQuickGenPola(prev=>({...prev,[p.id]:e.target.value}))}
@@ -946,7 +989,7 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
                 </label>
               </div>
               <div style={{display:"flex",justifyContent:"flex-end",gap:8}}>
-                <Btn outline color="#64748b" onClick={()=>setQuickGenModal(null)}>Batal</Btn>
+                <Btn outline color="#64748b" onClick={()=>{fcsCentangKe.current++;setQuickGenModal(null);}}>Batal</Btn>
 <Btn color="#16a34a" disabled={quickGenSelectedPanelIds.length===0} onClick={async()=>{
                   setQuickGenLoading(true);
                   const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
@@ -990,6 +1033,7 @@ ${aturanHp(640, `.woRincian{padding-left:16px}`)}
                       module:'wo',halaman:'Manajemen WO',proyek:quickGenModal.proyek||'',wo_number:quickGenModal.wo||'',
                     });
                     if(refetchWO)await refetchWO();
+                    setMuatStatusFcs(n=>n+1);
                   }
                 }}>{quickGenLoading?"⏳ Generating...":quickGenSelectedPanelIds.length===0?"Pilih panel dulu":"Generate → ("+quickGenSelectedPanelIds.length+" panel)"}</Btn>
               </div>
