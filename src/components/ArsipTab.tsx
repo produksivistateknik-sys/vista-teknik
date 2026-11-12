@@ -165,9 +165,10 @@ export function ArsipTab({user,refetchWO}:any){
       if(!b.bars.length){rows.push({proses:b.label,color:b.color,mulai:null,akhir:null,berjalan:false,label:"",tMulai:"Belum ada data",tSelesai:"-",durasi:"-"});return;}
       b.bars.forEach(x=>{
         // (12 Nov 2026) teks keadaan dari ganttArsip (TEKS_KEADAAN/teksSelesaiBar) - satu sumber dgn modal.
-        const berjalan=x.keadaan!=="selesai";
+        // Bergaris = belum punya tanggal selesai; "dihitungUlang" yg sudah diberi tanggal (1b) digambar penuh.
+        const berjalan=!x.selesai;
         rows.push({proses:x.labelTahap?`${b.label} - ${x.labelTahap}`:b.label,color:x.color,mulai:x.mulai,akhir:x.akhir,berjalan,
-          label:x.singkatan?x.singkatan:(x.keadaan!=="selesai"?TEKS_KEADAAN[x.keadaan].pendek:`${x.hari} hr`),
+          label:x.singkatan?x.singkatan:(!x.selesai&&x.keadaan!=="selesai"?TEKS_KEADAAN[x.keadaan].pendek:`${x.hari} hr`),
           tMulai:fmtTglFull(x.mulai),
           tSelesai:teksSelesaiBar(x,fmtTglFull),
           durasi:`${x.hari} hari${x.keadaan!=="selesai"?` (${TEKS_KEADAAN[x.keadaan].pendek})`:""}`});
@@ -709,8 +710,8 @@ export function ArsipTab({user,refetchWO}:any){
                                   <div style={{display:"flex",flexDirection:"column" as const,gap:3,padding:"5px 0"}}>
                                     {row.bars.map((b,bi)=>{
                                       const a=Math.max(0,colIndexForDate(cols,b.mulai)),z=Math.max(a,colIndexForDate(cols,b.akhir));
-                                      const berjalan=b.keadaan!=="selesai";
-                                      const teks=b.hari===1?(b.singkatan||(berjalan?"…":"1 hr")):`${b.singkatan?b.singkatan+" · ":""}${b.keadaan!=="selesai"?TEKS_KEADAAN[b.keadaan].pendek:b.hari+" hr"}`;
+                                      const berjalan=!b.selesai;
+                                      const teks=b.hari===1?(b.singkatan||(berjalan?"…":"1 hr")):`${b.singkatan?b.singkatan+" · ":""}${!b.selesai&&b.keadaan!=="selesai"?TEKS_KEADAAN[b.keadaan].pendek:b.hari+" hr"}`;
                                       const judul=`${row.label}${b.labelTahap?" - "+b.labelTahap:""}: mulai ${fmtTglFull(b.mulai)}, ${b.keadaan==="selesai"?"selesai ":""}${teksSelesaiBar(b,fmtTglFull)} · ${b.hari} hari`;
                                       return(
                                         <div key={bi} style={{position:"relative" as const,height:20}}>
