@@ -99,6 +99,37 @@ const CSS = `
 .lo-kd.off{opacity:.5}
 ${aturanHp(640, `.lo .inp.dt{width:132px}.lo-row{gap:4px}.lo .loBtn.ib{width:26px;height:28px}.lo .loBtn.ib.mv{display:none}.lo-pbox{padding:7px}.lo-card{padding:9px}`)}
 ${ATRIBUT_MOBILE} .lo .loBtn.ib{width:44px;height:44px}${ATRIBUT_MOBILE} .lo .loBtn.ib.mv{display:inline-block}
+/* MODE MOBILE T4 (12 Nov 2026): HANYA di bawah html[data-mobile="1"]. Baris isian dua tingkat: kotak isian selebar baris,
+   tombol ↑ ↓ di bawahnya, × (hapus) dipisah ke kanan. Semua kontrol 44px, tab subhalaman satu baris geser (pengisi 18%).
+   Tidak ada aksi yang disembunyikan. */
+${ATRIBUT_MOBILE} .lo h1{font-size:18px}
+${ATRIBUT_MOBILE} .lo-act{width:100%}
+${ATRIBUT_MOBILE} .lo-top .lo-act{display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px 10px}
+${ATRIBUT_MOBILE} .lo-top .lo-act>.inp{width:100%!important;min-width:0}
+${ATRIBUT_MOBILE} .lo-top .lo-act>button{grid-column:1/-1}
+${ATRIBUT_MOBILE} .lo .loBtn:not(.lnk){height:44px!important}
+${ATRIBUT_MOBILE} .lo .lo-links .loBtn.lnk{min-height:44px;padding:0 6px}
+${ATRIBUT_MOBILE} .lo .inp,${ATRIBUT_MOBILE} .lo select.inp{height:44px!important}
+${ATRIBUT_MOBILE} .lo .inp.dt{width:160px}
+${ATRIBUT_MOBILE} .lo .chk{width:24px;height:24px;margin:10px}
+${ATRIBUT_MOBILE} .lo-row{flex-wrap:wrap;row-gap:6px}
+${ATRIBUT_MOBILE} .lo .lo-row>.inp:not(.dt):not(.jam){flex:1 1 0;min-width:0}
+${ATRIBUT_MOBILE} .lo .lo-row:has(>.loBtn.ib:not(.del))::after{content:"";flex:0 0 100%;order:1;height:0}
+${ATRIBUT_MOBILE} .lo .lo-row>.loBtn.ib{order:2}
+${ATRIBUT_MOBILE} .lo .lo-row>.loBtn.ib.del{margin-left:16px}
+${ATRIBUT_MOBILE} .lo .lo-row:has(>.loBtn.ib:not(.del))>.loBtn.ib.del{margin-left:auto}
+${ATRIBUT_MOBILE} .lo .lo-row:has(>.loBtn.ib:not(.del)){row-gap:0}
+${ATRIBUT_MOBILE} .lo .lo-row:has(>.loBtn.ib:not(.del))>.loBtn.ib{margin-top:2px}
+${ATRIBUT_MOBILE} .lo-per .loBtn.ib{margin:-8px 0}
+${ATRIBUT_MOBILE}:not([data-theme="dark"]) .lo{--lo-mute:#5f6675}
+${ATRIBUT_MOBILE} .lo-card{padding:10px}
+${ATRIBUT_MOBILE} .lo-pbox{padding:8px}
+${ATRIBUT_MOBILE} .lo-links{gap:4px 14px}
+${ATRIBUT_MOBILE} .lo-tabs{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+${ATRIBUT_MOBILE} .lo-tabs::-webkit-scrollbar{display:none}
+${ATRIBUT_MOBILE} .lo-tabs::after{content:"";flex:none;width:18%}
+${ATRIBUT_MOBILE} .lo .lo-tabs .loBtn{height:44px;flex:none}
+${ATRIBUT_MOBILE} .lo-arc label{min-height:44px;align-items:center}
 `
 
 type Tab = 'susun' | 'berkop' | 'wa' | 'riwayat'
