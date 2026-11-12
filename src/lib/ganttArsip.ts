@@ -36,14 +36,37 @@ export const GANTT_BUSBAR_TAHAP_COLOR:Record<string,string>={FABRIKASI:"#7c3aed"
 export const BUSBAR_SINGKATAN:Record<string,string>={FABRIKASI:"FAB",PLATING:"PLT",HEATSHRINK:"HS",PASANG:"PSG"};
 const PROSES_PER_KOMPONEN=["POTONG","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"];
 
+// KEADAAN BAR (12 Nov 2026, keputusan user - insiden "Asb Rakit berjalan" panel arsip #584): kata "berjalan" dulu
+// dipakai utk SEMUA bar tanpa tanggal selesai, padahal artinya hanya "progres < 100%". Sekarang dibedakan:
+// - timerBerjalan : ada timer arsip proses itu (tahap itu utk Busbar) tanpa waktu selesai -> "berjalan".
+// - belum100      : progress_snapshot panel < 100 -> "Belum 100% saat diarsipkan".
+// - dihitungUlang : progress_snapshot >= 100 tetapi hitungan sekarang < 100 (aturan proses/relevansi berubah
+//                   setelah diarsipkan) -> "100% saat diarsipkan; dihitung ulang dengan aturan proses sekarang".
+// Teks SATU sumber utk modal, PDF, dan Excel (TEKS_KEADAAN & LEGENDA_GANTT di bawah).
+export type KeadaanBar="selesai"|"timerBerjalan"|"belum100"|"dihitungUlang";
+export const TEKS_KEADAAN:Record<Exclude<KeadaanBar,"selesai">,{pendek:string;panjang:string}>={
+  timerBerjalan:{pendek:"berjalan",panjang:"Timer masih berjalan"},
+  belum100:{pendek:"belum 100%",panjang:"Belum 100% saat diarsipkan"},
+  dihitungUlang:{pendek:"dihitung ulang",panjang:"100% saat diarsipkan; dihitung ulang dengan aturan proses sekarang"},
+};
+export const LEGENDA_GANTT={selesai:"Selesai (progres 100%)",belum:"Belum 100% / timer berjalan (s/d tanggal diarsipkan)",hariIni:"Hari ini"};
+// Teks kolom "Selesai" (tooltip modal, tabel PDF & Excel) - satu sumber.
+// Bar bergaris = belum punya tanggal selesai (b.selesai null). "dihitungUlang" (1b) punya tanggal selesai -> bar penuh.
+export const teksSelesaiBar=(b:BarGantt,fmt:(iso:string)=>string)=>
+  b.keadaan==="selesai"?fmt(b.selesai as string)
+    :b.selesai?`${fmt(b.selesai)} (${TEKS_KEADAAN[b.keadaan].panjang})`
+    :`${TEKS_KEADAAN[b.keadaan].panjang} (s/d ${fmt(b.akhir)})`;
+
 export type BarGantt={
   singkatan?:string;      // FAB/PLT/HS/PSG (Busbar)
   labelTahap?:string;     // "Fabrikasi" dst (Busbar)
+  tahap?:string;          // FABRIKASI dst (Busbar) - utk cek timer tahap ini
   color:string;
   mulai:string;           // ISO
   selesai:string|null;    // ISO; null = belum selesai
   akhir:string;           // ISO ujung bar yang digambar (= selesai, atau tanggal diarsipkan kalau belum)
   hari:number;            // panjang bar dalam hari kalender (inklusif, min 1)
+  keadaan:KeadaanBar;     // lihat KeadaanBar di atas (dihitung di hitungGanttArsip)
 };
 export type BarisGantt={key:string;label:string;icon:string;color:string;bars:BarGantt[]};
 
@@ -87,10 +110,35 @@ function bar(mulai:string,selesai:string|null,akhirBelum:string,color:string,ext
   let akhir=selesai||akhirBelum;
   if(akhir<mulai)akhir=mulai;
   const sel=selesai&&selesai<mulai?mulai:selesai;
-  return{color,mulai,selesai:sel,akhir,hari:Math.max(1,selisihHari(mulai,akhir)+1),...extra};
+  return{color,mulai,selesai:sel,akhir,hari:Math.max(1,selisihHari(mulai,akhir)+1),keadaan:sel?"selesai":"belum100",...extra};
 }
 
 export function hitungGanttArsip(panel:any,data:DataGanttArsip,hariIni:string=new Date().toISOString()):BarisGantt[]{
+  const baris=hitungBarisGantt(panel,data,hariIni);
+  // Keadaan bar yang belum selesai (lihat KeadaanBar).
+  const snap100=(Number(panel?.progress_snapshot)||0)>=100;
+  const timerTerbuka=(key:string,tahap?:string)=>data.timer.some(t=>!t.selesai&&!!t.mulai&&t.proses===key&&(key!=="BUSBAR"||t.tahap===tahap));
+  // 1b (12 Nov 2026, keputusan user): panel yang 100% saat diarsipkan -> bar proses yang punya data digambar SELESAI
+  // (bukan bergaris), ujungnya = aktivitas TERAKHIR proses itu di data arsip (timer selesai/mulai, checkpoint; QC:
+  // complete_at/todo_at). Keadaan tetap "dihitungUlang" supaya teksnya menjelaskan. Timer tanpa selesai tetap bergaris.
+  const akhirBelum=panel?.diarsipkan_pada||hariIni;
+  const aktivitasTerakhir=(key:string,tahap?:string):string|null=>{
+    if(key==="QC"){const g=panel?.qc_checklist?._global||{};return g.complete_at||g.todo_at||null;}
+    const t=data.timer.filter(x=>x.proses===key&&(key!=="BUSBAR"||x.tahap===tahap)).map(x=>x.selesai||x.mulai);
+    const c=key==="BUSBAR"?[]:data.checkpoint.filter(x=>x.proses===key).map(x=>x.ts||x.tanggal);
+    return maks([...t,...c].filter(Boolean) as string[]);
+  };
+  return baris.map(r=>({...r,bars:r.bars.map(b=>{
+    if(b.selesai)return b;
+    if(timerTerbuka(r.key,b.tahap))return{...b,keadaan:"timerBerjalan" as KeadaanBar};
+    if(!snap100)return{...b,keadaan:"belum100" as KeadaanBar};
+    const sel=aktivitasTerakhir(r.key,b.tahap)||b.mulai;
+    const {mulai,color,singkatan,labelTahap,tahap}=b;
+    return{...bar(mulai,sel>akhirBelum?akhirBelum:sel,akhirBelum,color,{singkatan,labelTahap,tahap}),keadaan:"dihitungUlang" as KeadaanBar};
+  })}));
+}
+
+function hitungBarisGantt(panel:Parameters<typeof hitungGanttArsip>[0],data:DataGanttArsip,hariIni:string):BarisGantt[]{
   const akhirBelum=panel?.diarsipkan_pada||hariIni;
   const checklist=panel?.checklist||{};
   let pd:Record<string,number>={};
@@ -124,7 +172,7 @@ export function hitungGanttArsip(panel:any,data:DataGanttArsip,hariIni:string=ne
           :rows.some(t=>(t.progress||0)>=100);
         const selesai=selesaiSemua?(maks(rows.filter(t=>(t.progress||0)>=100).map(t=>t.selesai).filter(Boolean) as string[])||maks(rows.map(t=>t.selesai||t.mulai).filter(Boolean) as string[])):null;
         const c=GANTT_BUSBAR_TAHAP_COLOR[tahap]||r.color;
-        bars.push(bar(mulai,selesai,akhirBelum,c,{singkatan:BUSBAR_SINGKATAN[tahap],labelTahap:BUSBAR_TAHAP_LABEL[tahap]}));
+        bars.push(bar(mulai,selesai,akhirBelum,c,{singkatan:BUSBAR_SINGKATAN[tahap],labelTahap:BUSBAR_TAHAP_LABEL[tahap],tahap}));
       });
       return{...base,bars};
     }
