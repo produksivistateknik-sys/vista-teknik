@@ -712,12 +712,12 @@ export function ArsipTab({user,refetchWO}:any){
                                       const a=Math.max(0,colIndexForDate(cols,b.mulai)),z=Math.max(a,colIndexForDate(cols,b.akhir));
                                       const berjalan=!b.selesai;
                                       const teks=b.hari===1?(b.singkatan||(berjalan?"…":"1 hr")):`${b.singkatan?b.singkatan+" · ":""}${!b.selesai&&b.keadaan!=="selesai"?TEKS_KEADAAN[b.keadaan].pendek:b.hari+" hr"}`;
-                                      const judul=`${row.label}${b.labelTahap?" - "+b.labelTahap:""}: mulai ${fmtTglFull(b.mulai)}, ${b.keadaan==="selesai"?"selesai ":""}${teksSelesaiBar(b,fmtTglFull)} · ${b.hari} hari`;
+                                      const judul=`${row.label}${b.labelTahap?" - "+b.labelTahap:""}: mulai ${fmtTglFull(b.mulai)}${b.selesai?", selesai ":" - "}${teksSelesaiBar(b,fmtTglFull)} · ${b.hari} hari`;
                                       return(
                                         <div key={bi} style={{position:"relative" as const,height:20}}>
                                           <div title={judul} style={{position:"absolute" as const,top:0,bottom:0,left:`calc(${a/n*100}% + 3px)`,width:`calc(${(z-a+1)/n*100}% - 6px)`,
                                             borderRadius:6,backgroundColor:b.color,backgroundImage:berjalan?"repeating-linear-gradient(135deg,transparent 0 5px,rgba(255,255,255,.32) 5px 10px)":undefined,
-                                            color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",whiteSpace:"nowrap" as const,overflow:"hidden",
+                                            color:"#fff",fontSize:9,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",padding:"0 3px",
                                             zIndex:1,cursor:"default",WebkitPrintColorAdjust:"exact",printColorAdjust:"exact"} as any}>
                                             {teks}
                                           </div>
