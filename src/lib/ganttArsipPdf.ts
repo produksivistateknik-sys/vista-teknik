@@ -7,6 +7,7 @@
 // dipotong & dilanjutkan di blok berikutnya.
 import type jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
+import { LEGENDA_GANTT } from './ganttArsip'
 
 // Kolom HARIAN Gantt (dipindah dari ArsipTab.tsx 5 Okt 2026 tanpa perubahan - dipakai bareng web &
 // PDF). weekIdx dihitung per kolom (day 1-7=Wk1, 8-14=Wk2, dst - restart tiap bulan baru).
@@ -96,12 +97,15 @@ export function gambarTimelineGanttPdf(doc:jsPDF,rows:BarisGanttPdf[],startY:num
   const ly=y+7.5;
   gambarBar(doc,kiri,ly,9,3.2,[37,99,235],false,"");
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(107,114,128);
-  doc.text("Selesai (100%)",kiri+10.5,ly+2.5);
-  gambarBar(doc,kiri+34,ly,9,3.2,[37,99,235],true,"");
+  // (12 Nov 2026) teks legenda satu sumber dgn modal (LEGENDA_GANTT); posisi dihitung dari lebar teks.
+  doc.text(LEGENDA_GANTT.selesai,kiri+10.5,ly+2.5);
+  const xBelum=kiri+10.5+doc.getTextWidth(LEGENDA_GANTT.selesai)+5;
+  gambarBar(doc,xBelum,ly,9,3.2,[37,99,235],true,"");
   doc.setFont('helvetica','normal');doc.setFontSize(7);doc.setTextColor(107,114,128);
-  doc.text("Belum selesai (s/d tanggal diarsipkan)",kiri+44.5,ly+2.5);
-  doc.setDrawColor(...ORANYE);doc.setLineWidth(.6);doc.line(kiri+98,ly-.3,kiri+98,ly+3.5);
-  doc.text("Hari ini",kiri+99.5,ly+2.5);
+  doc.text(LEGENDA_GANTT.belum,xBelum+10.5,ly+2.5);
+  const xHari=xBelum+10.5+doc.getTextWidth(LEGENDA_GANTT.belum)+5;
+  doc.setDrawColor(...ORANYE);doc.setLineWidth(.6);doc.line(xHari,ly-.3,xHari,ly+3.5);
+  doc.text(LEGENDA_GANTT.hariIni,xHari+1.5,ly+2.5);
   y+=13;
   const lebarHari=(lebarIsi-LEBAR_LABEL)/HARI_PER_BLOK;
   const idxHariIni=colIndexForDate(cols,hariIniIso);
