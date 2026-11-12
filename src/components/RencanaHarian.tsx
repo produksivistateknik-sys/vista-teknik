@@ -18,6 +18,70 @@ import { selesaiSebelumTanggal } from '../lib/kodeJadwalAktif'
 import { useJejakPengerjaan } from '../hooks/useJejakPengerjaan'
 import { kunciJejak, susunJejak, menitGabungan, labelLama } from '../lib/jejakPengerjaan'
 import { JejakPengerjaanSel } from './JejakPengerjaanSel'
+import { ATRIBUT_MOBILE as M } from '../styles/responsif'
+
+// MODE MOBILE (12 Nov 2026, T3): SEMUA aturan diawali html[data-mobile="1"] -> desktop tidak berubah. Hanya tata letak:
+// navigasi minggu & tombol 44px, baris chip proses/status digeser (pengisi 18% agar chip terakhir keluar dari area pudar),
+// tabel jadi kartu per baris (urutan sel diatur lewat CSS; isi & aksi sel tidak berubah). Kepala tabel: hanya kolom yang
+// punya ikon filter yang tampil (sebagai chip 44px) - judul kolom polos tidak memuat aksi. Nomor kolom: rhm-t11 = tabel
+// proses (11 kolom), rhm-t9 = NAMEPLATE/YELLOWMARK (9 kolom) - ubah di sini bila urutan kolom berubah. Cabang render
+// non-wiring (9 td, isWiringTask selalu true = kode mati) TIDAK cocok dgn peta t11 - sesuaikan bila cabang itu dihidupkan.
+const CSS_RHM = `
+${M} .rhm-nav{flex-wrap:wrap;gap:8px!important}
+${M} .rhm-nav>button{min-height:44px;min-width:44px}
+${M} .rhm-nav>span{flex:1 1 auto}
+${M} .rhm-nav>button[title]{flex:1 1 100%;margin-left:0!important}
+${M} .rhm-hari{gap:4px!important}
+${M} .rhm-hari>*{min-height:44px;padding:6px 2px!important;min-width:0}
+${M} .rhm-kepala>div:last-child{margin-left:0!important;width:100%}
+${M} .rhm-kepala button{min-height:44px;flex:0 1 auto;margin-left:auto}
+${M} .rhm-chip{flex-wrap:nowrap!important;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding:4px 2px;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+${M} .rhm-chip::-webkit-scrollbar{display:none}
+${M} .rhm-chip::after{content:"";flex:none;width:18%}
+${M} .rhm-chip>*{flex:none}
+${M} .rhm-chip button{min-height:44px;white-space:nowrap}
+${M} .rhm-judul{flex-wrap:wrap;gap:4px;padding:8px 12px!important}
+${M} .rhm-judul>div{flex-wrap:wrap;gap:6px!important}
+${M} .rhm-bungkus{overflow:visible!important;border:0!important}
+${M} .rhm-t,${M} .rhm-t thead,${M} .rhm-t tbody{display:block;width:100%!important}
+${M} .rhm-t thead tr{display:flex;flex-wrap:nowrap;gap:6px;padding:8px 2px;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+${M} .rhm-t thead tr::-webkit-scrollbar{display:none}
+${M} .rhm-t thead tr::after{content:"";flex:none;width:18%}
+${M} .rhm-t thead th{flex:none;white-space:nowrap}
+${M} .rhm-t thead th{display:none}
+${M} .rhm-t11 thead th:nth-child(2),${M} .rhm-t11 thead th:nth-child(3),${M} .rhm-t11 thead th:nth-child(6),${M} .rhm-t11 thead th:nth-child(9),${M} .rhm-t9 thead th:nth-child(2),${M} .rhm-t9 thead th:nth-child(3),${M} .rhm-t9 thead th:nth-child(8){display:flex;align-items:center;width:auto!important;min-height:44px;position:static!important;border-radius:8px;padding:0 4px 0 12px!important;border:0!important}
+${M} .rhm-t thead th>span>span[role=button]{min-width:40px;min-height:44px;justify-content:center}
+${M} .rhm-t tbody tr{display:flex;flex-wrap:wrap;align-items:center;border:1px solid var(--border-color,#e2e8f0);border-radius:10px;overflow:hidden;margin:0 0 10px;background:var(--card-bg,#fff)}
+${M} .rhm-t tbody td{display:block;flex:1 1 auto;border:0!important;padding:6px 10px!important;text-align:left!important;min-width:0}
+${M} .rhm-t tbody td[colspan]{flex:1 1 100%}
+${M} .rhm-t tbody td button{min-height:44px}
+${M} .rhm-t tbody td:nth-child(1){order:1;flex:0 0 auto}
+${M} .rhm-t tbody td:nth-child(2){order:2;flex:1 1 0}
+${M} .rhm-t tbody td:nth-child(3){order:3;flex:1 1 100%;font-size:14px;padding-top:0!important}
+${M} .rhm-t tbody td:nth-child(6){order:4;flex:1 1 100%}
+${M} .rhm-t tbody td:nth-child(4){order:5}
+${M} .rhm-t tbody td:nth-child(5){order:6}
+${M} .rhm-t11 tbody td:nth-child(7){order:7}
+${M} .rhm-t11 tbody td:nth-child(7)::before{content:"Qty ";font-size:11px;color:var(--text-secondary,#64748b)}
+${M} .rhm-t11 tbody td:nth-child(9){order:8}
+${M} .rhm-t11 tbody td:nth-child(9)>div{justify-content:flex-start!important}
+${M} .rhm-t11 tbody td:nth-child(9) button{min-width:44px;min-height:44px}
+${M} .rhm-t11 tbody td:nth-child(10){order:9}
+${M} .rhm-t11 tbody td:nth-child(10)::before{content:"Pipeline ";font-size:11px;color:var(--text-secondary,#64748b)}
+${M} .rhm-t11 tbody td:nth-child(8){order:10;flex:1 1 100%}
+${M} .rhm-t11 tbody td:nth-child(11){order:11;flex:1 1 100%}
+${M} .rhm-t11 tbody td:nth-child(11) button{width:100%;min-height:44px}
+${M} .rhm-t9 tbody td:nth-child(8){order:7}
+${M} .rhm-t9 tbody td:nth-child(7){order:8;flex:1 1 100%}
+${M} .rhm-t9 tbody td:nth-child(9){order:9;flex:1 1 100%}
+${M} .rhm-t tbody td[colspan]:nth-child(1){flex:1 1 100%;min-width:0;white-space:normal}
+${M} .rhm-t tbody td:empty{display:none}
+${M} .rhm-t11 tbody td:nth-child(11){padding-top:14px!important}
+${M} .rhm-t tbody td:nth-child(1){color:var(--text-secondary,#64748b)!important}
+${M} .rhm-t tbody td span[style*="color: rgb(203, 213, 225)"],${M} .rhm-t tbody td span[style*="color: rgb(226, 232, 240)"],${M} .rhm-t tbody td span[style*="color: rgb(148, 163, 184)"]{color:var(--text-secondary,#64748b)!important}
+${M} .rhm-t9 tbody td:nth-child(9)::before{content:"Diperbarui ";color:var(--text-secondary,#64748b)}
+${M} .rhm-t11 tbody td:nth-child(8):not([colspan])::before,${M} .rhm-t9 tbody td:nth-child(7)::before{content:"Operator";display:block;font-size:11px;font-weight:600;color:var(--text-secondary,#64748b);margin-bottom:3px}
+`
 
 // Warna status pipeline (readiness per-komponen) - beda dari statusStyle di TaskMonitoring.tsx
 // (itu urusan tampilan sendiri, sengaja gak diseragamkan warnanya, cuma computeProsesStatus()
@@ -1004,7 +1068,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
   const totalKompFiltered=countKomponen(filteredTasks);
   const allDist=totalKompFiltered>0&&distCount===totalKompFiltered;
   return(
-    <div className="fi">
+    <div className="fi rhm">
       {toast&&(
         <div style={{position:"fixed",bottom:24,left:"50%",transform:"translateX(-50%)",zIndex:9999,
           background:"#1e293b",color:"#fff",padding:"10px 20px",borderRadius:10,fontSize:13,fontWeight:600,
@@ -1013,7 +1077,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
         </div>
       )}
       <Card style={{marginBottom:10,padding:"10px 14px"}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+        <div className="rhm-nav" style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,-7))}>{"◀"}</Btn>
           <button onClick={()=>{setWeekStart(TODAY);setSelDate(TODAY);}} style={{padding:"5px 12px",borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",fontSize:11,fontWeight:700,color:"#64748b",cursor:"pointer"}}>Hari Ini</button>
           <Btn outline color="#2563eb" style={{padding:"5px 12px",fontSize:12}} onClick={()=>setWeekStart(addDays(weekStart,7))}>{"▶"}</Btn>
@@ -1026,7 +1090,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
             </Btn>
           )}
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
+        <div className="rhm-hari" style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:6}}>
           {days.map(d=>{
             const isSel=d===selDate;const isToday=d===TODAY;const cnt=taskCountByDay[d]||0;
             return(
@@ -1041,7 +1105,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
           })}
         </div>
       </Card>
-      <div style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
+      <div className="rhm-kepala" style={{display:"flex",gap:8,marginBottom:14,flexWrap:"wrap",alignItems:"center"}}>
         <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>📅 {fmtDateFull(selDate)}</div>
         <div style={{marginLeft:"auto",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
           {totalKompFiltered>0&&<span style={{fontSize:12,color:"#64748b"}}>{distCount}/{totalKompFiltered} dirilis</span>}
@@ -1049,7 +1113,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
           {allDist&&totalKompFiltered>0&&<span style={{background:"#f0fdf4",border:"1px solid #bbf7d0",color:"#16a34a",borderRadius:20,padding:"4px 14px",fontSize:12,fontWeight:700}}>✅ Semua Dirilis</span>}
         </div>
       </div>
-      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+      <div className="rhm-chip" style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
         <button onClick={()=>setSelProses("ALL")} style={{padding:"4px 14px",borderRadius:20,border:`1.5px solid ${selProses==="ALL"?"#1d4ed8":"#e2e8f0"}`,background:selProses==="ALL"?"#1d4ed8":"#fff",color:selProses==="ALL"?"#fff":"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>Semua ({allTasks.length+npYmMarked.length})</button>
         {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{
           const pc=PROSES_COLOR[pr]||"#64748b";const cnt=allTasks.filter(t=>t.proses===pr).length;const isSel=selProses===pr;
@@ -1062,7 +1126,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
       </div>
       {/* Filter status pipeline (NOT YET/TO DO/IN PROGRESS/DONE) - cuma berlaku ke tabel proses
           yang masuk rantai ALL_PROSES (NAMEPLATE/YELLOWMARK gak punya kolom ini sama sekali). */}
-      <div style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
+      <div className="rhm-chip" style={{display:"flex",gap:5,marginBottom:14,flexWrap:"wrap"}}>
         {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
           const sc=s==="ALL"?"#475569":STATUS_PIPELINE_STYLE[s].color;
           const isSel=statusFilter===s;
@@ -1101,7 +1165,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
         const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
-            <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div className="rhm-judul" style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
@@ -1110,8 +1174,8 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
               {tasks.length>0&&<span style={{fontSize:11,color:"#ffffff99",fontWeight:600}}>{distTasks}/{totalTasksKomp} dirilis</span>}
             </div>
             {tasks.length>0&&(
-            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+            <div className="rhm-bungkus" style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+              <table className="rhm-t rhm-t11" style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
                     <th style={{...thS,width:40,textAlign:"center"}}>No</th>
@@ -1482,15 +1546,15 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
         const thS={background:"#1e3a8a",color:"#fff",padding:"6px 8px",fontWeight:700,fontSize:10,whiteSpace:"nowrap" as const,textAlign:"left" as const,position:"sticky" as const,top:0,borderRight:"1px solid #ffffff18"};
         return(
           <div key={proses} style={{marginBottom:20}}>
-            <div style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+            <div className="rhm-judul" style={{background:pc,borderRadius:"7px 7px 0 0",padding:"7px 14px",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
               <div style={{display:"flex",alignItems:"center",gap:10}}>
                 <span style={{fontWeight:900,fontSize:15,color:"#fff"}}>{proses}</span>
                 {dc&&<span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{dc.icon} {dc.label}</span>}
                 <span style={{background:"#ffffff25",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{tasks.length} tugas</span>
               </div>
             </div>
-            <div style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
-              <table style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
+            <div className="rhm-bungkus" style={{overflowX:"auto",border:"1px solid #e2e8f0",borderTop:"none",borderRadius:"0 0 10px 10px"}}>
+              <table className="rhm-t rhm-t9" style={{width:"100%",borderCollapse:"collapse",fontSize:12,tableLayout:"fixed"}}>
                 <thead>
                   <tr>
                     <th style={{...thS,width:40,textAlign:"center"}}>No</th>
@@ -1645,6 +1709,7 @@ Minta operator menekan Selesai dulu, lalu Tarik lagi.`);return;}
           </Modal>
         );
       })()}
+      <style>{CSS_RHM}</style>
     </div>
   );
 }
