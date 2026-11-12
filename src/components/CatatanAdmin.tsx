@@ -13,6 +13,7 @@ import {
   BATAS_INTI, BATAS_ISI, BATAS_SUMBER, UMUR_BASI_HARI, TABEL_SINYAL, type Catatan, type IsiCatatan,
 } from '../lib/panelCatatan'
 import { CSS_KARTU_PANEL } from '../styles/kartuPanelCss'
+import { ATRIBUT_MOBILE as M } from '../styles/responsif'
 import { useAdminDilihat } from '../hooks/useAdminDilihat'
 import { statusDilihat } from '../lib/adminDilihat'
 import { BarisWoProyek } from './ui/ChipDeadline'
@@ -39,6 +40,11 @@ const CSS = CSS_KARTU_PANEL + `
 .kct-f textarea{min-height:76px;resize:vertical}
 .kct-f label.cb{display:inline-flex;align-items:center;gap:6px;font-size:13px;color:var(--kd-fg);cursor:pointer}
 .kct-f .hit{font-size:11.5px;color:var(--kd-mute);text-align:right}
+/* MODE MOBILE (12 Nov 2026, T2): hanya di bawah html[data-mobile="1"] - kotak cari di baris filter yg bisa digeser. */
+${M} .kct-cari{height:44px;width:250px;flex:none}
+${M} .kct-f input[type=text]{height:44px}
+${M} .kct-f label.cb{min-height:44px}
+${M} .kda .kct-sel{min-height:44px}
 `
 
 type Tab = 'aktif' | 'ditindaklanjuti' | 'semua'

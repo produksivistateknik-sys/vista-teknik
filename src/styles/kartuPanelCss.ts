@@ -3,7 +3,7 @@
 // Jebakan mode gelap (globalCss): kelas ber-kata "card" dipaksa latar --card-bg & tombol tanpa "Btn" di kelasnya ditimpa ->
 // kartu = "kda-kt", semua tombol ber-class "kdaBtn". Warna status: styles/tokenKartuStatus (sama dgn Aktivitas Panel).
 import { TOKEN_KARTU_STATUS } from './tokenKartuStatus'
-import { aturanHp } from './responsif'
+import { aturanHp, ATRIBUT_MOBILE as M } from './responsif'
 
 export const CSS_KARTU_PANEL = TOKEN_KARTU_STATUS + `
 .kda{--kd-card:var(--card-bg,#fff);--kd-fg:var(--text-primary,#1b1f2a);--kd-mute:var(--text-secondary,#5d6679);--kd-line:var(--border-color,#e6e8ed);
@@ -83,4 +83,31 @@ ${aturanHp(820, `.kda-kol{columns:1}.kda-cnt{margin-left:0}`)}
 .kda-form .foot{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--kd-mute);font-size:13px}
 .kda-form .foot b{color:var(--kd-fg);font-weight:500}
 .kda-fa{display:flex;gap:8px}
+/* MODE MOBILE (12 Nov 2026, T2 - Kendala & Catatan, satu sumber kartu): HANYA di bawah html[data-mobile="1"]. Ringkasan satu
+   baris, baris filter digeser (pengisi 18% agar kontrol terakhir keluar dari area pudar), kontrol min 44px, kartu ringkas,
+   tombol berbahaya (.bad) diberi jarak dari tombol aman. Aksi tidak disembunyikan. */
+${M} .kda{gap:12px}
+${M} .kda h1{font-size:18px}
+/* ringkasan dirancang utk 4 kotak (Kendala & Catatan selalu 4) */
+${M} .kda-sum{grid-template-columns:none;grid-auto-flow:column;grid-auto-columns:minmax(0,1fr);gap:6px}
+${M} .kda-sum>div{padding:8px 6px;text-align:center}
+${M} .kda-sum b{font-size:18px}
+${M} .kda-sum span{display:block;font-size:11px;letter-spacing:0;line-height:1.2;overflow-wrap:break-word}
+${M} .kda-tb{flex-wrap:nowrap;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;padding:4px 2px;-webkit-mask-image:linear-gradient(to right,#000 82%,transparent);mask-image:linear-gradient(to right,#000 82%,transparent)}
+${M} .kda-tb::-webkit-scrollbar{display:none}
+${M} .kda-tb::after{content:"";flex:none;width:18%}
+${M} .kda-tb>*{flex:none}
+${M} .kda-seg{flex-wrap:nowrap;max-width:none}
+${M} .kda .kda-seg button{height:44px}
+${M} .kda select{height:44px}
+${M} .kda .kda-btn,${M} .kda .kda-ghost,${M} .kda .kda-semua,${M} .kda .kda-lagi{height:44px}
+${M} .kda-kt{padding:14px 12px 10px;margin-bottom:12px}
+${M} .kda-it{padding:10px}
+${M} .kda-ac{gap:12px 20px}
+${M} .kda .kda-ac button{min-height:44px;padding:0 8px}
+${M} .kda .kda-ac button.bad{margin:0 12px}
+${M} .kda .kda-ac .kda-more{min-width:44px}
+${M} .kda-ed input{height:44px}
+${M} .kda-form{padding:12px}
+${M} .kda-form .two select{flex:1 1 100%}
 `
