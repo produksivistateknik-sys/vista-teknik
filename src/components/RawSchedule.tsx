@@ -1166,12 +1166,21 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     }
     const{rawId,fromDate,entries,toDate}=dragMode;
     const rowForDrag=rawData.find((r:any)=>r.id===rawId);
+    // Pindah idempoten: hanya kode yang masih aktif di sel asal (lib/jadwalPindah.entriMasihDiAsal). Dicek SEBELUM
+    // konfirmasi timer (tidak bertanya utk pindah yang akhirnya batal).
+    const entriPindah=(sch:Parameters<typeof entriMasihDiAsal>[0]|undefined)=>mode==="move"?entriMasihDiAsal(sch||{},fromDate,entries):entries;
+    if(mode==="move"&&rowForDrag&&rowForDrag.proses!=="BUSBAR"&&entriPindah(rowForDrag.schedule).length===0){
+      setDragMode(null);setDragInfo(null);
+      alert("Komponen ini sudah tidak ada di "+fromDate+" (sudah dipindah). Tidak ada yang dipindah lagi.");
+      return;
+    }
     if(mode==="move"&&rowForDrag&&rowForDrag.proses!=="BUSBAR"&&!(await konfirmasiTimerBerjalan([{panelId:Number(rowForDrag.panel_id||rowForDrag.panelId),proses:rowForDrag.proses,tanggal:fromDate,kode:(entries||[]).flatMap((e:any)=>e.komponen||[]),label:String(rowForDrag.panel||"").trim()}],namaPekerjaRaw,"pindah"))){setDragMode(null);setDragInfo(null);return;}
     if(rowForDrag?.proses==="BUSBAR"){
       await confirmDragBusbar(mode,rowForDrag,fromDate,toDate,entries[0]?.komponen||[]);
       return;
     }
     let updatedRow=null;
+    let entriEfektif=entries; // kode yang benar-benar dipindah/disalin (hasil saring) - dipakai renhar & log
     markRawDirty(rawId);
     // REVISI (10 Agu 2026): jejak (digeserKe) di tanggal asal cuma ditinggalkan kalau BENERAN
     // ADA pengerjaan (fcs_timer_kerja) di fromDate - kalau enggak, pindah senyap tanpa jejak.
@@ -1191,13 +1200,6 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // (jejak digeserKe bila ada pengerjaan di fromDate), lalu move MAUPUN copy = gabung ke tujuan
     // + stamp manualPin (BUG FIX 23 Sep 2026 "pengaturan manual ketimpa auto-geser").
     const nowIsoPin=new Date().toISOString();
-    // Pindah idempoten: hanya kode yang masih aktif di sel asal (lib/jadwalPindah.entriMasihDiAsal).
-    const entriPindah=(sch:Parameters<typeof entriMasihDiAsal>[0]|undefined)=>mode==="move"?entriMasihDiAsal(sch||{},fromDate,entries):entries;
-    if(mode==="move"&&rowForDrag&&entriPindah(rowForDrag.schedule).length===0){
-      clearRawDirty(rawId);setDragMode(null);setDragInfo(null);
-      alert("Komponen ini sudah tidak ada di "+fromDate+" (sudah dipindah). Tidak ada yang dipindah lagi.");
-      return;
-    }
     if(rowForDrag){ // peringatan urutan proses - jadwal baru dihitung dgn helper yang sama persis dgn di bawah
       let cekSch=rowForDrag.schedule||{};
       const entCek=entriPindah(cekSch);
@@ -1210,6 +1212,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
       let newSch=r.schedule||{};
       const ent=entriPindah(newSch);
       if(ent.length===0)return r; // sudah dipindah (keadaan terbaru) - jangan taruh/jumlah lagi
+      entriEfektif=ent;
       if(mode==="move")newSch=lepasDariAsal(newSch,fromDate,toDate,ent,adaPengerjaanSetDrag);
       newSch=taruhDiTujuan(newSch,toDate,ent,nowIsoPin);
       updatedRow={...r,schedule:newSch};
@@ -1262,15 +1265,15 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         }
         if(errPertama)throw errPertama;
       };
-      try{await jalankan(entries);}catch(err:any){
+      try{await jalankan(entriEfektif);}catch(err:any){
         sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${rowForDrag?.panel||""} ${rowForDrag?.proses||""} ${wpGagal.map((e:any)=>e.wp).join(", ")} (${fromDate} → ${toDate})`,()=>jalankan([...wpGagal])));
       }
     }
     if(mode==="move"&&!updatedRow){clearRawDirty(rawId);return;} // tidak ada yang dipindah (sudah dipindah sebelumnya) - jangan catat log ganda
     // Activity log drag & drop
     const row=rawData.find(r=>r.id===rawId);
-    const wpList=entries.map(e=>e.wp).join(", ");
-    const kompList=entries.flatMap(e=>e.komponen||[]).join(", ");
+    const wpList=entriEfektif.map(e=>e.wp).join(", ");
+    const kompList=entriEfektif.flatMap(e=>e.komponen||[]).join(", ");
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     await activityLogService.insert({

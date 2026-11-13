@@ -24,8 +24,11 @@ export function entriMasihDiAsal(schedule: Jadwal, fromDate: string, entries: En
     const o = asal.find((x) => x.wp === e.wp)
     const ada = new Set((o?.komponen || []).filter((k: string) => !o?.digeserKe?.[k]))
     const komponen = (e.komponen || []).filter((k: string) => ada.has(k))
-    const dibuang = (e.komponen || []).filter((k: string) => !ada.has(k))
-    return buangQty({ ...e, komponen }, dibuang)
+    // Porsi diambil dari entri asal SAAT INI (bukan snapshot saat drag): kode tanpa porsi di asal = qty penuh.
+    const q = Object.fromEntries(komponen.filter((k: string) => o?.qtyPerKomponen?.[k] != null).map((k: string) => [k, o!.qtyPerKomponen![k]]))
+    const tanpaPorsi: EntriJadwal = { ...e }
+    delete tanpaPorsi.qtyPerKomponen
+    return Object.keys(q).length ? { ...tanpaPorsi, komponen, qtyPerKomponen: q } : { ...tanpaPorsi, komponen }
   }).filter((e) => e.komponen.some((k: string) => !k.startsWith('__wiring_')))
 }
 
