@@ -17,7 +17,10 @@ const isWiring = (proses: string) => proses === 'WIRING CONTROL' || proses === '
 
 const tanggalBerikut = (t: string) => { const d = new Date(t + 'T00:00:00Z'); d.setUTCDate(d.getUTCDate() + 1); return d.toISOString().slice(0, 10) }
 // Tanggal-tanggal ini membentuk satu rentang berurutan persis (tanpa lompatan hari)?
+// Dua sel pada hari yang sama BUKAN rentang (temuan regresi-penguji 13 Nov 2026).
 export function rentangBerurutan(tanggal: string[]): boolean {
+  if (new Set(tanggal).size !== tanggal.length) return false
+  if (tanggal.some((t) => !/^\d{4}-\d{2}-\d{2}$/.test(t))) return false // kunci tanggal rusak -> bukan rentang (jangan melempar)
   const u = [...new Set(tanggal)].sort()
   for (let i = 1; i < u.length; i++) if (u[i] !== tanggalBerikut(u[i - 1])) return false
   return true
@@ -53,6 +56,7 @@ export function kodePorsiLebih(row: { proses?: string; schedule?: Record<string,
   return hasil
 }
 
+export const labelAriaPorsiLebih = (p: PorsiLebih) => `Jadwal dobel: total ${Number(p.total.toFixed(2))} lebih dari qty ${p.qty}`
 export const teksPorsiLebih = (p: PorsiLebih) => `Dobel: total porsi terjadwal ${Number(p.total.toFixed(2))} > qty ${p.qty} (aturan: satu komponen per proses tidak boleh melebihi qty)`
 
 // Peta kode dobel per id baris raw_schedule utk seluruh daftar (tampilan Raw lama). Di-cache per pasangan objek
@@ -60,6 +64,7 @@ export const teksPorsiLebih = (p: PorsiLebih) => `Dobel: total porsi terjadwal $
 type BarisPorsi = { id: number; proses?: string; schedule?: Record<string, EntriPorsi[]>; panel_id?: number; panelId?: number }
 const cachePeta = new WeakMap<object, { sumber: object; peta: Map<number, Map<string, PorsiLebih>> }>()
 export function petaPorsiLebihBaris(rows: BarisPorsi[], panelById: Map<number, { checklist?: Record<string, { qty?: number } | undefined> }>): Map<number, Map<string, PorsiLebih>> {
+  if (!rows) return new Map() // data belum termuat - jangan sampai WeakMap(undefined) melempar
   const c = cachePeta.get(rows)
   if (c && c.sumber === panelById) return c.peta
   const peta = new Map<number, Map<string, PorsiLebih>>()

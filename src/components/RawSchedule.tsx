@@ -11,7 +11,7 @@ import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
-import { petaPorsiLebihBaris, teksPorsiLebih } from '../lib/porsiJadwal'
+import { petaPorsiLebihBaris, teksPorsiLebih, labelAriaPorsiLebih } from '../lib/porsiJadwal'
 import { renharService, isiRenharDirilis } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -2021,8 +2021,8 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                   const titleInfo=(tandaU?tandaU.map(t=>"⚠ Urutan terbalik: "+t).join("\n")+"\n":"")+(entry.carriedOverFrom?"Lanjutan dari "+entry.carriedOverFrom+" (belum sempat dikerjakan)":digeserKeTgl?"Belum selesai - sudah digeser ke "+digeserKeTgl+" (data di sini histori, gak bisa diaksi lagi)":isTelat?"Belum selesai, tanggal udah lewat":"")
                                     +` · Bobot ${WIRING_BOBOT_LABEL[bobotKode||"MEDIUM"]}, hari kerja ke-${hariKeNKode}, butuh ${jmlOrang} orang`;
                                   return(
-                                    <div key={entry.wp+kode} title={(lebihK?"⧉ "+teksPorsiLebih(lebihK)+"\n":"")+titleInfo} style={{...(tandaU?{outline:"2px solid #dc2626",outlineOffset:1}:lebihK?{outline:"2px dashed #dc2626",outlineOffset:1}:{}),display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
-                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}
+                                    <div key={entry.wp+kode} title={titleInfo+(lebihK?"\n⧉ "+teksPorsiLebih(lebihK):"")} style={{...(tandaU?{outline:"2px solid #dc2626",outlineOffset:1}:lebihK?{outline:"2px dotted #dc2626",outlineOffset:1}:{}),display:"inline-flex",alignItems:"center",gap:3,background:isPast?"#f1f5f9":isTelat?"#fef2f2":wc+"22",color:isPast?"#94a3b8":isTelat?"#dc2626":wc,border:`1px solid ${isPast?"#e2e8f0":isTelat?"#fca5a5":wc+"44"}`,borderRadius:4,padding:"1px 5px",maxWidth:"100%",opacity:(sudahSelesaiKomp||digeserKeTgl)?0.5:1}}>
+                                      {sudahSelesaiKomp&&<span style={{fontSize:9,fontWeight:900}}>✓</span>}{lebihK&&<span style={{fontSize:9}} role="img" aria-label={labelAriaPorsiLebih(lebihK)}>⧉</span>}
                                       {entry.carriedOverFrom&&<span style={{fontSize:9}}>🔁</span>}
                                       {digeserKeTgl&&<span style={{fontSize:9}}>➡️</span>}
                                       {isTelat&&<span style={{fontSize:9,fontWeight:900}}>⚠️</span>}
@@ -2056,7 +2056,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                 const chipTerpilih=modeWp&&aksiRef.current.wpTerpilih(row.id,d,e.wp);
                                 const nKomp=(e.komponen||[]).filter((k:string)=>!k.startsWith("__")).length;
                                 const lebihWp=(e.komponen||[]).filter((k:string)=>!e.digeserKe?.[k]&&porsiLebihPerRaw.get(row.id)?.has(k)).map((k:string)=>`${getNamaKomponenDariKode(pidU,k)}: ${teksPorsiLebih(porsiLebihPerRaw.get(row.id)!.get(k)!)}`);
-                                return(<div key={e.wp} title={(lebihWp.length?lebihWp.map((t:string)=>"⧉ "+t).join("\n")+"\n":"")+(tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):"")+(modeWp?(tandaWp.length?"\n":"")+(status==="finish"?`${e.wp} sudah selesai - tidak dipindah`:`Klik = pilih ${e.wp} saja · Ctrl/Shift+klik = tambah · seret = pindah · klik-ganda = buka detail ${e.wp}`):"")||undefined}
+                                return(<div key={e.wp} title={(tandaWp.length?tandaWp.map(t=>"⚠ Urutan terbalik - "+t).join("\n"):"")+(lebihWp.length?(tandaWp.length?"\n":"")+lebihWp.map((t:string)=>"⧉ "+t).join("\n"):"")+(modeWp?(tandaWp.length||lebihWp.length?"\n":"")+(status==="finish"?`${e.wp} sudah selesai - tidak dipindah`:`Klik = pilih ${e.wp} saja · Ctrl/Shift+klik = tambah · seret = pindah · klik-ganda = buka detail ${e.wp}`):"")||undefined}
                                   onClick={modeWp?(ev:any)=>aksiRef.current.klikChipWp(row,d,e.wp,ev):undefined}
                                   onDoubleClick={modeWp?(ev:any)=>{ev.stopPropagation();aksiRef.current.bukaModalSel(row.id,d,e.wp);}:undefined}
                                   draggable={modeWp&&isDraggableEntry&&status!=="finish"}
@@ -2064,7 +2064,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
                                     const sendiri=chipTerpilih?null:[e.wp];
                                     const wpsSel=chipTerpilih?(selectedCells.find((c:any)=>c.rawId===row.id&&c.date===d)?.wps||[e.wp]):[e.wp];
                                     aksiRef.current.onDragStart(ev,row.id,d,aksiRef.current.getEntriesTanpaSelesai(row,saringEntriWp(entries,wpsSel)),!!sendiri);}:undefined}
-                                  style={{...(tandaWp.length?{outline:"2px solid #dc2626",outlineOffset:1}:lebihWp.length?{outline:"2px dashed #dc2626",outlineOffset:1}:{}),...(chipTerpilih?{outline:"2px solid #2563eb",outlineOffset:1}:{}),cursor:modeWp?(status==="finish"?"not-allowed":"pointer"):undefined,background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}{aksiRef.current.modePilihWp?` (${nKomp})`:""}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span>{lebihWp.length>0&&<span style={{fontSize:9}} aria-label="jadwal dobel">⧉</span>}</div>);
+                                  style={{...(tandaWp.length?{outline:"2px solid #dc2626",outlineOffset:1}:lebihWp.length?{outline:"2px dotted #dc2626",outlineOffset:1}:{}),...(chipTerpilih?{outline:"2px solid #2563eb",outlineOffset:1}:{}),cursor:modeWp?(status==="finish"?"not-allowed":"pointer"):undefined,background:isPast?"#94a3b8":(PROSES_COLOR[row.proses]||"#64748b"),color:"#fff",borderRadius:3,padding:"1px 4px",fontSize:9,fontWeight:700,display:"flex",alignItems:"center",gap:2}}>{statusIcon&&<span style={{fontSize:9}}>{statusIcon}</span>}{e.wp}{aksiRef.current.modePilihWp?` (${nKomp})`:""}<span style={{fontSize:9,opacity:.8,marginLeft:2}}>({e.komponen.length})</span>{lebihWp.length>0&&<span style={{fontSize:9}} role="img" aria-label={"Jadwal dobel: "+lebihWp.join("; ")}>⧉</span>}</div>);
                               })}
                               {aksiRef.current.modePilihWp&&entries.length>=2&&(
                                 <button onClick={(ev:any)=>aksiRef.current.pilihSemuaWpSel(row,d,ev)} title="Pilih semua WP di sel ini (yang belum selesai)"
