@@ -15,6 +15,7 @@ import { withRetry } from '../lib/withRetry'
 import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, type HasilPindahAcc } from '../lib/pindahAccordion'
 import { teksDilewati } from '../lib/relevansiJadwal'
 import { statusTambahKomponen, buangKodeDariSel, labelQtySel, type StatusTambah } from '../lib/tambahKomponen'
+import { teksPorsiLebih } from '../lib/porsiJadwal'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
@@ -118,6 +119,7 @@ const lebarChipKomp = (u: ReturnType<typeof buatPengukur>, c: ChipProses, progre
   const jejak = !!c.jejakKe
   return 2 + CHIP.padX * 2 + u(c.proses, .2)
     + (c.porsi ? CHIP.gapDalam + u(teksPorsi(c), .2) : 0)
+    + (c.lebih ? CHIP.gapDalam + u('⧉', .2) : 0)
     + (c.orang != null && !jejak ? CHIP.gapDalam + u('👥' + Number(c.orang.toFixed(1)), .2) : 0)
     + (c.selesai && !jejak ? CHIP.gapDalam + u('✓', .2) : progres ? CHIP.gapDalam + u('●', .2) : 0) + (jejak ? CHIP.gapDalam + u('➡️', .2) : 0) + 2
 }
@@ -183,6 +185,7 @@ function Chip({ c, kode, checklist, op, peringatan, pilih, progres }: { c: ChipP
     c.proses === 'BUSBAR' ? (opBusbar ?? formatBusbarTahapTooltip(checklist?.[kode])) : null,
     op && !opBusbar ? teksOperatorPerTanggal(op.timers, op.nama) : null,
     ...(peringatan || []).map(t => `⚠ Urutan terbalik: ${t}`),
+    c.lebih ? '⧉ ' + teksPorsiLebih(c.lebih) : null,
   ].filter(Boolean).join('\n')
   const jejak = !!c.jejakKe
   return (
@@ -191,12 +194,13 @@ function Chip({ c, kode, checklist, op, peringatan, pilih, progres }: { c: ChipP
       fontSize: CHIP.font, fontWeight: 800, letterSpacing: .2, lineHeight: 1.15, padding: `2px ${CHIP.padX}px`, borderRadius: 4,
       background: jejak ? 'transparent' : warna, color: jejak ? warna : '#fff',
       border: jejak ? `1px dashed ${warna}` : `1px solid ${warna}`, opacity: c.selesai && !jejak ? .55 : 1,
-      ...(peringatan?.length ? { outline: '2px solid #dc2626', outlineOffset: 1 } : {}),
+      ...(peringatan?.length ? { outline: '2px solid #dc2626', outlineOffset: 1 } : c.lebih ? { outline: '2px dashed #dc2626', outlineOffset: 1 } : {}),
       ...gayaPilih(pilih),
     }}>
       {!!peringatan?.length && <span>⚠</span>}
       <span>{c.proses}</span>
       {c.porsi && <span style={{ fontWeight: 700, opacity: .9 }}>{teksPorsi(c)}</span>}
+      {c.lebih && <span aria-label="jadwal dobel">⧉</span>}
       {c.orang != null && !jejak && <span style={{ fontWeight: 700, opacity: .9 }}>👥{Number(c.orang.toFixed(1))}</span>}
       {c.selesai && !jejak && <span>✓</span>}
       {progres && !c.selesai && !jejak && <span>●</span>}

@@ -23,6 +23,7 @@ import { ALL_PROSES } from '../constants/panelTypes'
 import { kebutuhanOrangWiring, getProgressAsOfDate, getPanelBusbarKomponen, getBusbarKomponen, statusPenandaPanel } from './panelHelpers'
 import { hariKeNFromMap } from '../services/fcsService'
 import { PROSES_ORANG_RAW, jadwalLanjutanWiring } from './isiSelJadwal'
+import { kodePorsiLebih, type PorsiLebih } from './porsiJadwal'
 
 export const PROSES_PENANDA = ['QC TEST', 'PACKING'] as const
 
@@ -38,6 +39,7 @@ export type ChipProses = {
   orang?: number // WIRING: kebutuhan orang hari itu
   progres?: number // % progres proses ini (BUSBAR: per tanggal) - status ✓/● lewat lib/statusProgres
   porsi?: { q: number; qty: number } // entri memecah qty (qtyPerKomponen) - porsi hari ini dari qty panel
+  lebih?: PorsiLebih // (13 Nov 2026) kode ini DOBEL di baris prosesnya: total porsi aktif > qty (lib/porsiJadwal)
 }
 export type BarisKomponen = { kode: string; nama: string; sel: Record<string, ChipProses[]> }
 // orang: WIRING - jumlah kebutuhan orang (👥) semua chip komponen hari itu = yang tampil di baris komponen (keputusan user 30 Okt)
@@ -121,6 +123,7 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
       if (r.proses === 'BUSBAR' || (PROSES_PENANDA as readonly string[]).includes(r.proses)) continue
       const isOrang = PROSES_ORANG_RAW.includes(r.proses)
       const realHari = new Set<string>() // "kode|tanggal" yang punya entry real (WIRING: real menang)
+      const lebihBaris = kodePorsiLebih(r, cl)
       for (const [d, ents] of Object.entries(r.schedule || {}) as [string, any[]][]) {
         for (const e of ents || []) {
           for (const kode of e.komponen || []) {
@@ -131,6 +134,7 @@ export function susunPivot(rows: any[], ctx: KonteksPivot): BlokPanel[] {
             const c: ChipProses = { proses: r.proses, rawId: r.id, wp: e.wp, selesai: pct >= 100, progres: pct }
             if (q != null && qty > 0 && q < qty) c.porsi = { q, qty }
             if (e.digeserKe?.[kode]) c.jejakKe = e.digeserKe[kode]
+            else if (lebihBaris.has(kode)) c.lebih = lebihBaris.get(kode)
             if (e.manualPin?.[kode]) c.pin = true
             if (e.carriedOverFrom) c.dariTanggal = e.carriedOverFrom
             if (isOrang && !c.jejakKe) c.orang = kebutuhanOrangWiring(r.bobot_komponen?.[kode], hariKeNFromMap(ctx.wiringHariKerjaMap, r.panel_id || r.panelId, kode, r.proses, d))
