@@ -14,6 +14,24 @@
 export type EntriJadwal = { wp: string; komponen: string[]; digeserKe?: Record<string, string>; manualPin?: Record<string, string>; [k: string]: any }
 export type Jadwal = Record<string, EntriJadwal[]>
 
+// PINDAH IDEMPOTEN (13 Nov 2026, lapis 1 tahap 1 - insiden porsi ganda PAINTING WM.9/WM.10 #589/#595: klik ganda "Pindah"
+// 12 Nov 21.35/21.39 -> pindah kedua memakai snapshot entri lama, kode sudah tidak di asal tapi ditaruh lagi di tujuan
+// & gabungQty MENJUMLAH porsinya). Hanya kode yang MASIH aktif di sel asal (WP sama, bukan jejak digeserKe) yang boleh
+// dipindah; porsi kode yang tersaring ikut dibuang. Hasil kosong = tidak ada yang dipindah (pemanggil tidak menyimpan).
+export function entriMasihDiAsal(schedule: Jadwal, fromDate: string, entries: EntriJadwal[]): EntriJadwal[] {
+  const asal = schedule?.[fromDate] || []
+  return entries.map((e) => {
+    const o = asal.find((x) => x.wp === e.wp)
+    const ada = new Set((o?.komponen || []).filter((k: string) => !o?.digeserKe?.[k]))
+    const komponen = (e.komponen || []).filter((k: string) => ada.has(k))
+    // Porsi diambil dari entri asal SAAT INI (bukan snapshot saat drag): kode tanpa porsi di asal = qty penuh.
+    const q = Object.fromEntries(komponen.filter((k: string) => o?.qtyPerKomponen?.[k] != null).map((k: string) => [k, o!.qtyPerKomponen![k]]))
+    const tanpaPorsi: EntriJadwal = { ...e }
+    delete tanpaPorsi.qtyPerKomponen
+    return Object.keys(q).length ? { ...tanpaPorsi, komponen, qtyPerKomponen: q } : { ...tanpaPorsi, komponen }
+  }).filter((e) => e.komponen.some((k: string) => !k.startsWith('__wiring_')))
+}
+
 export function lepasDariAsal(schedule: Jadwal, fromDate: string, toDate: string, entries: EntriJadwal[], adaPengerjaan: Set<string>): Jadwal {
   const newSch: Jadwal = { ...(schedule || {}) }
   const sisaDiAsal = (schedule?.[fromDate] || []).map((orig: any) => {
