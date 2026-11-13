@@ -16,6 +16,7 @@ import { rencanakanPindahAccordion, pecahKunci, kunciChip, teksRingkasHeader, ty
 import { teksDilewati } from '../lib/relevansiJadwal'
 import { statusTambahKomponen, buangKodeDariSel, labelQtySel, type StatusTambah } from '../lib/tambahKomponen'
 import { teksPorsiLebih, labelAriaPorsiLebih } from '../lib/porsiJadwal'
+import { LegendaPenandaRaw } from './LegendaPenandaRaw'
 import { konfirmasiTimerBerjalan } from '../lib/timerBerjalan'
 import { usePindahMulti } from '../hooks/usePindahMulti'
 import { useModalJadwalSel } from './ModalJadwalSel'
@@ -1174,6 +1175,7 @@ function RawScheduleAccordionInti({ woData, rawData, setRawData, updateRaw, refe
         <div>
           <div style={{ fontSize: 18, fontWeight: 800, color: 'var(--text-primary,#1e293b)' }}>Raw Schedule — per WP</div>
           <div style={{ fontSize: 11.5, color: '#94a3b8', marginTop: 2 }}>{blokTampil.length} panel · {jumlahHeader} baris tertutup · {jumlahKomponen} komponen · tampil sekarang {baris.length} baris</div>
+          <div style={{ marginTop: 6 }}><LegendaPenandaRaw /></div>
         </div>
         <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
           <button onClick={() => tambahPanelRaw.setAddModal(true)} style={{ height: 28, padding: '0 12px', borderRadius: 6, border: 'none', background: '#3b5bdb', color: '#fff', fontSize: 11, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit' }}>+ Tambah Panel</button>

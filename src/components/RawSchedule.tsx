@@ -12,6 +12,7 @@ import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
 import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
 import { petaPorsiLebihBaris, teksPorsiLebih, labelAriaPorsiLebih } from '../lib/porsiJadwal'
+import { LegendaPenandaRaw } from './LegendaPenandaRaw'
 import { renharService, isiRenharDirilis } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -1610,6 +1611,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
             </button>
           </div>
       </div>
+      <LegendaPenandaRaw/>
       <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
         <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
         <div style={{position:"relative" as const}}>
