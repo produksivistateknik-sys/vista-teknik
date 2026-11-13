@@ -10,7 +10,7 @@ import { isKomponenRelevant, getBusbarKomponen, getRelevantProsesForKode, getPro
 import { markRenharDirty, markRawDirty, clearRawDirty } from '../lib/globalState'
 import { withRetry } from '../lib/withRetry'
 import { pindahKomponenRenhar, tanganiGagalSinkronRenhar } from '../lib/renharSinkron'
-import { lepasDariAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
+import { lepasDariAsal, entriMasihDiAsal, taruhDiTujuan, isMinggu, lepasBusbar, taruhBusbar, togglePenanda, kodeBusbarBisaDipindah, rencanakanPindahMultiV2, ambilJadwal4, saringEntriWp, type SelPindahV2 } from '../lib/jadwalPindah'
 import { renharService, isiRenharDirilis } from '../services/renharService'
 import { buatSelV2 as buatSelV2Lib, cekPindahMulti as cekPindahMultiLib } from '../lib/pindahMulti'
 import { usePindahMulti } from '../hooks/usePindahMulti'
@@ -1149,7 +1149,14 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
   const aksiMultiRef=useRef<any>({});
   aksiMultiRef.current={jalankanPindahMulti,potong,tempelPotongan,batalkanPindahTerakhir};
 
+  // KUNCI KLIK GANDA (13 Nov 2026, lapis 1 tahap 1): Pindah/Copy kedua diabaikan selama yang pertama masih berjalan.
+  const dragBerjalanRef=useRef(false);
   const confirmDrag=async(mode)=>{
+    if(!dragMode||dragBerjalanRef.current)return;
+    dragBerjalanRef.current=true;
+    try{await confirmDragInti(mode);}finally{dragBerjalanRef.current=false;}
+  };
+  const confirmDragInti=async(mode)=>{
     if(!dragMode)return;
     if(dragMode.multi){
       const{cells,offset}=dragMode;
@@ -1184,17 +1191,27 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
     // (jejak digeserKe bila ada pengerjaan di fromDate), lalu move MAUPUN copy = gabung ke tujuan
     // + stamp manualPin (BUG FIX 23 Sep 2026 "pengaturan manual ketimpa auto-geser").
     const nowIsoPin=new Date().toISOString();
+    // Pindah idempoten: hanya kode yang masih aktif di sel asal (lib/jadwalPindah.entriMasihDiAsal).
+    const entriPindah=(sch:Parameters<typeof entriMasihDiAsal>[0]|undefined)=>mode==="move"?entriMasihDiAsal(sch||{},fromDate,entries):entries;
+    if(mode==="move"&&rowForDrag&&entriPindah(rowForDrag.schedule).length===0){
+      clearRawDirty(rawId);setDragMode(null);setDragInfo(null);
+      alert("Komponen ini sudah tidak ada di "+fromDate+" (sudah dipindah). Tidak ada yang dipindah lagi.");
+      return;
+    }
     if(rowForDrag){ // peringatan urutan proses - jadwal baru dihitung dgn helper yang sama persis dgn di bawah
       let cekSch=rowForDrag.schedule||{};
-      if(mode==="move")cekSch=lepasDariAsal(cekSch,fromDate,toDate,entries,adaPengerjaanSetDrag);
-      cekSch=taruhDiTujuan(cekSch,toDate,entries,nowIsoPin);
+      const entCek=entriPindah(cekSch);
+      if(mode==="move")cekSch=lepasDariAsal(cekSch,fromDate,toDate,entCek,adaPengerjaanSetDrag);
+      cekSch=taruhDiTujuan(cekSch,toDate,entCek,nowIsoPin);
       if(!(await bolehUrutan(new Map([[rawId,{schedule:cekSch}]])))){clearRawDirty(rawId);setDragMode(null);setDragInfo(null);return;}
     }
     setRawData(prev=>prev.map(r=>{
       if(r.id!==rawId)return r;
       let newSch=r.schedule||{};
-      if(mode==="move")newSch=lepasDariAsal(newSch,fromDate,toDate,entries,adaPengerjaanSetDrag);
-      newSch=taruhDiTujuan(newSch,toDate,entries,nowIsoPin);
+      const ent=entriPindah(newSch);
+      if(ent.length===0)return r; // sudah dipindah (keadaan terbaru) - jangan taruh/jumlah lagi
+      if(mode==="move")newSch=lepasDariAsal(newSch,fromDate,toDate,ent,adaPengerjaanSetDrag);
+      newSch=taruhDiTujuan(newSch,toDate,ent,nowIsoPin);
       updatedRow={...r,schedule:newSch};
       return updatedRow;
     }));
@@ -1249,6 +1266,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${rowForDrag?.panel||""} ${rowForDrag?.proses||""} ${wpGagal.map((e:any)=>e.wp).join(", ")} (${fromDate} → ${toDate})`,()=>jalankan([...wpGagal])));
       }
     }
+    if(mode==="move"&&!updatedRow)return; // tidak ada yang dipindah (sudah dipindah sebelumnya) - jangan catat log ganda
     // Activity log drag & drop
     const row=rawData.find(r=>r.id===rawId);
     const wpList=entries.map(e=>e.wp).join(", ");
