@@ -50,6 +50,9 @@ export function hapusKodeDariRenhar(row: any, kode: string): { komponen: string[
 // (qtyBaru - total porsi aktif) ditambahkan ke sel PALING AWAL - generator lalu melihat sisa 0 & tidak membuat sel baru.
 // Satu sel saja & porsinya mencapai qtyBaru -> kunci porsi dihapus (= qty penuh). Ada sel tanpa porsi (penuh) atau tidak
 // ada sel aktif -> tidak diubah (jalur lama). Fungsi MURNI, schedule masukan tidak dimutasi.
+// Entri LAMPAU kode ini (< tanggalMulai, bukan jejak) ditandai jejak digeserKe[kode] = sel tujuan DI TULISAN YANG SAMA
+// (temuan bug-detector 13 Nov: bila ditandai terpisah sesudah generator dan generator gagal, entri lampau tetap hidup
+// berdampingan dgn porsi yang sudah dinaikkan = dobel). Sama dgn tandaiJejakSetelahJadwalUlang, hanya dipindah ke sini.
 export type EntriSisa = { komponen?: string[]; digeserKe?: Record<string, string>; qtyPerKomponen?: Record<string, number>; [k: string]: unknown }
 export type JadwalSisa = Record<string, EntriSisa[]>
 export function tambahSisaKeSelAda(schedule: JadwalSisa | null | undefined, kode: string, qtyBaru: number, tanggalMulai: string): { schedule: JadwalSisa; tanggal: string | null; tambah: number } {
@@ -73,5 +76,10 @@ export function tambahSisaKeSelAda(schedule: JadwalSisa | null | undefined, kode
   const q: Record<string, number> = { ...(e.qtyPerKomponen || {}) }
   if (sel.length === 1 && porsiBaru >= qtyBaru) delete q[kode]; else q[kode] = porsiBaru
   if (Object.keys(q).length) e.qtyPerKomponen = q; else delete e.qtyPerKomponen
+  for (const t of Object.keys(asli)) {
+    if (t >= tanggalMulai) continue
+    if (!(asli[t] || []).some((x) => (x?.komponen || []).includes(kode) && !x?.digeserKe?.[kode])) continue
+    baru[t] = (asli[t] || []).map((x) => ((x?.komponen || []).includes(kode) && !x?.digeserKe?.[kode]) ? { ...x, digeserKe: { ...(x.digeserKe || {}), [kode]: target.t } } : x)
+  }
   return { schedule: baru, tanggal: target.t, tambah: kurang }
 }
