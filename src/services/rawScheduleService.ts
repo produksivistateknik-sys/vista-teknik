@@ -1,6 +1,8 @@
 ﻿import { supabase } from '../lib/supabase'
 import { getLocalDateStr } from '../lib/dateHelpers'
-import { hapusKodeDariScheduleMulai, hapusKodeDariRenhar } from '../lib/jadwalQtyHelpers'
+import { hapusKodeDariScheduleMulai, hapusKodeDariRenhar, tambahSisaKeSelAda, type JadwalSisa } from '../lib/jadwalQtyHelpers'
+import { PROSES_TANPA_MAPPING_KOMPONEN } from '../lib/panelHelpers'
+import type { Json } from '../types/supabase-generated'
 import { generateAndSaveToRawSchedule } from './fcsService'
 import { fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
 
@@ -131,6 +133,35 @@ export const rawScheduleService = {
   // digeserKe[kode] = tanggal live paling awal (>= hariIni) kode itu di proses yang sama. Cuma
   // proses yang PUNYA jadwal live baru yang ditandai - kalau generator gak sempat menjadwalkan (mis.
   // kapasitas penuh 21 hari), entri lama dibiarkan supaya tetap bisa ditarik Tarik (gak hilang).
+  // Sisa qty naik -> sel yang sudah ada (lib/jadwalQtyHelpers.tambahSisaKeSelAda). Hanya proses per-komponen biasa (bukan
+  // BUSBAR/WIRING/penanda panel) dan hanya kode yang di proses itu BELUM dikerjakan (qtyProses 0 & progres 0). Error dilempar.
+  async tambahSisaQtyKeSelAda(panelId: number, naik: { kode: string; newQty: number }[], hariIni: string): Promise<string[]> {
+    if (!naik.length) return []
+    const { data: pnl, error: pErr } = await supabase.from('panels').select('checklist').eq('id', panelId).single()
+    if (pErr) throw new Error('baca panel (sisa ke sel ada): ' + pErr.message)
+    const checklist: Record<string, { qtyProses?: Record<string, number>; progress?: Record<string, number> }> = (pnl?.checklist || {}) as unknown as Record<string, { qtyProses?: Record<string, number>; progress?: Record<string, number> }>
+    const { data: rows, error } = await supabase.from('raw_schedule').select('id,proses,schedule').eq('panel_id', panelId).is('deleted_at', null).order('id').range(0, 999)
+    if (error) throw new Error('baca raw_schedule (sisa ke sel ada): ' + error.message)
+    const lewati = new Set<string>(['BUSBAR', 'WIRING CONTROL', 'WIRING POWER', ...PROSES_TANPA_MAPPING_KOMPONEN])
+    const hasil: string[] = []
+    for (const row of rows || []) {
+      if (lewati.has(row.proses)) continue
+      let schedule = (row.schedule || {}) as unknown as JadwalSisa
+      let berubah = false
+      for (const { kode, newQty } of naik) {
+        const cl = checklist[kode] || {}
+        if ((Number(cl.qtyProses?.[row.proses]) || 0) > 0 || (Number(cl.progress?.[row.proses]) || 0) > 0) continue // sudah dikerjakan -> jalur lama
+        const r = tambahSisaKeSelAda(schedule, kode, newQty, hariIni)
+        if (r.tambah > 0) { schedule = r.schedule; berubah = true; hasil.push(`${row.proses} ${kode} +${r.tambah} di ${r.tanggal}`) }
+      }
+      if (berubah) {
+        const { error: uErr } = await supabase.from('raw_schedule').update({ schedule: schedule as unknown as Json }).eq('id', row.id)
+        if (uErr) throw new Error('update raw_schedule (sisa ke sel ada): ' + uErr.message)
+      }
+    }
+    return hasil
+  },
+
   async tandaiJejakSetelahJadwalUlang(panelId: number, kodes: string[], hariIni: string): Promise<string[]> {
     const { data: rows, error } = await supabase.from('raw_schedule').select('id,proses,schedule').eq('panel_id', panelId).is('deleted_at', null)
     if (error) throw new Error('baca raw_schedule (tandai jejak): ' + error.message)
@@ -231,10 +262,13 @@ export const rawScheduleService = {
     }
 
     if (naik.length > 0 && panel.wo_id) {
+      // (13 Nov 2026) sisa qty komponen yang BELUM dikerjakan masuk ke sel yang sudah ada dulu (tidak memecah ke tanggal baru);
+      // generator di bawah hanya menjadwalkan yang masih kurang.
+      const keSelAda = await this.tambahSisaQtyKeSelAda(panelId, changes.filter(c => naik.includes(c.kode)), hariIni)
       const hasil = await generateAndSaveToRawSchedule(panel.wo_id, hariIni, '__force__' + uname, [panelId], { [panelId]: naik })
       if (!hasil.success) throw new Error('jadwalkan sisa qty: ' + (hasil.error || 'gagal'))
       const jejak = await this.tandaiJejakSetelahJadwalUlang(panelId, naik, hariIni)
-      await logActivity(uname, 'QTY NAIK: JADWALKAN SISA', `Panel ${panel.nama}: qty naik, sisa unit dijadwalkan mulai ${hariIni} - ${naik.join(', ')} (${hasil.count} entri baru, ${jejak.length} entri lama ditandai jejak${jejak.length ? ': ' + jejak.join('; ') : ''})`, { panel: panel.nama })
+      await logActivity(uname, 'QTY NAIK: JADWALKAN SISA', `Panel ${panel.nama}: qty naik, sisa unit dijadwalkan mulai ${hariIni} - ${naik.join(', ')} (${keSelAda.length ? keSelAda.length + ' ditambahkan ke sel yang ada: ' + keSelAda.join('; ') + ', ' : ''}${hasil.count} entri baru, ${jejak.length} entri lama ditandai jejak${jejak.length ? ': ' + jejak.join('; ') : ''})`, { panel: panel.nama })
     }
     // Setiap perubahan qty juga MELENGKAPI proses yang belum punya baris di panel ini (mis. qty Box
     // naik dari 0 di tipe yang butuh STEL, padahal baris STEL belum pernah ada).
