@@ -1266,7 +1266,7 @@ export function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,
         sinkronRenharGagal=!(await tanganiGagalSinkronRenhar(err,`${rowForDrag?.panel||""} ${rowForDrag?.proses||""} ${wpGagal.map((e:any)=>e.wp).join(", ")} (${fromDate} → ${toDate})`,()=>jalankan([...wpGagal])));
       }
     }
-    if(mode==="move"&&!updatedRow)return; // tidak ada yang dipindah (sudah dipindah sebelumnya) - jangan catat log ganda
+    if(mode==="move"&&!updatedRow){clearRawDirty(rawId);return;} // tidak ada yang dipindah (sudah dipindah sebelumnya) - jangan catat log ganda
     // Activity log drag & drop
     const row=rawData.find(r=>r.id===rawId);
     const wpList=entries.map(e=>e.wp).join(", ");
