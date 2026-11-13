@@ -9,7 +9,7 @@ import { isVideoFoto, isGenericFoto } from '../lib/mediaThumb'
 import jsPDF from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import { buildDayColumns, colIndexForDate, gambarTimelineGanttPdf, type BarisGanttPdf } from '../lib/ganttArsipPdf'
-import { hitungGanttArsip, rentangGantt, TEKS_KEADAAN, LEGENDA_GANTT, teksSelesaiBar, type BarisGantt, type DataGanttArsip } from '../lib/ganttArsip'
+import { hitungGanttArsip, rentangGantt, TEKS_KEADAAN, LEGENDA_GANTT, teksSelesaiBar, labelHariBar, labelSingkatanBar, type BarisGantt, type DataGanttArsip } from '../lib/ganttArsip'
 import { siapkanKop, gambarKopPenuh, gambarKopRingkas, TINGGI_KOP_RINGKAS, type AsetKop } from '../lib/kopSurat'
 import { fetchAllPaged } from '../lib/fetchAllPaged'
 import { labelDivisi, teksTeratasi } from '../lib/kendalaProduksi'
@@ -168,7 +168,7 @@ export function ArsipTab({user,refetchWO}:any){
         // Bergaris = belum punya tanggal selesai; "dihitungUlang" yg sudah diberi tanggal (1b) digambar penuh.
         const berjalan=!x.selesai;
         rows.push({proses:x.labelTahap?`${b.label} - ${x.labelTahap}`:b.label,color:x.color,mulai:x.mulai,akhir:x.akhir,berjalan,
-          label:x.singkatan?x.singkatan:(!x.selesai&&x.keadaan!=="selesai"?TEKS_KEADAAN[x.keadaan].pendek:`${x.hari} hr`),
+          label:x.singkatan?labelSingkatanBar(x):(!x.selesai&&x.keadaan!=="selesai"?TEKS_KEADAAN[x.keadaan].pendek:labelHariBar(x)),
           tMulai:fmtTglFull(x.mulai),
           tSelesai:teksSelesaiBar(x,fmtTglFull),
           durasi:`${x.hari} hari${x.keadaan!=="selesai"?` (${TEKS_KEADAAN[x.keadaan].pendek})`:""}`});
@@ -662,6 +662,7 @@ export function ArsipTab({user,refetchWO}:any){
                     <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:26,height:11,borderRadius:4,background:"#2563eb",display:"inline-block"}}/>{LEGENDA_GANTT.selesai}</span>
                     <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:26,height:11,borderRadius:4,background:"#2563eb",backgroundImage:"repeating-linear-gradient(135deg,transparent 0 4px,rgba(255,255,255,.4) 4px 8px)",display:"inline-block"}}/>{LEGENDA_GANTT.belum}</span>
                     <span style={{display:"flex",alignItems:"center",gap:6}}><i style={{width:2,height:13,background:"#ff6a1a",display:"inline-block"}}/>{LEGENDA_GANTT.hariIni}</span>
+                    {baris.some(r=>r.bars.some(x=>x.keadaan==="dihitungUlang"))&&<span>{LEGENDA_GANTT.dihitungUlang}</span>}
                   </div>
                   <div style={{overflowX:"auto" as const,border:"1.5px solid #cbd5e1",borderRadius:8}}>
                     {/* table-layout:fixed + colgroup (16 Sep 2026) - kolom Proses PROSES_COL_W
@@ -711,7 +712,7 @@ export function ArsipTab({user,refetchWO}:any){
                                     {row.bars.map((b,bi)=>{
                                       const a=Math.max(0,colIndexForDate(cols,b.mulai)),z=Math.max(a,colIndexForDate(cols,b.akhir));
                                       const berjalan=!b.selesai;
-                                      const teks=b.hari===1?(b.singkatan||(berjalan?"…":"1 hr")):`${b.singkatan?b.singkatan+" · ":""}${!b.selesai&&b.keadaan!=="selesai"?TEKS_KEADAAN[b.keadaan].pendek:b.hari+" hr"}`;
+                                      const teks=b.hari===1?(b.singkatan?labelSingkatanBar(b):(berjalan?"…":labelHariBar(b))):`${b.singkatan?b.singkatan+" · ":""}${!b.selesai&&b.keadaan!=="selesai"?TEKS_KEADAAN[b.keadaan].pendek:labelHariBar(b)}`;
                                       const judul=`${row.label}${b.labelTahap?" - "+b.labelTahap:""}: mulai ${fmtTglFull(b.mulai)}${b.selesai?", selesai ":" - "}${teksSelesaiBar(b,fmtTglFull)} · ${b.hari} hari`;
                                       return(
                                         <div key={bi} style={{position:"relative" as const,height:20}}>
