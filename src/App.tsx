@@ -47,7 +47,7 @@ import { GCss } from './styles/globalCss'
 import { CSS_MOBILE } from './styles/mobileCss'
 import { useModeMobile, teksTombolTampilan } from './lib/modeMobile'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
-import { VISTA_LOGO_DATA_URI } from './lib/logoAsset'
+import { LOGO_JRENG_HEADER, ALT_LOGO_JRENG } from './lib/logoJreng'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
 import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
@@ -942,11 +942,11 @@ if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
           <div className={"erp-sb"+(sbCiut?" col":"")+(laciBuka?" buka":"")}>
             <div className="erp-sb-head">
               {sbCiut?(
-                <div className="erp-logo">V</div>
+                <img src={LOGO_JRENG_HEADER} alt={ALT_LOGO_JRENG} className="erp-sb-jreng ciut" width={42} height={42}/>
               ):(
-                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5}}>
-                  <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:50,width:"auto"}}/>
-                  <span style={{fontSize:9,fontWeight:600,color:"#93c5fd",letterSpacing:1.5,textTransform:"uppercase"}}>ERP Manufacture</span>
+                <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:3}}>
+                  <img src={LOGO_JRENG_HEADER} alt={ALT_LOGO_JRENG} className="erp-sb-jreng" width={62} height={62}/>
+                  <span style={{fontSize:9,fontWeight:600,color:"#93c5fd",letterSpacing:1.5,textTransform:"uppercase",lineHeight:1}}>ERP Manufacture</span>
                 </div>
               )}
             </div>

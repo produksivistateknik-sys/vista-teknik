@@ -197,6 +197,8 @@ input::placeholder,textarea::placeholder{color:#9ca3af}
 .erp-sb.col{width:52px;min-width:52px}
 .erp-sb-head{height:82px;display:flex;align-items:center;justify-content:center;padding:0 16px;gap:10px;overflow:hidden;flex-shrink:0;background:#1a3278;border-bottom:1px solid #2d4ba0}
 .erp-sb.col .erp-sb-head{padding:0;justify-content:center}
+.erp-sb-jreng{height:62px;width:auto;display:block;flex-shrink:0}
+.erp-sb-jreng.ciut{height:42px}
 .erp-logo{width:30px;height:30px;min-width:30px;background:#1d4ed8;border-radius:6px;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px;flex-shrink:0}
 .erp-brand{overflow:hidden;white-space:nowrap;opacity:1;transition:opacity .15s;min-width:0}
 .erp-sb.col .erp-brand{opacity:0;pointer-events:none;width:0}
