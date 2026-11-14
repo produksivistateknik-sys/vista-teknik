@@ -4,6 +4,8 @@ import './index.css'
 import App from './App.tsx'
 import MesinPublic from './MesinPublic.tsx'
 import { ErrorBoundary } from './components/ErrorBoundary.tsx'
+import AnimasiMasuk from './components/AnimasiMasuk.tsx'
+import { perluAnimasiMasuk } from './lib/animasiMasukSesi'
 import { pasangPencatatErrorGlobal } from './lib/laporError'
 
 // (15 Okt 2026) pencatat error terpusat -> log_error_app (window error, unhandledrejection, kirim saat tab disembunyikan)
@@ -27,11 +29,16 @@ window.addEventListener('unhandledrejection', (event) => {
   window.location.reload()
 })
 
+const halamanMesin = path === '/mesin' || isMesinQuery
+// (14 Nov 2026, logo JRENG Tahap 4) animasi masuk + layar koneksi di ATAS aplikasi, sekali per sesi tab; /mesin tidak.
+const tampilAnimasiMasuk = !halamanMesin && perluAnimasiMasuk()
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
-      {(path === '/mesin' || isMesinQuery) ? <MesinPublic /> : <App />}
+      {halamanMesin ? <MesinPublic /> : <App />}
     </ErrorBoundary>
+    {tampilAnimasiMasuk && <AnimasiMasuk />}
   </StrictMode>,
 )
 

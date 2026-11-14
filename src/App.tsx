@@ -49,7 +49,6 @@ import { useModeMobile, teksTombolTampilan } from './lib/modeMobile'
 import { useVersionCheck, useDateRollover } from './lib/versionCheck'
 import { LOGO_JRENG_HEADER, ALT_LOGO_JRENG } from './lib/logoJreng'
 import { Badge, PBar, Card, Lbl, Inp, Sel, Btn, STitle, Modal } from './components/ui/Primitives'
-import { LandingPage } from './components/LandingPage'
 import { Login } from './components/Login'
 import { GlobalSearch } from './components/GlobalSearch'
 import { WoEngineeringBanner } from './components/WoEngineeringBanner'
@@ -124,7 +123,7 @@ const ROLE_TERBATAS:Record<string,{izin:Set<string>;awal:string}>={
 export default function App(){
   const hasNewVersion=useVersionCheck();
   const hasDateRolled=useDateRollover();
-  const [page,setPage]=useState("landing");
+  const [,setPage]=useState("landing"); // nilai "landing"/"login"/"app" tidak lagi dibaca (LandingPage diganti AnimasiMasuk, 14 Nov 2026)
   const [user,setUser]=useState(null);
   // FIX KEAMANAN (7 Sep 2026) - lihat komentar di effect "Restore admin session" di bawah.
   const [sessionMismatch,setSessionMismatch]=useState(false);
@@ -673,7 +672,8 @@ const rawDataWoAktif=useMemo(()=>{
 // eslint-disable-next-line react-hooks/exhaustive-deps
 },[rawData,woIdKey]);
 
-if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
+// (14 Nov 2026, logo JRENG Tahap 4) halaman "Masuk ke Aplikasi" (LandingPage) diganti animasi masuk otomatis di
+// main.tsx (AnimasiMasuk, lapisan di atas aplikasi). page "landing" kini = belum masuk -> langsung ke Login di bawah.
   if(!user)return <Login sessionMismatchNotice={sessionMismatch?"Sesi login di perangkat/tab ini sudah digantikan oleh login lain. Silakan login ulang untuk melanjutkan.":undefined} onLogin={u=>{
     setSessionMismatch(false);
     setUser(u);
