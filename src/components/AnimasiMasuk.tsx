@@ -25,7 +25,7 @@ const geraknyaDikurangi = () => { try { return window.matchMedia('(prefers-reduc
 
 const CSS = `
 .jrm-latar{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding-bottom:120px;background:linear-gradient(160deg,#0b2a6f,#12338a 60%,#1b4bb8);overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;transition:opacity .5s ease .35s;cursor:default}
-.jrm-latar.keluar{opacity:0;pointer-events:none}
+.jrm-latar.keluar{opacity:0}
 .jrm-maskot{position:relative;width:min(200px,60vw,32vh);aspect-ratio:640/643;opacity:0;transform:translateY(-30px) scale(.08)}
 .jrm-latar.mulai .jrm-maskot{animation:jrm-masuk 1.2s cubic-bezier(.3,.6,.4,1) forwards}
 .jrm-latar.tiba .jrm-maskot{animation:none;opacity:1;transform:none}
@@ -148,20 +148,22 @@ function Lapisan({ onSelesai }: { onSelesai: () => void }) {
   }, [keluar, tenang, onSelesai])
 
   // Ketuk = lewati ke tahap berikut (bukan saat pesan gagal tampil - tombolnya yang berlaku). Memakai onClick, BUKAN
-  // pointerdown: lapisan baru tembus (pointer-events none) SETELAH klik selesai, jadi ketukan tidak ikut menekan tombol
-  // aplikasi di bawahnya (bug-detector M1). Keyboard: Esc/Enter/Spasi = lewati.
+  // pointerdown, supaya ketukan diselesaikan oleh lapisan sendiri dan tidak ikut menekan tombol aplikasi di bawahnya
+  // (bug-detector M1). Keyboard: Esc/Enter/Spasi = lewati.
   const ketuk = useCallback(() => {
-    if (gagal || keluar) return
+    // Saat memudar lapisan TETAP menangkap ketukan (tidak tembus ke tombol aplikasi, mis. "Mulai Kerja" di HP operator);
+    // ketukan di masa itu menutup lapisan seketika (temuan uji VP 14 Nov).
+    if (keluar) { onSelesai(); return }
+    if (gagal) return
     if (!tiba) { setPaksaMulai(true); setTiba(true); return }
     if (siap) setKeluar(true)
-  }, [gagal, keluar, tiba, siap])
+  }, [gagal, keluar, tiba, siap, onSelesai])
 
   // Fokus keyboard dikunci di lapisan (aplikasi di belakang tidak bisa dicapai Tab); pesan gagal -> fokus ke Coba lagi.
   const akar = useRef<HTMLDivElement>(null)
   useEffect(() => { akar.current?.focus() }, [])
   useEffect(() => { if (gagal) akar.current?.querySelector<HTMLButtonElement>('.jrmBtn-utama')?.focus() }, [gagal])
   useEffect(() => {
-    if (keluar) return
     const tekan = (e: KeyboardEvent) => {
       const el = akar.current
       if (!el) return
