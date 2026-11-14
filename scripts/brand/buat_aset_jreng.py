@@ -105,6 +105,8 @@ def main():
     # Lapisan animasi lari: dibuat potong_kaki_jreng.py (640 px) ke folder sementara, lalu alpha dirapatkan & dikompres.
     with tempfile.TemporaryDirectory() as tmp:
         subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), 'potong_kaki_jreng.py'), SUMBER, tmp, '640'], check=True)
+        # Perbaikan sudut badan, garis kecepatan, kontur hantu (opsi b user 14 Nov) - lihat perbaiki_lapisan_jreng.py
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), 'perbaiki_lapisan_jreng.py'), tmp], check=True)
         os.makedirs(os.path.join(PUB, 'brand', 'anim'), exist_ok=True)
         for nm in ('base', 'kaki-belakang', 'kaki-depan'):
             hasil.append(simpan(rapatkan_alpha(Image.open(os.path.join(tmp, nm + '.png')).convert('RGBA')), f'brand/anim/{nm}.png'))
