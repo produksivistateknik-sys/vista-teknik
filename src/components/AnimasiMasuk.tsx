@@ -7,7 +7,7 @@
 // 20 s: maskot berhenti + pesan server + Coba lagi / Lanjut tetap | offline: langsung (~1,3 s) pesan jaringan, kembali
 // online -> otomatis coba lagi. Ketuk layar = lewati ke tahap berikut (kecuali saat pesan gagal tampil).
 // Ayunan kaki = angka yang diuji di scripts/brand/perbaiki_lapisan_jreng.py (depan +-10deg, angkat 8px; belakang +-12deg).
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { Component, useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
 import { cekKoneksiSupabase } from '../lib/cekKoneksiAwal'
 
 const T_MASUK = 1200
@@ -15,7 +15,7 @@ const T_KELUAR = 900
 const T_KELUAR_TENANG = 450
 const T_LAMBAT = 8000
 const T_GAGAL = 20000
-const T_JEDA = 1000
+const T_JEDA = [1000, 2000, 4000] // jeda ulang percobaan yang gagal cepat (bertambah, maks 4 s - tinjauan keamanan R2)
 const T_OFFLINE = 1300
 const T_MAKS_GAMBAR = 1500
 
@@ -26,7 +26,7 @@ const geraknyaDikurangi = () => { try { return window.matchMedia('(prefers-reduc
 const CSS = `
 .jrm-latar{position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;justify-content:center;box-sizing:border-box;padding-bottom:120px;background:linear-gradient(160deg,#0b2a6f,#12338a 60%,#1b4bb8);overflow:hidden;touch-action:manipulation;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none;transition:opacity .5s ease .35s;cursor:default}
 .jrm-latar.keluar{opacity:0;pointer-events:none}
-.jrm-maskot{position:relative;width:min(200px,60vw);aspect-ratio:640/643;opacity:0;transform:translateY(-30px) scale(.08)}
+.jrm-maskot{position:relative;width:min(200px,60vw,32vh);aspect-ratio:640/643;opacity:0;transform:translateY(-30px) scale(.08)}
 .jrm-latar.mulai .jrm-maskot{animation:jrm-masuk 1.2s cubic-bezier(.3,.6,.4,1) forwards}
 .jrm-latar.tiba .jrm-maskot{animation:none;opacity:1;transform:none}
 .jrm-latar.keluar .jrm-maskot{animation:jrm-keluar .8s ease-in forwards}
@@ -41,7 +41,8 @@ const CSS = `
 .jrm-latar.berhenti .jrm-maskot{filter:saturate(.45) brightness(.9)}
 .jrm-pesan{position:absolute;left:0;right:0;bottom:calc(22px + env(safe-area-inset-bottom,0px));text-align:center;color:#fff;font-size:14px;line-height:1.45;padding:0 16px;min-height:60px}
 .jrm-pesan b{display:block;font-size:15px;margin-bottom:4px}
-.jrm-redup{color:rgba(255,255,255,.85)}
+.jrm-redup{color:rgba(255,255,255,.85);font-size:15px}
+.jrm-latar:focus{outline:none}
 .jrm-tombol{display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-top:10px}
 .jrm-latar .jrmBtn{min-height:44px;min-width:44px;padding:10px 18px;border:0;border-radius:8px;font:inherit;font-weight:700;cursor:pointer}
 .jrm-latar .jrmBtn-utama{background:#f58a07;color:#1b1100}
@@ -61,8 +62,22 @@ const CSS = `
   .jrm-latar.mulai .jrm-bob,.jrm-latar.mulai .jrm-kaki{animation:none}
 }`
 
+// Pengaman: galat di lapisan ini tidak boleh membuat layar putih (lapisan di luar ErrorBoundary aplikasi) -> lapisan dilepas.
+class PengamanLapisan extends Component<{ children: ReactNode }, { galat: boolean }> {
+  state = { galat: false }
+  static getDerivedStateFromError() { return { galat: true } }
+  componentDidCatch(e: unknown) { console.error('[AnimasiMasuk] galat, lapisan dilepas:', e) }
+  render() { return this.state.galat ? null : this.props.children }
+}
+
+// Lapisan dilepas (unmount) saat selesai -> semua timer & listener ikut dibersihkan (tinjauan bug-detector K3).
 export default function AnimasiMasuk() {
   const [selesai, setSelesai] = useState(false)
+  if (selesai) return null
+  return <PengamanLapisan><Lapisan onSelesai={() => setSelesai(true)} /></PengamanLapisan>
+}
+
+function Lapisan({ onSelesai }: { onSelesai: () => void }) {
   const [gambar, setGambar] = useState(0)
   const [paksaMulai, setPaksaMulai] = useState(false)
   const [tiba, setTiba] = useState(false)
@@ -93,6 +108,7 @@ export default function AnimasiMasuk() {
     const tGagal = setTimeout(() => { if (batal) return; batal = true; induk.abort(); setStatus((s) => (s === 'offline' ? s : 'server')) }, T_GAGAL)
     const tOffline = setTimeout(() => { if (!batal && !navigator.onLine) setStatus('offline') }, putaran === 0 ? T_OFFLINE : 300)
     ;(async () => {
+      let ke = 0
       while (!batal) {
         if (!navigator.onLine) { await tunggu(500); continue }
         let ok: boolean
@@ -101,11 +117,11 @@ export default function AnimasiMasuk() {
         if (ok) {
           batal = true
           clearTimeout(tLambat); clearTimeout(tGagal); clearTimeout(tOffline)
-          setStatus((s) => (s === 'offline' ? s : 'normal'))
+          setStatus('normal') // terbukti tersambung -> pesan offline (bila ada) dibuang (bug-detector K1)
           setSiap(true)
           return
         }
-        await tunggu(T_JEDA)
+        await tunggu(T_JEDA[Math.min(ke++, T_JEDA.length - 1)])
       }
     })()
     return () => { batal = true; induk.abort(); clearTimeout(tLambat); clearTimeout(tGagal); clearTimeout(tOffline) }
@@ -127,23 +143,48 @@ export default function AnimasiMasuk() {
 
   useEffect(() => {
     if (!keluar) return
-    const t = setTimeout(() => setSelesai(true), tenang ? T_KELUAR_TENANG : T_KELUAR)
+    const t = setTimeout(onSelesai, tenang ? T_KELUAR_TENANG : T_KELUAR)
     return () => clearTimeout(t)
-  }, [keluar, tenang])
+  }, [keluar, tenang, onSelesai])
 
-  // Ketuk = lewati ke tahap berikut (bukan saat pesan gagal tampil - tombolnya yang berlaku).
-  const ketuk = () => {
-    if (gagal) return
-    if (keluar) { setSelesai(true); return }
+  // Ketuk = lewati ke tahap berikut (bukan saat pesan gagal tampil - tombolnya yang berlaku). Memakai onClick, BUKAN
+  // pointerdown: lapisan baru tembus (pointer-events none) SETELAH klik selesai, jadi ketukan tidak ikut menekan tombol
+  // aplikasi di bawahnya (bug-detector M1). Keyboard: Esc/Enter/Spasi = lewati.
+  const ketuk = useCallback(() => {
+    if (gagal || keluar) return
     if (!tiba) { setPaksaMulai(true); setTiba(true); return }
     if (siap) setKeluar(true)
-  }
+  }, [gagal, keluar, tiba, siap])
 
-  if (selesai) return null
+  // Fokus keyboard dikunci di lapisan (aplikasi di belakang tidak bisa dicapai Tab); pesan gagal -> fokus ke Coba lagi.
+  const akar = useRef<HTMLDivElement>(null)
+  useEffect(() => { akar.current?.focus() }, [])
+  useEffect(() => { if (gagal) akar.current?.querySelector<HTMLButtonElement>('.jrmBtn-utama')?.focus() }, [gagal])
+  useEffect(() => {
+    if (keluar) return
+    const tekan = (e: KeyboardEvent) => {
+      const el = akar.current
+      if (!el) return
+      if (e.key === 'Tab') {
+        const tombol = [...el.querySelectorAll<HTMLButtonElement>('.jrmBtn')]
+        e.preventDefault()
+        if (!tombol.length) { el.focus(); return }
+        const i = tombol.indexOf(document.activeElement as HTMLButtonElement)
+        tombol[(i + (e.shiftKey ? -1 : 1) + tombol.length) % tombol.length].focus()
+        return
+      }
+      if ((e.key === 'Escape' || e.key === 'Enter' || e.key === ' ') && !(document.activeElement instanceof HTMLButtonElement && el.contains(document.activeElement))) {
+        e.preventDefault(); ketuk()
+      }
+    }
+    document.addEventListener('keydown', tekan, true)
+    return () => document.removeEventListener('keydown', tekan, true)
+  }, [keluar, ketuk])
+
   const kelas = ['jrm-latar', mulai ? 'mulai' : '', tiba ? 'tiba' : '', keluar ? 'keluar' : '', gagal ? 'berhenti' : ''].filter(Boolean).join(' ')
   const muat = () => setGambar((n) => n + 1)
   return (
-    <div className={kelas} onPointerDown={ketuk} role="dialog" aria-label="Membuka aplikasi Vista Teknik" aria-busy={!gagal && !keluar}>
+    <div ref={akar} className={kelas} onClick={ketuk} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Membuka aplikasi Vista Teknik" aria-busy={!gagal && !keluar}>
       <style>{CSS}</style>
       <div className="jrm-maskot">
         <div className="jrm-bob">
@@ -157,14 +198,14 @@ export default function AnimasiMasuk() {
         {status === 'lambat' && !keluar && <span className="jrm-redup">Masih menghubungkan…</span>}
         {status === 'server' && <>
           <b>Tidak dapat terhubung ke server</b>Jaringan ada, tetapi server belum menjawab.
-          <div className="jrm-tombol" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="jrm-tombol" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="jrmBtn jrmBtn-utama" onClick={cobaLagi}>Coba lagi</button>
             <button type="button" className="jrmBtn jrmBtn-kedua" onClick={lanjut}>Lanjut tetap</button>
           </div>
         </>}
         {status === 'offline' && <>
           <b>Tidak ada jaringan</b>Periksa Wi-Fi atau data seluler, lalu coba lagi.
-          <div className="jrm-tombol" onPointerDown={(e) => e.stopPropagation()}>
+          <div className="jrm-tombol" onClick={(e) => e.stopPropagation()}>
             <button type="button" className="jrmBtn jrmBtn-utama" onClick={cobaLagi}>Coba lagi</button>
             <button type="button" className="jrmBtn jrmBtn-kedua" onClick={lanjut}>Lanjut tetap</button>
           </div>
