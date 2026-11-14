@@ -71,13 +71,15 @@ class PengamanLapisan extends Component<{ children: ReactNode }, { galat: boolea
 }
 
 // Lapisan dilepas (unmount) saat selesai -> semua timer & listener ikut dibersihkan (tinjauan bug-detector K3).
-export default function AnimasiMasuk() {
+// sudahMasuk (14 Nov 2026, keputusan user A+B): pengguna dgn sesi login tersimpan boleh mengetuk untuk lewat begitu
+// maskot sampai, tanpa menunggu server; "Lanjut tetap" juga sudah tersedia sejak 8 s ("Masih menghubungkan...").
+export default function AnimasiMasuk({ sudahMasuk = false }: { sudahMasuk?: boolean }) {
   const [selesai, setSelesai] = useState(false)
   if (selesai) return null
-  return <PengamanLapisan><Lapisan onSelesai={() => setSelesai(true)} /></PengamanLapisan>
+  return <PengamanLapisan><Lapisan sudahMasuk={sudahMasuk} onSelesai={() => setSelesai(true)} /></PengamanLapisan>
 }
 
-function Lapisan({ onSelesai }: { onSelesai: () => void }) {
+function Lapisan({ sudahMasuk, onSelesai }: { sudahMasuk: boolean; onSelesai: () => void }) {
   const [gambar, setGambar] = useState(0)
   const [paksaMulai, setPaksaMulai] = useState(false)
   const [tiba, setTiba] = useState(false)
@@ -156,8 +158,8 @@ function Lapisan({ onSelesai }: { onSelesai: () => void }) {
     if (keluar) { onSelesai(); return }
     if (gagal) return
     if (!tiba) { setPaksaMulai(true); setTiba(true); return }
-    if (siap) setKeluar(true)
-  }, [gagal, keluar, tiba, siap, onSelesai])
+    if (siap || sudahMasuk) setKeluar(true)
+  }, [gagal, keluar, tiba, siap, sudahMasuk, onSelesai])
 
   // Fokus keyboard dikunci di lapisan (aplikasi di belakang tidak bisa dicapai Tab); pesan gagal -> fokus ke Coba lagi.
   const akar = useRef<HTMLDivElement>(null)
@@ -197,7 +199,12 @@ function Lapisan({ onSelesai }: { onSelesai: () => void }) {
         </div>
       </div>
       <div className="jrm-pesan" role="status" aria-live="polite">
-        {status === 'lambat' && !keluar && <span className="jrm-redup">Masih menghubungkan…</span>}
+        {status === 'lambat' && !keluar && <>
+          <span className="jrm-redup">Masih menghubungkan…</span>
+          <div className="jrm-tombol" onClick={(e) => e.stopPropagation()}>
+            <button type="button" className="jrmBtn jrmBtn-kedua" onClick={lanjut}>Lanjut tetap</button>
+          </div>
+        </>}
         {status === 'server' && <>
           <b>Tidak dapat terhubung ke server</b>Jaringan ada, tetapi server belum menjawab.
           <div className="jrm-tombol" onClick={(e) => e.stopPropagation()}>

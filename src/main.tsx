@@ -32,13 +32,15 @@ window.addEventListener('unhandledrejection', (event) => {
 const halamanMesin = path === '/mesin' || isMesinQuery
 // (14 Nov 2026, logo JRENG Tahap 4) animasi masuk + layar koneksi di ATAS aplikasi, sekali per sesi tab; /mesin tidak.
 const tampilAnimasiMasuk = !halamanMesin && perluAnimasiMasuk()
+// Sesi login tersimpan -> boleh ketuk-lewati tanpa menunggu server (keputusan user 14 Nov, A+B).
+const sudahMasuk = (() => { try { return !!localStorage.getItem('vista_admin_session') } catch { return false } })()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>
       {halamanMesin ? <MesinPublic /> : <App />}
     </ErrorBoundary>
-    {tampilAnimasiMasuk && <AnimasiMasuk />}
+    {tampilAnimasiMasuk && <AnimasiMasuk sudahMasuk={sudahMasuk} />}
   </StrictMode>,
 )
 
