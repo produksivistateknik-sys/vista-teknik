@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { activityLogService } from '../services/activityLogService'
 import { GCss } from '../styles/globalCss'
-import { VISTA_LOGO_DATA_URI } from '../lib/logoAsset'
+import { LOGO_JRENG_BESAR, ALT_LOGO_JRENG } from '../lib/logoJreng'
 
 export function Login({onLogin,sessionMismatchNotice}:{onLogin:(u:any)=>void;sessionMismatchNotice?:string}){
   const [username,setUsername]=useState("");
@@ -97,7 +97,7 @@ export function Login({onLogin,sessionMismatchNotice}:{onLogin:(u:any)=>void;ses
       <div className="lg-left" style={{width:"45%",display:"flex",flexDirection:"column",padding:"20px 48px 44px",color:"#fff",position:"relative",zIndex:1,flexShrink:0}}>
         {/* Logo */}
         <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:56,position:"relative",zIndex:1}}>
-          <img src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" style={{height:88,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
+          <img src={LOGO_JRENG_BESAR} alt={ALT_LOGO_JRENG} width={88} height={88} style={{height:88,width:"auto",flexShrink:0,filter:"drop-shadow(0 2px 8px rgba(0,0,0,.35))"}}/>
           <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
         </div>
 

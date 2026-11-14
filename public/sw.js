@@ -1,9 +1,23 @@
 // v3 (3 Okt 2026): cache v2 dibuang saat activate - bisa berisi index.html yang tersimpan atas
 // nama file chunk JS (insiden loop "Versi baru tersedia" di MOM FAT Admin).
-const CACHE_NAME = 'vista-teknik-shell-v3';
+// v4 (14 Nov 2026, logo JRENG): ikon baru ber-versi (public/brand/*-v2) + logo JRENG sidebar/Login di-precache
+// supaya tetap tampil saat offline. Cache v3 dibuang saat activate (pola sama dgn v2->v3).
+const CACHE_NAME = 'vista-teknik-shell-v4';
+// Precache NON-FATAL: diambil satu per satu; berkas yang gagal hanya dilewati (dicatat di konsol SW), SW tetap
+// terpasang. Berkas yang gagal diisi nanti oleh jalur fetch network-first saat pertama dipakai online (jalur itu
+// juga menolak balasan HTML utk permintaan non-halaman - lihat di bawah).
+const PRECACHE = ['/brand/logo-header-v2.png', '/brand/logo-splash-v2.png'];
 
-self.addEventListener('install', () => {
+self.addEventListener('install', (event) => {
   self.skipWaiting();
+  event.waitUntil(
+    caches.open(CACHE_NAME).then((c) => Promise.allSettled(PRECACHE.map((u) =>
+      fetch(u, { cache: 'reload' })
+        // Hanya gambar yang disimpan: rewrite SPA Vercel membalas berkas yang tidak ada dgn index.html status 200.
+        .then((res) => { if (res && res.ok && (res.headers.get('content-type') || '').startsWith('image/')) return c.put(u, res); throw new Error('bukan gambar / HTTP ' + (res && res.status)); })
+        .catch((e) => console.warn('[SW] precache dilewati', u, e && e.message))
+    ))).catch((e) => console.warn('[SW] precache gagal total (diabaikan)', e && e.message))
+  );
 });
 
 self.addEventListener('activate', (event) => {
@@ -60,7 +74,10 @@ self.addEventListener('fetch', (event) => {
   // beda dari sebelumnya yang caches.match-nya gak pernah ke-isi sama sekali).
   event.respondWith(
     fetch(req).then((res) => {
-      if (res && res.ok) {
+      // (14 Nov 2026) Balasan HTML utk permintaan NON-halaman (gambar/manifest yg tidak ada -> rewrite SPA Vercel
+      // membalas index.html 200) tidak disimpan, supaya cache offline tidak berisi HTML atas nama PNG.
+      const htmlNyasar = req.mode !== 'navigate' && (res.headers.get('content-type') || '').includes('text/html');
+      if (res && res.ok && !htmlNyasar) {
         const clone = res.clone();
         caches.open(CACHE_NAME).then((c) => c.put(req, clone));
       }
@@ -81,8 +98,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(payload.title, {
       body: payload.body,
-      icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      icon: '/brand/icon-192-v2.png', // logo JRENG lengkap
+      badge: '/brand/badge-96-v2.png', // siluet putih badan maskot (Android hanya memakai alpha-nya)
       data: { url: payload.url },
       // tag (31 Okt 2026, push Inventaris digabung per operator+jenis): push baru dgn tag sama MENGGANTIKAN yang lama
       // (tidak menumpuk) & tetap berbunyi (renotify). Push lain tanpa tag = perilaku lama.
