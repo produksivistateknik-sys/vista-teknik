@@ -3,9 +3,16 @@ Pakai: python scripts/brand/buat_aset_jreng.py   (butuh Pillow: pip install --us
 Sumber satu-satunya: public/brand/jreng-logo-full.png (1254x1254 RGBA transparan). Semua turunan dibuat ulang dari situ.
 Alpha >= 240 dibulatkan ke 255 (sumber beralpha 252-254 = 99% opak; keputusan user), tepi halus (< 240) tetap.
 Kop surat / watermark / logoAsset.ts TIDAK disentuh.
+Revisi 14 Nov (keputusan user): favicon & ikon 'any' 192/512 TRANSPARAN; maskable & apple-touch tetap putih; badge =
+siluet badan maskot saja (tanpa petir/garis kecepatan); lapisan animasi lari dari potong_kaki_jreng.py dikompres ke
+public/brand/anim/. Butuh juga numpy + opencv-python-headless (alat lokal) utk potong_kaki_jreng.py.
 """
 import os
-from PIL import Image
+import subprocess
+import sys
+import tempfile
+import numpy as np
+from PIL import Image, ImageDraw
 
 AKAR = os.path.normpath(os.path.join(os.path.dirname(__file__), '..', '..'))
 PUB = os.path.join(AKAR, 'public')
@@ -60,30 +67,47 @@ def main():
     assert src.size == (1254, 1254) and src.mode == 'RGBA', (src.size, src.mode)
     logo = potong(rapatkan_alpha(src))
     hasil = []
-    # Ikon aplikasi: logo lengkap di latar putih, dgn padding (any: 88% sisi; maskable: 60% sisi - ujung bolt & pita tulisan
+    BENING = (255, 255, 255, 0)
+    # Ikon aplikasi: any (192/512) & favicon TRANSPARAN; maskable & apple-touch latar putih, dgn padding (any: 88% sisi; maskable: 60% sisi - ujung bolt & pita tulisan
     # tetap di dalam lingkaran aman radius 40% W3C; 66% sedikit melewatinya, temuan ui-reviewer)
-    hasil.append(simpan(kanvas(logo, 512, 0.88, PUTIH), f'brand/icon-512-{V}.png', rgb=True))
-    hasil.append(simpan(kanvas(logo, 192, 0.88, PUTIH), f'brand/icon-192-{V}.png', rgb=True))
+    hasil.append(simpan(kanvas(logo, 512, 0.94, BENING), f'brand/icon-512-{V}.png'))
+    hasil.append(simpan(kanvas(logo, 192, 0.94, BENING), f'brand/icon-192-{V}.png'))
     hasil.append(simpan(kanvas(logo, 512, 0.60, PUTIH), f'brand/icon-maskable-512-{V}.png', rgb=True))
     hasil.append(simpan(kanvas(logo, 180, 0.88, PUTIH), f'brand/apple-touch-icon-180-{V}.png', rgb=True))
-    f32 = kanvas(logo, 32, 0.94, PUTIH)
-    f16 = kanvas(logo, 16, 0.94, PUTIH)
-    hasil.append(simpan(f32, f'brand/favicon-32-{V}.png', rgb=True))
-    hasil.append(simpan(f16, f'brand/favicon-16-{V}.png', rgb=True))
+    hasil.append(simpan(kanvas(logo, 32, 1.0, BENING), f'brand/favicon-32-{V}.png'))
+    hasil.append(simpan(kanvas(logo, 16, 1.0, BENING), f'brand/favicon-16-{V}.png'))
     ico = os.path.join(PUB, 'favicon.ico')
-    kanvas(logo, 48, 0.94, PUTIH).convert('RGB').save(ico, sizes=[(16, 16), (32, 32), (48, 48)])
+    kanvas(logo, 48, 1.0, BENING).save(ico, sizes=[(16, 16), (32, 32), (48, 48)])
     hasil.append(ico)
     # Logo pojok atas (transparan): 2x tinggi tampil 62 px
     hasil.append(simpan(muat(logo, 1000, 124), f'brand/logo-header-{V}.png'))
     # Logo halaman Masuk & Login (transparan): 2x lebar tampil 260 px
     hasil.append(simpan(muat(logo, 520, 520), f'brand/logo-splash-{V}.png'))
-    # Badge notifikasi: siluet putih (alpha) MASKOT saja (tanpa tulisan), 96x96
-    maskot = rapatkan_alpha(src).crop((0, 0, 1254, 790))
-    maskot = potong(maskot)
-    a = maskot.getchannel('A').point(lambda x: 255 if x >= 128 else 0)
-    siluet = Image.new('RGBA', maskot.size, (255, 255, 255, 0))
+    # Badge notifikasi: siluet putih (alpha murni) BADAN maskot saja - petir & garis kecepatan dibuang lewat poligon
+    # (koordinat sumber 1254 px), bintik sisa garis dibuang (komponen < 4000 px). Tanpa detail dalam: di 24 dp detail pecah.
+    import cv2
+    poli = [(130, 300), (330, 120), (640, 0), (880, 110), (890, 330), (1000, 350), (1110, 410), (1145, 560), (1050, 610),
+            (960, 625), (1015, 700), (1015, 790), (900, 840), (780, 805), (700, 760), (600, 800), (560, 830), (380, 820),
+            (270, 730), (250, 560), (120, 440)]
+    m = Image.new('L', src.size, 0)
+    ImageDraw.Draw(m).polygon(poli, fill=255)
+    biner = ((np.array(m) > 0) & (np.array(src.getchannel('A')) >= 128)).astype(np.uint8)
+    n, lab, st, _ = cv2.connectedComponentsWithStats(biner, 8)
+    simpan_ = np.zeros_like(biner)
+    for i in range(1, n):
+        if st[i, 4] > 4000:
+            simpan_[lab == i] = 255
+    a = Image.fromarray(simpan_)
+    siluet = Image.new('RGBA', src.size, (255, 255, 255, 0))
     siluet.putalpha(a)
-    hasil.append(simpan(kanvas(siluet, 96, 0.92, (255, 255, 255, 0)), f'brand/badge-96-{V}.png'))
+    siluet = siluet.crop(a.getbbox())
+    hasil.append(simpan(kanvas(siluet, 96, 0.92, BENING), f'brand/badge-96-{V}.png'))
+    # Lapisan animasi lari: dibuat potong_kaki_jreng.py (640 px) ke folder sementara, lalu alpha dirapatkan & dikompres.
+    with tempfile.TemporaryDirectory() as tmp:
+        subprocess.run([sys.executable, os.path.join(os.path.dirname(__file__), 'potong_kaki_jreng.py'), SUMBER, tmp, '640'], check=True)
+        os.makedirs(os.path.join(PUB, 'brand', 'anim'), exist_ok=True)
+        for nm in ('base', 'kaki-belakang', 'kaki-depan'):
+            hasil.append(simpan(rapatkan_alpha(Image.open(os.path.join(tmp, nm + '.png')).convert('RGBA')), f'brand/anim/{nm}.png'))
     for p in hasil:
         im = Image.open(p)
         print(f'{os.path.relpath(p, AKAR):45} {im.size[0]}x{im.size[1]:<5} {im.mode:5} alpha={"ya" if (im.mode in ("RGBA","LA") or "transparency" in im.info) else "tidak":5} {os.path.getsize(p)/1024:7.1f} KB')
