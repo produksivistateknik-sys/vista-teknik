@@ -619,20 +619,55 @@ ${kop.body}
     if (viewMode === 'riwayat') fetchRiwayat(riwayatTanggal)
   }, [viewMode, riwayatTanggal])
 
+  // PENJAGA STATUS (18 Nov 2026, keputusan user Tahap 2 permintaan-tabel). Dulu update hanya .eq('id') - layar basi/dua
+  // admin bisa menimpa keputusan: bukti item 2866 disetujui DIMAS 28 Okt 07.15 (sudah masuk antrean Gudang) lalu ditimpa
+  // "ditolak" LUTVAN 08.02. Sekarang setujui/tolak HANYA berlaku bila item MASIH 'menunggu_admin' (.eq('status', ...)) &
+  // jumlah baris yang berubah dicek (.select('id')): 0 baris = sudah diproses admin lain -> tidak menimpa, tidak kirim
+  // notifikasi, daftar dimuat ulang. Kolom/isi yang ditulis SAMA PERSIS dgn sebelumnya. Dipakai aksi per baris & massal.
+  type HasilTulis = { hasil: 'ok' | 'sudah_diproses' | 'gagal'; pesan?: string }
+  type PermRingkas = { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string }
+  type ItemRingkas = { id: number; nama_komponen?: string; qty?: number; satuan?: string | null; perm: PermRingkas }
+  const tulisSetujui = async (it: ItemRingkas, qtyBaru: number): Promise<HasilTulis> => {
+    const { data, error } = await supabase.from('permintaan_item').update({
+      status: 'pending', qty: qtyBaru, disetujui_admin_oleh: adminUsername, disetujui_admin_at: new Date().toISOString(),
+    }).eq('id', it.id).eq('status', 'menunggu_admin').select('id')
+    if (error) return { hasil: 'gagal', pesan: error.message }
+    return (data || []).length > 0 ? { hasil: 'ok' } : { hasil: 'sudah_diproses' }
+  }
+  const tulisTolak = async (it: ItemRingkas, alasan: string): Promise<HasilTulis> => {
+    const { data, error } = await supabase.from('permintaan_item').update({
+      status: 'ditolak_admin', catatan_reject: alasan, updated_by: adminUsername, updated_at: new Date().toISOString(),
+    }).eq('id', it.id).eq('status', 'menunggu_admin').select('id')
+    if (error) return { hasil: 'gagal', pesan: error.message }
+    return (data || []).length > 0 ? { hasil: 'ok' } : { hasil: 'sudah_diproses' }
+  }
+  // Notifikasi ke Gudang - isi sama dgn sebelumnya; jumlahItem = jumlah item yang disetujui sekaligus (aksi per baris = 1).
+  const notifDisetujui = async (perm: PermRingkas, jumlahItem: number) => {
+    try {
+      await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'admin_disetujui', jenis: perm.jenis, operatorNama: perm.operator_nama, divisi: perm.divisi,
+        proyek: perm.proyek, panelNama: perm.panel_nama, jumlahItem,
+      } })
+    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+  }
+  const notifDitolak = async (it: ItemRingkas, alasan: string) => {
+    try {
+      await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'admin_ditolak', targetDivisi: it.perm.divisi,
+        namaKomponen: it.nama_komponen, qty: it.qty, satuan: it.satuan, alasan,
+      } })
+    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+  }
+  const PESAN_SUDAH_DIPROSES = 'Item ini sudah diproses admin lain (disetujui/ditolak) - tidak diubah. Daftar dimuat ulang.'
+
   const setujui = async (it: any) => {
     const qtyBaru = Number(qtyEdit[it.id])
     if (!qtyEdit[it.id] || isNaN(qtyBaru) || qtyBaru <= 0) { alert('Qty harus diisi, angka lebih dari 0'); return }
     setProcessingId(it.id)
-    const { error } = await supabase.from('permintaan_item').update({
-      status: 'pending', qty: qtyBaru, disetujui_admin_oleh: adminUsername, disetujui_admin_at: new Date().toISOString(),
-    }).eq('id', it.id)
-    if (error) { alert('Gagal menyetujui: ' + error.message); setProcessingId(null); return }
-    try {
-      await supabase.functions.invoke('notify-permintaan', { body: {
-        trigger: 'admin_disetujui', jenis: it.perm.jenis, operatorNama: it.perm.operator_nama, divisi: it.perm.divisi,
-        proyek: it.perm.proyek, panelNama: it.perm.panel_nama, jumlahItem: 1,
-      } })
-    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+    const r = await tulisSetujui(it, qtyBaru)
+    if (r.hasil === 'gagal') { alert('Gagal menyetujui: ' + r.pesan); setProcessingId(null); return }
+    if (r.hasil === 'sudah_diproses') { alert(PESAN_SUDAH_DIPROSES); setProcessingId(null); fetchData(true); return }
+    await notifDisetujui(it.perm, 1)
     setProcessingId(null)
   }
 
@@ -640,19 +675,14 @@ ${kop.body}
     if (!rejectTarget) return
     if (!rejectAlasan.trim()) { alert('Alasan penolakan wajib diisi'); return }
     setProcessingId(rejectTarget.id)
-    const { error } = await supabase.from('permintaan_item').update({
-      status: 'ditolak_admin', catatan_reject: rejectAlasan.trim(), updated_by: adminUsername, updated_at: new Date().toISOString(),
-    }).eq('id', rejectTarget.id)
-    if (error) { alert('Gagal menolak: ' + error.message); setProcessingId(null); return }
-    try {
-      await supabase.functions.invoke('notify-permintaan', { body: {
-        trigger: 'admin_ditolak', targetDivisi: rejectTarget.perm.divisi,
-        namaKomponen: rejectTarget.nama_komponen, qty: rejectTarget.qty, satuan: rejectTarget.satuan, alasan: rejectAlasan.trim(),
-      } })
-    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+    const r = await tulisTolak(rejectTarget, rejectAlasan.trim())
+    if (r.hasil === 'gagal') { alert('Gagal menolak: ' + r.pesan); setProcessingId(null); return }
+    if (r.hasil === 'sudah_diproses') alert(PESAN_SUDAH_DIPROSES)
+    else await notifDitolak(rejectTarget, rejectAlasan.trim())
     setProcessingId(null)
     setRejectTarget(null)
     setRejectAlasan('')
+    if (r.hasil === 'sudah_diproses') fetchData(true)
   }
 
   const grouped: Record<string, any[]> = {}
