@@ -4,3 +4,9 @@
 export const LOGO_JRENG_HEADER = '/brand/logo-header-v2.png' // 123x124, transparan (2x tinggi tampil 62 px)
 export const LOGO_JRENG_BESAR = '/brand/logo-splash-v2.png' // 518x520, transparan (Login & halaman masuk)
 export const ALT_LOGO_JRENG = 'JRENG by PT. Vista Inti Teknik'
+
+// LOGO VISTA TEKNIK AWAL di halaman LOGIN saja (18 Nov 2026, keputusan user) - gambar sama dgn VISTA_LOGO_DATA_URI
+// (logoAsset.ts, dipakai kop/watermark PDF), diperkecil 2x tinggi tampil Login admin (88 px) & dikompres 128 warna.
+// Berkas statis bernama ber-versi (bukan data URI 95 KB di bundle). Tampilan setelah masuk tetap JRENG.
+export const LOGO_VISTA_AWAL = '/brand/vista-teknik-awal-v1.png' // 453x176, transparan, oranye
+export const ALT_LOGO_VISTA_AWAL = 'Vista Teknik'
