@@ -87,6 +87,12 @@ export const PERMINTAAN_TABEL_CSS = `
 .pbt .pbt-diubah{display:block;font-size:11px;color:#92400e;font-weight:600;margin-top:2px}
 [data-theme="dark"] .pbt .pbt-diubah{color:#fcd34d}
 .pbt .pbt-aksi-baris{display:inline-flex;gap:6px;white-space:nowrap}
+.pbt-cari{height:36px}
+.pbt-teks-warn{color:#b45309}
+.pbt-teks-bad{color:#b91c1c}
+[data-theme="dark"] .pbt-teks-warn{color:#fcd34d}
+[data-theme="dark"] .pbt-teks-bad{color:#fca5a5}
+.pbt .pbt-cek-area{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin:0}
 .pbt .pbt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 /* Layar <=1200px: kolom Divisi disembunyikan (sudah tertera di baris judul kelompok) supaya tabel muat tanpa gulir di 1100px. */
 @media (max-width:1200px){.pbt .pbt-tbl th.c-divisi,.pbt .pbt-tbl td.c-divisi{display:none}}
@@ -126,6 +132,10 @@ ${aturanHp(768, `
 .pbt .pbt-blok-aksi .pbtBtn{flex:1;min-height:44px}
 .pbt .pbt-pilihbar .pbtBtn{min-height:44px}
 .pbt .pbt-cek{width:22px;height:22px}
+.pbt .pbt-cek-area{min-width:44px;min-height:44px;margin:-10px 0 -10px -10px}
+.pbt-cari{height:40px}
+.pbt .pbt-aksi-baris{gap:14px}
+.pbt .pbt-blok-aksi{gap:14px}
 .pbt .pbt-qty-in{min-height:40px;width:110px}
 .pbt .pbt-konfirmasi{min-height:40px}
 `)}
