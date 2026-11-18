@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, type CSSProperties } from 'react'
+import { useState, useEffect, useMemo, useRef, type CSSProperties } from 'react'
 import { supabase } from '../lib/supabase'
 import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from '../lib/rekapPermintaanArsip'
 import { muatKoreksiDisetujui, teksTandaKoreksi, qtyEfektif, rantaiKoreksi, type KoreksiPermintaan } from '../lib/koreksiPermintaan'
@@ -8,6 +8,8 @@ import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
 import { bandingDivisiProduksi } from '../lib/urutanDivisi'
 import { fetchAllPaged, fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
+import { statusTampilPermintaan, LABEL_STATUS_TAMPIL, statusDitolak } from '../lib/statusPermintaanTampil'
+import { PERMINTAAN_TABEL_CSS } from '../styles/permintaanTabelCss'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -43,6 +45,9 @@ const bandingDivisiRekap = (a: string, b: string) => bandingDivisiProduksi(a, b,
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
+// Kolom tanggal tabel (18 Nov 2026): tanggal & jam dipisah (desktop 2 baris, HP satu baris).
+const fmtTgl = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'
+const fmtJam = (d: string) => d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
 
 // Dipakai buat build HTML dokumen print (openPrintWindow) - data dari DB (nama item/proyek/WO)
 // ditulis mentah ke string HTML, WAJIB di-escape biar gak ada karakter yang kebaca sebagai tag.
@@ -55,6 +60,13 @@ const rekapThS: CSSProperties = {
   padding: '10px 14px', fontWeight: 800, fontSize: 11, color: '#475569',
   textTransform: 'uppercase', letterSpacing: 0.4, textAlign: 'left', whiteSpace: 'nowrap',
 }
+
+// Item Menunggu Persetujuan yang dipakai aksi massal (18 Nov 2026, Tahap 2).
+type ItemAksi = { id: number; permintaan_id?: number; nama_komponen?: string; qty?: number; satuan?: string | null
+  perm: { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string; wo_number?: string; created_at?: string } }
+// qty = nilai qty yang DIKUNCI saat dialog konfirmasi dibuka (yang ditulis = yang tampil di dialog).
+type MassalState = { jenis: 'setujui' | 'tolak'; daftar: ItemAksi[]; lewati: ItemAksi[]; qty: Record<number, number>; berjalan: boolean; selesai: number
+  hasil: null | { ok: number; sudah: number; gagal: string[] } }
 
 const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: string, color: string }[] = [
   { key: 'ALL', label: 'Semua', color: '#475569' },
@@ -71,6 +83,23 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [processingId, setProcessingId] = useState<number | null>(null)
   const [rejectTarget, setRejectTarget] = useState<any | null>(null)
   const [rejectAlasan, setRejectAlasan] = useState('')
+  // Tahap 2 (18 Nov 2026): filter, pilih banyak & aksi massal di Menunggu Persetujuan - hanya tampilan + urutan pemanggilan
+  // fungsi tulis yang sama (tulisSetujui/tulisTolak).
+  const [menungguCari, setMenungguCari] = useState('')
+  const [menungguDivisi, setMenungguDivisi] = useState('ALL')
+  const [dipilih, setDipilih] = useState<Set<number>>(() => new Set())
+  const [massal, setMassal] = useState<MassalState | null>(null)
+  const [massalAlasan, setMassalAlasan] = useState('')
+  // Selama aksi massal berjalan, event realtime milik sendiri diabaikan (tidak memuat ulang daftar N kali); daftar dimuat
+  // SEKALI di akhir (tinjauan keamanan 18 Nov: lonjakan refetch).
+  const massalBerjalanRef = useRef(false)
+  // Peringatan browser bila halaman ditutup/dimuat ulang saat aksi massal masih berjalan.
+  useEffect(() => {
+    if (!massal?.berjalan) return
+    const tahan = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+    window.addEventListener('beforeunload', tahan)
+    return () => window.removeEventListener('beforeunload', tahan)
+  }, [massal?.berjalan])
   // KONFIRMASI AMBIL - PERMINTAAN ADMIN (23 Sep 2026) - reuse PERSIS kolom & logic
   // sudah_diambil/diambil_oleh/diambil_at (permintaan_item, migration 17 Agu 2026) yang selama
   // ini cuma dikonfirmasi operator (PermintaanView.tsx, vista-pekerja, tombol "Konfirmasi Sudah
@@ -194,6 +223,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [riwayatTanggal, setRiwayatTanggal] = useState(todayStr())
   const [riwayatSearch, setRiwayatSearch] = useState('')
   const [riwayatStatusFilter, setRiwayatStatusFilter] = useState<'ALL' | 'DISETUJUI' | 'DITOLAK'>('ALL')
+  const [riwayatDivisiFilter, setRiwayatDivisiFilter] = useState<string>('ALL') // (18 Nov 2026) tambahan filter divisi - hanya tampilan
   const [riwayatLoading, setRiwayatLoading] = useState(false)
   const [riwayatItems, setRiwayatItems] = useState<any[]>([])
 
@@ -537,13 +567,19 @@ ${kop.body}
     if (win.document.readyState === 'complete') cetak(); else win.onload = cetak
   }
 
+  // Penanda urutan (18 Nov 2026, temuan bug-detector M1): beberapa fetchData bisa berjalan bersamaan (realtime + muat
+  // ulang setelah aksi); hanya hasil panggilan TERBARU yang dipakai, supaya respons lama tidak menimpa daftar yang baru.
+  const fetchSeqRef = useRef(0)
   const fetchData = async (silent = false) => {
+    const seq = ++fetchSeqRef.current
     if (!silent) setLoading(true)
     const itemRows = await fetchAllPaged((from, to) =>
       supabase.from('permintaan_item').select('*').eq('status', 'menunggu_admin').order('id').range(from, to))
+    if (seq !== fetchSeqRef.current) { if (!silent) setLoading(false); return }
     if (itemRows.length === 0) { setItems([]); if (!silent) setLoading(false); return }
     const permIds = [...new Set(itemRows.map((it: any) => it.permintaan_id))]
     const perms = await fetchAllPagedPerPotongan(permIds, (bagian, from, to) => supabase.from('permintaan').select('*').in('id', bagian).order('id').range(from, to))
+    if (seq !== fetchSeqRef.current) { if (!silent) setLoading(false); return }
     const permMap: Record<number, any> = {}
     perms.forEach((p: any) => { permMap[p.id] = p })
     const merged = itemRows.map((it: any) => ({ ...it, perm: permMap[it.permintaan_id] })).filter((it: any) => it.perm)
@@ -560,7 +596,7 @@ ${kop.body}
   useEffect(() => {
     fetchData()
     const ch = supabase.channel('realtime-permintaan-admin')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan_item' }, () => fetchData(true))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'permintaan_item' }, () => { if (!massalBerjalanRef.current) fetchData(true) })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
   }, [])
@@ -613,20 +649,70 @@ ${kop.body}
     if (viewMode === 'riwayat') fetchRiwayat(riwayatTanggal)
   }, [viewMode, riwayatTanggal])
 
-  const setujui = async (it: any) => {
-    const qtyBaru = Number(qtyEdit[it.id])
-    if (!qtyEdit[it.id] || isNaN(qtyBaru) || qtyBaru <= 0) { alert('Qty harus diisi, angka lebih dari 0'); return }
-    setProcessingId(it.id)
-    const { error } = await supabase.from('permintaan_item').update({
+  // PENJAGA STATUS (18 Nov 2026, keputusan user Tahap 2 permintaan-tabel). Dulu update hanya .eq('id') - layar basi/dua
+  // admin bisa menimpa keputusan: bukti item 2866 disetujui DIMAS 28 Okt 07.15 (sudah masuk antrean Gudang) lalu ditimpa
+  // "ditolak" LUTVAN 08.02. Sekarang setujui/tolak HANYA berlaku bila item MASIH 'menunggu_admin' (.eq('status', ...)) &
+  // jumlah baris yang berubah dicek (.select('id')): 0 baris = sudah diproses admin lain -> tidak menimpa, tidak kirim
+  // notifikasi, daftar dimuat ulang. Kolom/isi yang ditulis SAMA PERSIS dgn sebelumnya. Dipakai aksi per baris & massal.
+  type HasilTulis = { hasil: 'ok' | 'sudah_diproses' | 'gagal'; pesan?: string }
+  type PermRingkas = { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string }
+  type ItemRingkas = { id: number; nama_komponen?: string; qty?: number; satuan?: string | null; perm: PermRingkas }
+  const tulisSetujui = async (it: ItemRingkas, qtyBaru: number): Promise<HasilTulis> => {
+    const { data, error } = await supabase.from('permintaan_item').update({
       status: 'pending', qty: qtyBaru, disetujui_admin_oleh: adminUsername, disetujui_admin_at: new Date().toISOString(),
-    }).eq('id', it.id)
-    if (error) { alert('Gagal menyetujui: ' + error.message); setProcessingId(null); return }
+    }).eq('id', it.id).eq('status', 'menunggu_admin').select('id')
+    if (error) return { hasil: 'gagal', pesan: error.message }
+    return (data || []).length > 0 ? { hasil: 'ok' } : { hasil: 'sudah_diproses' }
+  }
+  const tulisTolak = async (it: ItemRingkas, alasan: string): Promise<HasilTulis> => {
+    const { data, error } = await supabase.from('permintaan_item').update({
+      status: 'ditolak_admin', catatan_reject: alasan, updated_by: adminUsername, updated_at: new Date().toISOString(),
+    }).eq('id', it.id).eq('status', 'menunggu_admin').select('id')
+    if (error) return { hasil: 'gagal', pesan: error.message }
+    return (data || []).length > 0 ? { hasil: 'ok' } : { hasil: 'sudah_diproses' }
+  }
+  // Notifikasi ke Gudang - isi sama dgn sebelumnya; jumlahItem = jumlah item yang disetujui sekaligus (aksi per baris = 1).
+  const notifDisetujui = async (perm: PermRingkas, jumlahItem: number) => {
     try {
-      await supabase.functions.invoke('notify-permintaan', { body: {
-        trigger: 'admin_disetujui', jenis: it.perm.jenis, operatorNama: it.perm.operator_nama, divisi: it.perm.divisi,
-        proyek: it.perm.proyek, panelNama: it.perm.panel_nama, jumlahItem: 1,
+      const { error } = await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'admin_disetujui', jenis: perm.jenis, operatorNama: perm.operator_nama, divisi: perm.divisi,
+        proyek: perm.proyek, panelNama: perm.panel_nama, jumlahItem,
       } })
-    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+      if (error) console.error('[Permintaan] notifikasi disetujui gagal (keputusan tetap tersimpan):', error)
+    } catch (e) { console.error('[Permintaan] notifikasi disetujui gagal (keputusan tetap tersimpan):', e) }
+  }
+  const notifDitolak = async (it: ItemRingkas, alasan: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'admin_ditolak', targetDivisi: it.perm.divisi,
+        namaKomponen: it.nama_komponen, qty: it.qty, satuan: it.satuan, alasan,
+      } })
+      if (error) console.error('[Permintaan] notifikasi ditolak gagal (keputusan tetap tersimpan):', error)
+    } catch (e) { console.error('[Permintaan] notifikasi ditolak gagal (keputusan tetap tersimpan):', e) }
+  }
+  const PESAN_SUDAH_DIPROSES = 'Item ini sudah tidak menunggu persetujuan (sudah diproses/diubah di tempat lain) - tidak diubah. Daftar dimuat ulang.'
+  // Muat ulang daftar setelah aksi - galat tidak didiamkan (aturan A.2).
+  const muatUlang = () => {
+    fetchData(true).catch((e: unknown) => {
+      console.error('[Permintaan] gagal memuat ulang daftar menunggu:', e)
+      alert('Gagal memuat ulang daftar: ' + (e instanceof Error ? e.message : String(e)) + '. Muat ulang halaman.')
+    })
+  }
+  // SATU aturan qty sah (dipakai Setujui per baris & massal): angka > 0. null = tidak sah.
+  const qtySah = (it: ItemRingkas): number | null => {
+    const teks = String(qtyEdit[it.id] ?? it.qty ?? '').trim()
+    const q = Number(teks)
+    return !teks || isNaN(q) || q <= 0 ? null : q
+  }
+
+  const setujui = async (it: any) => {
+    const qtyBaru = qtySah(it)
+    if (qtyBaru === null) { alert('Qty harus diisi, angka lebih dari 0'); return }
+    setProcessingId(it.id)
+    const r = await tulisSetujui(it, qtyBaru)
+    if (r.hasil === 'gagal') { alert('Gagal menyetujui: ' + r.pesan); setProcessingId(null); return }
+    if (r.hasil === 'sudah_diproses') { alert(PESAN_SUDAH_DIPROSES); setProcessingId(null); muatUlang(); return }
+    await notifDisetujui(it.perm, 1)
     setProcessingId(null)
   }
 
@@ -634,28 +720,104 @@ ${kop.body}
     if (!rejectTarget) return
     if (!rejectAlasan.trim()) { alert('Alasan penolakan wajib diisi'); return }
     setProcessingId(rejectTarget.id)
-    const { error } = await supabase.from('permintaan_item').update({
-      status: 'ditolak_admin', catatan_reject: rejectAlasan.trim(), updated_by: adminUsername, updated_at: new Date().toISOString(),
-    }).eq('id', rejectTarget.id)
-    if (error) { alert('Gagal menolak: ' + error.message); setProcessingId(null); return }
-    try {
-      await supabase.functions.invoke('notify-permintaan', { body: {
-        trigger: 'admin_ditolak', targetDivisi: rejectTarget.perm.divisi,
-        namaKomponen: rejectTarget.nama_komponen, qty: rejectTarget.qty, satuan: rejectTarget.satuan, alasan: rejectAlasan.trim(),
-      } })
-    } catch { /* notifikasi gagal - diabaikan, keputusan tetap tersimpan */ }
+    const r = await tulisTolak(rejectTarget, rejectAlasan.trim())
+    if (r.hasil === 'gagal') { alert('Gagal menolak: ' + r.pesan); setProcessingId(null); return }
+    if (r.hasil === 'sudah_diproses') alert(PESAN_SUDAH_DIPROSES)
+    else await notifDitolak(rejectTarget, rejectAlasan.trim())
     setProcessingId(null)
     setRejectTarget(null)
     setRejectAlasan('')
+    if (r.hasil === 'sudah_diproses') muatUlang()
   }
 
-  const grouped: Record<string, any[]> = {}
-  items.forEach((it: any) => {
-    const key = it.perm.divisi || '-'
-    if (!grouped[key]) grouped[key] = []
-    grouped[key].push(it)
+  // MENUNGGU PERSETUJUAN - blok per proyek + panel + divisi (18 Nov 2026, Tahap 2). Urutan blok: divisi (urutan proses
+  // produksi, sama Rekap), lalu proyek, panel; item di dalam blok tetap urut waktu diminta (urutan fetchData).
+  const qMenunggu = menungguCari.trim().toLowerCase()
+  const menungguTampil: ItemAksi[] = items.filter((it) => (menungguDivisi === 'ALL' || (it.perm.divisi || '-') === menungguDivisi)
+    && (!qMenunggu || [it.nama_komponen, it.perm.proyek, it.perm.panel_nama, it.perm.operator_nama, it.perm.wo_number].join(' ').toLowerCase().includes(qMenunggu)))
+  const menungguDivisiOpsi = [...new Set([...items.map((it) => it.perm.divisi || '-'), ...(menungguDivisi !== 'ALL' ? [menungguDivisi] : [])])].sort(bandingDivisiRekap)
+  const blokMap = new Map<string, { kunci: string; proyek: string; panel: string; wo: string; divisi: string; items: ItemAksi[] }>()
+  menungguTampil.forEach((it) => {
+    const proyek = it.perm.proyek || '-', panel = it.perm.panel_nama || '-', wo = it.perm.wo_number || '', divisi = it.perm.divisi || '-'
+    const kunci = [proyek, panel, wo, divisi].join('|')
+    if (!blokMap.has(kunci)) blokMap.set(kunci, { kunci, proyek, panel, wo, divisi, items: [] })
+    blokMap.get(kunci)!.items.push(it)
   })
-  const divisiKeys = Object.keys(grouped).sort(bandingDivisiRekap) // urutan proses produksi, sama Rekap
+  const menungguBlok = [...blokMap.values()].sort((a, b) => bandingDivisiRekap(a.divisi, b.divisi) || a.proyek.localeCompare(b.proyek) || a.panel.localeCompare(b.panel))
+  // Pilihan hanya untuk item yang MASIH ada di daftar (item yang diproses admin lain via realtime otomatis keluar) DAN
+  // sedang TERLIHAT (filter cari/divisi) - item terpilih yang tersembunyi filter tidak ikut diproses (temuan regresi T1).
+  const dipilihValid: ItemAksi[] = menungguTampil.filter((it) => dipilih.has(it.id))
+  const dipilihTersembunyi = items.filter((it) => dipilih.has(it.id)).length - dipilihValid.length
+  const sibuk = processingId !== null || !!massal // dialog massal terbuka -> aksi & isian qty di belakang dikunci
+
+  // AKSI MASSAL (18 Nov 2026, keputusan user): memanggil tulisSetujui/tulisTolak yang SAMA per item, BERURUTAN (bukan
+  // paralel). Penjaga status (Tahap 2a) menjamin tidak ada timpa/dobel bila admin lain memproses item yang sama. Gagal
+  // sebagian (mis. koneksi putus di tengah): item yang berhasil tetap tersimpan, yang gagal tetap di daftar & tetap
+  // terpilih untuk dicoba lagi; ringkasan ditampilkan. Notifikasi Gudang (admin_disetujui) digabung per permintaan
+  // (jumlahItem = jumlah item permintaan itu yang disetujui) - isi sama dgn notifikasi lama; penolakan tetap per item.
+  const mulaiSetujuiMassal = (daftar: ItemAksi[]) => {
+    const sah: ItemAksi[] = [], lewati: ItemAksi[] = []
+    const qty: Record<number, number> = {}
+    daftar.forEach((it) => {
+      const q = qtySah(it)
+      if (q === null) lewati.push(it); else { sah.push(it); qty[it.id] = q }
+    })
+    setMassal({ jenis: 'setujui', daftar: sah, lewati, qty, berjalan: false, selesai: 0, hasil: null })
+  }
+  const mulaiTolakMassal = (daftar: ItemAksi[]) => {
+    setMassalAlasan('')
+    setMassal({ jenis: 'tolak', daftar: [...daftar], lewati: [], qty: {}, berjalan: false, selesai: 0, hasil: null })
+  }
+  const jalankanMassal = async () => {
+    if (!massal || massal.berjalan) return
+    const alasan = massalAlasan.trim()
+    if (massal.jenis === 'tolak' && !alasan) { alert('Alasan penolakan wajib diisi'); return }
+    const { jenis, daftar } = massal
+    setMassal({ ...massal, berjalan: true, selesai: 0 })
+    massalBerjalanRef.current = true
+    let ok = 0, sudah = 0
+    const gagal: string[] = []
+    const idGagal = new Set<number>()
+    const perPermintaan = new Map<number, { perm: ItemAksi['perm']; n: number }>()
+    // Notifikasi Gudang dikirim SEGERA setelah item terakhir sebuah permintaan selesai diproses (bukan menunggu seluruh
+    // daftar) - bila tab ditutup/koneksi putus di tengah, permintaan yang sudah tuntas tetap mendapat notifikasi.
+    const kunciPerm = (it: ItemAksi) => it.permintaan_id ?? -it.id
+    const indeksTerakhir = new Map<number, number>()
+    daftar.forEach((it, idx) => indeksTerakhir.set(kunciPerm(it), idx))
+    const kirimNotifPerm = async (k: number) => {
+      const e = perPermintaan.get(k)
+      if (e && e.n > 0) { perPermintaan.delete(k); await notifDisetujui(e.perm, e.n) }
+    }
+    let i = 0
+    try {
+    for (; i < daftar.length; i++) {
+      const it = daftar[i]
+      const r = jenis === 'setujui' ? await tulisSetujui(it, massal.qty[it.id]) : await tulisTolak(it, alasan)
+      if (r.hasil === 'ok') {
+        ok++
+        if (jenis === 'setujui') {
+          const k = kunciPerm(it)
+          const e = perPermintaan.get(k) || { perm: it.perm, n: 0 }
+          e.n++; perPermintaan.set(k, e)
+        } else await notifDitolak(it, alasan)
+      } else if (r.hasil === 'sudah_diproses') sudah++
+      else { gagal.push(`${it.nama_komponen}: ${r.pesan}`); idGagal.add(it.id) }
+      if (jenis === 'setujui' && indeksTerakhir.get(kunciPerm(it)) === i) await kirimNotifPerm(kunciPerm(it))
+      const selesai = i + 1
+      setMassal(m => m && { ...m, selesai })
+    }
+    } catch (e: unknown) {
+      // Galat tak terduga di tengah (bukan {error} biasa): sisa item dicatat gagal & tetap terpilih; dialog tidak macet.
+      const pesan = e instanceof Error ? e.message : String(e)
+      for (; i < daftar.length; i++) { gagal.push(`${daftar[i].nama_komponen}: ${pesan}`); idGagal.add(daftar[i].id) }
+    }
+    massalBerjalanRef.current = false
+    // Sisa (hanya bila loop terhenti galat tak terduga): item yang SUDAH tersimpan tetap diberi notifikasi.
+    for (const k of [...perPermintaan.keys()]) await kirimNotifPerm(k)
+    setDipilih(prev => { const n = new Set(prev); daftar.forEach((it) => { if (!idGagal.has(it.id)) n.delete(it.id) }); return n })
+    setMassal(m => m && { ...m, berjalan: false, hasil: { ok, sudah, gagal } })
+    muatUlang()
+  }
 
   const riwayatFiltered = riwayatItems.filter((it: any) => {
     if (riwayatStatusFilter === 'DISETUJUI' && it.status === 'ditolak_admin') return false
@@ -665,8 +827,12 @@ ${kop.body}
     const hay = [it.nama_komponen, it.perm.proyek, it.perm.panel_nama, it.perm.operator_nama, it.perm.wo_number].join(' ').toLowerCase()
     return hay.includes(q)
   })
+  // (18 Nov 2026) Filter divisi diterapkan SETELAH filter lama (tanggal/cari/status tidak berubah). Pilihan = divisi yang
+  // ada di hasil filter lama supaya daftar pilihan tidak kosong.
+  const riwayatDivisiOpsi = [...new Set(riwayatFiltered.map((it) => it.perm.divisi || '-'))].sort(bandingDivisiRekap)
+  const riwayatTampil = riwayatDivisiFilter === 'ALL' ? riwayatFiltered : riwayatFiltered.filter((it) => (it.perm.divisi || '-') === riwayatDivisiFilter)
   const riwayatGrouped: Record<string, any[]> = {}
-  riwayatFiltered.forEach((it: any) => {
+  riwayatTampil.forEach((it: any) => {
     const key = it.perm.divisi || '-'
     if (!riwayatGrouped[key]) riwayatGrouped[key] = []
     riwayatGrouped[key].push(it)
@@ -898,6 +1064,7 @@ ${kop.body}
         )
       ) : viewMode === 'riwayat' ? (
         <div>
+          <style>{PERMINTAAN_TABEL_CSS}</style>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <input type="date" value={riwayatTanggal} onChange={(e: any) => setRiwayatTanggal(e.target.value)}
               style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit' }} />
@@ -917,6 +1084,12 @@ ${kop.body}
                 </button>
               ))}
             </div>
+            <select className="pbt-pilih" value={riwayatDivisiFilter} onChange={(e) => setRiwayatDivisiFilter(e.target.value)} aria-label="Filter divisi"
+              style={{ padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit', background: '#fff' }}>
+              <option value="ALL">Semua divisi</option>
+              {[...new Set([...riwayatDivisiOpsi, ...(riwayatDivisiFilter !== 'ALL' ? [riwayatDivisiFilter] : [])])].map(d => <option key={d} value={d}>{DIVISI_LABEL[d] || d}</option>)}
+            </select>
+            {!riwayatLoading && <span className="pbt-hitung">{riwayatTampil.length} baris</span>}
           </div>
 
           {riwayatLoading ? (
@@ -924,87 +1097,84 @@ ${kop.body}
           ) : riwayatDivisiKeys.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
               <i className="ti ti-history-toggle" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
-              <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
-              <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
+              {/* (18 Nov 2026) bedakan "tanggal ini kosong" dari "tersaring habis oleh filter divisi" */}
+              {riwayatFiltered.length > 0 ? <>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada baris untuk divisi ini</div>
+                <div style={{ fontSize: 12, marginBottom: 10 }}>Ada {riwayatFiltered.length} baris di divisi lain pada tanggal & filter ini.</div>
+                <button onClick={() => setRiwayatDivisiFilter('ALL')} style={{ minHeight: 36, padding: '0 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Tampilkan semua divisi</button>
+              </> : <>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
+                <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
+              </>}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {riwayatDivisiKeys.map(divisi => (
-                <div key={divisi}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
-                    {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({riwayatGrouped[divisi].length})</span>
-                  </div>
-                  {/* List rata kiri (8 Sep 2026, ganti dari grid card) - baris berurutan dipisah
-                      border-bottom, semua teks left-align (bukan card justify-content:space-between
-                      yang bikin badge status nempel kanan). */}
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {riwayatGrouped[divisi].map((it: any) => {
-                      // BUG FIX (23 Sep 2026, ditemukan pas "scan ulang cek bug lain") - `ditolak`
-                      // SEBELUMNYA cuma cek status==='ditolak_admin', gak menghitung status==='reject'
-                      // (Gudang menolak - barang gak ada stok dkk, BEDA dari admin menolak approval).
-                      // updated_by/updated_at DIPAKAI BERSAMA oleh submit ("disiapkan") DAN reject
-                      // ("ditolak Gudang") di PermintaanGudangTab.tsx (vista-pekerja) - baris "Disiapkan
-                      // oleh" yang baru ditambahkan kemarin jadi SALAH LABEL kalau cuma cek !ditolak:
-                      // item yang Gudang TOLAK (status=reject) ikut kebaca "!ditolak" (karena bukan
-                      // 'ditolak_admin') terus nampilin "Disiapkan oleh {updated_by}" - padahal orang itu
-                      // MENOLAK, bukan menyiapkan. Dicek live: 21 item nyata kena kasus ini (status=reject
-                      // + disetujui_admin_at terisi, catatan_reject a.l. "salah input"/"Terlalu banyak").
-                      const ditolakAdmin = it.status === 'ditolak_admin'
-                      const ditolakGudang = it.status === 'reject'
-                      const ditolak = ditolakAdmin || ditolakGudang
-                      return (
-                        <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                            <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
-                            <Badge label={ditolakAdmin ? '✕ Ditolak Admin' : ditolakGudang ? '✕ Ditolak Gudang' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
-                            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
-                          </div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
-                            {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
-                          </div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-                            Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
-                          </div>
-                          <div style={{ fontSize: 12, color: ditolak ? '#b91c1c' : '#15803d' }}>
-                            {ditolak
-                              ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
-                              : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
-                          </div>
-                          {/* RIWAYAT LENGKAP (23 Sep 2026) - disiapkan/koreksi qty/diambil, semua reuse kolom
-                              yang sudah ada (lihat komentar riwayatKoreksiMap di atas). Tampil buat SEMUA baris
-                              non-ditolak (bukan cuma divisi==='admin') - ini murni info bacaan, beda dari tombol
-                              Konfirmasi Ambil di bawah yang sengaja dibatasi (itu ACTION, bisa numpuk konfirmasi
-                              dgn operator kalau dibuka juga; info bacaan begini gak punya risiko itu). */}
-                          {it.status === 'submit' && it.updated_by && (
-                            <div style={{ fontSize: 11.5, color: '#334155', marginTop: 4 }}>
-                              Disiapkan oleh <strong>{it.updated_by}</strong> — {fmtDateTime(it.updated_at)}
-                            </div>
-                          )}
-                          {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Gudang vista-pekerja) */}
-                          {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
-                            <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
-                          ))}
-                          {!ditolak && it.sudah_diambil && (
-                            <div style={{ marginTop: 4, fontSize: 11.5, color: '#16a34a', fontWeight: 700 }}>
-                              ✓ Sudah diambil oleh {it.diambil_oleh || '-'} — {fmtDateTime(it.diambil_at)}
-                            </div>
-                          )}
-                          {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
-                              lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
-                          {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
-                            <button onClick={() => konfirmasiAmbilAdmin(it.id)} disabled={confirmingAmbilId === it.id}
-                              style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 7, border: 'none',
-                                background: confirmingAmbilId === it.id ? '#94a3b8' : '#1d4ed8', color: '#fff', fontWeight: 700, fontSize: 11,
-                                cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
-                              {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
+            // TABEL RIWAYAT (18 Nov 2026, keputusan user - hanya tampilan). Satu permintaan-item = satu baris, tetap
+            // dikelompokkan per divisi (baris judul kelompok). Isi baris SAMA dgn daftar lama: status (lencana turunan
+            // lib/statusPermintaanTampil), alur disetujui/disiapkan/diambil/ditolak, kartu koreksi qty (KartuKoreksi),
+            // tombol Konfirmasi Sudah Diambil (khusus divisi admin). Gaya: styles/permintaanTabelCss.ts.
+            <div className="pbt">
+              <div className="pbt-tw">
+                <table className="pbt-tbl">
+                  <thead><tr>
+                    <th>Diminta</th><th>Status</th><th>Barang</th><th>Qty</th><th>Proyek / Panel</th><th className="c-divisi">Divisi</th><th>Peminta</th><th>Alur</th>
+                  </tr></thead>
+                  {riwayatDivisiKeys.map(divisi => (
+                    <tbody key={divisi}>
+                      <tr className="pbt-grp"><td colSpan={8}>{DIVISI_LABEL[divisi] || divisi} ({riwayatGrouped[divisi].length})</td></tr>
+                      {riwayatGrouped[divisi].map((it: any, idx: number) => {
+                        // `ditolak` = ditolak Admin ATAU Gudang (status 'reject'): updated_by/updated_at dipakai bersama oleh
+                        // "disiapkan" (submit) & "ditolak Gudang" (reject) - BUG FIX 23 Sep 2026 tetap berlaku.
+                        const st = statusTampilPermintaan(it)
+                        const ditolak = statusDitolak(st)
+                        return (
+                          <tr key={`${it.id}-${idx}`}>
+                            <td className="c-diminta pbt-nw">{fmtTgl(it.perm.created_at)}<span className="pbt-jam">{fmtJam(it.perm.created_at)}</span></td>
+                            <td className="c-status"><span className={`pbt-st st-${st}`}>{LABEL_STATUS_TAMPIL[st]}</span></td>
+                            <td className="c-barang pbt-wrap"><span className="pbt-nama">{it.nama_komponen}</span>{it.perm.jenis && <span className="pbt-jenis">{it.perm.jenis}</span>}</td>
+                            <td className="c-qty pbt-qty">{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</td>
+                            <td className="c-proyek pbt-wrap">
+                              <div>{it.perm.proyek || '-'}</div>
+                              <div className="pbt-mute">{it.perm.panel_nama || '-'}{it.perm.wo_number ? ` · WO ${it.perm.wo_number}` : ''}</div>
+                            </td>
+                            <td className="c-divisi">{DIVISI_LABEL[it.perm.divisi] || it.perm.divisi || '-'}</td>
+                            <td className="c-peminta">{it.perm.operator_nama || '-'}</td>
+                            <td className="c-alur">
+                              <div className="pbt-alur">
+                                {it.disetujui_admin_at && <div className="ok">✓ Disetujui oleh <b>{it.disetujui_admin_oleh || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.disetujui_admin_at)}</span></div>}
+                                {ditolak ? <>
+                                  <div className="no">✕ {st === 'ditolak_gudang' ? 'Ditolak Gudang' : 'Ditolak'} oleh <b>{it.updated_by || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.updated_at)}</span></div>
+                                  {it.catatan_reject && <div className="pbt-alasan">Alasan: {it.catatan_reject}</div>}
+                                </> : <>
+                                  {it.status === 'submit' && it.updated_by
+                                    ? <div className="ok">✓ Disiapkan oleh <b>{it.updated_by}</b> <span className="pbt-wkt">· {fmtDateTime(it.updated_at)}</span></div>
+                                    : <div className="belum">○ Disiapkan —</div>}
+                                  {it.sudah_diambil
+                                    ? <div className="ok">✓ Diambil oleh <b>{it.diambil_oleh || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.diambil_at)}</span></div>
+                                    : <div className="belum">○ Diambil —</div>}
+                                </>}
+                                {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Gudang vista-pekerja) */}
+                                {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
+                                  <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
+                                ))}
+                                {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
+                                    lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
+                                {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
+                                  <button className="pbt-konfirmasi" onClick={() => konfirmasiAmbilAdmin(it.id)} disabled={confirmingAmbilId === it.id}
+                                    style={{ width: '100%', marginTop: 6, padding: '7px', borderRadius: 7, border: 'none',
+                                      background: confirmingAmbilId === it.id ? '#94a3b8' : '#1d4ed8', color: '#fff', fontWeight: 700, fontSize: 11,
+                                      cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                                    {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  ))}
+                </table>
+              </div>
             </div>
           )}
         </div>
@@ -1076,64 +1246,147 @@ ${kop.body}
         )
       ) : loading ? (
         <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8' }}>Memuat...</div>
-      ) : divisiKeys.length === 0 ? (
+      ) : items.length === 0 ? (
         <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
           <i className="ti ti-circle-check" style={{ fontSize: 36, display: 'block', marginBottom: 10, color: '#16a34a' }} />
           <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada permintaan menunggu</div>
           <div style={{ fontSize: 12 }}>Semua permintaan sudah diproses. Permintaan baru dari operator akan muncul di sini.</div>
         </div>
       ) : (
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {divisiKeys.map(divisi => (
-            <div key={divisi}>
-              <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
-                {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({grouped[divisi].length})</span>
-              </div>
-              {/* List rata kiri (8 Sep 2026, ganti dari grid card) - baris berurutan dipisah
-                  border-bottom, semua teks left-align (bukan card justify-content:space-between
-                  yang bikin badge status nempel kanan). Tombol aksi tetap berdampingan tapi gak
-                  lagi stretch flex:1 penuh (biar gak kelihatan kayak lebar card lama). */}
-              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                {grouped[divisi].map((it: any) => {
-                  const isProcessing = processingId === it.id
-                  return (
-                    <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                        <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
-                        <Badge label="⏳ Menunggu Admin" color="#d97706" bg="#fffbeb" />
-                        <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen}</span>
+        // MENUNGGU PERSETUJUAN (18 Nov 2026, keputusan user Tahap 2): blok per proyek + panel + divisi, tabel item dgn garis
+        // antar baris, qty tetap bisa diedit sebelum Setujui, aksi per baris + Setujui/Tolak semua per blok + pilih banyak.
+        // Semua aksi memanggil tulisSetujui/tulisTolak (penjaga status Tahap 2a) - tidak ada jalur tulis baru.
+        <div>
+          <style>{PERMINTAAN_TABEL_CSS}</style>
+          <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 12, flexWrap: 'wrap' }}>
+            <input type="text" className="pbt-cari" placeholder="🔍 Cari nama komponen, proyek, panel, operator, WO..." value={menungguCari}
+              onChange={(e) => setMenungguCari(e.target.value)}
+              style={{ flex: '1 1 220px', minWidth: 180, padding: '0 12px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 500, color: '#1e293b', fontFamily: 'inherit', outline: 'none' }} />
+            <select className="pbt-pilih" value={menungguDivisi} onChange={(e) => setMenungguDivisi(e.target.value)} aria-label="Filter divisi"
+              style={{ padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit', background: '#fff' }}>
+              <option value="ALL">Semua divisi</option>
+              {menungguDivisiOpsi.map(d => <option key={d} value={d}>{DIVISI_LABEL[d] || d}</option>)}
+            </select>
+            <span className="pbt-hitung">{menungguTampil.length} item · {new Set(menungguTampil.map((it) => it.permintaan_id)).size} permintaan</span>
+          </div>
+
+          {menungguBlok.length === 0 ? (
+            <div style={{ textAlign: 'center', padding: 40, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
+              <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada item untuk filter ini</div>
+              <div style={{ fontSize: 12 }}>{items.length} item menunggu di filter lain.</div>
+            </div>
+          ) : (
+            <div className="pbt pbt-daftar-blok">
+              {dipilihValid.length > 0 && (
+                <div className="pbt-pilihbar">
+                  <b>{dipilihValid.length} dipilih</b>
+                  {dipilihTersembunyi > 0 && <span className="pbt-mute">(+{dipilihTersembunyi} terpilih tersembunyi filter - tidak ikut diproses)</span>}
+                  <button type="button" className="pbtBtn pbtBtn-ok" disabled={sibuk} onClick={() => mulaiSetujuiMassal(dipilihValid)}>✓ Setujui terpilih</button>
+                  <button type="button" className="pbtBtn pbtBtn-no" disabled={sibuk} onClick={() => mulaiTolakMassal(dipilihValid)}>✕ Tolak terpilih</button>
+                  <button type="button" className="pbtBtn" disabled={sibuk} onClick={() => setDipilih(new Set())}>Batal pilih</button>
+                </div>
+              )}
+              {menungguBlok.map(b => {
+                const semuaDipilih = b.items.every((it) => dipilih.has(it.id))
+                const sebagianDipilih = !semuaDipilih && b.items.some((it) => dipilih.has(it.id))
+                return (
+                  <section key={b.kunci} className="pbt-blok">
+                    <div className="pbt-blok-head">
+                      <label className="pbt-cek-area"><input type="checkbox" className="pbt-cek" aria-label={`Pilih semua item ${b.proyek} ${b.panel}`} checked={semuaDipilih}
+                        ref={(el) => { if (el) el.indeterminate = sebagianDipilih }} disabled={sibuk}
+                        onChange={() => setDipilih(prev => { const n = new Set(prev); b.items.forEach((it) => { if (semuaDipilih) n.delete(it.id); else n.add(it.id) }); return n })} /></label>
+                      <div className="pbt-blok-judul">
+                        <b>{b.proyek} · {b.panel}{b.wo ? ` (WO ${b.wo})` : ''}</b>
+                        <span className="pbt-div">{DIVISI_LABEL[b.divisi] || b.divisi}</span>
+                        <span className="pbt-mute">{b.items.length} item</span>
                       </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
-                        {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
-                      </div>
-                      <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 8 }}>
-                        Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
-                      </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, background: '#f8fafc', borderRadius: 8, padding: '7px 10px', marginBottom: 8, flexWrap: 'wrap' }}>
-                        <span style={{ fontSize: 12, fontWeight: 600, color: '#64748b' }}>Qty diminta:</span>
-                        <input type="number" min="0" value={qtyEdit[it.id] ?? String(it.qty)}
-                          onChange={(e: any) => setQtyEdit(prev => ({ ...prev, [it.id]: e.target.value }))}
-                          style={{ width: 110, padding: '6px 10px', borderRadius: 6, border: '1.5px solid #cbd5e1', fontSize: 13, fontWeight: 700, color: 'var(--text-primary,#1e293b)' }} />
-                        <span style={{ fontSize: 12, color: '#64748b' }}>{it.satuan || ''}</span>
-                        {Number(qtyEdit[it.id]) !== it.qty && !isNaN(Number(qtyEdit[it.id])) && (
-                          <span style={{ fontSize: 10.5, color: '#d97706', fontWeight: 600 }}>(diubah dari {it.qty})</span>
-                        )}
-                      </div>
-                      <div style={{ display: 'flex', gap: 8 }}>
-                        <Btn color="#dc2626" outline onClick={() => setRejectTarget(it)} disabled={isProcessing}>
-                          ✕ Tolak
-                        </Btn>
-                        <Btn color="#16a34a" onClick={() => setujui(it)} disabled={isProcessing}>
-                          {isProcessing ? 'Menyimpan...' : '✓ Setujui'}
-                        </Btn>
+                      <div className="pbt-blok-aksi">
+                        <button type="button" className="pbtBtn pbtBtn-ok" disabled={sibuk} onClick={() => mulaiSetujuiMassal(b.items)}>✓ Setujui semua</button>
+                        <button type="button" className="pbtBtn pbtBtn-no" disabled={sibuk} onClick={() => mulaiTolakMassal(b.items)}>✕ Tolak semua</button>
                       </div>
                     </div>
-                  )
-                })}
+                    <table className="pbt-tbl pbt-menunggu">
+                      <thead><tr>
+                        <th className="m-pilih"><span className="pbt-sr">Pilih</span></th><th>Barang</th><th className="m-tipe-h">Tipe</th><th className="m-qty-h">Qty</th><th className="m-peminta-h">Peminta</th><th className="m-diminta-h">Diminta</th><th className="m-aksi-h">Aksi</th>
+                      </tr></thead>
+                      <tbody>
+                        {b.items.map((it) => {
+                          const isProcessing = processingId === it.id
+                          const qtyTeks = qtyEdit[it.id] ?? String(it.qty)
+                          return (
+                            <tr key={it.id}>
+                              <td className="m-pilih"><label className="pbt-cek-area"><input type="checkbox" className="pbt-cek" aria-label={`Pilih ${it.nama_komponen}`} checked={dipilih.has(it.id)} disabled={sibuk}
+                                onChange={() => setDipilih(prev => { const n = new Set(prev); if (n.has(it.id)) n.delete(it.id); else n.add(it.id); return n })} /></label></td>
+                              <td className="m-barang pbt-wrap"><span className="pbt-nama">{it.nama_komponen}</span></td>
+                              <td className="m-tipe"><span className="pbt-jenis" style={{ marginLeft: 0 }}>{it.perm.jenis || '-'}</span></td>
+                              <td className="m-qty">
+                                <span className="pbt-qty-baris">
+                                  <input type="number" min="0" className="pbt-qty-in" aria-label={`Qty ${it.nama_komponen}`} value={qtyTeks} disabled={!!massal}
+                                    onChange={(e) => setQtyEdit(prev => ({ ...prev, [it.id]: e.target.value }))} />
+                                  <span className="pbt-mute">{it.satuan || ''}</span>
+                                </span>
+                                {Number(qtyTeks) !== it.qty && !isNaN(Number(qtyTeks)) && <span className="pbt-diubah">(diubah dari {it.qty})</span>}
+                              </td>
+                              <td className="m-peminta">{it.perm.operator_nama || '-'}</td>
+                              <td className="m-diminta pbt-nw">{fmtTgl(it.perm.created_at)}<span className="pbt-jam">{fmtJam(it.perm.created_at)}</span></td>
+                              <td className="m-aksi">
+                                <span className="pbt-aksi-baris">
+                                  <button type="button" className="pbtBtn pbtBtn-ok" onClick={() => setujui(it)} disabled={isProcessing || !!massal}>{isProcessing ? 'Menyimpan...' : '✓ Setujui'}</button>
+                                  <button type="button" className="pbtBtn pbtBtn-no" onClick={() => setRejectTarget(it)} disabled={isProcessing || !!massal}>✕ Tolak</button>
+                                </span>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </section>
+                )
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {massal && (
+        <Modal title={massal.hasil ? 'Hasil' : massal.jenis === 'setujui' ? `Setujui ${massal.daftar.length} item?` : `Tolak ${massal.daftar.length} item?`}
+          onClose={() => { if (!massal.berjalan) { setMassal(null); setMassalAlasan('') } }} width={480}>
+          {massal.hasil ? (
+            <div style={{ fontSize: 13, color: 'var(--text-primary,#1e293b)', textAlign: 'left' }}>
+              <div style={{ marginBottom: 6 }}><b>{massal.hasil.ok}</b> item {massal.jenis === 'setujui' ? 'disetujui' : 'ditolak'}.</div>
+              {massal.hasil.sudah > 0 && <div className="pbt-teks-warn" style={{ marginBottom: 6 }}>{massal.hasil.sudah} item sudah tidak menunggu persetujuan (diproses di tempat lain) - tidak diubah.</div>}
+              {massal.hasil.gagal.length > 0 && <div className="pbt-teks-bad" style={{ marginBottom: 6 }}>{massal.hasil.gagal.length} item gagal (mis. koneksi) - masih di daftar, bisa dicoba lagi:
+                <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{massal.hasil.gagal.map((g, i) => <li key={i}>{g}</li>)}</ul></div>}
+              {massal.lewati.length > 0 && <div className="pbt-teks-warn" style={{ marginBottom: 6 }}>{massal.lewati.length} item dilewati karena qty tidak sah (harus angka &gt; 0): {massal.lewati.map((it) => it.nama_komponen).join(', ')}</div>}
+              <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
+                <Btn color="#1d4ed8" onClick={() => { setMassal(null); setMassalAlasan('') }}>Tutup</Btn>
               </div>
             </div>
-          ))}
-        </div>
+          ) : (
+            <div style={{ textAlign: 'left' }}>
+              <div style={{ maxHeight: 220, overflow: 'auto', border: '1px solid var(--border-color,#e2e8f0)', borderRadius: 8, marginBottom: 12 }}>
+                {massal.daftar.map((it) => (
+                  <div key={it.id} style={{ padding: '6px 10px', borderBottom: '1px solid var(--border-color,#e2e8f0)', fontSize: 12.5, color: 'var(--text-primary,#1e293b)' }}>
+                    {it.nama_komponen} <span style={{ color: '#64748b' }}>×{massal.jenis === 'setujui' ? (massal.qty[it.id] ?? it.qty) : it.qty}{it.satuan ? ` ${it.satuan}` : ''}{massal.jenis === 'setujui' && massal.qty[it.id] !== it.qty ? ` (diubah dari ${it.qty})` : ''} · {it.perm?.operator_nama || '-'}</span>
+                  </div>
+                ))}
+              </div>
+              {massal.lewati.length > 0 && <div className="pbt-teks-warn" style={{ fontSize: 12, marginBottom: 10 }}>{massal.lewati.length} item akan dilewati karena qty tidak sah: {massal.lewati.map((it) => it.nama_komponen).join(', ')}</div>}
+              {massal.jenis === 'tolak' && (
+                <textarea autoFocus value={massalAlasan} onChange={(e) => setMassalAlasan(e.target.value)} rows={3} disabled={massal.berjalan}
+                  placeholder="Alasan penolakan (wajib diisi, berlaku untuk semua item di atas)..."
+                  style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border-color,#e2e8f0)', fontSize: 13, color: 'var(--text-primary,#1e293b)', fontFamily: 'inherit', resize: 'vertical', marginBottom: 12, boxSizing: 'border-box' }} />
+              )}
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', alignItems: 'center' }}>
+                {massal.berjalan && <span style={{ fontSize: 12.5, color: '#64748b', marginRight: 'auto' }}>Memproses {massal.selesai}/{massal.daftar.length}...</span>}
+                <Btn color="#475569" outline onClick={() => { setMassal(null); setMassalAlasan('') }} disabled={massal.berjalan}>Batal</Btn>
+                <Btn color={massal.jenis === 'setujui' ? '#15803d' : '#dc2626'} onClick={jalankanMassal} disabled={massal.berjalan || massal.daftar.length === 0}>
+                  {massal.berjalan ? 'Menyimpan...' : massal.jenis === 'setujui' ? `✓ Setujui ${massal.daftar.length} item` : `✕ Tolak ${massal.daftar.length} item`}
+                </Btn>
+              </div>
+            </div>
+          )}
+        </Modal>
       )}
 
       {rejectTarget && (
