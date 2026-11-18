@@ -113,6 +113,8 @@ const badgeLaporan = (s: Laporan['status']) => badge(STATUS_LAPORAN[s].warna, ST
 // Baris laporan Closed di Riwayat diurutkan menurut tanggal ditutup (WIB). Tanggal lapor dipakai bila tanggal tutup kosong.
 const tglTutupLaporan = (l: Laporan) => new Date(l.ditutup_pada || l.dibuat_pada).toLocaleDateString('en-CA', { timeZone: 'Asia/Jakarta' })
 const pesanGalat = (e: any) => e?.message || String(e)
+// Kartu "kerusakan aktif" = barang AKTIF berkondisi Rusak (18 Nov 2026, keputusan user) - kode kondisi sama dgn filter "Rusak" di tab Inventaris.
+const KONDISI_RUSAK = 'rusak'
 
 // Media dibuka DI DALAM aplikasi (FotoZoomViewer, sama dgn Proyek Luar/QC/Kerusakan lama: geser antar berkas, zoom, putar,
 // download, video diputar di tempat; PDF = kartu berkas + "Buka File"), bukan tab browser. Judul viewer = label (name hanya utk PDF). Portal ke body: viewer fixed
@@ -190,13 +192,15 @@ export function InventarisMaintenanceTab({ user }: any) {
   const namaLokasi = useCallback((k: string) => idx?.lokasi.get(k)?.nama || k, [idx])
   const mediaDari = (tujuan: string, ref: number, peran?: string) => (idx?.media.get(tujuan + ':' + ref) || []).filter(m => !peran || m.peran === peran)
 
-  // kartu ringkasan (jadwal aktif & laporan aktif saja)
+  // kartu ringkasan: jadwal aktif milik barang aktif; "kerusakan aktif" dari KONDISI barang di Inventaris (bukan dari laporan:
+  // Rusak tanpa laporan - diisi admin/impor - ikut terhitung; barang nonaktif tidak). Dihitung dari semua barang yang dimuat,
+  // bukan hasil filter/cari tabel; ikut berubah saat data dimuat ulang (simpan kondisi, realtime, pemulih).
   const cnt = useMemo(() => {
     const aktif = (id: number) => idx?.barang.get(id)?.aktif !== false
     return {
       terlambat: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'terlambat').length || 0,
       segera: d?.jadwal.filter(j => j.aktif && aktif(j.barang_id) && j.status_jadwal === 'segera').length || 0,
-      rusak: d?.laporan.filter(l => laporanAktif(l) && aktif(l.barang_id)).length || 0,
+      rusak: d?.barang.filter(x => x.aktif && x.kondisi === KONDISI_RUSAK).length || 0,
       baru: d?.barang.filter(x => x.aktif && baruOperator(x)).length || 0,
     }
   }, [d, idx])
@@ -244,6 +248,8 @@ export function InventarisMaintenanceTab({ user }: any) {
 
   const gantiTab = (t: Tab, kon = 'semua', cari = '') => { setBatas(BARIS_PER_HALAMAN); setTab(t); setFKon(kon); setQ(cari); setBuka(null); setPop(null) }
   const reset = () => { setFLok([]); setFKon('semua'); setQ(''); setBuka(null) }
+  // Klik kartu "kerusakan aktif": tab Inventaris + filter Rusak. Lokasi & "termasuk nonaktif" ikut direset supaya jumlah baris = angka kartu.
+  const bukaRusak = () => { setFLok([]); setNonaktif(false); gantiTab('inventaris', KONDISI_RUSAK) }
   // Tautan langsung (panel notifikasi / URL push ?inv=): pindah tab, filter direset agar barisnya pasti tampil (barang nonaktif
   // -> "termasuk nonaktif"), baris dibuka; efek di bawah memperpanjang "Tampilkan lebih banyak" bila perlu, menggulir & menyorot.
   const bukaTarget = (t: TargetInv | null) => {
@@ -317,7 +323,7 @@ export function InventarisMaintenanceTab({ user }: any) {
       <div className="iv-sum">
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'terlambat'} onClick={() => tab === 'maintenance' && fKon === 'terlambat' ? setFKon('semua') : gantiTab('maintenance', 'terlambat')}><b style={{ color: '#b91c1c' }}>{cnt.terlambat}</b><span>jadwal terlambat</span></button>
         <button type="button" aria-pressed={tab === 'maintenance' && fKon === 'segera'} onClick={() => tab === 'maintenance' && fKon === 'segera' ? setFKon('semua') : gantiTab('maintenance', 'segera')}><b style={{ color: '#a15c07' }}>{cnt.segera}</b><span>jatuh tempo ≤ 2 hari</span></button>
-        <button type="button" aria-pressed={tab === 'laporan' && fKon === 'semua'} onClick={() => gantiTab('laporan')}><b style={{ color: '#6d28d9' }}>{cnt.rusak}</b><span>kerusakan aktif</span></button>
+        <button type="button" aria-pressed={tab === 'inventaris' && fKon === KONDISI_RUSAK} onClick={() => tab === 'inventaris' && fKon === KONDISI_RUSAK ? setFKon('semua') : bukaRusak()}><b style={{ color: '#6d28d9' }}>{cnt.rusak}</b><span>kerusakan aktif</span></button>
         {cnt.baru > 0 && <button type="button" aria-pressed={tab === 'inventaris' && fKon === 'baru_operator'} onClick={() => tab === 'inventaris' && fKon === 'baru_operator' ? setFKon('semua') : gantiTab('inventaris', 'baru_operator')}><b style={{ color: '#1d4ed8' }}>{cnt.baru}</b><span>barang baru dari operator</span></button>}
       </div>
       <div className="iv-tabs" role="tablist">{TABS.map(([t, l]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}>{l}<i>{tampil(t).length}</i></button>)}</div>
