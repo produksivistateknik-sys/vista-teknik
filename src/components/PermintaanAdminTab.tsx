@@ -8,6 +8,8 @@ import { halamanCetakBerkop } from '../lib/kopSuratKonfig'
 import { asetKopHtml } from '../lib/kopSuratAsetUrl'
 import { bandingDivisiProduksi } from '../lib/urutanDivisi'
 import { fetchAllPaged, fetchAllPagedPerPotongan } from '../lib/fetchAllPaged'
+import { statusTampilPermintaan, LABEL_STATUS_TAMPIL, statusDitolak } from '../lib/statusPermintaanTampil'
+import { PERMINTAAN_TABEL_CSS } from '../styles/permintaanTabelCss'
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PERMINTAAN BARANG - APPROVAL ADMIN (7 Sep 2026) - fitur baru "wajib approval admin sebelum
@@ -43,6 +45,9 @@ const bandingDivisiRekap = (a: string, b: string) => bandingDivisiProduksi(a, b,
 const fmtDateTime = (d: string) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
 const todayStr = () => new Date().toISOString().slice(0, 10)
+// Kolom tanggal tabel (18 Nov 2026): tanggal & jam dipisah (desktop 2 baris, HP satu baris).
+const fmtTgl = (d: string) => d ? new Date(d).toLocaleDateString('id-ID', { day: 'numeric', month: 'short' }) : '-'
+const fmtJam = (d: string) => d ? new Date(d).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' }) : ''
 
 // Dipakai buat build HTML dokumen print (openPrintWindow) - data dari DB (nama item/proyek/WO)
 // ditulis mentah ke string HTML, WAJIB di-escape biar gak ada karakter yang kebaca sebagai tag.
@@ -194,6 +199,7 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [riwayatTanggal, setRiwayatTanggal] = useState(todayStr())
   const [riwayatSearch, setRiwayatSearch] = useState('')
   const [riwayatStatusFilter, setRiwayatStatusFilter] = useState<'ALL' | 'DISETUJUI' | 'DITOLAK'>('ALL')
+  const [riwayatDivisiFilter, setRiwayatDivisiFilter] = useState<string>('ALL') // (18 Nov 2026) tambahan filter divisi - hanya tampilan
   const [riwayatLoading, setRiwayatLoading] = useState(false)
   const [riwayatItems, setRiwayatItems] = useState<any[]>([])
 
@@ -665,8 +671,12 @@ ${kop.body}
     const hay = [it.nama_komponen, it.perm.proyek, it.perm.panel_nama, it.perm.operator_nama, it.perm.wo_number].join(' ').toLowerCase()
     return hay.includes(q)
   })
+  // (18 Nov 2026) Filter divisi diterapkan SETELAH filter lama (tanggal/cari/status tidak berubah). Pilihan = divisi yang
+  // ada di hasil filter lama supaya daftar pilihan tidak kosong.
+  const riwayatDivisiOpsi = [...new Set(riwayatFiltered.map((it) => it.perm.divisi || '-'))].sort(bandingDivisiRekap)
+  const riwayatTampil = riwayatDivisiFilter === 'ALL' ? riwayatFiltered : riwayatFiltered.filter((it) => (it.perm.divisi || '-') === riwayatDivisiFilter)
   const riwayatGrouped: Record<string, any[]> = {}
-  riwayatFiltered.forEach((it: any) => {
+  riwayatTampil.forEach((it: any) => {
     const key = it.perm.divisi || '-'
     if (!riwayatGrouped[key]) riwayatGrouped[key] = []
     riwayatGrouped[key].push(it)
@@ -898,6 +908,7 @@ ${kop.body}
         )
       ) : viewMode === 'riwayat' ? (
         <div>
+          <style>{PERMINTAAN_TABEL_CSS}</style>
           <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginBottom: 14, flexWrap: 'wrap' }}>
             <input type="date" value={riwayatTanggal} onChange={(e: any) => setRiwayatTanggal(e.target.value)}
               style={{ height: 36, padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit' }} />
@@ -917,6 +928,12 @@ ${kop.body}
                 </button>
               ))}
             </div>
+            <select className="pbt-pilih" value={riwayatDivisiFilter} onChange={(e) => setRiwayatDivisiFilter(e.target.value)} aria-label="Filter divisi"
+              style={{ padding: '0 10px', borderRadius: 8, border: '1px solid #e2e8f0', fontSize: 12.5, fontWeight: 600, color: '#1e293b', fontFamily: 'inherit', background: '#fff' }}>
+              <option value="ALL">Semua divisi</option>
+              {[...new Set([...riwayatDivisiOpsi, ...(riwayatDivisiFilter !== 'ALL' ? [riwayatDivisiFilter] : [])])].map(d => <option key={d} value={d}>{DIVISI_LABEL[d] || d}</option>)}
+            </select>
+            {!riwayatLoading && <span className="pbt-hitung">{riwayatTampil.length} baris</span>}
           </div>
 
           {riwayatLoading ? (
@@ -924,87 +941,84 @@ ${kop.body}
           ) : riwayatDivisiKeys.length === 0 ? (
             <div style={{ textAlign: 'center', padding: 50, color: '#94a3b8', background: '#fff', borderRadius: 12, border: '1px solid #e2e8f0' }}>
               <i className="ti ti-history-toggle" style={{ fontSize: 36, display: 'block', marginBottom: 10 }} />
-              <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
-              <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
+              {/* (18 Nov 2026) bedakan "tanggal ini kosong" dari "tersaring habis oleh filter divisi" */}
+              {riwayatFiltered.length > 0 ? <>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada baris untuk divisi ini</div>
+                <div style={{ fontSize: 12, marginBottom: 10 }}>Ada {riwayatFiltered.length} baris di divisi lain pada tanggal & filter ini.</div>
+                <button onClick={() => setRiwayatDivisiFilter('ALL')} style={{ minHeight: 36, padding: '0 14px', borderRadius: 8, border: '1px solid #cbd5e1', background: '#fff', color: '#1d4ed8', fontWeight: 700, fontSize: 12.5, cursor: 'pointer', fontFamily: 'inherit' }}>Tampilkan semua divisi</button>
+              </> : <>
+                <div style={{ fontWeight: 700, color: '#1e293b', marginBottom: 4 }}>Tidak ada riwayat</div>
+                <div style={{ fontSize: 12 }}>Tidak ada keputusan admin pada tanggal ini.</div>
+              </>}
             </div>
           ) : (
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 18 }}>
-              {riwayatDivisiKeys.map(divisi => (
-                <div key={divisi}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: .4, marginBottom: 8 }}>
-                    {DIVISI_LABEL[divisi] || divisi} <span style={{ color: '#cbd5e1' }}>({riwayatGrouped[divisi].length})</span>
-                  </div>
-                  {/* List rata kiri (8 Sep 2026, ganti dari grid card) - baris berurutan dipisah
-                      border-bottom, semua teks left-align (bukan card justify-content:space-between
-                      yang bikin badge status nempel kanan). */}
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    {riwayatGrouped[divisi].map((it: any) => {
-                      // BUG FIX (23 Sep 2026, ditemukan pas "scan ulang cek bug lain") - `ditolak`
-                      // SEBELUMNYA cuma cek status==='ditolak_admin', gak menghitung status==='reject'
-                      // (Gudang menolak - barang gak ada stok dkk, BEDA dari admin menolak approval).
-                      // updated_by/updated_at DIPAKAI BERSAMA oleh submit ("disiapkan") DAN reject
-                      // ("ditolak Gudang") di PermintaanGudangTab.tsx (vista-pekerja) - baris "Disiapkan
-                      // oleh" yang baru ditambahkan kemarin jadi SALAH LABEL kalau cuma cek !ditolak:
-                      // item yang Gudang TOLAK (status=reject) ikut kebaca "!ditolak" (karena bukan
-                      // 'ditolak_admin') terus nampilin "Disiapkan oleh {updated_by}" - padahal orang itu
-                      // MENOLAK, bukan menyiapkan. Dicek live: 21 item nyata kena kasus ini (status=reject
-                      // + disetujui_admin_at terisi, catatan_reject a.l. "salah input"/"Terlalu banyak").
-                      const ditolakAdmin = it.status === 'ditolak_admin'
-                      const ditolakGudang = it.status === 'reject'
-                      const ditolak = ditolakAdmin || ditolakGudang
-                      return (
-                        <div key={it.id} style={{ padding: '10px 4px', borderBottom: '1px solid var(--border-color,#e2e8f0)', textAlign: 'left' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4, flexWrap: 'wrap' }}>
-                            <i className="ti ti-box" style={{ fontSize: 15, color: '#94a3b8', flexShrink: 0 }} />
-                            <Badge label={ditolakAdmin ? '✕ Ditolak Admin' : ditolakGudang ? '✕ Ditolak Gudang' : '✓ Disetujui'} color={ditolak ? '#dc2626' : '#16a34a'} bg={ditolak ? '#fef2f2' : '#f0fdf4'} />
-                            <span style={{ fontWeight: 800, fontSize: 14, color: 'var(--text-primary,#1e293b)' }}>{it.nama_komponen} <span style={{ color: '#94a3b8', fontWeight: 600 }}>×{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</span></span>
-                          </div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 2 }}>
-                            {it.perm.jenis} · {it.perm.proyek || '-'} · {it.perm.panel_nama || '-'} {it.perm.wo_number ? `(WO ${it.perm.wo_number})` : ''}
-                          </div>
-                          <div style={{ fontSize: 11, color: '#94a3b8', marginBottom: 4 }}>
-                            Diminta oleh <strong>{it.perm.operator_nama || '-'}</strong> — {fmtDateTime(it.perm.created_at)}
-                          </div>
-                          <div style={{ fontSize: 12, color: ditolak ? '#b91c1c' : '#15803d' }}>
-                            {ditolak
-                              ? <>Ditolak oleh <strong>{it.updated_by || '-'}</strong> — {fmtDateTime(it.updated_at)}{it.catatan_reject ? <div style={{ marginTop: 3, color: '#64748b' }}>Alasan: {it.catatan_reject}</div> : null}</>
-                              : <>Disetujui oleh <strong>{it.disetujui_admin_oleh || '-'}</strong> — {fmtDateTime(it.disetujui_admin_at)}</>}
-                          </div>
-                          {/* RIWAYAT LENGKAP (23 Sep 2026) - disiapkan/koreksi qty/diambil, semua reuse kolom
-                              yang sudah ada (lihat komentar riwayatKoreksiMap di atas). Tampil buat SEMUA baris
-                              non-ditolak (bukan cuma divisi==='admin') - ini murni info bacaan, beda dari tombol
-                              Konfirmasi Ambil di bawah yang sengaja dibatasi (itu ACTION, bisa numpuk konfirmasi
-                              dgn operator kalau dibuka juga; info bacaan begini gak punya risiko itu). */}
-                          {it.status === 'submit' && it.updated_by && (
-                            <div style={{ fontSize: 11.5, color: '#334155', marginTop: 4 }}>
-                              Disiapkan oleh <strong>{it.updated_by}</strong> — {fmtDateTime(it.updated_at)}
-                            </div>
-                          )}
-                          {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Gudang vista-pekerja) */}
-                          {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
-                            <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
-                          ))}
-                          {!ditolak && it.sudah_diambil && (
-                            <div style={{ marginTop: 4, fontSize: 11.5, color: '#16a34a', fontWeight: 700 }}>
-                              ✓ Sudah diambil oleh {it.diambil_oleh || '-'} — {fmtDateTime(it.diambil_at)}
-                            </div>
-                          )}
-                          {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
-                              lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
-                          {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
-                            <button onClick={() => konfirmasiAmbilAdmin(it.id)} disabled={confirmingAmbilId === it.id}
-                              style={{ width: '100%', marginTop: 8, padding: '7px', borderRadius: 7, border: 'none',
-                                background: confirmingAmbilId === it.id ? '#94a3b8' : '#1d4ed8', color: '#fff', fontWeight: 700, fontSize: 11,
-                                cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
-                              {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
-                            </button>
-                          )}
-                        </div>
-                      )
-                    })}
-                  </div>
-                </div>
-              ))}
+            // TABEL RIWAYAT (18 Nov 2026, keputusan user - hanya tampilan). Satu permintaan-item = satu baris, tetap
+            // dikelompokkan per divisi (baris judul kelompok). Isi baris SAMA dgn daftar lama: status (lencana turunan
+            // lib/statusPermintaanTampil), alur disetujui/disiapkan/diambil/ditolak, kartu koreksi qty (KartuKoreksi),
+            // tombol Konfirmasi Sudah Diambil (khusus divisi admin). Gaya: styles/permintaanTabelCss.ts.
+            <div className="pbt">
+              <div className="pbt-tw">
+                <table className="pbt-tbl">
+                  <thead><tr>
+                    <th>Diminta</th><th>Status</th><th>Barang</th><th>Qty</th><th>Proyek / Panel</th><th className="c-divisi">Divisi</th><th>Peminta</th><th>Alur</th>
+                  </tr></thead>
+                  {riwayatDivisiKeys.map(divisi => (
+                    <tbody key={divisi}>
+                      <tr className="pbt-grp"><td colSpan={8}>{DIVISI_LABEL[divisi] || divisi} ({riwayatGrouped[divisi].length})</td></tr>
+                      {riwayatGrouped[divisi].map((it: any, idx: number) => {
+                        // `ditolak` = ditolak Admin ATAU Gudang (status 'reject'): updated_by/updated_at dipakai bersama oleh
+                        // "disiapkan" (submit) & "ditolak Gudang" (reject) - BUG FIX 23 Sep 2026 tetap berlaku.
+                        const st = statusTampilPermintaan(it)
+                        const ditolak = statusDitolak(st)
+                        return (
+                          <tr key={`${it.id}-${idx}`}>
+                            <td className="c-diminta pbt-nw">{fmtTgl(it.perm.created_at)}<span className="pbt-jam">{fmtJam(it.perm.created_at)}</span></td>
+                            <td className="c-status"><span className={`pbt-st st-${st}`}>{LABEL_STATUS_TAMPIL[st]}</span></td>
+                            <td className="c-barang pbt-wrap"><span className="pbt-nama">{it.nama_komponen}</span>{it.perm.jenis && <span className="pbt-jenis">{it.perm.jenis}</span>}</td>
+                            <td className="c-qty pbt-qty">{it.qty}{it.satuan ? ` ${it.satuan}` : ''}</td>
+                            <td className="c-proyek pbt-wrap">
+                              <div>{it.perm.proyek || '-'}</div>
+                              <div className="pbt-mute">{it.perm.panel_nama || '-'}{it.perm.wo_number ? ` · WO ${it.perm.wo_number}` : ''}</div>
+                            </td>
+                            <td className="c-divisi">{DIVISI_LABEL[it.perm.divisi] || it.perm.divisi || '-'}</td>
+                            <td className="c-peminta">{it.perm.operator_nama || '-'}</td>
+                            <td className="c-alur">
+                              <div className="pbt-alur">
+                                {it.disetujui_admin_at && <div className="ok">✓ Disetujui oleh <b>{it.disetujui_admin_oleh || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.disetujui_admin_at)}</span></div>}
+                                {ditolak ? <>
+                                  <div className="no">✕ {st === 'ditolak_gudang' ? 'Ditolak Gudang' : 'Ditolak'} oleh <b>{it.updated_by || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.updated_at)}</span></div>
+                                  {it.catatan_reject && <div className="pbt-alasan">Alasan: {it.catatan_reject}</div>}
+                                </> : <>
+                                  {it.status === 'submit' && it.updated_by
+                                    ? <div className="ok">✓ Disiapkan oleh <b>{it.updated_by}</b> <span className="pbt-wkt">· {fmtDateTime(it.updated_at)}</span></div>
+                                    : <div className="belum">○ Disiapkan —</div>}
+                                  {it.sudah_diambil
+                                    ? <div className="ok">✓ Diambil oleh <b>{it.diambil_oleh || '-'}</b> <span className="pbt-wkt">· {fmtDateTime(it.diambil_at)}</span></div>
+                                    : <div className="belum">○ Diambil —</div>}
+                                </>}
+                                {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Gudang vista-pekerja) */}
+                                {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
+                                  <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
+                                ))}
+                                {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
+                                    lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
+                                {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
+                                  <button className="pbt-konfirmasi" onClick={() => konfirmasiAmbilAdmin(it.id)} disabled={confirmingAmbilId === it.id}
+                                    style={{ width: '100%', marginTop: 6, padding: '7px', borderRadius: 7, border: 'none',
+                                      background: confirmingAmbilId === it.id ? '#94a3b8' : '#1d4ed8', color: '#fff', fontWeight: 700, fontSize: 11,
+                                      cursor: confirmingAmbilId === it.id ? 'default' : 'pointer', fontFamily: 'inherit' }}>
+                                    {confirmingAmbilId === it.id ? 'Menyimpan...' : 'Konfirmasi Sudah Diambil'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  ))}
+                </table>
+              </div>
             </div>
           )}
         </div>
