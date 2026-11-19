@@ -5,6 +5,9 @@
 begin;
 
 do $$ begin
+  if to_regclass('public.inv_media_hapus_log') is not null then
+    raise exception 'Tahap 2 (20261119020000) masih terpasang - jalankan dulu rollback Tahap 2';
+  end if;
   if exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'inv_jadwal_selesai'
              and column_name = 'media_dihapus_pada')
      and exists (select 1 from public.inv_jadwal_selesai where media_dihapus_pada is not null) then
