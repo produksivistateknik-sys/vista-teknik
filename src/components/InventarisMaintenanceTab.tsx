@@ -11,8 +11,8 @@ import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import {
   muatInventaris, muatLogBarang, tambahBarang, ubahBarang, setKondisi, tandaiDiperiksa, ubahStatusLaporan, simpanJadwal, selesaiJadwal,
   tambahMedia, hapusMedia, imporBarang, unggahMediaInventaris, pratinjauHapus, hapusBarang, muatSampah, pulihkanBarang, hapusPermanen, bacaDetailLog, KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, FREKUENSI,
-  labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf, BATAS_DATASHEET_MB,
-  type DataInventarisAdmin, type Barang, type Jadwal, type Laporan, type Media, type LogBarang, type PratinjauHapus, type BarangSampah, type TerkaitBarang,
+  labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf, BATAS_DATASHEET_MB, keteranganMediaRutin,
+  type DataInventarisAdmin, type Barang, type Jadwal, type Laporan, type Selesai, type Media, type LogBarang, type PratinjauHapus, type BarangSampah, type TerkaitBarang,
 } from '../lib/inventaris'
 import { bacaBarisInventaris, ringkasImpor, barisUntukRpc, rapikanTeks, type BarisImpor } from '../lib/inventarisImpor'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
@@ -131,6 +131,15 @@ function Thumbs({ media, label }: { media: Media[]; label?: string }) {
   </div>
 }
 
+// Kolom foto riwayat Maintenance Rutin (19 Nov 2026): thumbnail + sisa waktu sebelum dihapus otomatis, atau keterangan sudah dihapus
+// (bukan gambar patah). sekarang = waktu data dimuat. Teks dari keteranganMediaRutin (lib/inventarisAturan, sama dgn HP operator).
+function MediaRutin({ s, media, sekarang, label }: { s: Selesai; media: Media[]; sekarang: number; label: string }) {
+  const ket = keteranganMediaRutin(s, media, sekarang)
+  // minWidth: kolom foto di HP sempit - keterangan tidak terpecah jadi 3-4 baris
+  if (!media.length) return <span className="iv-mute" style={ket ? { display: 'inline-block', minWidth: 150 } : undefined}>{ket || (s.tanpa_dokumentasi ? 'tanpa dokumentasi' : '—')}</span>
+  return <><Thumbs media={media} label={label} />{ket && <div className="iv-mute" style={{ marginTop: 2, minWidth: 150 }}>{ket}</div>}</>
+}
+
 function FilePilihan({ files, setFiles }: { files: File[]; setFiles: (f: File[]) => void }) {
   return <>
     <MediaPickerSheet allowVideo onFiles={fl => setFiles([...files, ...Array.from(fl)])} triggerClassName="iv-btn">+ Foto/video</MediaPickerSheet>
@@ -142,6 +151,7 @@ export function InventarisMaintenanceTab({ user }: any) {
   const [data, setData] = useState<DataInventarisAdmin | null>(null)
   const [sampah, setSampah] = useState<BarangSampah[] | null>(null)   // null = belum termuat / fungsi server belum ada
   const [galatMuat, setGalatMuat] = useState<string | null>(null)
+  const [sekarang, setSekarang] = useState(0)   // waktu data terakhir dimuat - dasar hitung sisa hari foto Rutin
   const [tab, setTab] = useState<Tab>('inventaris')
   const [fLok, setFLok] = useState<string[]>([])
   const [fKon, setFKon] = useState('semua')
@@ -159,7 +169,7 @@ export function InventarisMaintenanceTab({ user }: any) {
   const sudahGulir = useRef<string | null>(null)
 
   const muat = useCallback(async () => {
-    try { setData(await muatInventaris(db)); setGalatMuat(null) }
+    try { setData(await muatInventaris(db)); setSekarang(Date.now()); setGalatMuat(null) }
     catch (e: any) { console.error('[InventarisMaintenanceTab] gagal memuat:', e); setGalatMuat('Gagal memuat data inventaris: ' + pesanGalat(e)) }
     // tempat sampah terpisah: rilis aplikasi bisa mendahului SQL, dan gagalnya tidak boleh menahan daftar utama
     try { setSampah(await muatSampah(db, user)) }
@@ -308,7 +318,7 @@ export function InventarisMaintenanceTab({ user }: any) {
   const lapBuka = idBuka != null ? d.laporan.find(l => l.id === idBuka) : undefined
   const lapPindah = lapBuka && ((tab === 'laporan' && buka?.[0] === 'l' && !laporanAktif(lapBuka)) || (tab === 'riwayat' && buka?.[0] === 'k' && laporanAktif(lapBuka))) ? lapBuka : null
 
-  const ctx: Ctx = { idx, user, sibuk, jalankan, mediaDari, gantiTab, setModal, setBuka,
+  const ctx: Ctx = { idx, user, sibuk, sekarang, jalankan, mediaDari, gantiTab, setModal, setBuka,
     notifDari: pred => notif.perlu.filter(pred), muatNotif: () => { notif.muat(); muat() } }
 
   return (
@@ -404,7 +414,7 @@ export function InventarisMaintenanceTab({ user }: any) {
                 return <tr key={r.id}><td style={{ whiteSpace: 'nowrap' }}>{fmtTanggal(s.tanggal)}</td><td>{badge('#64748b', '#eef1f5', 'Rutin')}</td><td>{kodeSel(s.barang_id)}</td><td>{x.nama}</td><td>{namaLokasi(x.lokasi_kode)}</td>
                   <td>{d.jadwal.find(j => j.id === s.jadwal_id)?.jenis}{s.catatan && <span className="iv-mute"> · {s.catatan}</span>}</td>
                   <td>{s.oleh}{s.sumber === 'qr_lama' && <span className="iv-mute"> (QR)</span>}</td>
-                  <td>{m.length ? <Thumbs media={m} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} /> : <span className="iv-mute">{s.tanpa_dokumentasi ? 'tanpa dokumentasi' : '—'}</span>}</td></tr> }
+                  <td><MediaRutin s={s} media={m} sekarang={sekarang} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} /></td></tr> }
               const l: Laporan = r.x; const seb = mediaDari('laporan', l.id, 'sebelum').length + mediaDari('laporan', l.id, 'lama').length, ses = mediaDari('laporan', l.id, 'sesudah').length
               const nUpd = (idx.updatePerLaporan.get(l.id) || []).length
               return <Fragment key={r.id}><tr className={'klik' + (sorot === r.id ? ' iv-sorot' : '')} data-row={r.id} onClick={() => setBuka(buka === r.id ? null : r.id)}>
@@ -430,7 +440,7 @@ export function InventarisMaintenanceTab({ user }: any) {
 
 // Konteks untuk detail baris - komponen di tingkat atas (bukan di dalam induk) supaya isian form tidak hilang
 // tiap induk render ulang (muat ulang realtime / polling 30 detik).
-type Ctx = { idx: any; user: any; sibuk: string | null; jalankan: (label: string, fn: () => Promise<any>) => Promise<boolean>
+type Ctx = { idx: any; user: any; sibuk: string | null; sekarang: number; jalankan: (label: string, fn: () => Promise<any>) => Promise<boolean>
   mediaDari: (tujuan: string, ref: number, peran?: string) => Media[]; gantiTab: (t: Tab, kon?: string, cari?: string) => void
   setModal: (m: any) => void; setBuka: (b: string | null) => void
   notifDari: (pred: (n: Notifikasi) => boolean) => Notifikasi[]; muatNotif: () => void }
@@ -557,7 +567,7 @@ function DetailJadwal({ j, c }: { j: Jadwal; c: Ctx }) {
     </div>
     {riw.length > 0 && <><div className="iv-sec">Riwayat selesai</div>{riw.map(s => <div key={s.id} className="iv-upd">
       <b>{fmtTanggal(s.tanggal)}</b> · {s.oleh}{s.sumber === 'qr_lama' ? ' (QR)' : ''}{s.tanpa_dokumentasi ? <span className="iv-mute"> · tanpa dokumentasi</span> : ''}{s.catatan ? ' · ' + s.catatan : ''}
-      {c.mediaDari('jadwal_selesai', s.id).length > 0 && <Thumbs media={c.mediaDari('jadwal_selesai', s.id)} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} />}</div>)}</>}
+      {(c.mediaDari('jadwal_selesai', s.id).length > 0 || !!s.media_dihapus_pada) && <div><MediaRutin s={s} media={c.mediaDari('jadwal_selesai', s.id)} sekarang={c.sekarang} label={`Penyelesaian ${fmtTanggal(s.tanggal)}`} /></div>}</div>)}</>}
   </div>
 }
 

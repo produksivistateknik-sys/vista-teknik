@@ -16,7 +16,9 @@ export type Jadwal = {
   id: number; barang_id: number; jenis: string; frekuensi: string; jatuh_tempo: string | null; terakhir_dilakukan: string | null
   teknisi: string | null; catatan: string | null; aktif: boolean; status_jadwal: 'terlambat' | 'segera' | 'normal'; selesai_hari_ini: boolean
 }
-export type Selesai = { id: number; jadwal_id: number; barang_id: number; tanggal: string; oleh: string; sumber: string; tanpa_dokumentasi: boolean; catatan: string | null; dibuat_pada: string }
+export type Selesai = { id: number; jadwal_id: number; barang_id: number; tanggal: string; oleh: string; sumber: string; tanpa_dokumentasi: boolean; catatan: string | null; dibuat_pada: string
+  // diisi proses hapus otomatis saat foto/video penyelesaian ini dihapus (lewat HARI_SIMPAN_MEDIA_RUTIN hari); kolom ada sejak migrasi 20261119010000
+  media_dihapus_pada?: string | null }
 export type Laporan = {
   id: number; barang_id: number; judul: string; masalah: string | null; status: 'open' | 'in_progress' | 'closed'; pelapor: string
   sumber: string; teknisi: string | null; perbaikan: string | null; catatan_lama: string | null; dibuat_pada: string
@@ -60,4 +62,22 @@ export function teksSisaHari(tgl: string | null): string {
 export const laporanAktif = (l: Laporan) => l.status !== 'closed'
 export const isVideo = (m: { mime?: string | null; url: string }) => (m.mime || '').startsWith('video/') || /\.(mp4|mov|m4v|webm|3gp)$/i.test(m.url)
 export const isPdf = (m: { mime?: string | null; url: string }) => m.mime === 'application/pdf' || /\.pdf$/i.test(m.url)
+
+// FOTO/VIDEO MAINTENANCE RUTIN DIHAPUS OTOMATIS (19 Nov 2026, keputusan user): tiap berkas penyelesaian rutin dihapus HARI_SIMPAN_MEDIA_RUTIN
+// hari sejak diunggah (inv_media.dibuat_pada, per berkas); riwayatnya tetap. Angka SAMA dgn fungsi SQL inv_media_rutin_status
+// (migrasi 20261119010000) - ubah bersamaan. Hanya untuk tampilan: yang menghapus & memutuskan "boleh dihapus" tetap server.
+export const HARI_SIMPAN_MEDIA_RUTIN = 30
+export const TEKS_MEDIA_RUTIN_DIHAPUS = `Foto/video dihapus otomatis (lebih dari ${HARI_SIMPAN_MEDIA_RUTIN} hari)`
+// Keterangan kecil kolom foto riwayat Rutin. sekarang = waktu data dimuat (bukan Date.now() saat render).
+// null = tidak ada keterangan tambahan (pakai tampilan lama: "tanpa dokumentasi" / "—").
+// Lewat 30 hari tapi belum dihapus -> TANPA keterangan: server bisa menunda (tinjauan admin, jalur tak dikenal, saklar mati),
+// jadi aplikasi tidak menjanjikan "segera dihapus". Sisa hari dibatasi maks 30 (jam perangkat bisa lebih lambat dari server).
+export function keteranganMediaRutin(s: { media_dihapus_pada?: string | null }, media: { dibuat_pada: string }[], sekarang: number): string | null {
+  if (!media.length) return s.media_dihapus_pada ? TEKS_MEDIA_RUTIN_DIHAPUS : null
+  const awal = Math.min(...media.map(m => Date.parse(m.dibuat_pada)).filter(t => !Number.isNaN(t)))
+  if (!Number.isFinite(awal) || !sekarang) return null
+  const sisa = Math.min(HARI_SIMPAN_MEDIA_RUTIN, Math.ceil((awal + HARI_SIMPAN_MEDIA_RUTIN * 86400000 - sekarang) / 86400000))
+  const bagian = [...(sisa > 0 ? [`dihapus dalam ${sisa} hari`] : []), ...(s.media_dihapus_pada ? ['sebagian sudah dihapus otomatis'] : [])]
+  return bagian.length ? bagian.join(' · ') : null
+}
 

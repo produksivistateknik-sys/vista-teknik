@@ -6,6 +6,7 @@
   "scripts": {
     "cek:kop": "node scripts/cek-kop-sinkron.mjs",
     "cek:cermin": "node scripts/cek-cermin-status.mjs",
+    "dryrun:media-rutin": "node scripts/dry-run-hapus-media-rutin.mjs",
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
