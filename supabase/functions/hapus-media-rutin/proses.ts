@@ -75,7 +75,10 @@ export async function prosesHapus(o: { rpc: Rpc; r2: R2; basisUrl: string; pemic
           throw new Error('berkas utama tidak ditemukan di R2 sebelum dihapus - tidak ditandai (cek berkas / konfigurasi bucket)')
         }
         ukuran += sebelum.ukuran
-        if (sebelum.ada) await r2hapus(kunci)
+        if (sebelum.ada) {
+          // hapus melempar galat (mis. waktu habis) padahal R2 sudah menghapus -> cek ulang; masih ada = benar-benar gagal
+          try { await r2hapus(kunci) } catch (e) { if ((await r2ada(kunci)).ada) throw e }
+        }
         const sesudah = await r2ada(kunci)
         if (sesudah.ada) throw new Error('berkas masih ada setelah dihapus: ' + kunci)
       }
