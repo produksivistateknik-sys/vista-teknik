@@ -51,7 +51,17 @@ name: Backup Database Harian
 on:
   schedule:
     - cron: '0 19 * * *'  # 19:00 UTC = 02:00 WIB (hari berikutnya)
-  workflow_dispatch: {}    # tombol manual "Run workflow" di tab Actions - buat tes kapan saja
+  workflow_dispatch:       # tombol manual "Run workflow" di tab Actions - buat tes kapan saja
+    inputs:
+      uji_saja:
+        description: 'Uji kering: dump + penjaga saja, TANPA unggah R2, retensi, catat backup, dan ping'
+        type: boolean
+        default: false
+
+# Event schedule tidak punya inputs -> inputs.uji_saja kosong (null) -> `!inputs.uji_saja` = true,
+# jadi run terjadwal tetap menjalankan unggah, retensi, catat backup, dan ping seperti biasa.
+permissions:
+  contents: read
 
 env:
   RETENTION_DAYS: 14
@@ -61,6 +71,13 @@ jobs:
   backup:
     runs-on: ubuntu-latest
     steps:
+      # Checkout hanya untuk skrip penjaga scripts/cek-dump-backup.sh. HARUS paling awal: checkout
+      # membersihkan workspace, jadi kalau dijalankan setelah pg_dump berkas dump ikut terhapus.
+      - name: Checkout (skrip penjaga dump)
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
       # Server Supabase pakai Postgres 17.6 (dikonfirmasi dari error run pertama, 6 Sep 2026:
       # "aborting because of server version mismatch"). Ubuntu 24.04 cuma nyediain pg_dump v16
       # di repo default-nya, dan pg_dump MENOLAK dump dari server yang lebih baru dari dirinya -
@@ -80,6 +97,13 @@ jobs:
       # cuma "pg_dump" - dikonfirmasi dari 2 run gagal (6 Sep 2026): postgresql-client-17
       # sudah ke-install, tapi `update-alternatives` cuma nge-switch `psql`, bukan `pg_dump` -
       # command polos "pg_dump" masih resolve ke v16.15 yang sudah ada bawaan image runner.
+      #
+      # (Nov 2026) Schema `hr` (data karyawan aplikasi HRGA, project Supabase yang sama) dan `auth`
+      # (akun + hash sandi Supabase Auth) SENGAJA dikecualikan: backup ini milik Vista dan disimpan
+      # sebagai SQL teks polos, jadi data sensitif itu tidak boleh ikut. Kendala FK public.profiles ->
+      # auth.users tetap tertulis di dump (merujuk schema yang dikecualikan) - diterima.
+      # Catatan restore: --no-privileges membuat GRANT/REVOKE TIDAK ikut dump. Restore ke project lain
+      # wajib menjalankan ulang skrip hak akses yang relevan (mis. pencabutan hak anon/service_role).
       - name: Dump database (Session Mode Pooler, port 5432)
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -87,7 +111,7 @@ jobs:
           set -euo pipefail
           FILENAME="vista-teknik-backup-$(date -u +%Y%m%d-%H%M%S).sql"
           echo "FILENAME=$FILENAME" >> "$GITHUB_ENV"
-          /usr/lib/postgresql/17/bin/pg_dump "$DB_CONN" --no-owner --no-privileges --format=plain --file="$FILENAME"
+          /usr/lib/postgresql/17/bin/pg_dump "$DB_CONN" --no-owner --no-privileges --exclude-schema=hr --exclude-schema=auth --format=plain --file="$FILENAME"
           echo "Dump selesai: $FILENAME ($(stat -c%s "$FILENAME") bytes)"
 
       - name: Validasi dump (bukan file kosong/korup sebelum diupload)
@@ -104,7 +128,19 @@ jobs:
             exit 1
           fi
 
+      # Penjaga: gagal bila dump memuat schema yang dikecualikan atau tidak berisi tabel public.
+      # Keluaran hanya angka (log repo publik). Gagal di sini = tidak ada unggah/retensi/ping sukses.
+      - name: Penjaga isi dump (tanpa schema terlarang)
+        run: bash scripts/cek-dump-backup.sh "$FILENAME"
+
+      - name: Ringkasan uji kering (tanpa unggah)
+        if: ${{ inputs.uji_saja }}
+        run: |
+          echo "Mode uji kering: dump $(stat -c%s "$FILENAME") byte lolos penjaga."
+          echo "Unggah R2, catat backup, retensi, dan ping healthchecks DILEWATI."
+
       - name: Upload ke R2 (bucket backup terpisah, PRIVATE)
+        if: ${{ !inputs.uji_saja }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
@@ -118,6 +154,7 @@ jobs:
       # (15 Okt 2026) Catat backup ke tabel kesehatan_backup -> cek K11 "Kesehatan Data" (backup terakhir >30 jam =
       # kritis). Tidak boleh menggagalkan backup: kalau tabel belum dibuat / koneksi gagal, cukup peringatan.
       - name: Catat backup ke Kesehatan Data
+        if: ${{ !inputs.uji_saja }}
         continue-on-error: true
         env:
           PGPASSWORD: ${{ secrets.SUPABASE_DB_PASSWORD }}
@@ -126,6 +163,7 @@ jobs:
           /usr/lib/postgresql/17/bin/psql "$DB_CONN" -v ON_ERROR_STOP=1 -c "insert into public.kesehatan_backup (file, ukuran_byte) values ('$FILENAME', $SIZE)"             || echo "::warning::Gagal mencatat backup ke kesehatan_backup (tabel belum ada?)"
 
       - name: Hapus dump lebih tua dari RETENTION_DAYS hari
+        if: ${{ !inputs.uji_saja }}
         env:
           AWS_ACCESS_KEY_ID: ${{ secrets.R2_BACKUP_ACCESS_KEY_ID }}
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_BACKUP_SECRET_ACCESS_KEY }}
@@ -145,7 +183,7 @@ jobs:
               done
 
       - name: Ping healthchecks.io (dead man's switch, opsional)
-        if: success()
+        if: ${{ success() && !inputs.uji_saja }}
         env:
           RAW_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
         run: |
@@ -156,4 +194,19 @@ jobs:
             curl -fsS -m 10 "$PING_URL" || echo "Ping healthchecks.io gagal (bukan fatal, backup tetap sukses)"
           else
             echo "HEALTHCHECKS_PING_URL belum diset - lewati step ini."
+          fi
+
+      # Ping gagal ke healthchecks.io (<ping-url>/fail) bila ada langkah yang gagal, supaya kegagalan
+      # langsung terlihat (bukan hanya lewat habisnya grace period). URL tidak dicetak; `|| true`
+      # supaya ping yang gagal tidak menutupi kegagalan asli job.
+      - name: Ping gagal healthchecks.io
+        if: ${{ failure() && !inputs.uji_saja }}
+        env:
+          RAW_PING_URL: ${{ secrets.HEALTHCHECKS_PING_URL }}
+        run: |
+          PING_URL=$(printf '%s' "$RAW_PING_URL" | tr -d '\n\r' | xargs)
+          if [ -n "$PING_URL" ]; then
+            curl -fsS -m 10 --retry 3 "${PING_URL%/}/fail" > /dev/null 2>&1 || true
+          else
+            echo "HEALTHCHECKS_PING_URL belum diset - lewati ping gagal."
           fi
