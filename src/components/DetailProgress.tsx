@@ -6,7 +6,7 @@ import { ringkasPerTanggal, formatOperator, fmtTanggalPendek } from '../lib/oper
 import { BUSBAR_TAHAP_LABEL } from '../lib/panelHelpers'
 import { mintaMuatOperator, useOperatorPanel, timerOperator, ringkasRiwayat, namaOperatorEntri } from '../lib/operatorPanelLoader'
 import { isDelayed, isUrgent, daysUntil } from '../lib/dateHelpers'
-import { useKoreksiProgres, PROSES_BISA_DIKOREKSI } from './ModalKoreksiProgres'
+import { useKoreksiProgres, PROSES_BISA_DIKOREKSI, PROSES_KOREKSI_PERSEN } from './ModalKoreksiProgres'
 
 // PERFORMA (4 Okt 2026): style & ProsesPctCell dipindah ke luar komponen - dulu didefinisikan
 // DI DALAM render, React menganggap ProsesPctCell tipe komponen BARU tiap render sehingga semua
@@ -386,7 +386,8 @@ export function DetailProgress({woData,rawData,livePanelTypes,user}:{woData:any[
                             if(pr==="BUSBAR") return <ProsesPctCell key={pr} pct={undefined} proses={pr}/>;
                             const relevant=isKomponenRelevant(it.kode,p.tipe,pr);
                             const pct=relevant?ccpAwarePct(p.id,it.kode,pr,cl?.progress?.[pr]??cl?.qtyProses?.[pr]??0):undefined;
-                            const bisaKoreksi=koreksi.bolehKoreksi&&PROSES_BISA_DIKOREKSI.includes(pr)&&Number(qty)>0;
+                            // (25 Nov 2026, Tahap 4.1) + WIRING CONTROL/POWER (buka kembali, mode persen) - hanya bila relevan utk komponen ini
+                            const bisaKoreksi=koreksi.bolehKoreksi&&(PROSES_BISA_DIKOREKSI.includes(pr)||(PROSES_KOREKSI_PERSEN.includes(pr)&&relevant))&&Number(qty)>0;
                             return <ProsesPctCell key={pr} pct={pct} proses={pr} cl={cl} nama={it.nama||it.komponen||it.name} panelId={p.id} kode={it.kode}
                               onKoreksi={bisaKoreksi?()=>koreksi.buka({panelId:p.id,panelNama:String(p.nama||"").trim(),kode:it.kode,nama:it.nama||it.komponen||it.name||it.kode,proses:pr,
                                 qtyKomponen:Number(qty)||0,qtySekarang:Number(cl?.qtyProses?.[pr])||0,pctSekarang:Number(cl?.progress?.[pr])||0}):undefined}/>;
