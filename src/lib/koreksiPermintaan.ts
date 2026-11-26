@@ -13,6 +13,16 @@ export type KoreksiPermintaan = {
   id: number; permintaan_item_id: number; qty_lama: number; qty_diusulkan: number; qty_final?: number | null
   alasan: string; status: 'menunggu' | 'disetujui' | 'ditolak'; diajukan_oleh: string; diajukan_at: string
   disetujui_oleh: string | null; diputuskan_at: string | null; catatan_reject?: string | null
+  // (26 Nov 2026) sumber koreksi & catatan admin - null/undefined = baris lama (pengajuan Gudang)
+  sumber?: 'gudang' | 'admin_sebelum_siap' | 'admin_saat_setuju' | null; catatan_admin?: string | null
+}
+
+// true = koreksi dibuat Admin langsung (tanpa pengajuan Gudang): sebelum disiapkan Gudang / saat menyetujui permintaan.
+export const koreksiOlehAdmin = (k: Pick<KoreksiPermintaan, 'sumber'>): boolean =>
+  k.sumber === 'admin_sebelum_siap' || k.sumber === 'admin_saat_setuju'
+export const LABEL_SUMBER_ADMIN: Record<string, string> = {
+  admin_sebelum_siap: 'sebelum disiapkan Gudang',
+  admin_saat_setuju: 'saat menyetujui permintaan',
 }
 
 export const qtyEfektif = (item: { qty?: any } | null | undefined): number => Number(item?.qty) || 0

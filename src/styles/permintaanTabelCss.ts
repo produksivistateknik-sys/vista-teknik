@@ -91,6 +91,9 @@ export const PERMINTAAN_TABEL_CSS = `
 .pbt-teks-warn{color:#b45309}
 .pbt-teks-bad{color:#b91c1c}
 [data-theme="dark"] .pbt-teks-warn{color:#fcd34d}
+/* (26 Nov 2026) tombol "Koreksi qty" di kolom Alur Riwayat - aksi sekunder amber, pasangan mode gelap */
+.pbt .pbt-koreksi{color:#b45309;border:1.5px solid #d97706;background:transparent}
+[data-theme="dark"] .pbt .pbt-koreksi{color:#fcd34d;border-color:#f59e0b}
 [data-theme="dark"] .pbt-teks-bad{color:#fca5a5}
 .pbt .pbt-cek-area{display:inline-flex;align-items:center;justify-content:center;cursor:pointer;margin:0}
 .pbt .pbt-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
@@ -138,5 +141,6 @@ ${aturanHp(768, `
 .pbt .pbt-blok-aksi{gap:14px}
 .pbt .pbt-qty-in{min-height:40px;width:110px}
 .pbt .pbt-konfirmasi{min-height:40px}
+.pbt .pbt-koreksi{min-height:40px}
 `)}
 `
