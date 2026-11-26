@@ -130,6 +130,9 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const [koreksiList, setKoreksiList] = useState<any[]>([])
   const [loadingKoreksi, setLoadingKoreksi] = useState(true)
   const [koreksiQtyEdit, setKoreksiQtyEdit] = useState<Record<number, string>>({})
+  // (26 Nov 2026, keputusan user) catatan admin WAJIB bila qty disetujui beda dari usulan Gudang - dicek juga di server
+  // (approve_permintaan_koreksi 4 argumen, migration 20261126010000).
+  const [koreksiCatatanEdit, setKoreksiCatatanEdit] = useState<Record<number, string>>({})
   const [processingKoreksiId, setProcessingKoreksiId] = useState<number | null>(null)
   const [koreksiRejectTarget, setKoreksiRejectTarget] = useState<any | null>(null)
   const [koreksiRejectAlasan, setKoreksiRejectAlasan] = useState('')
@@ -177,9 +180,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   const setujuiKoreksi = async (k: any) => {
     const qtyBaru = Number(koreksiQtyEdit[k.id])
     if (!koreksiQtyEdit[k.id] || isNaN(qtyBaru) || qtyBaru < 0) { alert('Qty harus diisi, angka >= 0'); return }
+    const catatanAdmin = (koreksiCatatanEdit[k.id] || '').trim()
+    const diubah = qtyBaru !== Number(k.qty_diusulkan)
+    if (diubah && catatanAdmin.length < 3) { alert(`Qty disetujui (${qtyBaru}) berbeda dari usulan Gudang (${k.qty_diusulkan}) - isi catatan alasannya dulu (min. 3 huruf).`); return }
     setProcessingKoreksiId(k.id)
     const { data, error } = await supabase.rpc('approve_permintaan_koreksi', {
-      p_koreksi_id: k.id, p_qty_final: qtyBaru, p_admin: adminUsername,
+      p_koreksi_id: k.id, p_qty_final: qtyBaru, p_admin: adminUsername, p_catatan_admin: diubah ? catatanAdmin : null,
     }).single<{ sukses: boolean, pesan: string }>()
     if (error || !data?.sukses) { alert('Gagal menyetujui: ' + (error?.message || data?.pesan || 'unknown error')); setProcessingKoreksiId(null); return }
     try {
@@ -1228,6 +1234,17 @@ ${kop.body}
                             <span style={{ fontSize: 10.5, color: '#d97706', fontWeight: 600 }}>(diubah dari usulan {k.qty_diusulkan})</span>
                           )}
                         </div>
+                        {koreksiQtyEdit[k.id] !== undefined && Number(koreksiQtyEdit[k.id]) !== Number(k.qty_diusulkan) && (
+                          <div style={{ marginBottom: 8 }}>
+                            <label htmlFor={`catatan-koreksi-${k.id}`} style={{ display: 'block', fontSize: 11.5, fontWeight: 700, color: '#92400e', marginBottom: 4 }}>
+                              Catatan alasan qty diubah (wajib)
+                            </label>
+                            <textarea id={`catatan-koreksi-${k.id}`} rows={2} maxLength={400} value={koreksiCatatanEdit[k.id] || ''}
+                              onChange={(e) => setKoreksiCatatanEdit(prev => ({ ...prev, [k.id]: e.target.value }))}
+                              placeholder="Contoh: dicek ulang ke operator, yang dipakai hanya 4"
+                              style={{ width: '100%', boxSizing: 'border-box', padding: '7px 10px', borderRadius: 6, border: '1.5px solid #fcd34d', fontSize: 12.5, fontFamily: 'inherit', resize: 'vertical' }} />
+                          </div>
+                        )}
                         <div style={{ display: 'flex', gap: 8 }}>
                           <Btn color="#dc2626" outline onClick={() => setKoreksiRejectTarget(k)} disabled={isProcessing}>
                             ✕ Tolak
