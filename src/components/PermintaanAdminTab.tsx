@@ -65,7 +65,8 @@ const rekapThS: CSSProperties = {
 type ItemAksi = { id: number; permintaan_id?: number; nama_komponen?: string; qty?: number; satuan?: string | null
   perm: { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string; wo_number?: string; created_at?: string } }
 // qty = nilai qty yang DIKUNCI saat dialog konfirmasi dibuka (yang ditulis = yang tampil di dialog).
-type MassalState = { jenis: 'setujui' | 'tolak'; daftar: ItemAksi[]; lewati: ItemAksi[]; qty: Record<number, number>; berjalan: boolean; selesai: number
+// lewatiDiubah (26 Nov 2026): qty diubah dari permintaan operator -> wajib catatan, hanya lewat Setujui per baris.
+type MassalState = { jenis: 'setujui' | 'tolak'; daftar: ItemAksi[]; lewati: ItemAksi[]; lewatiDiubah?: ItemAksi[]; qty: Record<number, number>; berjalan: boolean; selesai: number
   hasil: null | { ok: number; sudah: number; gagal: string[] } }
 
 const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: string, color: string }[] = [
@@ -709,9 +710,12 @@ ${kop.body}
   type HasilTulis = { hasil: 'ok' | 'sudah_diproses' | 'gagal'; pesan?: string }
   type PermRingkas = { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string }
   type ItemRingkas = { id: number; nama_komponen?: string; qty?: number; satuan?: string | null; perm: PermRingkas }
+  // (26 Nov 2026) Setujui TANPA mengubah qty: kolom qty TIDAK dikirim lagi (nilainya sama). Mengubah qty saat menyetujui WAJIB
+  // catatan & tercatat di riwayat koreksi -> setujuiDenganKoreksi (RPC). Penjaga: qty beda = tolak di sini.
   const tulisSetujui = async (it: ItemRingkas, qtyBaru: number): Promise<HasilTulis> => {
+    if (qtyBaru !== Number(it.qty)) return { hasil: 'gagal', pesan: 'qty diubah - wajib disetujui per baris dengan catatan' }
     const { data, error } = await supabase.from('permintaan_item').update({
-      status: 'pending', qty: qtyBaru, disetujui_admin_oleh: adminUsername, disetujui_admin_at: new Date().toISOString(),
+      status: 'pending', disetujui_admin_oleh: adminUsername, disetujui_admin_at: new Date().toISOString(),
     }).eq('id', it.id).eq('status', 'menunggu_admin').select('id')
     if (error) return { hasil: 'gagal', pesan: error.message }
     return (data || []).length > 0 ? { hasil: 'ok' } : { hasil: 'sudah_diproses' }
@@ -757,9 +761,36 @@ ${kop.body}
     return !teks || isNaN(q) || q <= 0 ? null : q
   }
 
+  // SETUJUI DENGAN QTY DIUBAH (26 Nov 2026, keputusan user): catatan wajib; status + qty + riwayat koreksi (sumber
+  // admin_saat_setuju, qty_lama = angka asli operator) dalam SATU transaksi server (RPC setujui_permintaan_dengan_koreksi,
+  // migration 20261126040000; penjaga status menunggu_admin & qty lama sama dgn tulisSetujui). Tanpa withRetry (tidak idempoten).
+  const [setujuiUbahQty, setSetujuiUbahQty] = useState<{ it: any; qtyBaru: number } | null>(null)
+  const [setujuiKoreksiCatatan, setSetujuiKoreksiCatatan] = useState('')
+  const simpanSetujuiDenganKoreksi = async () => {
+    if (!setujuiUbahQty || processingId !== null) return
+    const { it, qtyBaru } = setujuiUbahQty
+    const catatan = setujuiKoreksiCatatan.trim()
+    if (catatan.length < 3) { alert('Catatan alasan qty diubah wajib diisi (min. 3 huruf).'); return }
+    setProcessingId(it.id)
+    const { error } = await supabase.rpc('setujui_permintaan_dengan_koreksi' as any, {
+      p_item_id: it.id, p_qty_lama: Number(it.qty), p_qty_baru: qtyBaru, p_catatan: catatan, p_admin: adminUsername,
+    } as any)
+    setProcessingId(null)
+    if (error) {
+      console.error('[Permintaan] setujui dengan koreksi qty gagal:', error)
+      if ((error as { code?: string }).code === 'P0001') { alert(PESAN_SUDAH_DIPROSES + '\n' + error.message); setSetujuiUbahQty(null); muatUlang(); return }
+      alert('Gagal menyetujui: ' + error.message)
+      return
+    }
+    setSetujuiUbahQty(null)
+    setSetujuiKoreksiCatatan('')
+    await notifDisetujui(it.perm, 1)
+  }
+
   const setujui = async (it: any) => {
     const qtyBaru = qtySah(it)
     if (qtyBaru === null) { alert('Qty harus diisi, angka lebih dari 0'); return }
+    if (qtyBaru !== Number(it.qty)) { setSetujuiKoreksiCatatan(''); setSetujuiUbahQty({ it, qtyBaru }); return }
     setProcessingId(it.id)
     const r = await tulisSetujui(it, qtyBaru)
     if (r.hasil === 'gagal') { alert('Gagal menyetujui: ' + r.pesan); setProcessingId(null); return }
@@ -808,13 +839,15 @@ ${kop.body}
   // terpilih untuk dicoba lagi; ringkasan ditampilkan. Notifikasi Gudang (admin_disetujui) digabung per permintaan
   // (jumlahItem = jumlah item permintaan itu yang disetujui) - isi sama dgn notifikasi lama; penolakan tetap per item.
   const mulaiSetujuiMassal = (daftar: ItemAksi[]) => {
-    const sah: ItemAksi[] = [], lewati: ItemAksi[] = []
+    const sah: ItemAksi[] = [], lewati: ItemAksi[] = [], lewatiDiubah: ItemAksi[] = []
     const qty: Record<number, number> = {}
     daftar.forEach((it) => {
       const q = qtySah(it)
-      if (q === null) lewati.push(it); else { sah.push(it); qty[it.id] = q }
+      if (q === null) lewati.push(it)
+      else if (q !== Number(it.qty)) lewatiDiubah.push(it) // (26 Nov 2026) qty diubah = wajib catatan -> per baris
+      else { sah.push(it); qty[it.id] = q }
     })
-    setMassal({ jenis: 'setujui', daftar: sah, lewati, qty, berjalan: false, selesai: 0, hasil: null })
+    setMassal({ jenis: 'setujui', daftar: sah, lewati, lewatiDiubah, qty, berjalan: false, selesai: 0, hasil: null })
   }
   const mulaiTolakMassal = (daftar: ItemAksi[]) => {
     setMassalAlasan('')
@@ -1429,6 +1462,7 @@ ${kop.body}
               {massal.hasil.gagal.length > 0 && <div className="pbt-teks-bad" style={{ marginBottom: 6 }}>{massal.hasil.gagal.length} item gagal (mis. koneksi) - masih di daftar, bisa dicoba lagi:
                 <ul style={{ margin: '4px 0 0 18px', padding: 0 }}>{massal.hasil.gagal.map((g, i) => <li key={i}>{g}</li>)}</ul></div>}
               {massal.lewati.length > 0 && <div className="pbt-teks-warn" style={{ marginBottom: 6 }}>{massal.lewati.length} item dilewati karena qty tidak sah (harus angka &gt; 0): {massal.lewati.map((it) => it.nama_komponen).join(', ')}</div>}
+              {(massal.lewatiDiubah?.length || 0) > 0 && <div className="pbt-teks-warn" style={{ marginBottom: 6 }}>{massal.lewatiDiubah!.length} item dilewati karena qty diubah - setujui per baris dengan catatan: {massal.lewatiDiubah!.map((it) => it.nama_komponen).join(', ')}</div>}
               <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 12 }}>
                 <Btn color="#1d4ed8" onClick={() => { setMassal(null); setMassalAlasan('') }}>Tutup</Btn>
               </div>
@@ -1443,6 +1477,7 @@ ${kop.body}
                 ))}
               </div>
               {massal.lewati.length > 0 && <div className="pbt-teks-warn" style={{ fontSize: 12, marginBottom: 10 }}>{massal.lewati.length} item akan dilewati karena qty tidak sah: {massal.lewati.map((it) => it.nama_komponen).join(', ')}</div>}
+              {(massal.lewatiDiubah?.length || 0) > 0 && <div className="pbt-teks-warn" style={{ fontSize: 12, marginBottom: 10 }}>{massal.lewatiDiubah!.length} item akan dilewati karena qty diubah (wajib catatan - setujui per baris): {massal.lewatiDiubah!.map((it) => it.nama_komponen).join(', ')}</div>}
               {massal.jenis === 'tolak' && (
                 <textarea autoFocus value={massalAlasan} onChange={(e) => setMassalAlasan(e.target.value)} rows={3} disabled={massal.berjalan}
                   placeholder="Alasan penolakan (wajib diisi, berlaku untuk semua item di atas)..."
@@ -1472,6 +1507,25 @@ ${kop.body}
             <Btn color="#94a3b8" outline onClick={() => { setRejectTarget(null); setRejectAlasan('') }}>Batal</Btn>
             <Btn color="#dc2626" onClick={tolak} disabled={processingId === rejectTarget.id}>
               {processingId === rejectTarget.id ? 'Menyimpan...' : 'Tolak Permintaan'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {setujuiUbahQty && (
+        <Modal title="Setujui dengan qty diubah" onClose={() => { if (processingId === null) setSetujuiUbahQty(null) }} width={440}>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
+            <b style={{ color: 'var(--text-primary,#1e293b)' }}>{setujuiUbahQty.it.nama_komponen}</b> - diminta {setujuiUbahQty.it.perm?.operator_nama || '-'}
+            <div>Qty <b style={{ color: 'var(--text-primary,#1e293b)' }}>{setujuiUbahQty.it.qty}</b> → <b style={{ color: '#b45309' }}>{setujuiUbahQty.qtyBaru}</b>{setujuiUbahQty.it.satuan ? ` ${setujuiUbahQty.it.satuan}` : ''}</div>
+          </div>
+          <label htmlFor="catatan-setujui-koreksi" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>Catatan alasan qty diubah (wajib)</label>
+          <textarea id="catatan-setujui-koreksi" autoFocus value={setujuiKoreksiCatatan} onChange={(e) => setSetujuiKoreksiCatatan(e.target.value)} rows={3} maxLength={400}
+            placeholder="Contoh: stok terpakai hanya 4, sudah konfirmasi operator"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border-color,#e2e8f0)', fontSize: 13, color: 'var(--text-primary,#1e293b)', fontFamily: 'inherit', resize: 'vertical', marginBottom: 14, boxSizing: 'border-box' }} />
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn color="#94a3b8" outline onClick={() => setSetujuiUbahQty(null)} disabled={processingId !== null}>Batal</Btn>
+            <Btn color="#16a34a" onClick={simpanSetujuiDenganKoreksi} disabled={processingId !== null}>
+              {processingId === setujuiUbahQty.it.id ? 'Menyimpan...' : '✓ Setujui'}
             </Btn>
           </div>
         </Modal>
