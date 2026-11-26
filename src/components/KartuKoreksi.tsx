@@ -18,7 +18,8 @@ export function KartuKoreksi({ k, satuan, judul, subjudul, ambil }: {
   const disetujui = k.status === 'disetujui'
   const olehAdmin = koreksiOlehAdmin(k)
   const ditolak = k.status === 'ditolak'
-  const warna = disetujui ? '#16a34a' : ditolak ? '#dc2626' : '#d97706'
+  // koreksi oleh Admin: amber gelap (bukan warna status) - kontras AA di latar putih (ui-reviewer 26 Nov)
+  const warna = olehAdmin ? '#b45309' : disetujui ? '#16a34a' : ditolak ? '#dc2626' : '#d97706'
   const s = satuan ? ` ${satuan}` : ''
   return (
     <div style={{ background: '#fff', border: '1.5px solid #e2e8f0', borderLeft: `3px solid ${warna}`, borderRadius: 10, padding: judul ? '11px 14px' : '8px 11px', marginTop: judul ? 0 : 6 }}>
@@ -45,8 +46,8 @@ export function KartuKoreksi({ k, satuan, judul, subjudul, ambil }: {
           ? <span>📦 Diambil oleh {ambil.oleh || '-'} — {fmtWaktu(ambil.at)}</span>
           : <span style={{ color: '#94a3b8' }}>⏳ Menunggu diambil</span>)}
       </div>
-      <div style={{ fontSize: 10.5, color: '#64748b', fontStyle: 'italic', marginTop: 4 }}>{olehAdmin ? 'Catatan' : 'Alasan'}: {k.alasan || '-'}</div>
-      {k.catatan_admin && <div style={{ fontSize: 10.5, color: '#b45309', fontStyle: 'italic', marginTop: 2 }}>Catatan penyetuju: {k.catatan_admin}</div>}
+      <div style={{ fontSize: 10.5, color: '#64748b', fontStyle: 'italic', marginTop: 4, overflowWrap: 'anywhere' }}>{olehAdmin ? 'Catatan' : 'Alasan'}: {k.alasan || '-'}</div>
+      {k.catatan_admin && <div style={{ fontSize: 10.5, color: '#b45309', fontStyle: 'italic', marginTop: 2, overflowWrap: 'anywhere' }}>Catatan penyetuju: {k.catatan_admin}</div>}
       {ditolak && k.catatan_reject && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠ {k.catatan_reject}</div>}
     </div>
   )

@@ -39,3 +39,5 @@ begin
   if array_length(gagal, 1) is null then raise notice 'SEMUA LULUS'; else raise exception 'GAGAL: %', array_to_string(gagal, ' | '); end if;
 end $$;
 rollback;
+-- Baris ini hanya tampil bila blok di atas tidak error:
+select 'SEMUA LULUS' as hasil;

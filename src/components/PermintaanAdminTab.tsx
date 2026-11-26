@@ -159,9 +159,12 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     setKoreksiAdminProses(false)
     if (error) {
       console.error('[Permintaan] koreksi qty sebelum disiapkan gagal:', error)
-      alert('Koreksi TIDAK tersimpan: ' + error.message)
-      // P0001 = keadaan item sudah berubah (disiapkan Gudang / dikoreksi admin lain) -> tutup & muat ulang
-      if (error.code === 'P0001') { setKoreksiAdminTarget(null); fetchRiwayat(riwayatTanggal) }
+      // P0001 = keadaan item sudah berubah (disiapkan Gudang / dikoreksi admin lain / simpanan SENDIRI yang jawabannya
+      // sempat hilang) -> tampilkan teks server apa adanya, tutup & muat ulang (temuan bug-detector 26 Nov)
+      if (error.code === 'P0001') {
+        alert(error.message + '\n\nBila Anda baru saja menekan Simpan lalu koneksi sempat putus, koreksi Anda mungkin SUDAH tersimpan - periksa kolom Alur.')
+        setKoreksiAdminTarget(null); fetchRiwayat(riwayatTanggal)
+      } else alert('Koreksi TIDAK tersimpan: ' + error.message)
       return
     }
     try {
@@ -785,7 +788,10 @@ ${kop.body}
     setProcessingId(null)
     if (error) {
       console.error('[Permintaan] setujui dengan koreksi qty gagal:', error)
-      if (error.code === 'P0001') { alert(PESAN_SUDAH_DIPROSES + '\n' + error.message); setSetujuiUbahQty(null); muatUlang(); return }
+      if (error.code === 'P0001') {
+        alert(error.message + '\n\nDaftar dimuat ulang. Bila Anda baru saja menekan Setujui lalu koneksi sempat putus, persetujuan Anda mungkin SUDAH tersimpan - periksa Riwayat.')
+        setSetujuiUbahQty(null); muatUlang(); return
+      }
       alert('Gagal menyetujui: ' + error.message)
       return
     }
@@ -1251,8 +1257,7 @@ ${kop.body}
                                 {/* (26 Nov 2026) Koreksi qty selama Disetujui & belum disiapkan Gudang - aturan di server */}
                                 {st === 'disetujui' && !it.is_hutang && (
                                   <button className="pbt-koreksi" onClick={() => bukaKoreksiAdmin(it)}
-                                    style={{ width: '100%', marginTop: 6, padding: '7px', borderRadius: 7, border: '1.5px solid #d97706', background: 'transparent',
-                                      color: '#b45309', fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                    style={{ width: '100%', marginTop: 6, padding: '7px', borderRadius: 7, fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
                                     ✎ Koreksi qty
                                   </button>
                                 )}

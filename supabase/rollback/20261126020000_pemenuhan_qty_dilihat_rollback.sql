@@ -2,6 +2,11 @@
 -- baru jalankan ini (kalau tidak, Konfirmasi Gudang gagal 'function not found'). Versi 3 argumen kembali PERSIS ke 19 Okt 2026.
 -- Koreksi yang sudah dipindah ke baris hutang tetap di sana (riwayat tidak dihapus).
 begin;
+do $$ begin
+  if to_regprocedure('public.koreksi_qty_sebelum_disiapkan(bigint,numeric,numeric,text,text)') is not null then
+    raise exception 'Rollback Tahap 3 (030000) dulu - batal';
+  end if;
+end $$;
 drop function if exists public.proses_pemenuhan_permintaan(bigint, numeric, text, numeric);
 create or replace function public.proses_pemenuhan_permintaan(p_item_id bigint, p_qty_dipenuhi numeric, p_oleh text)
 returns jsonb language plpgsql security definer set search_path = public as $$

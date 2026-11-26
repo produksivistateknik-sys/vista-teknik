@@ -16,10 +16,14 @@ begin
   execute 'select count(*) from (' || public._sql_cek_kesehatan_k1_k27('K19') || ') s' into n_lama;
   execute 'select count(*) from (' || public._sql_cek_kesehatan('K19') || ') s' into n_baru;
   if n_lama <> n_baru then gagal := gagal || ('K19 lama ' || n_lama || ' <> baru ' || n_baru); end if;
+  -- format pembungkus runner Kesehatan Data ('with q0 as (...)') - WITH RECURSIVE bersarang harus sah
+  execute 'with q0 as (' || public._sql_cek_kesehatan('K19') || ') select count(*) from q0' into n_baru;
 
   select id into v_perm from public.permintaan order by id desc limit 1;
   insert into public.permintaan_item (permintaan_id, nama_komponen, qty, status, disetujui_admin_at, disetujui_admin_oleh)
     values (v_perm, 'UJI VERIFIKASI', 10, 'pending', now(), 'UJI') returning id into v_a;
+  -- now() tetap selama transaksi -> pakai penanda tanggal lama supaya sentuhan updated_at oleh RPC terdeteksi
+  update public.permintaan_item set updated_at = '2000-01-01T00:00:00Z' where id = v_a;
   select updated_at into u from public.permintaan_item where id = v_a;
 
   -- penolakan: catatan kosong / "ab", qty 0, naik, sama, qty_lama basi
@@ -70,3 +74,5 @@ begin
   if array_length(gagal, 1) is null then raise notice 'SEMUA LULUS'; else raise exception 'GAGAL: %', array_to_string(gagal, ' | '); end if;
 end $$;
 rollback;
+-- Baris ini hanya tampil bila blok di atas tidak error:
+select 'SEMUA LULUS' as hasil;

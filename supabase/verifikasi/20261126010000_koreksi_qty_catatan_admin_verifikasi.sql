@@ -12,7 +12,7 @@ begin
   if not has_function_privilege('anon', 'public.approve_permintaan_koreksi(bigint,numeric,text,text)', 'execute') then gagal := gagal || 'anon tidak bisa execute 4 argumen'::text; end if;
   begin
     insert into public.permintaan_item_koreksi (permintaan_item_id, qty_lama, qty_diusulkan, alasan, diajukan_oleh, target_divisi, sumber)
-    select id, qty, qty, 'UJI', 'UJI', 'admin', 'salah' from public.permintaan_item limit 1;
+    values ((select id from public.permintaan_item order by id desc limit 1), 1, 1, 'UJI', 'UJI', 'admin', 'salah');
     gagal := gagal || 'CHECK sumber tidak menolak nilai asing'::text;
   exception when check_violation then null; end;
 
@@ -41,3 +41,5 @@ begin
   if array_length(gagal, 1) is null then raise notice 'SEMUA LULUS'; else raise exception 'GAGAL: %', array_to_string(gagal, ' | '); end if;
 end $$;
 rollback;
+-- Baris ini hanya tampil bila blok di atas tidak error:
+select 'SEMUA LULUS' as hasil;

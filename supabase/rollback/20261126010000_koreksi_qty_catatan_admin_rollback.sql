@@ -3,6 +3,12 @@
 -- Kolom sumber & catatan_admin DIBIARKAN bila sudah ada baris bersumber admin / catatan terisi (riwayat tidak dihapus);
 -- bila belum ada sama sekali, blok terakhir menghapusnya.
 begin;
+do $$ begin
+  if to_regprocedure('public.koreksi_qty_sebelum_disiapkan(bigint,numeric,numeric,text,text)') is not null
+     or to_regprocedure('public.setujui_permintaan_dengan_koreksi(bigint,numeric,numeric,text,text)') is not null then
+    raise exception 'Rollback Tahap 5 (040000) & Tahap 3 (030000) dulu - batal';
+  end if;
+end $$;
 drop function if exists public.approve_permintaan_koreksi(bigint, numeric, text, text);
 create or replace function public.approve_permintaan_koreksi(
   p_koreksi_id bigint, p_qty_final numeric, p_admin text

@@ -6,6 +6,9 @@ do $$ begin
   if to_regprocedure('public._sql_cek_kesehatan_k1_k27(text)') is null then
     raise exception 'Lapisan _sql_cek_kesehatan_k1_k27 tidak ada - Tahap 3 belum dijalankan / sudah di-rollback - batal';
   end if;
+  if to_regprocedure('public.setujui_permintaan_dengan_koreksi(bigint,numeric,numeric,text,text)') is not null then
+    raise exception 'Rollback Tahap 5 (040000) dulu - batal';
+  end if;
 end $$;
 drop function if exists public.koreksi_qty_sebelum_disiapkan(bigint, numeric, numeric, text, text);
 drop function public._sql_cek_kesehatan(text);

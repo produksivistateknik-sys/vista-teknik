@@ -7,7 +7,7 @@
 --   SATU transaksi: status 'pending' + qty + disetujui_admin_oleh/at (kolom sama dgn tulisSetujui) DAN 1 baris
 --   permintaan_item_koreksi (status 'disetujui', sumber 'admin_saat_setuju', qty_lama = angka asli operator).
 -- Setujui TANPA mengubah qty tetap lewat tulisSetujui lama (tidak berubah, kecuali kolom qty tidak lagi dikirim).
--- Butuh Tahap 1 (kolom sumber).
+-- Butuh Tahap 1 (kolom sumber) & Tahap 3 (K19 ketat menilai sumber admin_saat_setuju).
 -- Verifikasi: supabase/verifikasi/20261126040000_setujui_dengan_koreksi_verifikasi.sql ('SEMUA LULUS')
 -- Rollback  : supabase/rollback/20261126040000_setujui_dengan_koreksi_rollback.sql
 -- ============================================================================================
@@ -16,6 +16,9 @@ begin;
 do $$ begin
   if not exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'permintaan_item_koreksi' and column_name = 'sumber') then
     raise exception 'Jalankan dulu Tahap 1 (20261126010000_koreksi_qty_catatan_admin.sql) - batal';
+  end if;
+  if to_regprocedure('public._sql_cek_kesehatan_k1_k27(text)') is null then
+    raise exception 'Jalankan dulu Tahap 3 (20261126030000_koreksi_qty_sebelum_disiapkan.sql: K19 ketat) - batal';
   end if;
   if exists (select 1 from pg_proc where proname = 'setujui_permintaan_dengan_koreksi') then
     raise exception 'setujui_permintaan_dengan_koreksi sudah ada (Tahap 5 sudah dijalankan?) - batal';
