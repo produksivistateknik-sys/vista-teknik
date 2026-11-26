@@ -63,9 +63,17 @@ export function TimerAktifTab({user}:any){
     );
     if(!ok)return;
     setStopLoadingId(t.id);
-    const{error}=await supabase.from("fcs_timer_kerja").update({selesai:t.mulai}).eq("id",t.id);
+    // (26 Nov 2026) .is("selesai",null): daftar ini tidak realtime - timer yang SUDAH ditutup (operator menekan Selesai,
+    // Simpan 100%, cron 12 jam) sesudah daftar dimuat tidak boleh ditimpa jadi durasi 0 (jam kerja asli hilang permanen).
+    // 0 baris berubah = sudah ditutup di tempat lain -> tidak dicatat sbg FORCE STOP, daftar dimuat ulang.
+    const{data:diubah,error}=await supabase.from("fcs_timer_kerja").update({selesai:t.mulai}).eq("id",t.id).is("selesai",null).select("id");
     setStopLoadingId(null);
     if(error){alert("Gagal: "+error.message);return;}
+    if(!diubah||diubah.length===0){
+      alert("Timer ini sudah ditutup di tempat lain (operator/sistem) sebelum Force Stop - tidak diubah, durasi aslinya dipertahankan. Daftar dimuat ulang.");
+      fetchTimers();
+      return;
+    }
     const sess=JSON.parse(localStorage.getItem("vista_admin_session")||"{}");
     const uname=user?.name||user?.nama||sess?.nama||"Admin";
     await activityLogService.insert({
@@ -88,9 +96,11 @@ export function TimerAktifTab({user}:any){
     const targets=[...filtered];
     const doneIds=new Set<number>();
     const gagal:string[]=[];
+    const sudahDitutup=new Set<number>(); // (26 Nov 2026) sudah ditutup di tempat lain - tidak ditimpa, lihat forceStop
     for(const t of targets){
-      const{error}=await supabase.from("fcs_timer_kerja").update({selesai:t.mulai}).eq("id",t.id);
+      const{data:diubah,error}=await supabase.from("fcs_timer_kerja").update({selesai:t.mulai}).eq("id",t.id).is("selesai",null).select("id");
       if(error)gagal.push(`${t._panelNama} (${t.kode_komponen}): ${error.message}`);
+      else if(!diubah||diubah.length===0)sudahDitutup.add(t.id);
       else doneIds.add(t.id);
     }
     setStopAllLoading(false);
@@ -104,12 +114,13 @@ export function TimerAktifTab({user}:any){
         module:"wo",halaman:"System - Timer Aktif",proyek:"",panel:"",
       });
     }
-    setTimers(prev=>prev.filter((x:any)=>!doneIds.has(x.id)));
-    if(gagal.length>0){
-      alert(`${sukses} timer berhasil di-force-stop.\n\nGagal (${gagal.length}):\n`+gagal.join("\n"));
-    } else {
-      alert(`${sukses} timer berhasil di-force-stop.`);
-    }
+    setTimers(prev=>prev.filter((x:any)=>!doneIds.has(x.id)&&!sudahDitutup.has(x.id)));
+    // (26 Nov 2026) satu ringkasan saja (tidak dua alert berturut-turut); daftar dimuat ulang bila ada yang sudah ditutup.
+    const bagian=[`${sukses} timer berhasil di-force-stop.`];
+    if(sudahDitutup.size>0)bagian.push(`${sudahDitutup.size} timer sudah ditutup sebelum Force Stop - tidak diubah (durasi asli dipertahankan).`);
+    if(gagal.length>0)bagian.push(`Gagal (${gagal.length}):\n`+gagal.join("\n"));
+    alert(bagian.join("\n\n"));
+    if(sudahDitutup.size>0)fetchTimers();
   };
 
   const thS:any={padding:"8px 12px",textAlign:"left",fontSize:10,color:"#64748b",fontWeight:700,background:"#f8fafc"};
