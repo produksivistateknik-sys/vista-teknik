@@ -120,6 +120,52 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     fetchRiwayat(riwayatTanggal)
   }
 
+  // KOREKSI QTY SEBELUM DISIAPKAN (26 Nov 2026, usulan admin produksi, keputusan user) - item yang SUDAH disetujui tetapi
+  // BELUM disiapkan Gudang (status 'pending') bisa dikoreksi Admin, catatan WAJIB. Semua aturan dicek di SERVER secara atomik
+  // (RPC koreksi_qty_sebelum_disiapkan, migration 20261126030000): baris dikunci bergiliran dgn Konfirmasi Gudang, qty_lama =
+  // penguncian optimis (admin lain / layar basi ditolak), riwayat ke permintaan_item_koreksi (sumber admin_sebelum_siap).
+  // SENGAJA tanpa withRetry: jawaban hilang padahal tersimpan -> ulang otomatis ditolak "qty sudah berubah" (membingungkan).
+  // Sementara hanya boleh MENURUNKAN (keputusan user): menaikkan dibuka setelah HP Gudang versi "qty dilihat" live (Tahap 3b).
+  const KOREKSI_ADMIN_BOLEH_NAIK = false
+  const [koreksiAdminTarget, setKoreksiAdminTarget] = useState<any | null>(null)
+  const [koreksiAdminQty, setKoreksiAdminQty] = useState('')
+  const [koreksiAdminCatatan, setKoreksiAdminCatatan] = useState('')
+  const [koreksiAdminProses, setKoreksiAdminProses] = useState(false)
+  const bukaKoreksiAdmin = (it: any) => { setKoreksiAdminTarget(it); setKoreksiAdminQty(String(it.qty)); setKoreksiAdminCatatan('') }
+  const tutupKoreksiAdmin = () => { if (!koreksiAdminProses) setKoreksiAdminTarget(null) }
+  const simpanKoreksiAdmin = async () => {
+    const it = koreksiAdminTarget
+    if (!it || koreksiAdminProses) return
+    const qtyLama = Number(it.qty)
+    const teks = koreksiAdminQty.trim()
+    const qtyBaru = Number(teks)
+    const catatan = koreksiAdminCatatan.trim()
+    if (!teks || isNaN(qtyBaru) || qtyBaru <= 0) { alert('Qty baru harus angka lebih dari 0. Untuk membatalkan item yang sudah disetujui, minta Gudang menolaknya.'); return }
+    if (qtyBaru === qtyLama) { alert('Qty baru sama dengan qty sekarang.'); return }
+    if (!KOREKSI_ADMIN_BOLEH_NAIK && qtyBaru > qtyLama) { alert(`Sementara qty hanya boleh diturunkan (sekarang ${qtyLama}).`); return }
+    if (catatan.length < 3) { alert('Catatan koreksi wajib diisi (min. 3 huruf).'); return }
+    setKoreksiAdminProses(true)
+    const { error } = await supabase.rpc('koreksi_qty_sebelum_disiapkan' as any, {
+      p_item_id: it.id, p_qty_lama: qtyLama, p_qty_baru: qtyBaru, p_catatan: catatan, p_admin: adminUsername,
+    } as any)
+    setKoreksiAdminProses(false)
+    if (error) {
+      console.error('[Permintaan] koreksi qty sebelum disiapkan gagal:', error)
+      alert('Koreksi TIDAK tersimpan: ' + error.message)
+      // P0001 = keadaan item sudah berubah (disiapkan Gudang / dikoreksi admin lain) -> tutup & muat ulang
+      if ((error as { code?: string }).code === 'P0001') { setKoreksiAdminTarget(null); fetchRiwayat(riwayatTanggal) }
+      return
+    }
+    try {
+      const { error: nErr } = await supabase.functions.invoke('notify-permintaan', { body: {
+        trigger: 'koreksi_keputusan', namaKomponen: it.nama_komponen, disetujui: true, qtyDiusulkan: qtyBaru, satuan: it.satuan,
+      } })
+      if (nErr) console.error('[Permintaan] notifikasi koreksi ke Gudang gagal (koreksi tetap tersimpan):', nErr)
+    } catch (e) { console.error('[Permintaan] notifikasi koreksi ke Gudang gagal (koreksi tetap tersimpan):', e) }
+    setKoreksiAdminTarget(null)
+    fetchRiwayat(riwayatTanggal)
+  }
+
   // KOREKSI QTY (13 Sep 2026, "approval koreksi qty diarahkan ke Admin") - dulu diputuskan siapa
   // pun yang login di divisi peminta (PermintaanView.tsx vista-pekerja, tab "Koreksi", SEKARANG
   // DIHAPUS). Sekarang di sini, pola SAMA PERSIS "Menunggu Persetujuan" di atas (qty bisa diedit
@@ -1162,6 +1208,14 @@ ${kop.body}
                                 {!ditolak && (riwayatKoreksiMap[it.id] || []).map((k: any) => (
                                   <KartuKoreksi key={k.id} k={k} satuan={it.satuan} />
                                 ))}
+                                {/* (26 Nov 2026) Koreksi qty selama Disetujui & belum disiapkan Gudang - aturan di server */}
+                                {st === 'disetujui' && !it.is_hutang && (
+                                  <button className="pbt-koreksi" onClick={() => bukaKoreksiAdmin(it)}
+                                    style={{ width: '100%', marginTop: 6, padding: '7px', borderRadius: 7, border: '1.5px solid #d97706', background: 'transparent',
+                                      color: '#b45309', fontWeight: 700, fontSize: 11, cursor: 'pointer', fontFamily: 'inherit' }}>
+                                    ✎ Koreksi qty
+                                  </button>
+                                )}
                                 {/* Konfirmasi Ambil - CUMA permintaan yang diajukan admin sendiri (divisi==='admin'),
                                     lihat komentar konfirmasiAmbilAdmin di atas kenapa dibatasi ke sini saja. */}
                                 {!ditolak && it.perm.divisi === 'admin' && it.status === 'submit' && !it.sudah_diambil && (
@@ -1418,6 +1472,35 @@ ${kop.body}
             <Btn color="#94a3b8" outline onClick={() => { setRejectTarget(null); setRejectAlasan('') }}>Batal</Btn>
             <Btn color="#dc2626" onClick={tolak} disabled={processingId === rejectTarget.id}>
               {processingId === rejectTarget.id ? 'Menyimpan...' : 'Tolak Permintaan'}
+            </Btn>
+          </div>
+        </Modal>
+      )}
+
+      {koreksiAdminTarget && (
+        <Modal title="Koreksi Qty (belum disiapkan Gudang)" onClose={tutupKoreksiAdmin} width={440}>
+          <div style={{ fontSize: 13, color: '#64748b', marginBottom: 10, lineHeight: 1.5 }}>
+            <b style={{ color: 'var(--text-primary,#1e293b)' }}>{koreksiAdminTarget.nama_komponen}</b> - diminta {koreksiAdminTarget.perm?.operator_nama || '-'}
+            {koreksiAdminTarget.perm?.panel_nama ? ` · ${koreksiAdminTarget.perm.panel_nama}` : ''}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap', marginBottom: 10 }}>
+            <span style={{ fontSize: 12.5, color: '#64748b' }}>Qty sekarang <b style={{ color: 'var(--text-primary,#1e293b)' }}>{koreksiAdminTarget.qty}{koreksiAdminTarget.satuan ? ` ${koreksiAdminTarget.satuan}` : ''}</b> →</span>
+            <input type="number" min="0" aria-label="Qty baru" value={koreksiAdminQty} onChange={(e) => setKoreksiAdminQty(e.target.value)}
+              style={{ width: 110, padding: '7px 10px', borderRadius: 6, border: '1.5px solid #cbd5e1', fontSize: 14, fontWeight: 700, color: 'var(--text-primary,#1e293b)' }} />
+            <span style={{ fontSize: 12, color: '#64748b' }}>{koreksiAdminTarget.satuan || ''}</span>
+          </div>
+          {!KOREKSI_ADMIN_BOLEH_NAIK && <div style={{ fontSize: 11.5, color: '#b45309', marginBottom: 8 }}>Sementara qty hanya boleh diturunkan.</div>}
+          <label htmlFor="catatan-koreksi-admin" style={{ display: 'block', fontSize: 12, fontWeight: 700, color: '#475569', marginBottom: 4 }}>Catatan koreksi (wajib)</label>
+          <textarea id="catatan-koreksi-admin" autoFocus value={koreksiAdminCatatan} onChange={(e) => setKoreksiAdminCatatan(e.target.value)} rows={3} maxLength={400}
+            placeholder="Contoh: salah pencet, yang benar 3"
+            style={{ width: '100%', padding: '10px 12px', borderRadius: 8, border: '1.5px solid var(--border-color,#e2e8f0)', fontSize: 13, color: 'var(--text-primary,#1e293b)', fontFamily: 'inherit', resize: 'vertical', marginBottom: 10, boxSizing: 'border-box' }} />
+          <div style={{ fontSize: 11.5, color: '#64748b', marginBottom: 14, lineHeight: 1.5 }}>
+            Gudang menerima notifikasi. Bila Gudang sudah menyiapkan lebih dulu, koreksi ditolak - ajukan lewat Koreksi Qty dari Gudang.
+          </div>
+          <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+            <Btn color="#94a3b8" outline onClick={tutupKoreksiAdmin} disabled={koreksiAdminProses}>Batal</Btn>
+            <Btn color="#d97706" onClick={simpanKoreksiAdmin} disabled={koreksiAdminProses}>
+              {koreksiAdminProses ? 'Menyimpan...' : 'Simpan Koreksi'}
             </Btn>
           </div>
         </Modal>
