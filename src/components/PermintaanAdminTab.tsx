@@ -75,6 +75,13 @@ const RIWAYAT_STATUS_OPTIONS: { key: 'ALL' | 'DISETUJUI' | 'DITOLAK', label: str
   { key: 'DITOLAK', label: '✕ Ditolak Admin', color: '#dc2626' },
 ]
 
+// (26 Nov 2026) item yang dikoreksi Admin (Riwayat / Menunggu) - kolom yang dipakai dialog koreksi.
+type ItemKoreksiAdmin = { id: number; nama_komponen?: string; qty?: number; satuan?: string | null
+  perm: { jenis?: string; operator_nama?: string; divisi?: string; proyek?: string; panel_nama?: string } }
+// RPC baru 26 Nov 2026 belum ada di supabase-generated.ts - pemanggil bertipe (tanpa any), `this` tetap supabase.
+const rpcBaru = (fn: string, args: Record<string, unknown>) =>
+  (supabase as unknown as { rpc: (f: string, a: Record<string, unknown>) => PromiseLike<{ error: { message: string; code?: string } | null }> }).rpc(fn, args)
+
 export function PermintaanAdminTab({ user, woData = [] }: any) {
   const adminUsername: string = user?.username || user?.name || 'Admin'
   const [viewMode, setViewMode] = useState<'pending' | 'riwayat' | 'rekap' | 'koreksi'>('pending')
@@ -128,11 +135,11 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
   // SENGAJA tanpa withRetry: jawaban hilang padahal tersimpan -> ulang otomatis ditolak "qty sudah berubah" (membingungkan).
   // Sementara hanya boleh MENURUNKAN (keputusan user): menaikkan dibuka setelah HP Gudang versi "qty dilihat" live (Tahap 3b).
   const KOREKSI_ADMIN_BOLEH_NAIK = false
-  const [koreksiAdminTarget, setKoreksiAdminTarget] = useState<any | null>(null)
+  const [koreksiAdminTarget, setKoreksiAdminTarget] = useState<ItemKoreksiAdmin | null>(null)
   const [koreksiAdminQty, setKoreksiAdminQty] = useState('')
   const [koreksiAdminCatatan, setKoreksiAdminCatatan] = useState('')
   const [koreksiAdminProses, setKoreksiAdminProses] = useState(false)
-  const bukaKoreksiAdmin = (it: any) => { setKoreksiAdminTarget(it); setKoreksiAdminQty(String(it.qty)); setKoreksiAdminCatatan('') }
+  const bukaKoreksiAdmin = (it: ItemKoreksiAdmin) => { setKoreksiAdminTarget(it); setKoreksiAdminQty(String(it.qty)); setKoreksiAdminCatatan('') }
   const tutupKoreksiAdmin = () => { if (!koreksiAdminProses) setKoreksiAdminTarget(null) }
   const simpanKoreksiAdmin = async () => {
     const it = koreksiAdminTarget
@@ -146,15 +153,15 @@ export function PermintaanAdminTab({ user, woData = [] }: any) {
     if (!KOREKSI_ADMIN_BOLEH_NAIK && qtyBaru > qtyLama) { alert(`Sementara qty hanya boleh diturunkan (sekarang ${qtyLama}).`); return }
     if (catatan.length < 3) { alert('Catatan koreksi wajib diisi (min. 3 huruf).'); return }
     setKoreksiAdminProses(true)
-    const { error } = await supabase.rpc('koreksi_qty_sebelum_disiapkan' as any, {
+    const { error } = await rpcBaru('koreksi_qty_sebelum_disiapkan', {
       p_item_id: it.id, p_qty_lama: qtyLama, p_qty_baru: qtyBaru, p_catatan: catatan, p_admin: adminUsername,
-    } as any)
+    })
     setKoreksiAdminProses(false)
     if (error) {
       console.error('[Permintaan] koreksi qty sebelum disiapkan gagal:', error)
       alert('Koreksi TIDAK tersimpan: ' + error.message)
       // P0001 = keadaan item sudah berubah (disiapkan Gudang / dikoreksi admin lain) -> tutup & muat ulang
-      if ((error as { code?: string }).code === 'P0001') { setKoreksiAdminTarget(null); fetchRiwayat(riwayatTanggal) }
+      if (error.code === 'P0001') { setKoreksiAdminTarget(null); fetchRiwayat(riwayatTanggal) }
       return
     }
     try {
@@ -764,7 +771,7 @@ ${kop.body}
   // SETUJUI DENGAN QTY DIUBAH (26 Nov 2026, keputusan user): catatan wajib; status + qty + riwayat koreksi (sumber
   // admin_saat_setuju, qty_lama = angka asli operator) dalam SATU transaksi server (RPC setujui_permintaan_dengan_koreksi,
   // migration 20261126040000; penjaga status menunggu_admin & qty lama sama dgn tulisSetujui). Tanpa withRetry (tidak idempoten).
-  const [setujuiUbahQty, setSetujuiUbahQty] = useState<{ it: any; qtyBaru: number } | null>(null)
+  const [setujuiUbahQty, setSetujuiUbahQty] = useState<{ it: ItemKoreksiAdmin; qtyBaru: number } | null>(null)
   const [setujuiKoreksiCatatan, setSetujuiKoreksiCatatan] = useState('')
   const simpanSetujuiDenganKoreksi = async () => {
     if (!setujuiUbahQty || processingId !== null) return
@@ -772,13 +779,13 @@ ${kop.body}
     const catatan = setujuiKoreksiCatatan.trim()
     if (catatan.length < 3) { alert('Catatan alasan qty diubah wajib diisi (min. 3 huruf).'); return }
     setProcessingId(it.id)
-    const { error } = await supabase.rpc('setujui_permintaan_dengan_koreksi' as any, {
+    const { error } = await rpcBaru('setujui_permintaan_dengan_koreksi', {
       p_item_id: it.id, p_qty_lama: Number(it.qty), p_qty_baru: qtyBaru, p_catatan: catatan, p_admin: adminUsername,
-    } as any)
+    })
     setProcessingId(null)
     if (error) {
       console.error('[Permintaan] setujui dengan koreksi qty gagal:', error)
-      if ((error as { code?: string }).code === 'P0001') { alert(PESAN_SUDAH_DIPROSES + '\n' + error.message); setSetujuiUbahQty(null); muatUlang(); return }
+      if (error.code === 'P0001') { alert(PESAN_SUDAH_DIPROSES + '\n' + error.message); setSetujuiUbahQty(null); muatUlang(); return }
       alert('Gagal menyetujui: ' + error.message)
       return
     }
